@@ -47,3 +47,10 @@ STEERING.md
 QA_COVERAGE.md
 QA_LOG.md
 REVIEW_LOG.md
+
+# Proof screenshots (ephemeral test artifacts)
+proof-artifacts/
+
+# Opencode fixture binaries
+aloop/cli/dashboard/e2e/fixtures/home/.cache/
+aloop/cli/dashboard/e2e/fixtures/home/.local/

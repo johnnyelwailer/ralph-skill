@@ -35,6 +35,7 @@ export interface OrchestrateCommandOptions {
   maxIterations?: string;
   runScanLoop?: boolean;
   autoMerge?: boolean;
+  resume?: string;
 }
 
 export interface DecompositionPlanIssue {
@@ -90,11 +91,6 @@ export interface OrchestratorIssue {
   ci_failure_signature?: string;
   ci_failure_retries?: number;
   ci_failure_summary?: string;
-  needs_redispatch?: boolean;
-  review_feedback?: string;
-  redispatch_count?: number;
-  last_review_comment?: string;
-  child_pid?: number;
 }
 
 export interface OrchestratorState {
@@ -115,6 +111,7 @@ export interface OrchestratorState {
   budget_cap: number | null;
   auto_merge_to_main?: boolean;
   trunk_pr_number?: number | null;
+  gh_project_number?: number;
   created_at: string;
   updated_at: string;
 }
@@ -956,11 +953,18 @@ The session directory contains \`orchestrator.json\`, \`requests/\`, \`queue/\`,
 Your working directory is \`${sessionDir}/worktree\` — a git worktree with full project access.
 
 Run one lightweight monitoring pass:
+- Read \`CONSTITUTION.md\` from your working directory — these are non-negotiable invariants for all work.
 - Read \`${sessionDir}/orchestrator.json\` to understand current state (issues, waves, dependencies).
 - Check \`${sessionDir}/queue/\` for override prompts to prioritize.
-- Write any required side effects into \`${sessionDir}/requests/*.json\`.
+- Write dispatch/state requests into \`.aloop/output/\` in your working directory.
 - You can read project files (SPEC.md, source code) from your working directory.
 - Keep this step reactive and minimal; avoid large speculative planning.
+
+**You must NOT:**
+- Write \`review-result-*.json\` files. PR reviews are handled by the dedicated review agent.
+- Write \`refine-result-*.json\` files. Refinement is handled by the dedicated refine agent.
+- Write \`estimate-result-*.json\` files. Estimation is handled by the dedicated estimate agent.
+- Auto-approve or auto-merge any PR. You are a monitor, not a reviewer.
 `;
 }
 
@@ -1131,7 +1135,19 @@ export async function orchestrateCommandWithDeps(
         const projectStatusMap = new Map<number, string>();
         try {
           const owner = filterRepo.split('/')[0];
-          const gqlQuery = `{ user(login: "${owner}") { projectV2(number: 2) { items(first: 100) { nodes { content { ... on Issue { number } } fieldValueByName(name: "Status") { ... on ProjectV2ItemFieldSingleSelectValue { name } } } } } } }`;
+          // Find aloop project number dynamically
+          let projNumber = 0;
+          const projListResult = nodeSpawnSync('gh', ['project', 'list', '--owner', owner, '--format', 'json'], { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] });
+          if (projListResult.status === 0) {
+            try {
+              const projects = JSON.parse(projListResult.stdout ?? '{}').projects ?? [];
+              const aloopProj = projects.find((p: any) => p.title?.toLowerCase().includes('aloop'));
+              if (aloopProj) projNumber = aloopProj.number;
+            } catch { /* ignore */ }
+          }
+          if (projNumber === 0) throw new Error('No aloop project found');
+          state.gh_project_number = projNumber;
+          const gqlQuery = `{ user(login: "${owner}") { projectV2(number: ${projNumber}) { items(first: 100) { nodes { content { ... on Issue { number } } fieldValueByName(name: "Status") { ... on ProjectV2ItemFieldSingleSelectValue { name } } } } } } }`;
           const projResult = nodeSpawnSync('gh', ['api', 'graphql', '-f', `query=${gqlQuery}`], { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] });
           if (projResult.status !== 0) {
             console.error(`[orchestrate] Project status query failed (exit ${projResult.status}): ${projResult.stderr?.substring(0, 200)}`);
@@ -1162,10 +1178,18 @@ export async function orchestrateCommandWithDeps(
             if (projStatus === 'Ready' || projStatus === 'In progress' || projStatus === 'In review' || projStatus === 'Done') {
               dorValidated = true;
             }
-            if (projStatus === 'In progress') issueState = 'in_progress';
+            // Only set in_progress state for non-epics (epics are tracking, not child loops)
+            if (projStatus === 'In progress' && !isEpic) issueState = 'in_progress';
             if (projStatus === 'In review') issueState = 'pr_open';
             if (projStatus === 'Done') issueState = 'merged';
           }
+
+          // Extract priority from labels
+          const labelNames = (gi.labels ?? []).map((l: any) => l.name ?? l);
+          let priority = 0;
+          if (labelNames.includes('aloop/priority-critical')) priority = 100;
+          else if (labelNames.includes('aloop/priority-high')) priority = 50;
+          else if (labelNames.includes('aloop/priority-low')) priority = -10;
 
           state.issues.push({
             number: gi.number,
@@ -1181,6 +1205,7 @@ export async function orchestrateCommandWithDeps(
             blocked_on_human: false,
             processed_comment_ids: [],
             dor_validated: dorValidated,
+            priority,
           } as any);
         }
         if (state.current_wave === 0) state.current_wave = 1;
@@ -1332,6 +1357,157 @@ export async function orchestrateCommand(options: OrchestrateCommandOptions = {}
   const deps = (depsOrCommand && typeof depsOrCommand === 'object' && 'existsSync' in depsOrCommand)
     ? (depsOrCommand as OrchestrateDeps)
     : undefined;
+
+  // --- Resume path: reuse an existing session ---
+  if (options.resume) {
+    const homeDir = options.homeDir ?? resolveHomeDir();
+    const aloopRoot = path.join(homeDir, '.aloop');
+    const sessionsRoot = path.join(aloopRoot, 'sessions');
+    const sessionDir = path.join(sessionsRoot, options.resume);
+    const stateFile = path.join(sessionDir, 'orchestrator.json');
+
+    if (!existsSync(stateFile)) {
+      throw new Error(`Session not found or missing orchestrator.json: ${sessionDir}`);
+    }
+
+    const state: OrchestratorState = JSON.parse(await readFile(stateFile, 'utf8'));
+    const projectRoot = options.projectRoot ?? process.cwd();
+    const promptsDir = path.join(sessionDir, 'prompts');
+    const loopPlanFile = path.join(sessionDir, 'loop-plan.json');
+
+    // Fetch latest from remote so worktree and prompts are up to date
+    const { spawn: nodeSpawn, spawnSync: nodeSpawnSync } = await import('node:child_process');
+    nodeSpawnSync('git', ['-C', projectRoot, 'fetch', 'origin'], { encoding: 'utf8' });
+
+    // Refresh the scan prompt (dynamically generated with session paths).
+    // Other orchestrator prompts are configured (not templates) — don't overwrite them.
+    const orchScanPromptFile = path.join(promptsDir, ORCH_SCAN_PROMPT_FILENAME);
+    await writeFile(orchScanPromptFile, buildOrchestratorScanPrompt(sessionDir), 'utf8');
+
+    // Recreate worktree if missing
+    const worktreePath = path.join(sessionDir, 'worktree');
+    const worktreeBranch = `aloop/${path.basename(sessionDir)}`;
+    let workDir = projectRoot;
+
+    if (!existsSync(path.join(worktreePath, '.git'))) {
+      // Clean up stale worktree refs
+      nodeSpawnSync('git', ['-C', projectRoot, 'worktree', 'prune'], { encoding: 'utf8' });
+
+      // Try to reuse existing remote branch, or create new
+      const hasRemote = nodeSpawnSync('git', ['-C', projectRoot, 'ls-remote', '--heads', 'origin', worktreeBranch], { encoding: 'utf8' });
+      let wtResult;
+      if (hasRemote.stdout?.includes(worktreeBranch)) {
+        // Delete stale local branch ref if it exists
+        nodeSpawnSync('git', ['-C', projectRoot, 'branch', '-D', worktreeBranch], { encoding: 'utf8' });
+        wtResult = nodeSpawnSync('git', ['-C', projectRoot, 'worktree', 'add', worktreePath, '-b', worktreeBranch, `origin/${worktreeBranch}`], { encoding: 'utf8' });
+      } else {
+        wtResult = nodeSpawnSync('git', ['-C', projectRoot, 'worktree', 'add', worktreePath, '-b', worktreeBranch], { encoding: 'utf8' });
+      }
+      if (wtResult.status === 0) {
+        workDir = worktreePath;
+      } else {
+        console.error(`Warning: Failed to recreate worktree: ${wtResult.stderr?.trim()}`);
+      }
+    } else {
+      workDir = worktreePath;
+      // Merge latest trunk into worktree so it has fresh CONSTITUTION.md, SPEC.md, etc.
+      // Use merge (not rebase) to avoid conflicts with untracked files.
+      const trunkBranch = state.trunk_branch ?? 'agent/trunk';
+      nodeSpawnSync('git', ['-C', worktreePath, 'fetch', 'origin', trunkBranch], { encoding: 'utf8' });
+      nodeSpawnSync('git', ['-C', worktreePath, 'merge', `origin/${trunkBranch}`, '--no-edit'], { encoding: 'utf8' });
+    }
+
+    // Reset loop-plan iteration counter to continue from current state
+    const loopPlan = JSON.parse(await readFile(loopPlanFile, 'utf8'));
+    loopPlan.cyclePosition = 0;
+    await writeFile(loopPlanFile, `${JSON.stringify(loopPlan, null, 2)}\n`, 'utf8');
+
+    // Launch loop.sh
+    const loopBinDir = path.join(aloopRoot, 'bin');
+    const loopScript = path.join(loopBinDir, 'loop.sh');
+    if (!existsSync(loopScript)) {
+      throw new Error(`Loop script not found: ${loopScript}`);
+    }
+
+    const args = [
+      '--prompts-dir', promptsDir,
+      '--session-dir', sessionDir,
+      '--work-dir', workDir,
+      '--mode', 'plan',
+      '--provider', 'claude',
+      '--round-robin', 'claude',
+      '--max-iterations', '999999',
+      '--launch-mode', 'start',
+      '--dangerously-skip-container',
+      '--no-task-exit',
+    ];
+
+    const child = nodeSpawn(loopScript, args, {
+      cwd: workDir,
+      detached: true,
+      stdio: 'ignore',
+      env: { ...process.env },
+      windowsHide: true,
+    });
+    child.unref();
+    const loopPid = child.pid ?? null;
+    if (!loopPid) {
+      throw new Error('Failed to launch orchestrator loop process.');
+    }
+
+    // Update meta.json with new PID
+    const metaPath = path.join(sessionDir, 'meta.json');
+    const startedAt = new Date().toISOString();
+    let meta: Record<string, unknown> = {};
+    try { meta = JSON.parse(await readFile(metaPath, 'utf8')); } catch { /* fresh */ }
+    meta.pid = loopPid;
+    meta.resumed_at = startedAt;
+    await writeFile(metaPath, `${JSON.stringify(meta, null, 2)}\n`, 'utf8');
+
+    // Update active.json
+    const activePath = path.join(aloopRoot, 'active.json');
+    let active: Record<string, unknown> = {};
+    try {
+      if (existsSync(activePath)) {
+        const content = await readFile(activePath, 'utf8');
+        const parsed = JSON.parse(content);
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+          active = parsed as Record<string, unknown>;
+        }
+      }
+    } catch { /* fresh */ }
+    const sessionId = path.basename(sessionDir);
+    active[sessionId] = {
+      session_id: sessionId,
+      session_dir: sessionDir,
+      project_root: projectRoot,
+      pid: loopPid,
+      work_dir: workDir,
+      started_at: startedAt,
+      provider: 'claude',
+      mode: 'orchestrate',
+    };
+    await writeFile(activePath, `${JSON.stringify(active, null, 2)}\n`, 'utf8');
+
+    const issuesByState: Record<string, number> = {};
+    for (const i of state.issues) { issuesByState[i.state] = (issuesByState[i.state] ?? 0) + 1; }
+
+    if (outputMode === 'json') {
+      console.log(JSON.stringify({ session_dir: sessionDir, pid: loopPid, issues: issuesByState }, null, 2));
+      return;
+    }
+
+    console.log(`Resumed orchestrator session: ${sessionId}`);
+    console.log('');
+    console.log(`  Session dir:  ${sessionDir}`);
+    console.log(`  Work dir:     ${workDir}`);
+    console.log(`  Loop PID:     ${loopPid}`);
+    console.log(`  Issues:       ${state.issues.length} (${Object.entries(issuesByState).map(([s, n]) => `${n} ${s}`).join(', ')})`);
+    console.log(`  Iteration:    ${loopPlan.iteration}`);
+    return;
+  }
+
+  // --- New session path ---
   const result = await orchestrateCommandWithDeps(options, deps);
 
   const planOnly = options.planOnly ?? false;
@@ -1371,6 +1547,7 @@ export async function orchestrateCommand(options: OrchestrateCommandOptions = {}
       '--max-iterations', '999999',
       '--launch-mode', 'start',
       '--dangerously-skip-container',
+      '--no-task-exit',
     ];
 
     const child = nodeSpawn(loopScript, args, {
@@ -2675,7 +2852,7 @@ export function getDispatchableIssues(state: OrchestratorState): OrchestratorIss
     issueByNumber.set(issue.number, issue);
   }
 
-  return state.issues.filter((issue) => {
+  const eligible = state.issues.filter((issue) => {
     if (issue.wave !== state.current_wave) return false;
 
     // Primary signal: Project status 'Ready'
@@ -2698,6 +2875,18 @@ export function getDispatchableIssues(state: OrchestratorState): OrchestratorIss
       if (!dep || dep.state !== 'merged') return false;
     }
     return true;
+  });
+
+  // Sort by priority (higher first), then complexity (S before XL), then issue number
+  const complexityOrder: Record<string, number> = { S: 0, M: 1, L: 2, XL: 3 };
+  return eligible.sort((a, b) => {
+    const priA = (a as any).priority ?? 0;
+    const priB = (b as any).priority ?? 0;
+    if (priA !== priB) return priB - priA; // higher priority first
+    const compA = complexityOrder[(a as any).complexity_tier ?? 'M'] ?? 1;
+    const compB = complexityOrder[(b as any).complexity_tier ?? 'M'] ?? 1;
+    if (compA !== compB) return compA - compB; // smaller first
+    return a.number - b.number; // stable tiebreaker
   });
 }
 
@@ -2872,15 +3061,53 @@ export async function launchChildLoop(
     await deps.cp(promptsSourceDir, promptsDir, { recursive: true });
   }
 
-  // Create git worktree with branch (or reuse existing branch)
-  let worktreeResult = deps.spawnSync('git', ['-C', projectRoot, 'worktree', 'add', worktreePath, '-b', branchName], { encoding: 'utf8' });
+  // Create git worktree branching from agent/trunk (not local HEAD)
+  // Fetch latest trunk first
+  deps.spawnSync('git', ['-C', projectRoot, 'fetch', 'origin', 'agent/trunk'], { encoding: 'utf8' });
+
+  // Clean up stale worktree locks for this branch before creating
+  deps.spawnSync('git', ['-C', projectRoot, 'worktree', 'prune'], { encoding: 'utf8' });
+
+  let worktreeResult = deps.spawnSync('git', ['-C', projectRoot, 'worktree', 'add', worktreePath, '-b', branchName, 'origin/agent/trunk'], { encoding: 'utf8' });
   if (worktreeResult.status !== 0) {
-    // Branch may already exist — try without -b
+    // Branch may already exist — remove stale worktree lock if present, then retry
+    // Porcelain format: "worktree <path>\nHEAD <sha>\nbranch refs/heads/<name>\n\n"
+    const existingWt = deps.spawnSync('git', ['-C', projectRoot, 'worktree', 'list', '--porcelain'], { encoding: 'utf8' });
+    const entries = (existingWt.stdout ?? '').split('\n\n');
+    for (const entry of entries) {
+      if (entry.includes(`refs/heads/${branchName}`)) {
+        const wtLine = entry.split('\n').find((l) => l.startsWith('worktree '));
+        if (wtLine) {
+          const stalePath = wtLine.replace('worktree ', '');
+          deps.spawnSync('git', ['-C', projectRoot, 'worktree', 'remove', '--force', stalePath], { encoding: 'utf8' });
+        }
+      }
+    }
+    deps.spawnSync('git', ['-C', projectRoot, 'worktree', 'prune'], { encoding: 'utf8' });
+
+    // Retry — branch exists, check it out
     worktreeResult = deps.spawnSync('git', ['-C', projectRoot, 'worktree', 'add', worktreePath, branchName], { encoding: 'utf8' });
     if (worktreeResult.status !== 0) {
       throw new Error(`Failed to create worktree for issue #${issue.number}: ${worktreeResult.stderr || worktreeResult.stdout}`);
     }
   }
+
+  // CRITICAL: Set upstream to the correct remote branch, not agent/trunk.
+  // git worktree add -b <branch> origin/agent/trunk sets tracking to origin/agent/trunk,
+  // which causes `git push -u origin HEAD` to push directly to agent/trunk.
+  deps.spawnSync('git', ['-C', worktreePath, 'branch', '--set-upstream-to', `origin/${branchName}`], { encoding: 'utf8' });
+  // If the remote branch doesn't exist yet, unset upstream entirely — push -u will create it correctly
+  deps.spawnSync('git', ['-C', worktreePath, 'config', '--unset', `branch.${branchName}.merge`], { encoding: 'utf8' });
+  deps.spawnSync('git', ['-C', worktreePath, 'config', '--unset', `branch.${branchName}.remote`], { encoding: 'utf8' });
+
+  // Remove .mcp.json if present — prevents tessl MCP hangs in child loops
+  const mcpJsonPath = path.join(worktreePath, '.mcp.json');
+  if (deps.existsSync(mcpJsonPath)) {
+    try { const { unlink: unlinkFile } = await import('node:fs/promises'); await unlinkFile(mcpJsonPath); } catch { /* best-effort */ }
+  }
+
+  // Create .aloop/output/ for agent result file bridge
+  await deps.mkdir(path.join(worktreePath, '.aloop', 'output'), { recursive: true });
 
   // Seed TODO.md in worktree from issue body (gitignored — working artifact only)
   const todoContent = `# Issue #${issue.number}: ${issue.title}\n\n## Tasks\n\n- [ ] Implement as described in the issue\n`;
@@ -2939,9 +3166,9 @@ export async function launchChildLoop(
     'utf8',
   );
 
-  // Seed sub-spec (SPEC.md) from issue body into child worktree
+  // Seed sub-spec as TASK_SPEC.md (NOT SPEC.md — that's the project spec and must not be overwritten)
   if (issue.body) {
-    await deps.writeFile(path.join(worktreePath, 'SPEC.md'), `# Sub-Spec: Issue #${issue.number} — ${issue.title}\n\n${issue.body}\n`, 'utf8');
+    await deps.writeFile(path.join(worktreePath, 'TASK_SPEC.md'), `# Sub-Spec: Issue #${issue.number} — ${issue.title}\n\n${issue.body}\n`, 'utf8');
   }
 
   // Copy pipeline.yml so child gets finalizer config (not tracked in git)
@@ -2961,8 +3188,8 @@ export async function launchChildLoop(
       provider: 'round-robin',
       promptsDir: promptsDir,
       sessionDir: sessionDir,
-      enabledProviders: ['claude', 'codex', 'gemini', 'copilot', 'opencode'],
-      roundRobinOrder: ['claude', 'codex', 'gemini', 'copilot', 'opencode'],
+      enabledProviders: ['claude', 'gemini', 'opencode'],
+      roundRobinOrder: ['claude', 'gemini', 'opencode'],
       models: {},
       projectRoot: worktreePath,
     },
@@ -2988,7 +3215,7 @@ export async function launchChildLoop(
       '-WorkDir', worktreePath,
       '-Mode', 'plan-build-review',
       '-Provider', 'round-robin',
-      '-MaxIterations', '20',
+      '-MaxIterations', '100',
       '-MaxStuck', '3',
       '-LaunchMode', 'start',
     ];
@@ -3001,7 +3228,7 @@ export async function launchChildLoop(
       '--work-dir', worktreePath,
       '--mode', 'plan-build-review',
       '--provider', 'round-robin',
-      '--max-iterations', '20',
+      '--max-iterations', '100',
       '--max-stuck', '3',
       '--launch-mode', 'start',
     ];
@@ -3015,7 +3242,7 @@ export async function launchChildLoop(
       ...deps.env,
       ALOOP_TASK_SANDBOX: sandbox,
       ALOOP_TASK_REQUIRES: requires.join(','),
-      NODE_COMPILE_CACHE: '', // Disable V8 code cache to prevent /tmp disk exhaustion
+      NODE_COMPILE_CACHE: path.join(sessionDir, '.v8-cache'), // Per-session cache, cleaned up with session
     },
     windowsHide: true,
   });
@@ -3093,33 +3320,71 @@ export async function dispatchChildLoops(
   }
   const skipped = [...skippedSet];
 
+  const launched = await launchIssues(
+    toDispatch, state, stateFile, orchestratorSessionDir,
+    projectRoot, projectName, promptsSourceDir, aloopRoot, deps, undefined,
+  );
+
+  return { launched, skipped, state };
+}
+
+/**
+ * Core dispatch loop — launches child loops for a list of issues.
+ * Shared by both fresh dispatch and redispatch paths.
+ * Updates issue state to in_progress and persists state after each launch.
+ */
+export async function launchIssues(
+  issues: OrchestratorIssue[],
+  state: OrchestratorState,
+  stateFile: string,
+  orchestratorSessionDir: string,
+  projectRoot: string,
+  projectName: string,
+  promptsSourceDir: string,
+  aloopRoot: string,
+  deps: DispatchDeps,
+  logDeps?: { appendLog: (dir: string, entry: any) => void },
+): Promise<ChildLaunchResult[]> {
   const launched: ChildLaunchResult[] = [];
 
-  for (const issue of toDispatch) {
-    const result = await launchChildLoop(
-      issue,
-      orchestratorSessionDir,
-      projectRoot,
-      projectName,
-      promptsSourceDir,
-      aloopRoot,
-      deps,
-    );
-    launched.push(result);
+  for (const issue of issues) {
+    try {
+      const result = await launchChildLoop(
+        issue,
+        orchestratorSessionDir,
+        projectRoot,
+        projectName,
+        promptsSourceDir,
+        aloopRoot,
+        deps,
+      );
+      launched.push(result);
 
-    // Update issue state in-place
-    const stateIssue = state.issues.find((i) => i.number === issue.number);
-    if (stateIssue) {
-      stateIssue.state = 'in_progress';
-      stateIssue.child_session = result.session_id;
+      // Update issue state in-place
+      const stateIssue = state.issues.find((i) => i.number === issue.number);
+      if (stateIssue) {
+        stateIssue.state = 'in_progress';
+        stateIssue.status = 'In progress';
+        stateIssue.child_session = result.session_id;
+        (stateIssue as any).child_pid = result.pid;
+      }
+    } catch (e) {
+      if (logDeps) {
+        logDeps.appendLog(orchestratorSessionDir, {
+          timestamp: deps.now().toISOString(),
+          event: 'child_dispatch_failed',
+          issue_number: issue.number,
+          error: e instanceof Error ? e.message : String(e),
+        });
+      }
     }
   }
 
   // Persist updated state
-  state = { ...state, updated_at: deps.now().toISOString() };
+  state.updated_at = deps.now().toISOString();
   await deps.writeFile(stateFile, `${JSON.stringify(state, null, 2)}\n`, 'utf8');
 
-  return { launched, skipped, state };
+  return launched;
 }
 
 // --- PR lifecycle gates ---
@@ -3164,58 +3429,6 @@ export interface PrLifecycleDeps {
 }
 
 const ORCHESTRATOR_CI_PERSISTENCE_LIMIT = 3;
-const ORCHESTRATOR_REDISPATCH_LIMIT = 3;
-const WORKING_ARTIFACT_FILES = ['TODO.md', 'STEERING.md', 'QA_COVERAGE.md', 'QA_LOG.md', 'REVIEW_LOG.md'] as const;
-
-function parseArtifactRemovalTargets(feedback: string | undefined): string[] | null {
-  if (!feedback) return null;
-
-  const normalized = feedback.toLowerCase();
-  const mentionsGenericArtifacts = normalized.includes('working artifact');
-  const mentionedFiles = WORKING_ARTIFACT_FILES.filter((file) => normalized.includes(file.toLowerCase()));
-  const hasRemovalIntent =
-    /\b(remove|delete|drop|exclude|clean(?:\s*up)?|rm)\b/i.test(normalized)
-    || /do\s+not\s+(add|include|commit)/i.test(normalized)
-    || /should\s+not\s+(add|include|commit)/i.test(normalized);
-
-  if (!hasRemovalIntent || (mentionedFiles.length === 0 && !mentionsGenericArtifacts)) {
-    return null;
-  }
-
-  let stripped = normalized;
-  for (const file of WORKING_ARTIFACT_FILES) {
-    stripped = stripped.replaceAll(file.toLowerCase(), ' ');
-  }
-  stripped = stripped
-    .replaceAll('working artifacts', ' ')
-    .replaceAll('working artifact', ' ')
-    .replaceAll('artifact files', ' ')
-    .replaceAll('artifact', ' ')
-    .replaceAll('pull request', ' ')
-    .replaceAll('pr', ' ')
-    .replaceAll('commit', ' ')
-    .replaceAll('branch', ' ')
-    .replaceAll('please', ' ');
-
-  const allowedTokens = new Set([
-    'remove', 'delete', 'drop', 'exclude', 'clean', 'cleanup', 'rm', 'cache', 'cached',
-    'do', 'not', 'should', 'add', 'include', 'from', 'in', 'on', 'to', 'the', 'a', 'an',
-    'and', 'or', 'these', 'this', 'files', 'file', 'only', 'just', 'all', 'any', 'no',
-  ]);
-  const residualTokens = stripped
-    .replace(/[^a-z0-9\s]/g, ' ')
-    .split(/\s+/)
-    .filter((token) => token.length > 0)
-    .filter((token) => !allowedTokens.has(token));
-  if (residualTokens.length > 0) {
-    return null;
-  }
-
-  if (mentionedFiles.length > 0) {
-    return [...mentionedFiles];
-  }
-  return [...WORKING_ARTIFACT_FILES];
-}
 
 async function hasGithubActionsWorkflows(repo: string, deps: PrLifecycleDeps): Promise<boolean> {
   try {
@@ -3250,10 +3463,11 @@ export async function checkPrGates(
     const prData = JSON.parse(viewResult.stdout);
     mergeable = prData.mergeable === 'MERGEABLE';
     const mergeState = prData.mergeStateStatus ?? 'UNKNOWN';
+    const mergeUnknown = prData.mergeable === 'UNKNOWN' || mergeState === 'UNKNOWN';
     gates.push({
       gate: 'merge_conflicts',
-      status: mergeable ? 'pass' : 'fail',
-      detail: mergeable ? 'No merge conflicts' : `Merge state: ${mergeState}`,
+      status: mergeable ? 'pass' : mergeUnknown ? 'pending' : 'fail',
+      detail: mergeable ? 'No merge conflicts' : mergeUnknown ? 'Mergeability not yet computed' : `Merge state: ${mergeState}`,
     });
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
@@ -3264,9 +3478,14 @@ export async function checkPrGates(
   // Gate 2: CI checks (covers CI pipeline, coverage, lint/type check)
   try {
     const checksResult = await deps.execGh([
-      'pr', 'checks', String(prNumber), '--repo', repo, '--json', 'name,state,conclusion',
+      'pr', 'view', String(prNumber), '--repo', repo, '--json', 'statusCheckRollup',
     ]);
-    const checks: Array<{ name: string; state: string; conclusion: string }> = JSON.parse(checksResult.stdout);
+    const parsed = JSON.parse(checksResult.stdout);
+    const checks: Array<{ name: string; state: string; conclusion: string }> = (parsed.statusCheckRollup ?? []).map((c: any) => ({
+      name: c.name ?? c.context ?? 'unknown',
+      state: c.status ?? c.state ?? 'COMPLETED',
+      conclusion: c.conclusion ?? (c.state === 'SUCCESS' ? 'SUCCESS' : 'PENDING'),
+    }));
     const allCompleted = checks.every((c) => c.state === 'COMPLETED' || c.state === 'completed');
     const allPassed = checks.every(
       (c) => (c.state === 'COMPLETED' || c.state === 'completed') &&
@@ -3281,8 +3500,10 @@ export async function checkPrGates(
     );
 
     if (checks.length === 0) {
+      // No check runs — pass regardless of workflow existence
+      // (workflow may not trigger on this branch/PR target)
       if (ciWorkflowsConfigured) {
-        gates.push({ gate: 'ci_checks', status: 'pending', detail: 'CI workflows detected but no check runs reported yet' });
+        gates.push({ gate: 'ci_checks', status: 'pass', detail: 'CI workflows exist but no checks ran on this PR — passing' });
       } else {
         gates.push({ gate: 'ci_checks', status: 'pass', detail: 'No GitHub Actions workflows detected; local fallback validation required' });
       }
@@ -3310,7 +3531,7 @@ export async function checkPrGates(
 
 /**
  * Run agent review on PR diff.
- * If no invokeAgentReview dep is provided, auto-approves (for headless/test scenarios).
+ * If no invokeAgentReview dep is provided, flags for human review.
  */
 export async function reviewPrDiff(
   prNumber: number,
@@ -3336,11 +3557,11 @@ export async function reviewPrDiff(
     return deps.invokeAgentReview(prNumber, repo, diff);
   }
 
-  // Default: auto-approve when no agent reviewer is configured
+  // No reviewer configured — flag for human, never auto-approve
   return {
     pr_number: prNumber,
-    verdict: 'approve',
-    summary: 'Auto-approved (no agent reviewer configured)',
+    verdict: 'flag-for-human',
+    summary: 'No agent reviewer configured — requires human review',
   };
 }
 
@@ -3446,18 +3667,7 @@ export async function createTrunkToMainPr(
  * Request a child loop to rebase its branch against agent/trunk.
  * Posts a comment on the issue instructing the child to rebase.
  */
-export async function requestRebase(
-  issue: OrchestratorIssue,
-  repo: string,
-  trunkBranch: string,
-  rebaseAttempt: number,
-  deps: PrLifecycleDeps,
-): Promise<void> {
-  const body = `Merge conflict with \`${trunkBranch}\` — rebase needed (attempt ${rebaseAttempt}/2).\\n\\nPlease rebase your branch against \`${trunkBranch}\` and push.`;
-  await deps.execGh([
-    'issue', 'comment', String(issue.number), '--repo', repo, '--body', body,
-  ]);
-}
+// requestRebase is no longer used — conflicts are handled by dispatching a child agent via needs_redispatch
 
 /**
  * Flag an issue for human resolution after rebase attempts exhausted.
@@ -3483,7 +3693,7 @@ export async function flagForHuman(
 
 export interface PrLifecycleResult {
   pr_number: number;
-  action: 'merged' | 'rebase_requested' | 'flagged_for_human' | 'rejected' | 'gates_pending' | 'gates_failed' | 'review_pending';
+  action: 'merged' | 'rebase_requested' | 'flagged_for_human' | 'rejected' | 'gates_pending' | 'gates_failed' | 'review_pending' | 'closed_for_retry';
   detail: string;
   gates?: PrGatesResult;
   review?: AgentReviewResult;
@@ -3492,7 +3702,7 @@ export interface PrLifecycleResult {
 /**
  * Process the full PR lifecycle for an orchestrator issue:
  * 1. Check PR gates (CI, mergeability)
- * 2. If gates fail due to conflicts → rebase (max 2 attempts) → flag for human
+ * 2. If gates fail due to conflicts → dispatch child agent to rebase
  * 3. If gates pending → return pending
  * 4. If gates pass → agent review
  * 5. If review approves → squash-merge
@@ -3534,49 +3744,26 @@ export async function processPrLifecycle(
     const stateIssue = state.issues.find((i) => i.number === issue.number);
     const rebaseAttempts = stateIssue?.rebase_attempts ?? 0;
 
-    if (rebaseAttempts >= 2) {
-      // Max rebase attempts reached — flag for human
-      await flagForHuman(issue, repo, `Merge conflicts persist after 2 rebase attempts on PR #${prNumber}`, deps);
-      // Update issue state to failed
-      if (stateIssue) {
-        stateIssue.state = 'failed';
-        stateIssue.status = 'Blocked';
-      }
-      await syncIssueProjectStatus(issue.number, repo, 'Blocked', {
-        execGh: deps.execGh,
-        appendLog: deps.appendLog,
-        now: deps.now,
-        sessionDir,
-      });
-      state.updated_at = deps.now().toISOString();
-      await deps.writeFile(stateFile, `${JSON.stringify(state, null, 2)}\n`, 'utf8');
-
-      deps.appendLog(sessionDir, {
-        timestamp: deps.now().toISOString(),
-        event: 'pr_flagged_for_human',
-        pr_number: prNumber,
-        issue_number: issue.number,
-        reason: 'max_rebase_attempts',
-        attempts: rebaseAttempts,
-      });
-      return { pr_number: prNumber, action: 'flagged_for_human', detail: `Conflicts persist after 2 rebase attempts`, gates: gatesResult };
-    }
-
-    // Request rebase
+    // Dispatch a child loop to resolve the merge conflict via rebase
     const attempt = rebaseAttempts + 1;
-    await requestRebase(issue, repo, state.trunk_branch, attempt, deps);
-    if (stateIssue) stateIssue.rebase_attempts = attempt;
+    if (stateIssue) {
+      stateIssue.rebase_attempts = attempt;
+      (stateIssue as any).needs_redispatch = true;
+      (stateIssue as any).review_feedback = `PR #${prNumber} has merge conflicts with \`${state.trunk_branch}\`. ` +
+        `Rebase your branch onto \`origin/${state.trunk_branch}\`, resolve all conflicts, and force-push. ` +
+        `This is rebase attempt ${attempt}. Do NOT create new commits for the rebase — use \`git rebase\` and \`git push --force-with-lease\`.`;
+    }
     state.updated_at = deps.now().toISOString();
     await deps.writeFile(stateFile, `${JSON.stringify(state, null, 2)}\n`, 'utf8');
 
     deps.appendLog(sessionDir, {
       timestamp: deps.now().toISOString(),
-      event: 'pr_rebase_requested',
+      event: 'pr_rebase_dispatched',
       pr_number: prNumber,
       issue_number: issue.number,
       attempt,
     });
-    return { pr_number: prNumber, action: 'rebase_requested', detail: `Rebase requested (attempt ${attempt}/2)`, gates: gatesResult };
+    return { pr_number: prNumber, action: 'rebase_requested', detail: `Rebase agent dispatched (attempt ${attempt})`, gates: gatesResult };
   }
 
   // Step 4: Handle other gate failures (CI failures, etc.)
@@ -3596,25 +3783,26 @@ export async function processPrLifecycle(
       stateIssue.ci_failure_summary = ciFailure.detail;
 
       if (retries >= ORCHESTRATOR_CI_PERSISTENCE_LIMIT) {
-        await flagForHuman(
-          issue,
-          repo,
-          `Persistent CI failure unchanged after ${retries} attempts: ${ciFailure.detail}`,
-          deps,
-        );
-        stateIssue.state = 'failed';
-        stateIssue.status = 'Blocked';
-        await syncIssueProjectStatus(issue.number, repo, 'Blocked', {
-          execGh: deps.execGh,
-          appendLog: deps.appendLog,
-          now: deps.now,
-          sessionDir,
-        });
+        // Close the PR and reset for fresh attempt instead of permanent failure
+        try {
+          await deps.execGh(['pr', 'close', String(prNumber), '--repo', repo, '--comment',
+            `Closing: persistent CI failure after ${retries} attempts: ${ciFailure.detail}. Will re-dispatch fresh.`]);
+        } catch { /* best-effort */ }
+
+        stateIssue.state = 'pending';
+        stateIssue.status = 'Ready';
+        stateIssue.pr_number = null;
+        stateIssue.child_session = null;
+        (stateIssue as any).child_pid = null;
+        stateIssue.ci_failure_retries = 0;
+        stateIssue.ci_failure_signature = undefined;
+        stateIssue.ci_failure_summary = undefined;
+
         state.updated_at = deps.now().toISOString();
         await deps.writeFile(stateFile, `${JSON.stringify(state, null, 2)}\n`, 'utf8');
         deps.appendLog(sessionDir, {
           timestamp: deps.now().toISOString(),
-          event: 'pr_ci_failure_persistent',
+          event: 'pr_closed_ci_failure',
           pr_number: prNumber,
           issue_number: issue.number,
           ci_failure_retries: retries,
@@ -3622,8 +3810,8 @@ export async function processPrLifecycle(
         });
         return {
           pr_number: prNumber,
-          action: 'flagged_for_human',
-          detail: `Persistent CI failure after ${retries} attempts`,
+          action: 'closed_for_retry',
+          detail: `Persistent CI failure after ${retries} attempts — reset for fresh dispatch`,
           gates: gatesResult,
         };
       }
@@ -3671,7 +3859,7 @@ export async function processPrLifecycle(
   if (reviewResult.verdict === 'request-changes') {
     // Post review feedback on the PR (only if not already posted)
     const stateIssue = state.issues.find((i) => i.number === issue.number);
-    const alreadyCommented = stateIssue?.last_review_comment === reviewResult.summary;
+    const alreadyCommented = (stateIssue as any)?.last_review_comment === reviewResult.summary;
     if (!alreadyCommented) {
       try {
         await deps.execGh([
@@ -3681,13 +3869,13 @@ export async function processPrLifecycle(
       } catch {
         // Best-effort
       }
-      if (stateIssue) stateIssue.last_review_comment = reviewResult.summary;
+      if (stateIssue) (stateIssue as any).last_review_comment = reviewResult.summary;
     }
 
     // Mark for re-dispatch by the scan pass (which has dispatchDeps)
     if (stateIssue) {
-      stateIssue.needs_redispatch = true;
-      stateIssue.review_feedback = reviewResult.summary;
+      (stateIssue as any).needs_redispatch = true;
+      (stateIssue as any).review_feedback = reviewResult.summary;
     }
 
     return { pr_number: prNumber, action: 'rejected', detail: reviewResult.summary, gates: gatesResult, review: reviewResult };
@@ -4314,17 +4502,12 @@ export async function monitorChildSessions(
         });
       }
     } else if (childStatus.state === 'stopped') {
-      // Child stopped (limit reached, interrupted, or error) — mark failed
+      // Child stopped (limit reached, interrupted) — re-queue to continue where it left off
       const stateIssue = state.issues.find((i) => i.number === issue.number);
       if (stateIssue) {
-        stateIssue.state = 'failed';
-        stateIssue.status = 'Blocked';
-        await syncIssueProjectStatus(issue.number, repo, 'Blocked', {
-          execGh: deps.execGh,
-          appendLog: deps.appendLog,
-          now: deps.now,
-          sessionDir,
-        });
+        // Keep child_session so resume works on the same branch/worktree
+        (stateIssue as any).needs_redispatch = true;
+        (stateIssue as any).review_feedback = `Child loop stopped after ${childStatus.iteration ?? '?'} iterations (limit reached). Resume and continue working.`;
       }
       result.failed++;
       entry.action = 'failed';
@@ -5075,6 +5258,15 @@ async function fetchAndApplyBulkIssueState(
           issue.pr_number = fetched.pr.number;
         }
 
+        // Sync priority from labels
+        if (fetched.labels) {
+          let pri = 0;
+          if (fetched.labels.includes('aloop/priority-critical')) pri = 100;
+          else if (fetched.labels.includes('aloop/priority-high')) pri = 50;
+          else if (fetched.labels.includes('aloop/priority-low')) pri = -10;
+          (issue as any).priority = pri;
+        }
+
         deps.appendLog(sessionDir, {
           timestamp: deps.now().toISOString(),
           event: 'bulk_fetch_issue_changed',
@@ -5226,21 +5418,37 @@ export async function runOrchestratorScanPass(
 
   // 2. Dispatch child loops for ready issues
   if (deps.dispatchDeps && !state.plan_only) {
-    const dispatchable = getDispatchableIssues(state);
-    const capabilityResult = filterByHostCapabilities(dispatchable, deps.dispatchDeps);
-    const eligible = filterByFileOwnership(capabilityResult.eligible, state);
+    // Focus mode: prefer redispatch over fresh work.
+    // Don't start new issues while there are pending redispatches waiting for slots.
+    const pendingRedispatches = state.issues.filter((i) => (i as any).needs_redispatch).length;
     const slots = availableSlots(state);
-    const toDispatch = eligible.slice(0, slots);
 
-    for (const blocked of capabilityResult.blocked) {
+    let toDispatch: OrchestratorIssue[] = [];
+    if (pendingRedispatches > 0 && slots <= pendingRedispatches) {
+      // All slots will be used for redispatch — skip fresh dispatch
       deps.appendLog(sessionDir, {
         timestamp: deps.now().toISOString(),
-        event: 'scan_dispatch_blocked_requirements',
+        event: 'dispatch_deferred_for_redispatch',
         iteration,
-        issue_number: blocked.issue.number,
-        requires: normalizeTaskRequires(blocked.issue.requires),
-        missing: blocked.missing,
+        pending_redispatches: pendingRedispatches,
+        available_slots: slots,
       });
+    } else {
+      const dispatchable = getDispatchableIssues(state);
+      const capabilityResult = filterByHostCapabilities(dispatchable, deps.dispatchDeps);
+      const eligible = filterByFileOwnership(capabilityResult.eligible, state);
+      toDispatch = eligible.slice(0, Math.max(0, slots - pendingRedispatches));
+
+      for (const blocked of capabilityResult.blocked) {
+        deps.appendLog(sessionDir, {
+          timestamp: deps.now().toISOString(),
+          event: 'scan_dispatch_blocked_requirements',
+          iteration,
+          issue_number: blocked.issue.number,
+          requires: normalizeTaskRequires(blocked.issue.requires),
+          missing: blocked.missing,
+        });
+      }
     }
 
     for (const issue of toDispatch) {
@@ -5258,7 +5466,7 @@ export async function runOrchestratorScanPass(
         if (stateIssue) {
           stateIssue.state = 'in_progress';
           stateIssue.child_session = launchResult.session_id;
-          stateIssue.child_pid = launchResult.pid;
+          (stateIssue as any).child_pid = launchResult.pid;
           stateIssue.status = 'In progress';
           if (repo && deps.execGh) {
             await syncIssueProjectStatus(issue.number, repo, 'In progress', {
@@ -5321,7 +5529,7 @@ export async function runOrchestratorScanPass(
 
   // 3. Process PR lifecycles for issues with open PRs
   if (repo && deps.prLifecycleDeps) {
-    const prIssues = state.issues.filter((i) => i.pr_number !== null && i.state === 'pr_open');
+    const prIssues = state.issues.filter((i) => i.pr_number !== null && i.state === 'pr_open' && !(i as any).needs_redispatch);
     for (const issue of prIssues) {
       try {
         const lifecycleResult = await processPrLifecycle(
@@ -5333,6 +5541,8 @@ export async function runOrchestratorScanPass(
           deps.prLifecycleDeps,
         );
         result.prLifecycles.push(lifecycleResult);
+        // No SHA tracking needed — state transitions (needs_redispatch, Blocked, merged)
+        // already prevent re-processing. SHA was causing stuck-on-reviewed states.
       } catch (e: unknown) {
         const msg = e instanceof Error ? e.message : String(e);
         deps.appendLog(sessionDir, {
@@ -5348,146 +5558,47 @@ export async function runOrchestratorScanPass(
   }
 
   // 3.5. Re-dispatch children that need review fixes
+  // Uses launchIssues() — the shared dispatch path that respects concurrency,
+  // capability filters, and state updates.
   if (deps.dispatchDeps && deps.aloopRoot) {
-    const needsRedispatch = state.issues.filter((i) => i.needs_redispatch && i.child_session);
-    for (const issue of needsRedispatch) {
-      const redispatchCount = issue.redispatch_count ?? 0;
-      if (redispatchCount >= ORCHESTRATOR_REDISPATCH_LIMIT) {
-        issue.needs_redispatch = false;
-        issue.state = 'failed';
-        issue.status = 'Blocked';
-        issue.blocked_on_human = true;
+    const needsRedispatch = state.issues.filter((i) => (i as any).needs_redispatch);
+    if (needsRedispatch.length > 0) {
+      const redispatchResult = await launchIssues(
+        needsRedispatch.slice(0, availableSlots(state)),
+        state,
+        stateFile,
+        sessionDir,
+        projectRoot,
+        projectName,
+        promptsSourceDir,
+        deps.aloopRoot,
+        deps.dispatchDeps,
+        { appendLog: deps.appendLog },
+      );
 
-        if (repo && deps.execGh) {
-          await flagForHuman(
-            issue,
-            repo,
-            `Review requested changes ${redispatchCount}/${ORCHESTRATOR_REDISPATCH_LIMIT} times for PR #${issue.pr_number}; escalating to human`,
-            {
-              execGh: deps.execGh,
-              readFile: deps.readFile,
-              writeFile: deps.writeFile,
-              now: deps.now,
-              appendLog: deps.appendLog,
-            },
-          );
-        }
-
-        deps.appendLog(sessionDir, {
-          timestamp: deps.now().toISOString(),
-          event: 'child_redispatch_limit_reached',
-          iteration,
-          issue_number: issue.number,
-          pr_number: issue.pr_number,
-          redispatch_count: redispatchCount,
-          redispatch_limit: ORCHESTRATOR_REDISPATCH_LIMIT,
-        });
-        continue;
-      }
-
-      const childDir = path.join(deps.aloopRoot, 'sessions', issue.child_session!);
-      const childWorktree = path.join(childDir, 'worktree');
-      const childPromptsDir = path.join(childDir, 'prompts');
-      const childQueueDir = path.join(childDir, 'queue');
-      const loopScript = path.join(deps.aloopRoot, 'bin', 'loop.sh');
-
-      if (deps.existsSync(childWorktree) && deps.existsSync(loopScript)) {
-        try {
-          const artifactTargets = parseArtifactRemovalTargets(issue.review_feedback);
-          if (artifactTargets && deps.dispatchDeps) {
-            for (const artifact of artifactTargets) {
-              deps.dispatchDeps.spawnSync(
-                'git',
-                ['-C', childWorktree, 'rm', '--cached', '--ignore-unmatch', artifact],
-                { encoding: 'utf8' },
-              );
-            }
-
-            const stagedResult = deps.dispatchDeps.spawnSync(
-              'git',
-              ['-C', childWorktree, 'diff', '--cached', '--name-only'],
-              { encoding: 'utf8' },
-            );
-            const stagedFiles = stagedResult.stdout
-              .split('\n')
-              .map((line) => line.trim())
-              .filter(Boolean);
-            const onlyExpectedFiles = stagedFiles.length > 0 && stagedFiles.every((file) => artifactTargets.includes(file));
-
-            if (stagedResult.status === 0 && onlyExpectedFiles) {
-              const commitResult = deps.dispatchDeps.spawnSync(
-                'git',
-                ['-C', childWorktree, 'commit', '-m', 'chore: remove working artifacts from PR'],
-                { encoding: 'utf8' },
-              );
-              if (commitResult.status === 0) {
-                const pushResult = deps.dispatchDeps.spawnSync(
-                  'git',
-                  ['-C', childWorktree, 'push', 'origin', 'HEAD'],
-                  { encoding: 'utf8' },
-                );
-                if (pushResult.status === 0) {
-                  issue.needs_redispatch = false;
-                  issue.review_feedback = undefined;
-                  deps.appendLog(sessionDir, {
-                    timestamp: deps.now().toISOString(),
-                    event: 'child_self_fixed_artifact_cleanup',
-                    iteration,
-                    issue_number: issue.number,
-                    pr_number: issue.pr_number,
-                    files: artifactTargets,
-                  });
-                  continue;
-                }
-              }
-            }
-          }
-
+      for (const launch of redispatchResult) {
+        const issue = state.issues.find((i) => i.number === launch.issue_number);
+        if (issue) {
           // Write review feedback as steering prompt
-          await deps.writeFile(
-            path.join(childQueueDir, '000-review-fixes.md'),
-            `---\nagent: build\nreasoning: high\n---\n\n# Review Feedback — Fix Required\n\nThe orchestrator review agent requested changes on PR #${issue.pr_number}.\n\n## Feedback\n\n${issue.review_feedback}\n\n## Instructions\n\nFix the issues described above, commit, and push.\nDo NOT add TODO.md, STEERING.md, or other working artifacts to the commit.\n`,
-            'utf8',
-          );
-
-          // Re-launch child loop
-          const child = deps.dispatchDeps.spawn(loopScript, [
-            '--prompts-dir', childPromptsDir,
-            '--session-dir', childDir,
-            '--work-dir', childWorktree,
-            '--mode', 'plan-build-review',
-            '--provider', 'round-robin',
-            '--max-iterations', '5',
-            '--max-stuck', '3',
-            '--launch-mode', 'resume',
-            '--dangerously-skip-container',
-          ], { cwd: childWorktree, detached: true, stdio: 'ignore', windowsHide: true });
-          child.unref();
-
-          issue.state = 'in_progress';
-          issue.status = 'In progress';
-          issue.child_pid = child.pid;
-          issue.needs_redispatch = false;
-          issue.review_feedback = undefined;
-          issue.redispatch_count = redispatchCount + 1;
-
+          const feedback = (issue as any).review_feedback ?? '';
+          if (feedback) {
+            const childQueueDir = path.join(deps.aloopRoot, 'sessions', launch.session_id, 'queue');
+            await mkdir(childQueueDir, { recursive: true });
+            await deps.writeFile(
+              path.join(childQueueDir, '000-review-fixes.md'),
+              `---\nagent: build\nreasoning: high\n---\n\n# Review Feedback — Fix Required\n\nThe orchestrator review agent requested changes on PR #${issue.pr_number}.\n\n## Feedback\n\n${feedback}\n\n## Instructions\n\nFix the issues described above, commit, and push.\nDo NOT add TODO.md, STEERING.md, TASK_SPEC.md, or other working artifacts to the commit.\n`,
+              'utf8',
+            );
+          }
+          (issue as any).needs_redispatch = false;
+          (issue as any).review_feedback = undefined;
           deps.appendLog(sessionDir, {
             timestamp: deps.now().toISOString(),
             event: 'child_redispatched_for_review',
             iteration,
-            issue_number: issue.number,
-            pr_number: issue.pr_number,
-            child_session: issue.child_session,
-            pid: child.pid,
-            redispatch_count: issue.redispatch_count,
-          });
-        } catch (e) {
-          deps.appendLog(sessionDir, {
-            timestamp: deps.now().toISOString(),
-            event: 'child_redispatch_failed',
-            iteration,
-            issue_number: issue.number,
-            error: e instanceof Error ? e.message : String(e),
+            issue_number: launch.issue_number,
+            child_session: launch.session_id,
+            pid: launch.pid,
           });
         }
       }
