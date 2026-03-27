@@ -3,26 +3,20 @@
  *
  * Implementations:
  *   - GitHubAdapter: wraps `gh` CLI calls for GitHub/GHE repos
- *   - LocalAdapter: file-based (.aloop/issues/) + git branches, no remote needed
  */
 
-import { readFile, writeFile, mkdir, readdir } from 'node:fs/promises';
-import path from 'node:path';
-import { spawn } from 'node:child_process';
-import type { GhExecFn, GhExecResult, BulkIssueState, BulkFetchResult } from './github-monitor.js';
+import type { GhExecFn, GhExecResult, BulkFetchResult } from './github-monitor.js';
 import { fetchBulkIssueState } from './github-monitor.js';
 
 // ----- Supporting types -----
 
 export interface AdapterConfig {
-  /** Adapter type — "github" or "local". */
+  /** Adapter type — "github". */
   type: string;
-  /** Repository in "owner/name" format (github) or a display name (local). */
+  /** Repository in "owner/name" format. */
   repo: string;
-  /** GitHub host for GHE support (e.g. "git.corp.example.com"). Defaults to GH_HOST env var or "github.com". Only used by GitHubAdapter. */
+  /** GitHub host for GHE support (e.g. "git.corp.example.com"). Defaults to GH_HOST env var or "github.com". */
   ghHost?: string;
-  /** Base directory for local adapter file storage (e.g. "/path/to/project"). Only used by LocalAdapter. Defaults to process.cwd(). */
-  dir?: string;
 }
 
 export interface AdapterIssue {
@@ -345,46 +339,6 @@ export class GitHubAdapter implements OrchestratorAdapter {
   }
 }
 
-// ----- LocalAdapter -----
-
-interface LocalIssueFile {
-  number: number;
-  title: string;
-  body: string;
-  state: string;
-  labels: string[];
-  assignees: string[];
-  comments: AdapterComment[];
-  createdAt: string;
-  updatedAt: string;
-}
-
-interface LocalPrFile {
-  number: number;
-  head: string;
-  base: string;
-  title: string;
-  body: string;
-  state: string;
-  createdAt: string;
-}
-
-type GitExecFn = (args: string[], cwd?: string) => Promise<{ stdout: string; stderr: string }>;
-
-function defaultGitExec(args: string[], cwd?: string): Promise<{ stdout: string; stderr: string }> {
-  return new Promise((resolve, reject) => {
-    const proc = spawn('git', args, { cwd: cwd ?? process.cwd() });
-    let stdout = '';
-    let stderr = '';
-    proc.stdout.on('data', (d: Buffer) => { stdout += d.toString(); });
-    proc.stderr.on('data', (d: Buffer) => { stderr += d.toString(); });
-    proc.on('close', (code) => {
-      if (code !== 0) reject(new Error(`git ${args.join(' ')} failed (exit ${code}): ${stderr}`));
-      else resolve({ stdout, stderr });
-    });
-    proc.on('error', reject);
-  });
-}
 
 export class LocalAdapter implements OrchestratorAdapter {
   readonly repoSlug: string;

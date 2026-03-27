@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
 import os from 'node:os';
-import { mkdtemp, mkdir, rm } from 'node:fs/promises';
+import { mkdtemp, mkdir } from 'node:fs/promises';
 import {
   orchestrateCommand,
   orchestrateCommandWithDeps,
@@ -68,7 +68,6 @@ import {
   processQueuedPrompts,
   createTrunkToMainPr,
   resolveAutoMerge,
-  detectChangeRequestLabel,
   type EstimateResult,
   type OrchestrateCommandOptions,
   type OrchestrateDeps,
@@ -91,7 +90,6 @@ import {
   type ReplanResult,
   type SpecChangeDetection,
 } from './orchestrate.js';
-import type { OrchestratorAdapter } from '../lib/adapter.js';
 
 function createMockDeps(overrides: Partial<OrchestrateDeps> = {}): OrchestrateDeps {
   const writtenFiles: Record<string, string> = {};
@@ -113,40 +111,6 @@ function createMockDeps(overrides: Partial<OrchestrateDeps> = {}): OrchestrateDe
     get _writtenFiles() { return writtenFiles; },
     get _createdDirs() { return createdDirs; },
   } as OrchestrateDeps & { _writtenFiles: Record<string, string>; _createdDirs: string[] };
-}
-
-interface MockAdapterCall {
-  method: string;
-  args: unknown[];
-}
-
-function createMockTriageAdapter(overrides: Record<string, (...args: any[]) => any> = {}) {
-  const calls: MockAdapterCall[] = [];
-  const adapter = {
-    createIssue: async (opts: any) => { calls.push({ method: 'createIssue', args: [opts] }); return 0; },
-    updateIssue: async (num: number, opts: any) => { calls.push({ method: 'updateIssue', args: [num, opts] }); },
-    closeIssue: async (num: number) => { calls.push({ method: 'closeIssue', args: [num] }); },
-    getIssue: async (num: number) => { calls.push({ method: 'getIssue', args: [num] }); return {} as any; },
-    queryIssues: async (opts?: any) => { calls.push({ method: 'queryIssues', args: [opts] }); return []; },
-    createPr: async (opts: any) => { calls.push({ method: 'createPr', args: [opts] }); return { number: 0, url: '' }; },
-    mergePr: async (num: number, opts?: any) => { calls.push({ method: 'mergePr', args: [num, opts] }); },
-    getPrStatus: async (num: number) => { calls.push({ method: 'getPrStatus', args: [num] }); return {} as any; },
-    getPrChecks: async (num: number) => { calls.push({ method: 'getPrChecks', args: [num] }); return {} as any; },
-    postComment: async (num: number, body: string) => { calls.push({ method: 'postComment', args: [num, body] }); },
-    listComments: async (num: number) => { calls.push({ method: 'listComments', args: [num] }); return []; },
-    addLabels: async (num: number, labels: string[]) => { calls.push({ method: 'addLabels', args: [num, labels] }); },
-    removeLabels: async (num: number, labels: string[]) => { calls.push({ method: 'removeLabels', args: [num, labels] }); },
-    ensureLabelExists: async (label: string, opts?: any) => { calls.push({ method: 'ensureLabelExists', args: [label, opts] }); },
-    closePr: async (num: number, opts?: any) => { calls.push({ method: 'closePr', args: [num, opts] }); },
-    getPrDiff: async (num: number) => { calls.push({ method: 'getPrDiff', args: [num] }); return ''; },
-    queryPrs: async (opts?: any) => { calls.push({ method: 'queryPrs', args: [opts] }); return []; },
-    checkBranchExists: async (branch: string) => { calls.push({ method: 'checkBranchExists', args: [branch] }); return false; },
-    fetchBulkIssueState: async (opts?: any) => { calls.push({ method: 'fetchBulkIssueState', args: [opts] }); return {} as any; },
-    repoSlug: 'owner/repo',
-    baseUrl: 'https://github.com',
-    ...overrides,
-  };
-  return { adapter, calls };
 }
 
 describe('orchestrateCommandWithDeps', () => {
@@ -540,33 +504,6 @@ describe('validateDependencyGraph', () => {
   });
 });
 
-describe('detectChangeRequestLabel', () => {
-  it('returns true for aloop/change-request label as object', () => {
-    assert.equal(detectChangeRequestLabel([{ name: 'aloop/change-request' }]), true);
-  });
-
-  it('returns true for aloop/change-request label as string', () => {
-    assert.equal(detectChangeRequestLabel(['aloop/auto', 'aloop/change-request']), true);
-  });
-
-  it('returns false when label is absent', () => {
-    assert.equal(detectChangeRequestLabel([{ name: 'aloop/auto' }, { name: 'aloop/epic' }]), false);
-  });
-
-  it('returns false for empty array', () => {
-    assert.equal(detectChangeRequestLabel([]), false);
-  });
-
-  it('returns false for null/undefined', () => {
-    assert.equal(detectChangeRequestLabel(null), false);
-    assert.equal(detectChangeRequestLabel(undefined), false);
-  });
-
-  it('returns false when label name is null', () => {
-    assert.equal(detectChangeRequestLabel([{ name: null }]), false);
-  });
-});
-
 describe('assignWaves', () => {
   it('assigns wave 1 to independent issues', () => {
     const issues = [planIssue(1, 'A'), planIssue(2, 'B'), planIssue(3, 'C')];
@@ -803,7 +740,7 @@ describe('orchestrateCommandWithDeps with --plan', () => {
     const queueFiles = Object.keys(mockDeps._writtenFiles).filter((p) => p.includes('/queue/sub-decompose-issue-'));
     assert.equal(queueFiles.length, 2, 'Should write sub-decompose queue prompts for each epic');
     const queueContent = mockDeps._writtenFiles[queueFiles[0]];
-    assert.match(queueContent, /orch_sub_decompose/, 'Queue override should reference orch_sub_decompose agent');
+    assert.match(queueContent, /orch_estimate/, 'Queue override should reference orch_estimate agent');
   });
 
   it('applies estimate-results.json when present', async () => {
@@ -1010,9 +947,12 @@ describe('triage classification loop', () => {
       triageComment({ id: 1, body: 'old comment' }),
       triageComment({ id: 2, body: 'hmm maybe we should switch to polling?' }),
     ];
-    const { adapter, calls } = createMockTriageAdapter();
+    const ghCalls: string[][] = [];
     const deps: TriageDeps = {
-      adapter,
+      execGh: async (args) => {
+        ghCalls.push(args);
+        return { stdout: '', stderr: '' };
+      },
       now: () => new Date('2026-03-14T12:00:00.000Z'),
     };
 
@@ -1025,11 +965,19 @@ describe('triage classification loop', () => {
     assert.deepStrictEqual(issue.processed_comment_ids, [1, 2]);
     assert.equal(issue.triage_log?.length, 1);
     assert.equal(issue.last_comment_check, '2026-03-14T12:00:00.000Z');
-    assert.equal(calls.length, 2);
-    assert.equal(calls[0].method, 'postComment');
-    assert.equal(calls[0].args[0], 42);
-    assert.equal(calls[1].method, 'addLabels');
-    assert.deepStrictEqual(calls[1].args[1], ['aloop/blocked-on-human']);
+    assert.equal(ghCalls.length, 2);
+    assert.deepStrictEqual(
+      ghCalls[0],
+      ['issue', 'comment', '42', '--repo', 'owner/repo', '--body', `Thanks for the feedback, @pj.
+
+I want to make sure we implement exactly what you intended. Could you clarify the requested change with concrete acceptance criteria?
+---
+*This comment was generated by aloop triage agent.*`],
+    );
+    assert.deepStrictEqual(
+      ghCalls[1],
+      ['issue', 'edit', '42', '--repo', 'owner/repo', '--add-label', 'aloop/blocked-on-human'],
+    );
   });
 
   it('applyTriageResultsToIssue auto-unblocks on actionable human response', async () => {
@@ -1043,12 +991,15 @@ describe('triage classification loop', () => {
     const comments = [
       triageComment({ id: 20, body: 'Please switch to WebSockets for updates.' }),
     ];
-    const { adapter, calls } = createMockTriageAdapter();
+    const ghCalls: string[][] = [];
     const writtenFiles: Record<string, string> = {};
     const tempDir = await mkdtemp(path.join(os.tmpdir(), 'aloop-triage-'));
     const aloopRoot = path.join(tempDir, '.aloop');
     const deps: TriageDeps = {
-      adapter,
+      execGh: async (args) => {
+        ghCalls.push(args);
+        return { stdout: '', stderr: '' };
+      },
       now: () => new Date('2026-03-14T12:05:00.000Z'),
       writeFile: async (p, data) => { 
         await mkdir(path.dirname(p), { recursive: true });
@@ -1064,9 +1015,11 @@ describe('triage classification loop', () => {
     assert.equal(entries[0].action_taken, 'unblock_and_steering');
     assert.equal(issue.blocked_on_human, false);
     assert.deepStrictEqual(issue.processed_comment_ids, [20]);
-    assert.equal(calls.length, 1);
-    assert.equal(calls[0].method, 'removeLabels');
-    assert.deepStrictEqual(calls[0].args[1], ['aloop/blocked-on-human']);
+    assert.equal(ghCalls.length, 1);
+    assert.deepStrictEqual(
+      ghCalls[0],
+      ['issue', 'edit', '43', '--repo', 'owner/repo', '--remove-label', 'aloop/blocked-on-human'],
+    );
 
     const expectedPath = path.join(aloopRoot, 'sessions/proj-issue-43-20260314-120000/worktree/STEERING.md');
     assert.ok(writtenFiles[expectedPath], 'unblock_and_steering should also write STEERING.md');
@@ -1083,9 +1036,12 @@ describe('triage classification loop', () => {
     const comments = [
       triageComment({ id: 21, body: 'What is the expected response shape?', author: 'alice' }),
     ];
-    const { adapter, calls } = createMockTriageAdapter();
+    const ghCalls: string[][] = [];
     const deps: TriageDeps = {
-      adapter,
+      execGh: async (args) => {
+        ghCalls.push(args);
+        return { stdout: '', stderr: '' };
+      },
       now: () => new Date('2026-03-14T12:06:00.000Z'),
     };
 
@@ -1095,9 +1051,15 @@ describe('triage classification loop', () => {
     assert.equal(entries[0].action_taken, 'question_answered');
     assert.equal(issue.blocked_on_human, false);
     assert.deepStrictEqual(issue.processed_comment_ids, [21]);
-    assert.equal(calls.length, 1);
-    assert.equal(calls[0].method, 'postComment');
-    assert.equal(calls[0].args[0], 44);
+    assert.equal(ghCalls.length, 1);
+    assert.deepStrictEqual(
+      ghCalls[0],
+      ['issue', 'comment', '44', '--repo', 'owner/repo', '--body', `Thanks for the question, @alice.
+
+Based on the current issue context, this requires human clarification before implementation can proceed safely. Please provide specific direction and expected outcome.
+---
+*This comment was generated by aloop triage agent.*`],
+    );
   });
 
   it('applyTriageResultsToIssue skips agent-generated comments', async () => {
@@ -1117,9 +1079,12 @@ describe('triage classification loop', () => {
 *This comment was generated by aloop triage agent.*`,
       }),
     ];
-    const { adapter, calls } = createMockTriageAdapter();
+    const ghCalls: string[][] = [];
     const deps: TriageDeps = {
-      adapter,
+      execGh: async (args) => {
+        ghCalls.push(args);
+        return { stdout: '', stderr: '' };
+      },
       now: () => new Date('2026-03-14T12:07:00.000Z'),
     };
 
@@ -1127,7 +1092,7 @@ describe('triage classification loop', () => {
     assert.deepStrictEqual(entries, []);
     assert.deepStrictEqual(issue.processed_comment_ids, [22]);
     assert.deepStrictEqual(issue.triage_log, []);
-    assert.equal(calls.length, 0);
+    assert.equal(ghCalls.length, 0);
   });
 
   it('applyTriageResultsToIssue skips and logs external comments', async () => {
@@ -1145,9 +1110,12 @@ describe('triage classification loop', () => {
         body: 'Drive-by feedback from non-collaborator',
       }),
     ];
-    const { adapter, calls } = createMockTriageAdapter();
+    const ghCalls: string[][] = [];
     const deps: TriageDeps = {
-      adapter,
+      execGh: async (args) => {
+        ghCalls.push(args);
+        return { stdout: '', stderr: '' };
+      },
       now: () => new Date('2026-03-14T12:08:00.000Z'),
     };
 
@@ -1156,7 +1124,7 @@ describe('triage classification loop', () => {
     assert.equal(entries[0].classification, 'out_of_scope');
     assert.equal(entries[0].action_taken, 'untriaged_external_comment');
     assert.deepStrictEqual(issue.processed_comment_ids, [23]);
-    assert.equal(calls.length, 0);
+    assert.equal(ghCalls.length, 0);
   });
 
   it('applyTriageResultsToIssue records triaged_no_action for out_of_scope collaborator comments', async () => {
@@ -1169,9 +1137,12 @@ describe('triage classification loop', () => {
     const comments = [
       triageComment({ id: 30, body: 'Thanks!', author: 'alice', author_association: 'COLLABORATOR' }),
     ];
-    const { adapter, calls } = createMockTriageAdapter();
+    const ghCalls: string[][] = [];
     const deps: TriageDeps = {
-      adapter,
+      execGh: async (args) => {
+        ghCalls.push(args);
+        return { stdout: '', stderr: '' };
+      },
       now: () => new Date('2026-03-14T12:10:00.000Z'),
     };
 
@@ -1182,7 +1153,7 @@ describe('triage classification loop', () => {
     assert.equal(entries[0].author, 'alice');
     assert.equal(issue.blocked_on_human, false);
     assert.deepStrictEqual(issue.processed_comment_ids, [30]);
-    assert.equal(calls.length, 0, 'out_of_scope should not trigger any adapter calls');
+    assert.equal(ghCalls.length, 0, 'out_of_scope should not trigger any GH calls');
   });
 
   it('applyTriageResultsToIssue injects steering without unblocking for actionable when not blocked', async () => {
@@ -1196,12 +1167,15 @@ describe('triage classification loop', () => {
     const comments = [
       triageComment({ id: 31, body: 'Please implement pagination for this endpoint.' }),
     ];
-    const { adapter, calls } = createMockTriageAdapter();
+    const ghCalls: string[][] = [];
     const writtenFiles: Record<string, string> = {};
     const tempDir = await mkdtemp(path.join(os.tmpdir(), 'aloop-triage-'));
     const aloopRoot = path.join(tempDir, '.aloop');
     const deps: TriageDeps = {
-      adapter,
+      execGh: async (args) => {
+        ghCalls.push(args);
+        return { stdout: '', stderr: '' };
+      },
       now: () => new Date('2026-03-14T12:11:00.000Z'),
       writeFile: async (p, data) => { 
         await mkdir(path.dirname(p), { recursive: true });
@@ -1216,7 +1190,7 @@ describe('triage classification loop', () => {
     assert.equal(entries[0].action_taken, 'steering_injected');
     assert.equal(issue.blocked_on_human, false);
     assert.deepStrictEqual(issue.processed_comment_ids, [31]);
-    assert.equal(calls.length, 0, 'steering_injected should not call adapter when not blocked');
+    assert.equal(ghCalls.length, 0, 'steering_injected should not call GH when not blocked');
 
     const expectedPath = path.join(aloopRoot, 'sessions/proj-issue-48-20260314-120000/worktree/STEERING.md');
     assert.ok(writtenFiles[expectedPath], 'should write STEERING.md to child worktree');
@@ -1235,12 +1209,15 @@ describe('triage classification loop', () => {
     const comments = [
       triageComment({ id: 60, body: 'Please add integration coverage for this flow.', author: 'alice' }),
     ];
-    const { adapter, calls } = createMockTriageAdapter();
+    const ghCalls: string[][] = [];
     const writtenFiles: Record<string, string> = {};
     const tempDir = await mkdtemp(path.join(os.tmpdir(), 'aloop-triage-'));
     const aloopRoot = path.join(tempDir, '.aloop');
     const deps: TriageDeps = {
-      adapter,
+      execGh: async (args) => {
+        ghCalls.push(args);
+        return { stdout: '', stderr: '' };
+      },
       now: () => new Date('2026-03-14T12:18:00.000Z'),
       writeFile: async (p, data) => { 
         await mkdir(path.dirname(p), { recursive: true });
@@ -1256,7 +1233,7 @@ describe('triage classification loop', () => {
     assert.equal(entries[0].action_taken, 'steering_deferred');
     assert.deepStrictEqual(issue.processed_comment_ids, [60]);
     assert.deepStrictEqual(issue.pending_steering_comments?.map((comment) => comment.id), [60]);
-    assert.equal(calls.length, 0, 'steering_deferred should not call adapter when issue is not blocked');
+    assert.equal(ghCalls.length, 0, 'steering_deferred should not call GH when issue is not blocked');
     assert.deepStrictEqual(Object.keys(writtenFiles), [], 'steering_deferred should not write STEERING.md without child_session');
   });
 
@@ -1277,9 +1254,8 @@ describe('triage classification loop', () => {
     const writtenFiles: Record<string, string> = {};
     const tempDir = await mkdtemp(path.join(os.tmpdir(), 'aloop-triage-'));
     const aloopRoot = path.join(tempDir, '.aloop');
-    const { adapter } = createMockTriageAdapter();
     const deps: TriageDeps = {
-      adapter,
+      execGh: async () => ({ stdout: '', stderr: '' }),
       now: () => new Date('2026-03-14T12:19:00.000Z'),
       writeFile: async (p, data) => { 
         await mkdir(path.dirname(p), { recursive: true });
@@ -1297,7 +1273,7 @@ describe('triage classification loop', () => {
     assert.ok(writtenFiles[expectedPath].includes('configurable'), 'deferred steering content should be preserved');
   });
 
-  it('applyTriageResultsToIssue propagates adapter errors on needs_clarification comment post', async () => {
+  it('applyTriageResultsToIssue propagates execGh errors on needs_clarification comment post', async () => {
     const issue = makeIssue({
       number: 49,
       blocked_on_human: false,
@@ -1307,24 +1283,23 @@ describe('triage classification loop', () => {
     const comments = [
       triageComment({ id: 32, body: 'hmm maybe we should rethink this approach?' }),
     ];
-    const { adapter } = createMockTriageAdapter({
-      postComment: async () => { throw new Error('adapter rate limited'); },
-    });
     const deps: TriageDeps = {
-      adapter,
+      execGh: async () => {
+        throw new Error('gh CLI rate limited');
+      },
       now: () => new Date('2026-03-14T12:12:00.000Z'),
     };
 
     await assert.rejects(
       () => applyTriageResultsToIssue(issue, comments, 'owner/repo', deps),
       (err: Error) => {
-        assert.ok(err.message.includes('adapter rate limited'));
+        assert.ok(err.message.includes('gh CLI rate limited'));
         return true;
       },
     );
   });
 
-  it('applyTriageResultsToIssue propagates adapter errors on label add', async () => {
+  it('applyTriageResultsToIssue propagates execGh errors on label add', async () => {
     const issue = makeIssue({
       number: 50,
       blocked_on_human: false,
@@ -1334,11 +1309,15 @@ describe('triage classification loop', () => {
     const comments = [
       triageComment({ id: 33, body: 'hmm not sure about this direction' }),
     ];
-    const { adapter } = createMockTriageAdapter({
-      addLabels: async () => { throw new Error('label add failed'); },
-    });
+    let callCount = 0;
     const deps: TriageDeps = {
-      adapter,
+      execGh: async () => {
+        callCount++;
+        if (callCount === 2) {
+          throw new Error('label add failed');
+        }
+        return { stdout: '', stderr: '' };
+      },
       now: () => new Date('2026-03-14T12:13:00.000Z'),
     };
 
@@ -1351,7 +1330,7 @@ describe('triage classification loop', () => {
     );
   });
 
-  it('applyTriageResultsToIssue propagates adapter errors on question reply', async () => {
+  it('applyTriageResultsToIssue propagates execGh errors on question reply', async () => {
     const issue = makeIssue({
       number: 51,
       blocked_on_human: false,
@@ -1361,11 +1340,10 @@ describe('triage classification loop', () => {
     const comments = [
       triageComment({ id: 34, body: 'What is the deployment process?', author: 'bob' }),
     ];
-    const { adapter } = createMockTriageAdapter({
-      postComment: async () => { throw new Error('comment post forbidden'); },
-    });
     const deps: TriageDeps = {
-      adapter,
+      execGh: async () => {
+        throw new Error('comment post forbidden');
+      },
       now: () => new Date('2026-03-14T12:14:00.000Z'),
     };
 
@@ -1397,9 +1375,12 @@ describe('triage classification loop', () => {
       }),
       triageComment({ id: 45, author: 'random', author_association: 'NONE', body: 'Drive-by comment.' }),
     ];
-    const { adapter, calls } = createMockTriageAdapter();
+    const ghCalls: string[][] = [];
     const deps: TriageDeps = {
-      adapter,
+      execGh: async (args) => {
+        ghCalls.push(args);
+        return { stdout: '', stderr: '' };
+      },
       now: () => new Date('2026-03-14T12:15:00.000Z'),
     };
 
@@ -1436,14 +1417,20 @@ describe('triage classification loop', () => {
     assert.equal(issue.triage_log?.length, 5);
     assert.equal(issue.last_comment_check, '2026-03-14T12:15:00.000Z');
 
-    // Adapter calls: question reply (postComment), needs_clarification reply (postComment) + label add = 3 calls
-    assert.equal(calls.length, 3);
-    assert.equal(calls[0].method, 'postComment');
-    assert.equal(calls[0].args[0], 52);
-    assert.equal(calls[1].method, 'postComment');
-    assert.equal(calls[1].args[0], 52);
-    assert.equal(calls[2].method, 'addLabels');
-    assert.deepStrictEqual(calls[2].args[1], ['aloop/blocked-on-human']);
+    // Exact GH calls: question reply, needs_clarification reply + label add = 3 calls
+    assert.equal(ghCalls.length, 3);
+    assert.deepStrictEqual(
+      ghCalls[0],
+      ['issue', 'comment', '52', '--repo', 'owner/repo', '--body', `Thanks for the question, @carol.\n\nBased on the current issue context, this requires human clarification before implementation can proceed safely. Please provide specific direction and expected outcome.\n---\n*This comment was generated by aloop triage agent.*`],
+    );
+    assert.deepStrictEqual(
+      ghCalls[1],
+      ['issue', 'comment', '52', '--repo', 'owner/repo', '--body', `Thanks for the feedback, @dave.\n\nI want to make sure we implement exactly what you intended. Could you clarify the requested change with concrete acceptance criteria?\n---\n*This comment was generated by aloop triage agent.*`],
+    );
+    assert.deepStrictEqual(
+      ghCalls[2],
+      ['issue', 'edit', '52', '--repo', 'owner/repo', '--add-label', 'aloop/blocked-on-human'],
+    );
   });
 });
 
@@ -1472,8 +1459,7 @@ describe('runTriageMonitorCycle', () => {
     });
 
     const ghCalls: string[][] = [];
-    const { adapter } = createMockTriageAdapter();
-    const deps: Pick<OrchestrateDeps, 'execGh' | 'now'> & { adapter: OrchestratorAdapter } = {
+    const deps: Pick<OrchestrateDeps, 'execGh' | 'now'> = {
       execGh: async (args) => {
         ghCalls.push(args);
         if (args[0] === 'issue-comments') {
@@ -1515,7 +1501,6 @@ describe('runTriageMonitorCycle', () => {
         };
       },
       now: () => new Date('2026-03-14T12:00:00.000Z'),
-      adapter,
     };
 
     const result = await runTriageMonitorCycle(state, 'orchestrator-20260314-120000', 'owner/repo', deps);
@@ -1529,7 +1514,7 @@ describe('runTriageMonitorCycle', () => {
     assert.equal(state.issues[0].last_comment_check, '2026-03-14T12:00:00.000Z');
     assert.equal(state.issues[1].last_comment_check, '2026-03-14T12:00:00.000Z');
     assert.equal(state.updated_at, '2026-03-14T12:00:00.000Z');
-    assert.equal(ghCalls.length, 4, 'execGh called for issue-comments and pr-comments per issue');
+    assert.equal(ghCalls.length, 5);
     assert.ok(ghCalls.some((call) => JSON.stringify(call) === JSON.stringify(
       ['issue-comments', '--session', 'orchestrator-20260314-120000', '--since', '2026-03-14T11:00:00.000Z', '--role', 'orchestrator'],
     )));
@@ -1832,7 +1817,6 @@ describe('validateDoR', () => {
     const issue = makeIssue({
       title: 'Add login form',
       body: '## Approach\n\nUse react-hook-form with zod validation. Implement form state management and integrate with the auth API endpoint for authentication flow.',
-      dor_validated: false,
     });
     const result = validateDoR(issue);
     assert.equal(result.passed, false);
@@ -1843,7 +1827,6 @@ describe('validateDoR', () => {
     const issue = makeIssue({
       title: 'Add login form',
       body: '## Approach\n\nUse react-hook-form. Blocked by aloop/spec-question regarding auth method.\n\n## Acceptance Criteria\n- [ ] Form renders with email field',
-      dor_validated: false,
     });
     const result = validateDoR(issue);
     assert.equal(result.passed, false);
@@ -1854,7 +1837,6 @@ describe('validateDoR', () => {
     const issue = makeIssue({
       title: 'Add login form',
       body: '## Acceptance Criteria\n- [ ] Form renders with email field',
-      dor_validated: false,
     });
     const result = validateDoR(issue);
     assert.equal(result.passed, false);
@@ -1874,7 +1856,6 @@ describe('validateDoR', () => {
     const issue = makeIssue({
       title: 'Todo',
       body: 'Something',
-      dor_validated: false,
     });
     const result = validateDoR(issue);
     assert.equal(result.passed, false);
@@ -2122,22 +2103,6 @@ describe('applyEstimateResults', () => {
     assert.equal(state.issues[0].status, 'Needs refinement');
     assert.deepStrictEqual(outcome.budgetExceeded, []);
   });
-
-  it('transitions status to Ready when DoR passes and issue is in Needs decomposition', async () => {
-    const state = makeState({
-      issues: [
-        makeIssue({ number: 1, wave: 1, status: 'Needs decomposition', dor_validated: false }),
-      ],
-    });
-    const results: EstimateResult[] = [
-      { issue_number: 1, dor_passed: true, complexity_tier: 'M', iteration_estimate: 5, confidence: 'high' },
-    ];
-    const outcome = await applyEstimateResults(state, results);
-    assert.deepStrictEqual(outcome.updated, [1]);
-    assert.deepStrictEqual(outcome.blocked, []);
-    assert.equal(state.issues[0].dor_validated, true);
-    assert.equal(state.issues[0].status, 'Ready');
-  });
 });
 
 describe('classifyGapRisk', () => {
@@ -2379,7 +2344,7 @@ describe('launchChildLoop', () => {
   it('creates worktree with correct branch name', async () => {
     const deps = createMockDispatchDeps();
     await launchChildLoop(issue, '/sessions/orch-1', '/project', 'myapp', '/project/.aloop/prompts', '/home/.aloop', deps);
-    const gitCall = deps._spawnSyncCalls.find((c) => c.command === 'git' && c.args.includes('worktree') && c.args.includes('add'));
+    const gitCall = deps._spawnSyncCalls.find((c) => c.command === 'git');
     assert.ok(gitCall, 'git worktree add should be called');
     assert.ok(gitCall.args.includes('-b'));
     assert.ok(gitCall.args.includes('aloop/issue-42'));
@@ -2483,8 +2448,8 @@ describe('launchChildLoop', () => {
     const issueWithBody = makeIssue({ number: 42, title: 'Add feature X', body: '## Requirements\n\n- Support login\n- Handle errors' });
     const deps = createMockDispatchDeps();
     await launchChildLoop(issueWithBody, '/sessions/orch-1', '/project', 'myapp', '/project/.aloop/prompts', '/home/.aloop', deps);
-    const specFile = Object.keys(deps._writtenFiles).find((p) => p.endsWith('/worktree/TASK_SPEC.md'));
-    assert.ok(specFile, 'TASK_SPEC.md should be written to child worktree');
+    const specFile = Object.keys(deps._writtenFiles).find((p) => p.endsWith('/worktree/SPEC.md'));
+    assert.ok(specFile, 'SPEC.md should be written to child worktree');
     assert.ok(deps._writtenFiles[specFile].includes('Issue #42'));
     assert.ok(deps._writtenFiles[specFile].includes('Support login'));
   });
@@ -2493,8 +2458,8 @@ describe('launchChildLoop', () => {
     const issueNoBody = makeIssue({ number: 42, title: 'Add feature X', body: undefined });
     const deps = createMockDispatchDeps();
     await launchChildLoop(issueNoBody, '/sessions/orch-1', '/project', 'myapp', '/project/.aloop/prompts', '/home/.aloop', deps);
-    const specFile = Object.keys(deps._writtenFiles).find((p) => p.endsWith('/worktree/TASK_SPEC.md'));
-    assert.equal(specFile, undefined, 'TASK_SPEC.md should not be written when issue body is empty');
+    const specFile = Object.keys(deps._writtenFiles).find((p) => p.endsWith('/worktree/SPEC.md'));
+    assert.equal(specFile, undefined, 'SPEC.md should not be written when issue body is empty');
   });
 
   it('compiles loop-plan.json for child session', async () => {
@@ -2751,16 +2716,13 @@ describe('checkPrGates', () => {
   it('returns pending when CI checks are still running', async () => {
     const deps = createMockPrDeps({
       execGh: async (args) => {
-        if (args[0] === 'api' && args[1]?.includes('/actions/workflows')) {
-          return { stdout: '1', stderr: '' };
-        }
         if (args.includes('mergeable,mergeStateStatus')) {
           return { stdout: JSON.stringify({ mergeable: 'MERGEABLE' }), stderr: '' };
         }
-        if (args.includes('statusCheckRollup')) {
-          return { stdout: JSON.stringify({ statusCheckRollup: [
+        if (args.includes('checks')) {
+          return { stdout: JSON.stringify([
             { name: 'build', state: 'IN_PROGRESS', conclusion: '' },
-          ] }), stderr: '' };
+          ]), stderr: '' };
         }
         return { stdout: '', stderr: '' };
       },
@@ -2773,17 +2735,14 @@ describe('checkPrGates', () => {
   it('returns fail when CI checks have failures', async () => {
     const deps = createMockPrDeps({
       execGh: async (args) => {
-        if (args[0] === 'api' && args[1]?.includes('/actions/workflows')) {
-          return { stdout: '1', stderr: '' };
-        }
         if (args.includes('mergeable,mergeStateStatus')) {
           return { stdout: JSON.stringify({ mergeable: 'MERGEABLE' }), stderr: '' };
         }
-        if (args.includes('statusCheckRollup')) {
-          return { stdout: JSON.stringify({ statusCheckRollup: [
+        if (args.includes('checks')) {
+          return { stdout: JSON.stringify([
             { name: 'build', state: 'COMPLETED', conclusion: 'SUCCESS' },
             { name: 'lint', state: 'COMPLETED', conclusion: 'FAILURE' },
-          ] }), stderr: '' };
+          ]), stderr: '' };
         }
         return { stdout: '', stderr: '' };
       },
@@ -2802,16 +2761,16 @@ describe('checkPrGates', () => {
         if (args.includes('mergeable,mergeStateStatus')) {
           return { stdout: JSON.stringify({ mergeable: 'MERGEABLE' }), stderr: '' };
         }
-        if (args.includes('statusCheckRollup')) {
+        if (args.includes('checks')) {
           return { stdout: JSON.stringify([]), stderr: '' };
         }
         return { stdout: '', stderr: '' };
       },
     });
     const result = await checkPrGates(100, 'owner/repo', deps);
-    assert.equal(result.all_passed, true);
-    assert.equal(result.gates[1].status, 'pass');
-    assert.match(result.gates[1].detail, /no checks ran/i);
+    assert.equal(result.all_passed, false);
+    assert.equal(result.gates[1].status, 'pending');
+    assert.match(result.gates[1].detail, /no check runs/i);
   });
 
   it('fails CI gate when workflows exist and check query errors', async () => {
@@ -2849,7 +2808,7 @@ describe('checkPrGates', () => {
     });
     const result = await checkPrGates(100, 'owner/repo', deps);
     assert.equal(result.mergeable, false);
-    assert.equal(result.gates[0].status, 'pass');
+    assert.equal(result.gates[0].status, 'fail');
   });
 
   it('treats SKIPPED and NEUTRAL checks as passing', async () => {
@@ -2874,13 +2833,13 @@ describe('checkPrGates', () => {
 });
 
 describe('reviewPrDiff', () => {
-  it('flags for human when no agent reviewer configured', async () => {
+  it('auto-approves when no agent reviewer configured', async () => {
     const deps = createMockPrDeps({
       execGh: async () => ({ stdout: 'diff --git a/file.ts b/file.ts\n+hello', stderr: '' }),
     });
     const result = await reviewPrDiff(100, 'owner/repo', deps);
-    assert.equal(result.verdict, 'flag-for-human');
-    assert.ok(result.summary.includes('No agent reviewer configured'));
+    assert.equal(result.verdict, 'approve');
+    assert.ok(result.summary.includes('Auto-approved'));
   });
 
   it('delegates to agent reviewer when configured', async () => {
@@ -2897,13 +2856,13 @@ describe('reviewPrDiff', () => {
     assert.ok(result.summary.includes('needs fixes'));
   });
 
-  it('returns pending when diff fetch fails', async () => {
+  it('flags for human when diff fetch fails', async () => {
     const deps = createMockPrDeps({
       execGh: async () => { throw new Error('Not found'); },
     });
     const result = await reviewPrDiff(100, 'owner/repo', deps);
-    assert.equal(result.verdict, 'pending');
-    assert.ok(result.summary.includes('PR diff fetch failed'));
+    assert.equal(result.verdict, 'flag-for-human');
+    assert.ok(result.summary.includes('Failed to fetch PR diff'));
   });
 });
 
@@ -2964,11 +2923,6 @@ describe('processPrLifecycle', () => {
         }
         return { stdout: '', stderr: '' };
       },
-      invokeAgentReview: async (prNum) => ({
-        pr_number: prNum,
-        verdict: 'approve' as const,
-        summary: 'Looks good',
-      }),
     });
     const result = await processPrLifecycle(state.issues[0], state, '/state.json', '/session', 'owner/repo', deps);
     assert.equal(result.action, 'merged');
@@ -2981,16 +2935,13 @@ describe('processPrLifecycle', () => {
     const state = makeOrchestratorState([{ number: 42, pr_number: 100, state: 'pr_open' }]);
     const deps = createMockPrDeps({
       execGh: async (args) => {
-        if (args[0] === 'api' && args[1]?.includes('/actions/workflows')) {
-          return { stdout: '1', stderr: '' };
-        }
         if (args.includes('mergeable,mergeStateStatus')) {
           return { stdout: JSON.stringify({ mergeable: 'MERGEABLE' }), stderr: '' };
         }
-        if (args.includes('statusCheckRollup')) {
-          return { stdout: JSON.stringify({ statusCheckRollup: [
+        if (args.includes('checks')) {
+          return { stdout: JSON.stringify([
             { name: 'build', state: 'IN_PROGRESS', conclusion: '' },
-          ] }), stderr: '' };
+          ]), stderr: '' };
         }
         return { stdout: '', stderr: '' };
       },
@@ -3017,7 +2968,6 @@ describe('processPrLifecycle', () => {
     assert.ok(result.detail.includes('attempt 1'));
     assert.equal(state.issues[0].rebase_attempts, 1);
     assert.ok((state.issues[0] as any).needs_redispatch === true);
-    assert.ok((state.issues[0] as any).needs_rebase === true);
     assert.ok(deps.logs.some((l) => l.event === 'pr_rebase_dispatched'));
   });
 
@@ -3025,14 +2975,11 @@ describe('processPrLifecycle', () => {
     const state = makeOrchestratorState([{ number: 42, pr_number: 100, state: 'pr_open', rebase_attempts: 2 }]);
     const deps = createMockPrDeps({
       execGh: async (args) => {
-        if (args[0] === 'api' && args[1]?.includes('/actions/workflows')) {
-          return { stdout: '1', stderr: '' };
-        }
         if (args.includes('mergeable,mergeStateStatus')) {
-          return { stdout: JSON.stringify({ mergeable: 'CONFLICTING', mergeStateStatus: 'DIRTY' }), stderr: '' };
+          return { stdout: JSON.stringify({ mergeable: 'CONFLICTING' }), stderr: '' };
         }
-        if (args.includes('statusCheckRollup')) {
-          return { stdout: JSON.stringify({ statusCheckRollup: [] }), stderr: '' };
+        if (args.includes('checks')) {
+          return { stdout: JSON.stringify([]), stderr: '' };
         }
         return { stdout: '', stderr: '' };
       },
@@ -3134,16 +3081,13 @@ describe('processPrLifecycle', () => {
     const deps = createMockPrDeps({
       execGh: async (args) => {
         ghCalls.push(args);
-        if (args[0] === 'api' && args[1]?.includes('/actions/workflows')) {
-          return { stdout: '1', stderr: '' };
-        }
         if (args.includes('mergeable,mergeStateStatus')) {
           return { stdout: JSON.stringify({ mergeable: 'MERGEABLE' }), stderr: '' };
         }
-        if (args.includes('statusCheckRollup')) {
-          return { stdout: JSON.stringify({ statusCheckRollup: [
+        if (args.includes('checks')) {
+          return { stdout: JSON.stringify([
             { name: 'build', state: 'COMPLETED', conclusion: 'FAILURE' },
-          ] }), stderr: '' };
+          ]), stderr: '' };
         }
         return { stdout: '', stderr: '' };
       },
@@ -3193,16 +3137,11 @@ describe('processPrLifecycle', () => {
     let mergeAttempted = false;
     const deps = createMockPrDeps({
       execGh: async (args) => {
-        if (args[0] === 'api' && args[1]?.includes('/actions/workflows')) {
-          return { stdout: '1', stderr: '' };
-        }
         if (args.includes('mergeable,mergeStateStatus')) {
           return { stdout: JSON.stringify({ mergeable: 'MERGEABLE' }), stderr: '' };
         }
-        if (args.includes('statusCheckRollup')) {
-          return { stdout: JSON.stringify({ statusCheckRollup: [
-            { name: 'ci', state: 'COMPLETED', conclusion: 'SUCCESS' },
-          ] }), stderr: '' };
+        if (args.includes('checks')) {
+          return { stdout: JSON.stringify([{ name: 'ci', state: 'COMPLETED', conclusion: 'SUCCESS' }]), stderr: '' };
         }
         if (args.includes('diff')) {
           return { stdout: 'diff', stderr: '' };
@@ -3213,11 +3152,6 @@ describe('processPrLifecycle', () => {
         }
         return { stdout: '', stderr: '' };
       },
-      invokeAgentReview: async (prNum) => ({
-        pr_number: prNum,
-        verdict: 'approve' as const,
-        summary: 'Looks good',
-      }),
     });
     const result = await processPrLifecycle(state.issues[0], state, '/state.json', '/session', 'owner/repo', deps);
     assert.equal(mergeAttempted, true);
@@ -3232,93 +3166,21 @@ describe('processPrLifecycle', () => {
     const deps = createMockPrDeps({
       execGh: async (args) => {
         ghCalls.push(args);
-        if (args[0] === 'api' && args[1]?.includes('/actions/workflows')) {
-          return { stdout: '1', stderr: '' };
-        }
         if (args.includes('mergeable,mergeStateStatus')) {
           return { stdout: JSON.stringify({ mergeable: 'MERGEABLE' }), stderr: '' };
         }
-        if (args.includes('statusCheckRollup')) {
-          return { stdout: JSON.stringify({ statusCheckRollup: [] }), stderr: '' };
+        if (args.includes('checks')) {
+          return { stdout: JSON.stringify([]), stderr: '' };
         }
         if (args.includes('diff')) {
           return { stdout: 'diff', stderr: '' };
         }
         return { stdout: '', stderr: '' };
       },
-      invokeAgentReview: async (prNum) => ({
-        pr_number: prNum,
-        verdict: 'approve' as const,
-        summary: 'Looks good',
-      }),
     });
     await processPrLifecycle(state.issues[0], state, '/state.json', '/session', 'owner/repo', deps);
     const closeCall = ghCalls.find((c) => c.includes('close') && c.includes('42'));
     assert.ok(closeCall, 'Should have closed the issue');
-  });
-
-  it('increments redispatch_failures when review requests changes', async () => {
-    const state = makeOrchestratorState([{ number: 42, pr_number: 100, state: 'pr_open' }]);
-    const deps = createMockPrDeps({
-      execGh: async (args) => {
-        if (args.includes('mergeable,mergeStateStatus')) {
-          return { stdout: JSON.stringify({ mergeable: 'MERGEABLE' }), stderr: '' };
-        }
-        if (args.includes('checks')) {
-          return { stdout: JSON.stringify([{ name: 'ci', state: 'COMPLETED', conclusion: 'SUCCESS' }]), stderr: '' };
-        }
-        if (args.includes('diff')) return { stdout: 'diff', stderr: '' };
-        return { stdout: '', stderr: '' };
-      },
-      invokeAgentReview: async (prNum) => ({
-        pr_number: prNum,
-        verdict: 'request-changes' as const,
-        summary: 'Needs more tests',
-      }),
-    });
-    const result = await processPrLifecycle(state.issues[0], state, '/state.json', '/session', 'owner/repo', deps);
-    assert.equal(result.action, 'rejected');
-    assert.equal(state.issues[0].redispatch_failures, 1);
-    assert.equal((state.issues[0] as any).needs_redispatch, true);
-    assert.equal(state.issues[0].redispatch_paused, undefined);
-  });
-
-  it('escalates with comment and aloop/needs-human label after 3 failed redispatches', async () => {
-    const state = makeOrchestratorState([{
-      number: 42, pr_number: 100, state: 'pr_open', redispatch_failures: 2,
-    }]);
-    const ghCalls: string[][] = [];
-    const deps = createMockPrDeps({
-      execGh: async (args) => {
-        ghCalls.push(args);
-        if (args.includes('mergeable,mergeStateStatus')) {
-          return { stdout: JSON.stringify({ mergeable: 'MERGEABLE' }), stderr: '' };
-        }
-        if (args.includes('checks')) {
-          return { stdout: JSON.stringify([{ name: 'ci', state: 'COMPLETED', conclusion: 'SUCCESS' }]), stderr: '' };
-        }
-        if (args.includes('diff')) return { stdout: 'diff', stderr: '' };
-        return { stdout: '', stderr: '' };
-      },
-      invokeAgentReview: async (prNum) => ({
-        pr_number: prNum,
-        verdict: 'request-changes' as const,
-        summary: 'Still missing tests',
-      }),
-    });
-    const result = await processPrLifecycle(state.issues[0], state, '/state.json', '/session', 'owner/repo', deps);
-    assert.equal(result.action, 'rejected');
-    assert.equal(state.issues[0].redispatch_failures, 3);
-    assert.equal(state.issues[0].redispatch_paused, true);
-    assert.equal((state.issues[0] as any).needs_redispatch, undefined);
-    // Should have posted a comment on the issue
-    const issueComment = ghCalls.find((c) => c.includes('issue') && c.includes('comment') && c.includes('42'));
-    assert.ok(issueComment, 'Should post comment on issue');
-    // Should have added aloop/needs-human label
-    const labelCall = ghCalls.find((c) => c.includes('edit') && c.includes('aloop/needs-human'));
-    assert.ok(labelCall, 'Should add aloop/needs-human label');
-    // Should log redispatch_escalated event
-    assert.ok(deps.logs.some((l) => l.event === 'redispatch_escalated'));
   });
 });
 
@@ -3829,14 +3691,14 @@ describe('queueGapAnalysisForIssues', () => {
     const productContent = writtenFiles['/queue/gap-analysis-product.md'];
     assert.match(productContent, /orch_product_analyst/);
     assert.match(productContent, /# Product Prompt/);
-    assert.match(productContent, /Read SPEC.md and SPEC-ADDENDUM.md/);
+    assert.match(productContent, /# Spec content here/);
     assert.match(productContent, /Issue #10: Auth/);
     assert.match(productContent, /Implement auth/);
 
     const archContent = writtenFiles['/queue/gap-analysis-architecture.md'];
     assert.match(archContent, /orch_arch_analyst/);
     assert.match(archContent, /# Arch Prompt/);
-    assert.match(archContent, /Read SPEC.md and SPEC-ADDENDUM.md/);
+    assert.match(archContent, /# Spec content here/);
   });
 
   it('returns 0 when no issues need analysis', async () => {
@@ -3896,7 +3758,7 @@ describe('epic and sub-issue decomposition helpers', () => {
     assert.ok(content);
     assert.match(content, /orch_decompose/);
     assert.match(content, /# Decompose prompt/);
-    assert.match(content, /Read the spec files listed above/);
+    assert.match(content, /# Spec body/);
   });
 
   it('writes sub-issue decomposition request for Needs decomposition targets only', async () => {
@@ -4081,57 +3943,64 @@ describe('spec-question resolver autonomy behavior', () => {
   });
 
   it('auto-resolves low-risk questions in balanced mode', async () => {
-    const adapterCalls: Array<{ method: string; args: unknown[] }> = [];
-    const mockAdapter = {
-      queryIssues: async (opts: any) => {
-        adapterCalls.push({ method: 'queryIssues', args: [opts] });
-        return [{ number: 12, title: 'Naming convention for status enum', state: 'open', body: 'Minor naming only', labels: ['aloop/spec-question'], assignees: [] }];
-      },
-      postComment: async (num: number, body: string) => { adapterCalls.push({ method: 'postComment', args: [num, body] }); },
-      addLabels: async (num: number, labels: string[]) => { adapterCalls.push({ method: 'addLabels', args: [num, labels] }); },
-      removeLabels: async (num: number, labels: string[]) => { adapterCalls.push({ method: 'removeLabels', args: [num, labels] }); },
-      closeIssue: async (num: number) => { adapterCalls.push({ method: 'closeIssue', args: [num] }); },
-    } as any;
+    const ghCalls: string[][] = [];
     const stats = await resolveSpecQuestionIssues(
       { autonomy_level: 'balanced' } as OrchestratorState,
       'owner/repo',
       '/session',
       {
-        adapter: mockAdapter,
+        execGh: async (args: string[]) => {
+          ghCalls.push(args);
+          if (args[0] === 'issue' && args[1] === 'list') {
+            return {
+              stdout: JSON.stringify([
+                { number: 12, title: 'Naming convention for status enum', body: 'Minor naming only', labels: [{ name: 'aloop/spec-question' }] },
+              ]),
+              stderr: '',
+            };
+          }
+          return { stdout: '', stderr: '' };
+        },
         appendLog: () => undefined,
         now: () => new Date('2026-03-15T12:00:00.000Z'),
       },
     );
     assert.equal(stats.processed, 1);
     assert.equal(stats.autoResolved, 1);
-    assert.ok(adapterCalls.some((c) => c.method === 'closeIssue' && c.args[0] === 12));
+    assert.ok(ghCalls.some((call) => call[0] === 'issue' && call[1] === 'close' && call[2] === '12'));
   });
 
   it('treats reopened auto-resolved issue as user override and blocks', async () => {
-    const adapterCalls: Array<{ method: string; args: unknown[] }> = [];
-    const mockAdapter = {
-      queryIssues: async (opts: any) => {
-        adapterCalls.push({ method: 'queryIssues', args: [opts] });
-        return [{
-          number: 99, title: 'Reopened question', state: 'open', body: 'User reopened this issue',
-          labels: ['aloop/spec-question', 'aloop/auto-resolved'], assignees: [],
-        }];
-      },
-      addLabels: async (num: number, labels: string[]) => { adapterCalls.push({ method: 'addLabels', args: [num, labels] }); },
-    } as any;
+    const ghCalls: string[][] = [];
     const stats = await resolveSpecQuestionIssues(
       { autonomy_level: 'autonomous' } as OrchestratorState,
       'owner/repo',
       '/session',
       {
-        adapter: mockAdapter,
+        execGh: async (args: string[]) => {
+          ghCalls.push(args);
+          if (args[0] === 'issue' && args[1] === 'list') {
+            return {
+              stdout: JSON.stringify([
+                {
+                  number: 99,
+                  title: 'Reopened question',
+                  body: 'User reopened this issue',
+                  labels: [{ name: 'aloop/spec-question' }, { name: 'aloop/auto-resolved' }],
+                },
+              ]),
+              stderr: '',
+            };
+          }
+          return { stdout: '', stderr: '' };
+        },
         appendLog: () => undefined,
         now: () => new Date('2026-03-15T12:00:00.000Z'),
       },
     );
     assert.equal(stats.userOverrides, 1);
     assert.ok(
-      adapterCalls.some((c) => c.method === 'addLabels' && (c.args[1] as string[]).includes('aloop/blocked-on-human')),
+      ghCalls.some((call) => call[0] === 'issue' && call[1] === 'edit' && call.includes('aloop/blocked-on-human')),
     );
   });
 });
@@ -4252,13 +4121,13 @@ describe('runOrchestratorScanPass', () => {
 
     const result = await runOrchestratorScanPass(
       '/state.json', '/session', '/project', 'myapp', '/prompts', '/home/.aloop',
-      'owner/repo', 5, deps,
+      null, 2, deps,
     );
 
     assert.equal(result.specConsistencyProcessed, false);
     const parseErrorLog = deps.logEntries.find((e) => e.event === 'spec_consistency_parse_error');
     assert.ok(parseErrorLog, 'should log spec_consistency_parse_error event');
-    assert.equal(parseErrorLog.iteration, 5);
+    assert.equal(parseErrorLog.iteration, 2);
     assert.ok(unlinkedPath.includes('spec-consistency-results.json'), 'should attempt to clean up invalid file');
     assert.equal(deps.files['/session/requests/spec-consistency-results.json'], undefined, 'invalid file should be removed');
   });
@@ -4501,7 +4370,7 @@ describe('runOrchestratorScanPass', () => {
 
     const result = await runOrchestratorScanPass(
       '/state.json', '/session', '/project', 'myapp', '/prompts', '/home/.aloop',
-      'owner/repo', 5, deps,
+      'owner/repo', 1, deps,
     );
 
     assert.equal(result.triage.processed_issues, 1);
@@ -4577,121 +4446,6 @@ describe('runOrchestratorScanPass', () => {
     );
 
     assert.equal(result.childMonitoring, null);
-  });
-
-  it('does not redispatch issues with redispatch_paused set', async () => {
-    const issue = makeIssue({ number: 5, wave: 1, state: 'pr_open', pr_number: 99 });
-    (issue as any).needs_redispatch = true;
-    (issue as any).redispatch_paused = true;
-    (issue as any).review_feedback = 'Still needs work';
-    const state = makeScanState({ issues: [issue] });
-    const deps = createMockScanDeps({ aloopRoot: '/home/.aloop' });
-    deps.files['/state.json'] = JSON.stringify(state);
-    const dispatchDeps = createMockDispatchDeps();
-    deps.dispatchDeps = dispatchDeps;
-    deps.execGh = async (args) => {
-      if (args.includes('labels')) return { stdout: JSON.stringify({ labels: [{ name: 'aloop/needs-human' }] }), stderr: '' };
-      return { stdout: '', stderr: '' };
-    };
-
-    await runOrchestratorScanPass(
-      '/state.json', '/session', '/project', 'myapp', '/prompts', '/home/.aloop',
-      'owner/repo', 1, deps,
-    );
-
-    // Should not have spawned any child process
-    assert.equal(dispatchDeps._spawnCalls.length, 0, 'Paused issue should not be redispatched');
-    const writtenState = JSON.parse(deps.files['/state.json']);
-    assert.equal(writtenState.issues[0].redispatch_paused, true, 'redispatch_paused should remain true');
-  });
-
-  it('resumes redispatch when aloop/needs-human label is removed', async () => {
-    const issue = makeIssue({ number: 7, wave: 1, state: 'pr_open', pr_number: 88 });
-    (issue as any).redispatch_paused = true;
-    (issue as any).redispatch_failures = 3;
-    const state = makeScanState({ issues: [issue] });
-    const deps = createMockScanDeps({ aloopRoot: '/home/.aloop' });
-    deps.files['/state.json'] = JSON.stringify(state);
-    deps.execGh = async (args) => {
-      // Label has been removed — return empty labels
-      if (args.includes('labels')) return { stdout: JSON.stringify({ labels: [] }), stderr: '' };
-      return { stdout: '', stderr: '' };
-    };
-
-    await runOrchestratorScanPass(
-      '/state.json', '/session', '/project', 'myapp', '/prompts', '/home/.aloop',
-      'owner/repo', 1, deps,
-    );
-
-    const writtenState = JSON.parse(deps.files['/state.json']);
-    assert.equal(writtenState.issues[0].redispatch_paused, false, 'redispatch_paused should be reset');
-    assert.equal(writtenState.issues[0].redispatch_failures, 0, 'redispatch_failures should be reset');
-    assert.equal(writtenState.issues[0].needs_redispatch, true, 'needs_redispatch should be set for next pass');
-    // Should log redispatch_resumed event
-    const resumedLog = deps.logEntries.find((e) => e.event === 'redispatch_resumed');
-    assert.ok(resumedLog, 'Should log redispatch_resumed event');
-    assert.equal(resumedLog.issue_number, 7);
-  });
-
-  it('writes 000-rebase-conflict.md with agent:merge and clears needs_rebase on redispatch when needs_rebase is true', async () => {
-    const tmpAloopRoot = await mkdtemp(path.join(os.tmpdir(), 'aloop-test-'));
-    try {
-      const issue = makeIssue({ number: 42, wave: 1, state: 'pr_open', pr_number: 100 });
-      (issue as any).needs_redispatch = true;
-      (issue as any).needs_rebase = true;
-      const state = makeScanState({ trunk_branch: 'agent/trunk', issues: [issue] });
-      const deps = createMockScanDeps({ aloopRoot: tmpAloopRoot });
-      deps.files['/state.json'] = JSON.stringify(state);
-      const dispatchDeps = createMockDispatchDeps();
-      deps.dispatchDeps = dispatchDeps;
-
-      await runOrchestratorScanPass(
-        '/state.json', '/session', '/project', 'myapp', '/prompts', tmpAloopRoot,
-        null, 1, deps,
-      );
-
-      // Find the queue file written by the scan pass
-      const queueKey = Object.keys(deps.files).find((k) => k.endsWith('000-rebase-conflict.md'));
-      assert.ok(queueKey, '000-rebase-conflict.md should be written');
-      assert.match(deps.files[queueKey!], /agent: merge/, 'frontmatter should specify merge agent');
-      assert.match(deps.files[queueKey!], /PR #100/, 'should reference the PR number');
-
-      const writtenState = JSON.parse(deps.files['/state.json']);
-      assert.equal(writtenState.issues[0].needs_rebase, false, 'needs_rebase should be cleared to false');
-      assert.equal(writtenState.issues[0].needs_redispatch, false, 'needs_redispatch should be cleared');
-    } finally {
-      await rm(tmpAloopRoot, { recursive: true, force: true });
-    }
-  });
-
-  it('writes 000-review-fixes.md with agent:build on redispatch when needs_rebase is false (regression guard)', async () => {
-    const tmpAloopRoot = await mkdtemp(path.join(os.tmpdir(), 'aloop-test-'));
-    try {
-      const issue = makeIssue({ number: 43, wave: 1, state: 'pr_open', pr_number: 200 });
-      (issue as any).needs_redispatch = true;
-      (issue as any).review_feedback = 'Fix the type errors in src/foo.ts';
-      const state = makeScanState({ issues: [issue] });
-      const deps = createMockScanDeps({ aloopRoot: tmpAloopRoot });
-      deps.files['/state.json'] = JSON.stringify(state);
-      const dispatchDeps = createMockDispatchDeps();
-      deps.dispatchDeps = dispatchDeps;
-
-      await runOrchestratorScanPass(
-        '/state.json', '/session', '/project', 'myapp', '/prompts', tmpAloopRoot,
-        null, 1, deps,
-      );
-
-      const queueKey = Object.keys(deps.files).find((k) => k.endsWith('000-review-fixes.md'));
-      assert.ok(queueKey, '000-review-fixes.md should be written');
-      assert.match(deps.files[queueKey!], /agent: build/, 'frontmatter should specify build agent');
-      assert.match(deps.files[queueKey!], /Fix the type errors/, 'should contain review feedback');
-
-      const writtenState = JSON.parse(deps.files['/state.json']);
-      assert.equal(writtenState.issues[0].needs_redispatch, false, 'needs_redispatch should be cleared');
-      assert.equal(writtenState.issues[0].review_feedback, undefined, 'review_feedback should be cleared');
-    } finally {
-      await rm(tmpAloopRoot, { recursive: true, force: true });
-    }
   });
 });
 
@@ -5201,8 +4955,8 @@ describe('monitorChildSessions', () => {
 
     assert.equal(result.monitored, 1);
     assert.equal(result.failed, 1);
-    assert.equal(state.issues[0].state, 'in_progress');
-    assert.ok((state.issues[0] as any).needs_redispatch);
+    assert.equal(state.issues[0].state, 'failed');
+    assert.equal(state.issues[0].status, 'Blocked');
     assert.ok(logEntries.some((e) => e.event === 'child_failed'));
   });
 
@@ -5577,9 +5331,10 @@ describe('orchestrateCommandWithDeps multi-file spec', () => {
     const decomposeFile = Object.keys(writtenFiles).find((k) => k.includes('decompose-epics.md'));
     assert.ok(decomposeFile, 'decompose-epics.md should be queued');
     const content = writtenFiles[decomposeFile];
-    assert.ok(content.includes('SPEC.md'), 'should reference SPEC.md');
-    assert.ok(content.includes('specs/auth.md'), 'should reference auth.md');
-    assert.ok(content.includes('Read the spec files listed above'), 'should instruct agent to read spec files');
+    assert.ok(content.includes('Master Spec'), 'should include master spec content');
+    assert.ok(content.includes('Auth Slice'), 'should include auth slice content');
+    assert.ok(content.includes('<!-- spec: SPEC.md -->'), 'should include spec file header for master');
+    assert.ok(content.includes('<!-- spec: auth.md -->'), 'should include spec file header for auth');
   });
 });
 

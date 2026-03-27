@@ -1,76 +1,9 @@
 import * as React from 'react';
 import * as HoverCardPrimitive from '@radix-ui/react-hover-card';
-import { useIsTouchDevice } from '@/hooks/useIsTouchDevice';
 import { cn } from '@/lib/utils';
 
-interface HoverCardTouchContextValue {
-  isTouch: boolean;
-  open: boolean;
-  setOpen: (next: boolean) => void;
-}
-
-const HoverCardTouchContext = React.createContext<HoverCardTouchContextValue | null>(null);
-
-const HoverCard = ({
-  children,
-  defaultOpen = false,
-  open: openProp,
-  onOpenChange,
-  ...props
-}: React.ComponentPropsWithoutRef<typeof HoverCardPrimitive.Root>) => {
-  const isTouch = useIsTouchDevice();
-  const [uncontrolledOpen, setUncontrolledOpen] = React.useState(defaultOpen);
-  const isControlled = openProp !== undefined;
-  const open = isControlled ? openProp : uncontrolledOpen;
-
-  const handleOpenChange = React.useCallback(
-    (nextOpen: boolean) => {
-      if (!isControlled) {
-        setUncontrolledOpen(nextOpen);
-      }
-      onOpenChange?.(nextOpen);
-    },
-    [isControlled, onOpenChange],
-  );
-
-  const contextValue = React.useMemo(
-    () => ({ isTouch, open, setOpen: handleOpenChange }),
-    [handleOpenChange, isTouch, open],
-  );
-
-  return (
-    <HoverCardTouchContext.Provider value={contextValue}>
-      <HoverCardPrimitive.Root
-        {...props}
-        open={isTouch ? open : openProp}
-        defaultOpen={isTouch ? undefined : defaultOpen}
-        onOpenChange={isTouch ? handleOpenChange : onOpenChange}
-      >
-        {children}
-      </HoverCardPrimitive.Root>
-    </HoverCardTouchContext.Provider>
-  );
-};
-
-const HoverCardTrigger = React.forwardRef<
-  React.ElementRef<typeof HoverCardPrimitive.Trigger>,
-  React.ComponentPropsWithoutRef<typeof HoverCardPrimitive.Trigger>
->(({ onClick, ...props }, ref) => {
-  const touchContext = React.useContext(HoverCardTouchContext);
-  const handleClick: React.ComponentPropsWithoutRef<typeof HoverCardPrimitive.Trigger>['onClick'] = React.useCallback(
-    (event: React.MouseEvent<HTMLAnchorElement>) => {
-      onClick?.(event);
-      if (event.defaultPrevented || !touchContext?.isTouch) {
-        return;
-      }
-      touchContext.setOpen(!touchContext.open);
-    },
-    [onClick, touchContext],
-  );
-
-  return <HoverCardPrimitive.Trigger ref={ref} onClick={handleClick} {...props} />;
-});
-HoverCardTrigger.displayName = HoverCardPrimitive.Trigger.displayName;
+const HoverCard = HoverCardPrimitive.Root;
+const HoverCardTrigger = HoverCardPrimitive.Trigger;
 
 const HoverCardContent = React.forwardRef<
   React.ElementRef<typeof HoverCardPrimitive.Content>,

@@ -1555,8 +1555,8 @@ function sanitizeBranchSlug(value: string): string {
   return slug.slice(0, 40).replace(/-+$/g, '');
 }
 
-export function extractRepoFromIssueUrl(url: string): string | null {
-  const match = url.match(/^https?:\/\/[^\/]+\/([^\/]+)\/([^\/]+)\/issues\/\d+/i);
+function extractRepoFromIssueUrl(url: string): string | null {
+  const match = url.match(/^https?:\/\/github\.com\/([^\/]+)\/([^\/]+)\/issues\/\d+/i);
   if (!match) {
     return null;
   }
@@ -1968,8 +1968,7 @@ function buildGhArgs(operation: string, payload: any, enforced: any): string[] {
     }
     case 'pr-merge': {
       const prNum = payload.pr_number;
-      const method = enforced.merge_method ?? payload.strategy ?? 'squash';
-      return ['pr', 'merge', String(prNum), '--repo', repo, `--${method}`];
+      return ['pr', 'merge', String(prNum), '--repo', repo, '--squash'];
     }
     case 'issue-comments': {
       return ['api', `repos/${repo}/issues/comments`, '--method', 'GET', '-f', `since=${String(enforced.since)}`];
