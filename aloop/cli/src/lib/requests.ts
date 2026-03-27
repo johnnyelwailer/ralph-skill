@@ -294,12 +294,10 @@ export interface RequestProcessorOptions {
 export async function processAgentRequests(options: RequestProcessorOptions): Promise<void> {
   const requestsDir = path.join(options.aloopDir, 'requests');
   if (!existsSync(requestsDir)) return;
-  const processedIdsPath = path.join(requestsDir, 'processed-ids.json');
-  const processedIds = await loadProcessedRequestIds(processedIdsPath);
 
   const entries = await fs.readdir(requestsDir, { withFileTypes: true });
   const requestFiles = entries
-    .filter((e) => e.isFile() && e.name.toLowerCase().endsWith('.json') && e.name.toLowerCase() !== 'processed-ids.json')
+    .filter((e) => e.isFile() && e.name.toLowerCase().endsWith('.json'))
     .map((e) => e.name)
     .sort();
 
@@ -333,35 +331,19 @@ export async function processAgentRequests(options: RequestProcessorOptions): Pr
       }
       request = validation.request;
     } catch (e) {
-      const isValidation = e instanceof ValidationError;
       const archivePath = getArchivePath(failedDir, fileName, new Set());
       await fs.rename(requestPath, archivePath);
       await writeSessionLogEntry(options.logPath, 'gh_request_failed', {
         type: 'unknown',
         id: 'unknown',
         request_file: fileName,
-        error: isValidation
-          ? `Validation failed: ${e.message}`
-          : `Invalid JSON: ${e instanceof Error ? e.message : String(e)}`
-      });
-      continue;
-    }
-
-    if (processedIds.has(request.id)) {
-      const archivePath = getArchivePath(processedDir, fileName, reservedArchivePaths);
-      await fs.rename(requestPath, archivePath);
-      await writeSessionLogEntry(options.logPath, 'gh_request_skipped_duplicate', {
-        type: request.type,
-        id: request.id,
-        request_file: fileName,
+        error: `Invalid JSON: ${e instanceof Error ? e.message : String(e)}`
       });
       continue;
     }
 
     try {
       await handleRequest(request, fileName, options);
-      processedIds.add(request.id);
-      await saveProcessedRequestIds(processedIdsPath, processedIds);
       const archivePath = getArchivePath(processedDir, fileName, reservedArchivePaths);
       await fs.rename(requestPath, archivePath);
       await writeSessionLogEntry(options.logPath, 'gh_request_processed', {
@@ -382,23 +364,6 @@ export async function processAgentRequests(options: RequestProcessorOptions): Pr
       });
     }
   }
-}
-
-async function loadProcessedRequestIds(filePath: string): Promise<Set<string>> {
-  if (!existsSync(filePath)) return new Set();
-
-  try {
-    const raw = await fs.readFile(filePath, 'utf8');
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return new Set();
-    return new Set(parsed.filter((id): id is string => typeof id === 'string' && id.length > 0));
-  } catch {
-    return new Set();
-  }
-}
-
-async function saveProcessedRequestIds(filePath: string, ids: Set<string>): Promise<void> {
-  await fs.writeFile(filePath, JSON.stringify([...ids].sort(), null, 2), 'utf8');
 }
 
 function getArchivePath(processedDir: string, fileName: string, existingFiles: Set<string>): string {
@@ -515,31 +480,7 @@ async function handleCreateIssues(request: CreateIssuesRequest, fileName: string
     results.push(JSON.parse(result.output));
   }
 
-  await writeSuccessToQueue(request, { issues: results, skipped_titles: skippedTitles }, options, fileName);
-}
-
-function normalizeIssueTitle(title: string): string {
-  return title.trim().toLowerCase();
-}
-
-async function loadOrchestratorIssueTitles(sessionDir: string): Promise<Set<string>> {
-  const statePath = path.join(sessionDir, 'orchestrator.json');
-  if (!existsSync(statePath)) return new Set();
-
-  const raw = await fs.readFile(statePath, 'utf8');
-  const parsed = JSON.parse(raw) as { issues?: Array<{ title?: unknown }> };
-  if (!Array.isArray(parsed.issues)) {
-    throw new Error(`Invalid orchestrator state: expected "issues" array in ${statePath}`);
-  }
-
-  const titles = new Set<string>();
-  for (const issue of parsed.issues) {
-    if (typeof issue?.title !== 'string') continue;
-    const normalized = normalizeIssueTitle(issue.title);
-    if (normalized.length === 0) continue;
-    titles.add(normalized);
-  }
-  return titles;
+  await writeSuccessToQueue(request, { issues: results }, options, fileName);
 }
 
 async function findExistingIssueByTitle(
@@ -789,8 +730,7 @@ async function handleMergePr(request: MergePrRequest, fileName: string, options:
   const tempRequestPath = path.join(options.aloopDir, 'requests', `_tmp_${request.id}.json`);
   await fs.writeFile(tempRequestPath, JSON.stringify({
     type: 'pr-merge',
-    pr_number: request.payload.number,
-    strategy: request.payload.strategy
+    pr_number: request.payload.number
   }));
   const result = await options.ghCommandRunner('pr-merge', options.sessionId, tempRequestPath);
   await fs.unlink(tempRequestPath);
@@ -969,23 +909,6 @@ async function handleStopChild(request: StopChildRequest, fileName: string, opti
 }
 
 async function handlePostComment(request: PostCommentRequest, fileName: string, options: RequestProcessorOptions): Promise<void> {
-  const requestIdMarker = `<!-- aloop-request-id: ${request.id} -->`;
-  const existingCommentBodies = getIssueCommentBodies(request.payload.issue_number, options);
-  if (existingCommentBodies.some((commentBody) => commentBody.includes(requestIdMarker))) {
-    await writeSessionLogEntry(options.logPath, 'gh_request_skipped_duplicate_comment', {
-      type: request.type,
-      id: request.id,
-      issue_number: request.payload.issue_number,
-      reason: 'duplicate_request_id_marker_found',
-    });
-    await writeSuccessToQueue(request, {
-      status: 'skipped',
-      reason: 'duplicate_comment_marker',
-      issue_number: request.payload.issue_number,
-    }, options, fileName);
-    return;
-  }
-
   const body = await fs.readFile(path.join(options.workdir, request.payload.body_file), 'utf8');
   const duplicateComment = await findMatchingIssueComment(request.payload.issue_number, body, options);
   if (duplicateComment) {
@@ -1007,7 +930,7 @@ async function handlePostComment(request: PostCommentRequest, fileName: string, 
   await fs.writeFile(tempRequestPath, JSON.stringify({
     type: 'issue-comment',
     issue_number: request.payload.issue_number,
-    body: bodyWithRequestId
+    body
   }));
   const result = await options.ghCommandRunner('issue-comment', options.sessionId, tempRequestPath);
   await fs.unlink(tempRequestPath);

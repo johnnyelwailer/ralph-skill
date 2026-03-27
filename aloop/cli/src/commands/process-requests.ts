@@ -8,12 +8,8 @@ import {
   applyDecompositionPlan,
   type ScanLoopDeps,
   type OrchestratorState,
-  type OrchestratorIssue,
   type DecompositionPlan,
 } from './orchestrate.js';
-import { processCrResultFiles, type CrResultDeps } from './cr-pipeline.js';
-export type { CrResultDeps };
-export { processCrResultFiles };
 import { EtagCache } from '../lib/github-monitor.js';
 import { deriveComponentLabels } from '../lib/labels.js';
 import { buildPrBody, ensureMetadataSection, buildIssueLabels } from '../lib/issue-metadata.js';
@@ -320,10 +316,6 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
     return { stdout: r.stdout ?? '', stderr: r.stderr ?? '' };
   };
 
-  // Create adapter from meta.json config (defaults to github)
-  const adapterType = (meta.adapter as string | undefined) ?? 'github';
-  const adapter = repo ? createAdapter({ type: adapterType, repo }, execGh) : undefined;
-
   // ── Phase 0: Bridge agent output → requests ──
   // Agents write to worktree/.aloop/output/ (inside their sandbox).
   // Runtime moves files to session_dir/requests/ for processing.
@@ -448,21 +440,7 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
     } catch { /* skip malformed */ }
   }
 
-  // 1d. CR analysis results → apply spec changes (autonomous) or block (non-autonomous)
-  const crFiles = allFiles.filter(f => f.match(/^cr-analysis-result-\d+\.json$/))
-    .map(f => path.join(requestsDir, f));
-  if (crFiles.length > 0) {
-    const crChanged = await processCrResultFiles(crFiles, state.issues, state.autonomy_level ?? 'balanced', projectRoot, repo, state.trunk_branch ?? 'agent/trunk', requestsDir, {
-      existsSync, readFile: (p, e) => readFile(p, e), writeFile: (p, d, e) => writeFile(p, d, e),
-      unlink: (p) => unlink(p).catch(() => {}),
-      execGh,
-      execGit: (args) => { spawnSync('git', args, { encoding: 'utf8' }); },
-      archiveFile: (rDir, fp) => archiveRequestFile(rDir, fp),
-    });
-    if (crChanged) stateChanged = true;
-  }
-
-  // 1e. Estimate results → apply to state (per-issue files)
+  // 1d. Estimate results → apply to state (per-issue files)
   for (const file of allFiles.filter(f => f.match(/^estimate-result-\d+\.json$/))) {
     const filePath = path.join(requestsDir, file);
     try {
@@ -558,21 +536,82 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
 
   // ── Phase 2b: Forward-merge master → agent/trunk (pick up human changes) ──
   const trunkBranch = state.trunk_branch ?? 'agent/trunk';
-  syncMasterToTrunk(projectRoot, aloopRoot, trunkBranch, { spawnSync });
+  try {
+    const fetchR = spawnSync('git', ['-C', projectRoot, 'fetch', 'origin', 'master', trunkBranch], { encoding: 'utf8', timeout: 30000 });
+    if (fetchR.status !== 0) throw new Error('fetch failed');
+    const mergeBase = spawnSync('git', ['-C', projectRoot, 'merge-base', `origin/master`, `origin/${trunkBranch}`], { encoding: 'utf8', timeout: 10000 });
+    const masterHead = spawnSync('git', ['-C', projectRoot, 'rev-parse', 'origin/master'], { encoding: 'utf8', timeout: 10000 });
+    const mbSha = mergeBase.stdout?.trim();
+    const mhSha = masterHead.stdout?.trim();
+    if (mbSha && mhSha && mbSha.length >= 7 && mhSha.length >= 7 && mbSha !== mhSha) {
+      // master has commits that trunk doesn't — forward merge
+      const mergeResult = spawnSync('git', ['-C', projectRoot, 'push', 'origin', `origin/master:refs/heads/${trunkBranch}`], { encoding: 'utf8' });
+      if (mergeResult.status !== 0) {
+        // Can't fast-forward — need a real merge via worktree
+        const tmpMerge = path.join(aloopRoot, 'tmp-trunk-merge');
+        spawnSync('git', ['-C', projectRoot, 'worktree', 'add', tmpMerge, trunkBranch], { encoding: 'utf8' });
+        const result = spawnSync('git', ['-C', tmpMerge, 'merge', 'origin/master', '--no-edit', '-m', 'Merge master into agent/trunk'], { encoding: 'utf8' });
+        if (result.status === 0) {
+          spawnSync('git', ['-C', tmpMerge, 'push', 'origin', 'HEAD'], { encoding: 'utf8' });
+          console.log(`[process-requests] Forward-merged master → ${trunkBranch}`);
+        } else {
+          spawnSync('git', ['-C', tmpMerge, 'merge', '--abort'], { encoding: 'utf8' });
+        }
+        spawnSync('git', ['-C', projectRoot, 'worktree', 'remove', '--force', tmpMerge], { encoding: 'utf8' });
+        spawnSync('git', ['-C', projectRoot, 'worktree', 'prune'], { encoding: 'utf8' });
+      } else {
+        console.log(`[process-requests] Fast-forwarded ${trunkBranch} to master`);
+      }
+    }
+  } catch { /* best effort */ }
 
   // ── Phase 2c: Sync child branches with base branch ──
-  {
-    const childSyncChanged = await syncChildBranches(state.issues, trunkBranch, aloopRoot, {
-      existsSync: (p: string) => existsSync(p),
-      readFile: (p: string, e: BufferEncoding) => readFile(p, e),
-      writeFile: (p: string, d: string, e: BufferEncoding) => writeFile(p, d, e),
-      mkdir: (p: string, o?: { recursive?: boolean }) => mkdir(p, o).then(() => undefined),
-      spawnSync: (cmd: string, a: string[], o?: Record<string, unknown>) => {
-        const r = spawnSync(cmd, a, o as any);
-        return { status: r.status, stdout: r.stdout?.toString() ?? '', stderr: r.stderr?.toString() ?? '' };
-      },
-    });
-    if (childSyncChanged) stateChanged = true;
+  for (const issue of state.issues) {
+    if (!issue.child_session) continue;
+    if (issue.state !== 'in_progress' && issue.state !== 'pr_open' && issue.state !== 'review') continue;
+    const childDir = path.join(aloopRoot, 'sessions', issue.child_session);
+    const childWorktree = path.join(childDir, 'worktree');
+    if (!existsSync(childWorktree)) continue;
+
+    // Fetch and check if diverged
+    const fetchResult = spawnSync('git', ['-C', childWorktree, 'fetch', 'origin', trunkBranch], { encoding: 'utf8', timeout: 30000 });
+    if (fetchResult.status !== 0) continue;
+
+    const mergeBase = spawnSync('git', ['-C', childWorktree, 'merge-base', 'HEAD', `origin/${trunkBranch}`], { encoding: 'utf8', timeout: 10000 });
+    const remoteHead = spawnSync('git', ['-C', childWorktree, 'rev-parse', `origin/${trunkBranch}`], { encoding: 'utf8', timeout: 10000 });
+    const mbSha = mergeBase.stdout?.trim();
+    const rhSha = remoteHead.stdout?.trim();
+    if (!mbSha || !rhSha || mbSha.length < 7 || rhSha.length < 7) continue; // Invalid output, skip
+    if (mbSha === rhSha) continue; // Up to date
+
+    // Commit any dirty files and remove working artifacts before rebase
+    const statusResult = spawnSync('git', ['-C', childWorktree, 'status', '--porcelain'], { encoding: 'utf8' });
+    if (statusResult.stdout?.trim()) {
+      // Untrack working artifacts from git (keep on disk — child still needs them)
+      for (const art of ['TODO.md', 'STEERING.md', 'QA_COVERAGE.md', 'QA_LOG.md', 'REVIEW_LOG.md']) {
+        spawnSync('git', ['-C', childWorktree, 'rm', '-f', '--cached', art], { encoding: 'utf8' });
+      }
+      spawnSync('git', ['-C', childWorktree, 'add', '-A'], { encoding: 'utf8' });
+      spawnSync('git', ['-C', childWorktree, 'commit', '--allow-empty', '-m', 'chore: save work-in-progress before rebase'], { encoding: 'utf8' });
+    }
+
+    // Try rebase
+    const rebaseResult = spawnSync('git', ['-C', childWorktree, 'rebase', `origin/${trunkBranch}`], { encoding: 'utf8' });
+    if (rebaseResult.status === 0) {
+      spawnSync('git', ['-C', childWorktree, 'push', 'origin', 'HEAD', '--force-with-lease'], { encoding: 'utf8' });
+      console.log(`[process-requests] Synced #${issue.number} with ${trunkBranch}`);
+    } else {
+      // Conflict — abort rebase, queue merge agent
+      spawnSync('git', ['-C', childWorktree, 'rebase', '--abort'], { encoding: 'utf8' });
+      const mergeQueueFile = path.join(childDir, 'queue', '000-merge-conflict.md');
+      if (!existsSync(mergeQueueFile)) {
+        const mergePromptPath = path.join(childDir, 'prompts', 'PROMPT_merge.md');
+        const mergePrompt = existsSync(mergePromptPath) ? await readFile(mergePromptPath, 'utf8') : '# Merge Conflict Resolution';
+        await mkdir(path.join(childDir, 'queue'), { recursive: true });
+        await writeFile(mergeQueueFile, `---\nagent: merge\nreasoning: high\n---\n\n${mergePrompt}\n\n## Conflict\n\nRebase onto \`origin/${trunkBranch}\` failed.\nRun \`git fetch origin ${trunkBranch} && git rebase origin/${trunkBranch}\`, resolve conflicts, then \`git rebase --continue && git push origin HEAD --force-with-lease\`.\n`, 'utf8');
+        console.log(`[process-requests] Merge conflict on #${issue.number} — queued merge agent`);
+      }
+    }
   }
 
   // ── Phase 2c: Create PRs for completed children ──
@@ -935,14 +974,12 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
     appendLog,
     etagCache,
     aloopRoot,
-    adapter,
     prLifecycleDeps: {
       execGh,
       readFile: (p: string, enc: BufferEncoding) => readFile(p, enc),
       writeFile: (p: string, data: string, enc: BufferEncoding) => writeFile(p, data, enc),
       now: () => new Date(),
       appendLog: (dir: string, entry: Record<string, unknown>) => { appendLog(dir, entry); },
-      adapter,
       invokeAgentReview: async (prNumber: number, _repo: string, diff: string) => {
         // Check for result file — the ONLY source of truth for review verdicts.
         // No fallback regex extraction. If the file doesn't exist, the review

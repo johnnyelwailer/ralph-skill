@@ -17,13 +17,7 @@ export default defineConfig({
     coverage: {
       provider: 'istanbul',
       reportsDirectory: './coverage',
-      include: [
-        'src/App.tsx',
-        'src/AppView.tsx',
-        'src/hooks/useIsTouchDevice.ts',
-        'src/components/ui/tooltip.tsx',
-        'src/components/ui/hover-card.tsx',
-      ],
+      include: ['src/App.tsx', 'src/AppView.tsx'],
       reporter: ['text', 'json-summary'],
     },
   },

@@ -34,7 +34,6 @@ export interface SetupCommandOptions {
   autonomyLevel?: string;
   dataPrivacy?: string;
   devcontainerAuthStrategy?: string;
-  adapter?: string;
 }
 
 function parseDataPrivacy(value: string | undefined): DataPrivacy | undefined {
@@ -99,17 +98,6 @@ function parseSetupConfirmation(value: string | undefined): SetupConfirmation | 
   throw new Error(`Invalid setup confirmation: ${value} (must be confirm, adjust, or cancel)`);
 }
 
-type AdapterType = 'github' | 'local';
-
-function parseAdapter(value: string | undefined): AdapterType | undefined {
-  if (!value) return undefined;
-  const normalized = value.trim().toLowerCase();
-  if (normalized === 'github' || normalized === 'local') {
-    return normalized;
-  }
-  throw new Error(`Invalid adapter: ${value} (must be github or local)`);
-}
-
 async function defaultPromptUser(rl: readline.Interface, question: string, defaultValue: string): Promise<string> {
   return new Promise((resolve) => {
     rl.question(`${question} [${defaultValue}]: `, (answer) => {
@@ -148,7 +136,6 @@ export async function setupCommandWithDeps(
       autonomyLevel: parseAutonomyLevel(options.autonomyLevel),
       dataPrivacy: parseDataPrivacy(options.dataPrivacy),
       devcontainerAuthStrategy: parseDevcontainerAuthStrategy(options.devcontainerAuthStrategy),
-      adapter: parseAdapter(options.adapter),
     });
     console.log(`Setup complete. Config written to: ${result.config_path}`);
     return;
@@ -177,7 +164,6 @@ export async function setupCommandWithDeps(
   let mode = recommendedMode === 'orchestrate' ? 'orchestrate' : 'plan-build-review';
   let autonomyLevel = parseAutonomyLevel(options.autonomyLevel ?? 'balanced') ?? 'balanced';
   let dataPrivacy = parseDataPrivacy(options.dataPrivacy ?? 'private') ?? 'private';
-  let adapter = parseAdapter(options.adapter ?? 'github') ?? 'github';
   let devcontainerAuthStrategy: DevcontainerAuthStrategy | undefined =
     parseDevcontainerAuthStrategy(options.devcontainerAuthStrategy ?? (discovery.devcontainer.enabled ? 'mount-first' : undefined));
   let validationCommands = (discovery.context.validation_presets.full.join(', ') || 'npm test')
@@ -201,9 +187,6 @@ export async function setupCommandWithDeps(
     language = await deps.prompt('Language', language);
     provider = await deps.prompt('Primary Provider', providerDefault);
     mode = await deps.prompt('Mode', mode);
-    adapter = parseAdapter(
-      await deps.prompt('Issue/PR backend (github|local)', adapter),
-    ) ?? 'github';
     autonomyLevel = parseAutonomyLevel(
       await deps.prompt('Autonomy Level (cautious|balanced|autonomous)', autonomyLevel),
     ) ?? 'balanced';
@@ -232,7 +215,6 @@ export async function setupCommandWithDeps(
     console.log(`- Language: ${language}`);
     console.log(`- Primary Provider: ${provider}`);
     console.log(`- Mode: ${mode}`);
-    console.log(`- Issue/PR Backend: ${adapter}`);
     console.log(`- Autonomy Level: ${autonomyLevel}`);
     console.log(`- Data Privacy: ${dataPrivacy}`);
     console.log(`- ZDR Mode: ${dataPrivacy === 'private' ? 'Enabled' : 'Disabled'}`);
@@ -279,23 +261,12 @@ export async function setupCommandWithDeps(
     mode,
     autonomyLevel,
     dataPrivacy,
-    adapter,
     devcontainerAuthStrategy,
     validationCommands,
     safetyRules,
   });
 
   console.log(`Setup complete. Config written to: ${result.config_path}`);
-
-  if (enabledProviders.includes('opencode')) {
-    console.log('');
-    console.log('Shipped OpenCode agents installed to .opencode/agents/:');
-    console.log('  code-critic       — Deep code review for subtle bugs and security issues');
-    console.log('  error-analyst     — Parses error logs and stack traces to suggest fixes');
-    console.log('  vision-reviewer   — Analyzes screenshots for layout and visual issues');
-    console.log('');
-    console.log('Run them with: opencode run --agent <name>');
-  }
 }
 
 export async function setupCommand(options: SetupCommandOptions = {}) {

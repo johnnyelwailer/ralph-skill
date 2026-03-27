@@ -17,8 +17,7 @@ type CliResult = {
 function runCli(args: string[], cwd?: string): Promise<CliResult> {
   const entrypoint = path.resolve(process.cwd(), 'src/index.ts');
   return new Promise((resolve, reject) => {
-    const tsxPath = path.resolve(process.cwd(), 'node_modules/tsx/dist/esm/index.cjs');
-    const child = spawn(process.execPath, ['--import', tsxPath, entrypoint, ...args], {
+    const child = spawn(process.execPath, ['--import', 'tsx', entrypoint, ...args], {
       cwd: cwd ?? process.cwd(),
       stdio: ['ignore', 'pipe', 'pipe'],
       env: process.env,
