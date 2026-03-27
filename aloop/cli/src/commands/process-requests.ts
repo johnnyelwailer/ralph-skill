@@ -1059,6 +1059,16 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
     console.error(`[process-requests] diagnostics error: ${err}`);
   }
 
+  // ── Increment loop-plan.json iteration for standalone invocations ──
+  // In loop.sh operation the iteration is incremented before process-requests
+  // is called (persist_loop_plan_state), but standalone invocations never
+  // write back an incremented value, so lastSeenIteration stays stuck at 1.
+  try {
+    const loopPlan = JSON.parse(await readFile(loopPlanFile, 'utf8'));
+    loopPlan.iteration = (loopPlan.iteration ?? 1) + 1;
+    await writeFile(loopPlanFile, `${JSON.stringify(loopPlan, null, 2)}\n`, 'utf8');
+  } catch { /* loop-plan.json may not exist — standalone mode without a plan */ }
+
   // Re-read state after scan pass (scan pass writes its own copy)
   // and apply any pending review tracking from the invokeAgentReview closure
   if (reviewPendingUpdates.size > 0) {
