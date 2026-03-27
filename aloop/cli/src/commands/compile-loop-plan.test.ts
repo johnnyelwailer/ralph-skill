@@ -844,6 +844,175 @@ test('compileLoopPlan — opencode respects explicit cost_routing overrides', as
   assert.ok(reviewPrompt.includes('model: openrouter/anthropic/claude-opus-4.6'));
 });
 
+test('compileLoopPlan — pipeline without periodic entries compiles to length-8 cycle', async () => {
+  const { root, promptsDir, sessionDir } = await setupDirs('clp-pipeline-no-periodic-');
+  const aloopDir = path.join(root, '.aloop');
+  await mkdir(aloopDir, { recursive: true });
+  await writeFile(path.join(aloopDir, 'pipeline.yml'), `
+pipeline:
+  - agent: plan
+  - agent: build
+    repeat: 5
+  - agent: qa
+  - agent: review
+  `, 'utf8');
+
+  const plan = await compileLoopPlan({
+    mode: 'plan-build-review',
+    provider: 'claude',
+    promptsDir,
+    sessionDir,
+    enabledProviders: ['claude'],
+    roundRobinOrder: ['claude'],
+    models: { claude: 'opus' },
+    projectRoot: root,
+  });
+
+  assert.deepStrictEqual(plan.cycle, [
+    'PROMPT_plan.md',
+    'PROMPT_build.md',
+    'PROMPT_build.md',
+    'PROMPT_build.md',
+    'PROMPT_build.md',
+    'PROMPT_build.md',
+    'PROMPT_qa.md',
+    'PROMPT_review.md',
+  ]);
+});
+
+test('compileLoopPlan — periodic super-cycle expands to 18 entries with inject_before and inject_after', async () => {
+  const { root, promptsDir, sessionDir } = await setupDirs('clp-periodic-super-');
+  const aloopDir = path.join(root, '.aloop');
+  await mkdir(aloopDir, { recursive: true });
+  await writeFile(path.join(aloopDir, 'pipeline.yml'), `
+pipeline:
+  - agent: plan
+  - agent: build
+    repeat: 5
+  - agent: qa
+  - agent: review
+  - agent: spec-gap
+    periodic:
+      every: 2
+      inject_before: plan
+  - agent: docs
+    periodic:
+      every: 2
+      inject_after: qa
+  `, 'utf8');
+
+  const plan = await compileLoopPlan({
+    mode: 'plan-build-review',
+    provider: 'claude',
+    promptsDir,
+    sessionDir,
+    enabledProviders: ['claude'],
+    roundRobinOrder: ['claude'],
+    models: { claude: 'opus' },
+    projectRoot: root,
+  });
+
+  assert.equal(plan.cycle.length, 18, 'super-cycle length should be 18');
+});
+
+test('compileLoopPlan — periodic pass 1 (positions 0–7) has no periodic agents', async () => {
+  const { root, promptsDir, sessionDir } = await setupDirs('clp-periodic-pass1-');
+  const aloopDir = path.join(root, '.aloop');
+  await mkdir(aloopDir, { recursive: true });
+  await writeFile(path.join(aloopDir, 'pipeline.yml'), `
+pipeline:
+  - agent: plan
+  - agent: build
+    repeat: 5
+  - agent: qa
+  - agent: review
+  - agent: spec-gap
+    periodic:
+      every: 2
+      inject_before: plan
+  - agent: docs
+    periodic:
+      every: 2
+      inject_after: qa
+  `, 'utf8');
+
+  const plan = await compileLoopPlan({
+    mode: 'plan-build-review',
+    provider: 'claude',
+    promptsDir,
+    sessionDir,
+    enabledProviders: ['claude'],
+    roundRobinOrder: ['claude'],
+    models: { claude: 'opus' },
+    projectRoot: root,
+  });
+
+  // Pass 1: positions 0-7 = [plan, build×5, qa, review]
+  const pass1 = plan.cycle.slice(0, 8);
+  assert.deepStrictEqual(pass1, [
+    'PROMPT_plan.md',
+    'PROMPT_build.md',
+    'PROMPT_build.md',
+    'PROMPT_build.md',
+    'PROMPT_build.md',
+    'PROMPT_build.md',
+    'PROMPT_qa.md',
+    'PROMPT_review.md',
+  ], 'pass 1 should not include periodic agents');
+});
+
+test('compileLoopPlan — periodic pass 2 (positions 8–17) injects spec-gap before plan and docs after qa', async () => {
+  const { root, promptsDir, sessionDir } = await setupDirs('clp-periodic-pass2-');
+  const aloopDir = path.join(root, '.aloop');
+  await mkdir(aloopDir, { recursive: true });
+  await writeFile(path.join(aloopDir, 'pipeline.yml'), `
+pipeline:
+  - agent: plan
+  - agent: build
+    repeat: 5
+  - agent: qa
+  - agent: review
+  - agent: spec-gap
+    periodic:
+      every: 2
+      inject_before: plan
+  - agent: docs
+    periodic:
+      every: 2
+      inject_after: qa
+  `, 'utf8');
+
+  const plan = await compileLoopPlan({
+    mode: 'plan-build-review',
+    provider: 'claude',
+    promptsDir,
+    sessionDir,
+    enabledProviders: ['claude'],
+    roundRobinOrder: ['claude'],
+    models: { claude: 'opus' },
+    projectRoot: root,
+  });
+
+  // Pass 2: positions 8-17 = [spec-gap, plan, build×5, qa, docs, review]
+  const pass2 = plan.cycle.slice(8, 18);
+  assert.deepStrictEqual(pass2, [
+    'PROMPT_spec-gap.md',
+    'PROMPT_plan.md',
+    'PROMPT_build.md',
+    'PROMPT_build.md',
+    'PROMPT_build.md',
+    'PROMPT_build.md',
+    'PROMPT_build.md',
+    'PROMPT_qa.md',
+    'PROMPT_docs.md',
+    'PROMPT_review.md',
+  ], 'pass 2 should have spec-gap before plan and docs after qa');
+
+  // Verify specific anchor positions
+  assert.equal(plan.cycle[8], 'PROMPT_spec-gap.md', 'spec-gap should be at position 8 (before first plan)');
+  assert.equal(plan.cycle[16], 'PROMPT_docs.md', 'docs should be at position 16 (after qa)');
+});
+
 test('compileLoopPlan — round-robin filters periodic entries from pipeline', async () => {
   const { root, promptsDir, sessionDir } = await setupDirs('clp-rr-periodic-');
   const aloopDir = path.join(root, '.aloop');
