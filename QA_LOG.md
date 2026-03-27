@@ -135,6 +135,62 @@ $ /tmp/aloop-test-install-L1Lgdr/bin/aloop process-requests --session-dir $SESSI
 # Returns scan summary without diagnostics/blocker data ← still FAIL
 ```
 
+## QA Session — 2026-03-27 (issue-147 scan-diagnostics, re-test after lastSeenIteration+regressions fixes)
+
+### Test Environment
+- Binary under test: `/tmp/aloop-test-install-WMQvmG/bin/aloop`
+- Version: `1.0.0`
+- Commit: `aca3bd052`
+- Features tested: 4 (lastSeenIteration/current_iteration, test suite regressions, blockers.json {} compat, non-existent dir)
+
+### Results
+- PASS: lastSeenIteration/current_iteration correctly updates in standalone mode — **FIXED** (was FAIL at 82432eb7a)
+- PASS: ALERT.md still fires at count=5 — still PASS
+- PASS: stuck:true still written at count=5 — still PASS
+- PASS: test suite — 1153/1154 pass, 0 fail — **FIXED** (17 pre-existing regressions resolved)
+- FAIL: blockers.json {} init causes TypeError — tested at aca3bd052, still failing; retested at e67019313 — **FIXED**
+- FAIL: non-existent session dir silently exits 0 — still open
+- FAIL: --output json missing diagnostics — still open
+
+### Bugs Filed
+None — all failing behaviors already tracked in TODO.md.
+
+### Command Transcript
+
+```
+# Binary: /tmp/aloop-test-install-WMQvmG/bin/aloop  (aca3bd052)
+# Version: 1.0.0
+
+# Test 1: lastSeenIteration / current_iteration in standalone mode
+# loop-plan.json initial: {"iteration": 1}
+# Run 1: exit 0, loop-plan.json.iteration → 2, blockers.json: lastSeenIteration=1, count=1
+# Run 2: exit 0, loop-plan.json.iteration → 3, blockers.json: lastSeenIteration=2, count=2
+# Run 3: exit 0, loop-plan.json.iteration → 4, blockers.json: lastSeenIteration=3, count=3
+# Run 4: exit 0, loop-plan.json.iteration → 5, blockers.json: lastSeenIteration=4, count=4
+# Run 5: exit 0, loop-plan.json.iteration → 6, blockers.json: lastSeenIteration=5, count=5
+# diagnostics.json at count=5: current_iteration=5 ✓ (was 1 in prior session)
+# ALERT.md: YES ✓, orchestrator.json stuck:true ✓
+
+# Test 2: blockers.json {} init (aca3bd052)
+# echo '{}' > $SESSION_DIR/blockers.json
+# $ aloop process-requests --session-dir $SESSION_DIR
+# [process-requests] diagnostics error: TypeError: existingRecords.map is not a function
+# Exit: 0  ← BUG at aca3bd052
+
+# Test 2b: blockers.json {} init re-test (e67019313)
+# Binary: /tmp/aloop-test-install-kbQhm8/bin/aloop
+# echo '{}' > $SESSION_DIR/blockers.json
+# $ aloop process-requests --session-dir $SESSION_DIR
+# Exit: 0, no error — blockers.json now correctly contains array ✓ — FIXED
+
+# Test 3: test suite
+# npm test → 1153/1154 pass, 0 fail, 1 skipped ✓
+
+# Test 4: non-existent session dir
+# $ aloop process-requests --session-dir /tmp/nonexistent-dir-xyz
+# (no output), exit: 0  ← BUG — still unfixed
+```
+
 ## QA Session — 2026-03-27 (issue-147 scan-diagnostics, re-test after ALERT.md+stuck fixes)
 
 ### Test Environment
