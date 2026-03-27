@@ -17,6 +17,7 @@ export { processCrResultFiles };
 import { EtagCache } from '../lib/github-monitor.js';
 import { deriveComponentLabels } from '../lib/labels.js';
 import { buildPrBody, ensureMetadataSection, buildIssueLabels } from '../lib/issue-metadata.js';
+import { createAdapter } from '../lib/adapter.js';
 
 // --- Orchestrator event system (data-driven from pipeline.yml) ---
 
@@ -318,6 +319,8 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
     if (r.status === null && r.signal) throw new Error(`gh timed out (${r.signal})`);
     return { stdout: r.stdout ?? '', stderr: r.stderr ?? '' };
   };
+
+  const adapter = repo ? createAdapter({ type: 'github', repo }, execGh) : undefined;
 
   // ── Phase 0: Bridge agent output → requests ──
   // Agents write to worktree/.aloop/output/ (inside their sandbox).
@@ -930,12 +933,14 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
     appendLog,
     etagCache,
     aloopRoot,
+    adapter,
     prLifecycleDeps: {
       execGh,
       readFile: (p: string, enc: BufferEncoding) => readFile(p, enc),
       writeFile: (p: string, data: string, enc: BufferEncoding) => writeFile(p, data, enc),
       now: () => new Date(),
       appendLog: (dir: string, entry: Record<string, unknown>) => { appendLog(dir, entry); },
+      adapter,
       invokeAgentReview: async (prNumber: number, _repo: string, diff: string) => {
         // Check for result file — the ONLY source of truth for review verdicts.
         // No fallback regex extraction. If the file doesn't exist, the review
@@ -1020,6 +1025,7 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
       },
       platform: process.platform,
       env: process.env as Record<string, string | undefined>,
+      adapter,
     },
   };
 
