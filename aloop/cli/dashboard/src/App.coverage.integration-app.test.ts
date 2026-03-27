@@ -131,10 +131,6 @@ describe('App.tsx AppView integration coverage - app controls', () => {
     // On tablet viewport, sidebar starts closed. Ctrl+B opens it.
     fireEvent.keyDown(document, { key: 'b', ctrlKey: true });
 
-    fireEvent.click(screen.getByRole('button', { name: /^activity$/i }));
-    fireEvent.click(screen.getByRole('button', { name: /^documents$/i }));
-
-    // Sidebar is now open → close button visible (only on non-desktop)
     const collapseBtn = container.querySelector('button .lucide-panel-left-close')?.closest('button') as HTMLButtonElement | null;
     expect(collapseBtn).not.toBeNull();
     fireEvent.click(collapseBtn!);  // closes sidebar → sidebarOpen = false
