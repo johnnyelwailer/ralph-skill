@@ -1,36 +1,26 @@
-# Project TODO
+# Issue #38: CI: Add dashboard unit tests (vitest)
 
-## Current Phase: Issue #183 — Storybook 8 setup with react-vite and Tailwind decorators
+## Current Phase: Implementation
 
 ### In Progress
+_(none)_
 
 ### Up Next
-- [x] [review] Gate 3: `ImageLightbox.tsx` (new 15-line module) and `LogEntryExpandedDetails.tsx` (new 141-line module) have no dedicated tests. For ImageLightbox: write a test that renders it and fires `keydown(Escape)` to verify `onClose` is called, fires a click on the overlay div to verify `onClose`, and fires `stopPropagation` on the img click. For LogEntryExpandedDetails: write tests covering (1) `filesChanged.length > 0` path renders file path list, (2) `extractIterationUsage` non-null path renders token/cost row with `$` amount, (3) `entry.isError` path triggers event detail section, (4) `showComparison !== null` path renders `ArtifactComparisonDialog`. The existing ActivityLog.test.tsx covers `outputText === ''` → "No output available" but the remaining branches are untested. Gate 3 requires ≥90% branch coverage for new modules. (priority: high)
-- [x] [review] Gate 4: `LogEntryRow.tsx:14` — prop `isCurrentIteration` is destructured from the function signature (`{ entry, artifacts, isCurrentIteration, allManifests }`) but is never referenced in the 186-line component body and is not passed to `LogEntryExpandedDetails`. This is a dead prop introduced by the extraction. Constitution Rule 13: "No dead code — unused imports, unreachable branches." Either (a) remove `isCurrentIteration` from LogEntryRow's props and update ActivityPanel.tsx:93 accordingly, or (b) pass it through to LogEntryExpandedDetails if it was supposed to influence rendering. (priority: high)
-- [ ] [qa/P1] Extract session progress bar section from AppView.tsx into `src/components/session/ProgressBar.tsx` and write `ProgressBar.stories.tsx` — the progress bar section (AppView.tsx lines 591-593, `data-testid="header-progress"`) wraps `ui/progress.tsx` with `progressPercent` and `phaseBarColor` props; also takes `currentPhase` to derive color via `phaseBarColors` lookup (priority: high)
-- [ ] [qa/P2] LogEntryRow.tsx is still 186 LOC after ImageLightbox + LogEntryExpandedDetails extraction: task stated "brings LogEntryRow to ~160 LOC" but actual result is 186 LOC; Constitution Rule 7 target is < 150 LOC. Needs further extraction — identify remaining logic (e.g., inline rendering of phase dot, provider·model label, result icon row) that can be factored into small sub-components to bring LogEntryRow under 150 LOC. (priority: medium)
+_(none)_
 
 ### Completed
-- [x] [qa/P2] CONSTITUTION.md has uncommitted modifications: reverted with `git checkout CONSTITUTION.md`
-- [x] [review] Gate 2: `ActivityLog.test.tsx:158-177` — tautological assertion fixed: set iterationStartedAt=ts3, assert spinner present
-- [x] Add `storybook` and `build-storybook` scripts to `aloop/cli/dashboard/package.json`
-- [x] Add all required Storybook devDependencies to `package.json` (`storybook`, `@storybook/react-vite`, `@storybook/react`, `@storybook/addon-docs`, `@storybook/addon-themes`)
-- [x] Create `aloop/cli/dashboard/.storybook/main.ts` with `@storybook/react-vite` framework and `../src/**/*.stories.@(ts|tsx)` glob
-- [x] Create `aloop/cli/dashboard/.storybook/preview.ts` with three global decorators: Tailwind CSS (`index.css` import), dark-mode toggle (`withThemeByClassName` targeting `.dark` on `html`), and `TooltipProvider` wrapper
-- [x] Create `aloop/cli/dashboard/src/components/ui/button.stories.tsx` with light/dark-compatible stories for all button variants and sizes [reviewed: gates 1-9 pass]
-- [x] Run `npm install` in `aloop/cli/dashboard/` and fix any dependency resolution errors
-- [x] Run `npm run build-storybook` and confirm build completes successfully (confirmed 2026-03-27)
-- [x] Verify `npm run storybook` launches on port 6006 (build-check confirmed sufficient)
-- [x] [qa/P1] Extract `SessionCard` from AppView.tsx into `src/components/session/SessionCard.tsx` and write `SessionCard.stories.tsx`
-- [x] [qa/P1] Extract steer footer UI from AppView.tsx into `src/components/session/SteerInput.tsx` and write `SteerInput.stories.tsx`
-- [x] [review] Gate 2+3: Add `SessionCard.test.tsx` — key branches: suppressClick, costUnavailable, cardCost formatting, stuckCount>0 red line
-- [x] [review] Gate 2+3: Add `SteerInput.test.tsx` — key branches: isRunning Stop/Resume, Send disabled states, Enter key calls onSteer
-- [x] [review] Gate 6: Capture Playwright screenshots for all SessionCard and SteerInput stories and save to proof-artifacts/
-- [x] [qa/P1] Fix integration test ambiguous Stop button selector — changed lines 48 and 129 of `App.coverage.integration-app.test.ts` from `screen.findByRole('button', { name: /stop/i })` to `{ name: /stop loop options/i }` targeting only the SteerInput stop button (priority: high)
-- [x] [qa/P1] Extract activity log section from AppView.tsx into `src/components/session/ActivityLog.tsx` and write `ActivityLog.stories.tsx` — `ActivityPanel` is currently an exported function inside AppView.tsx (~line 993) and cannot have isolated stories until moved to its own file (priority: high)
-- [x] [review] Gate 4: `ActivityLog.tsx` is 616 lines — violates Constitution Rule 7 (< 150 LOC target). Split into at minimum: `ActivityPanel.tsx` (~116 LOC), `LogEntryRow.tsx` (~220 LOC), `ArtifactComparisonDialog.tsx` (~215 LOC), plus keep `findBaselineIterations` in a helpers file. Update imports in AppView.tsx accordingly (priority: high)
-- [x] [review] Gate 3: Add `ActivityLog.test.tsx` covering `ActivityPanel`'s untested branches: (1) `withCurrent` memo when `isRunning=false` vs `true`, (2) `deduped` memo deduplicating multiple `session_start` entries, (3) `hasResult` returning true suppresses the synthetic running entry, (4) `loadOutput` fetch success/failure/catch paths in `LogEntryRow` — tests written against split components (priority: high)
-- [x] [review] Gate 4: `ArtifactComparisonDialog.tsx` is 219 lines — violates Constitution Rule 7 (< 150 LOC target). Split into: `ArtifactComparisonHeader.tsx` (~60 LOC: header bar with path, diff badge, mode tabs, baseline selector, close button), `SideBySideView.tsx` (~30 LOC), `SliderView.tsx` (~55 LOC: includes drag logic and keyboard handler), `DiffOverlayView.tsx` (~35 LOC) — do this BEFORE adding tests so tests target the split components (priority: high)
-- [x] [review] Gate 3: `ArtifactComparisonDialog.tsx` (219 lines, new module) has 0% branch coverage — add tests covering: (1) mode tabs switch between side-by-side/slider/diff-overlay (click each button, verify mode class/content), (2) keyboard ArrowLeft/ArrowRight on the slider `role="slider"` changes sliderPos, (3) baseline dropdown onChange with `Number(value)` sets selectedBaseline, (4) diff_percentage badge color branches (< 5 → green class, 5-20 → yellow class, ≥ 20 → red class), (5) no-baseline path renders "No baseline — first capture" label — write tests against the split components after Gate 4 is done (priority: high)
-- [x] [review] Gate 4: `ComparisonMode` type (`'side-by-side' | 'slider' | 'diff-overlay'`) is defined identically in both `ArtifactComparisonDialog.tsx:9` and `ArtifactComparisonHeader.tsx:3` — copy-paste duplication. Export the type from `ArtifactComparisonDialog.tsx` and import it in `ArtifactComparisonHeader.tsx` (or extract to a shared types file). Constitution Rule 10: "Don't duplicate — if two modules do the same thing, factor out the common part." (priority: high)
-- [x] [qa/P2] LogEntryRow.tsx is 287 LOC: review gate specified ~220 LOC, actual is 30% over; Constitution Rule 7 targets < 150 LOC — needs further splitting into two focused sub-components: extract `ImageLightbox` (lines 15-27, ~15 LOC) into its own file and extract `LogEntryExpandedDetails` (lines 182-274, ~95 LOC: file changes, artifacts, token/cost row, output viewer, raw event detail) into `src/components/session/LogEntryExpandedDetails.tsx` — this brings LogEntryRow to ~160 LOC (priority: high)
+- [x] Create `.github/workflows/ci.yml` with Node.js setup, dependency install, and a dashboard unit test step that runs `npm test` in `aloop/cli/dashboard/`
+- [x] Verify the workflow file is valid YAML and the test step references the correct working directory (`aloop/cli/dashboard`)
+
+### Spec-Gap Analysis
+- spec-gap analysis: no discrepancies found — spec fully fulfilled
+- All acceptance criteria verified: CI workflow runs `vitest run` via `npm test`, triggers on PRs to master, uses jsdom (no browser needed), excludes Playwright e2e tests
+- Tests pass locally: 87 tests, 2 test files
+
+### Notes
+- No `.github/workflows/` directory or `ci.yml` exists on master or this branch
+- The spec says "Dashboard deps should already be installed from the core workflow" but that core workflow hasn't been created yet — we need to include basic setup (checkout + Node + npm ci) so the dashboard test step can run
+- Vitest uses jsdom — no browser install needed
+- Do NOT include Playwright e2e tests
+- Dashboard tests are in `aloop/cli/dashboard/src/App.test.tsx`, config in `vitest.config.ts`
+- `npm test` maps to `vitest run` in dashboard's `package.json`
