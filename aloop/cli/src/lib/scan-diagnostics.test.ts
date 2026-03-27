@@ -83,7 +83,7 @@ test('trackBlockers: new blocker created from child failure', () => {
   assert.equal(result[0]!.count, 1);
   assert.equal(result[0]!.firstSeenIteration, 1);
   assert.equal(result[0]!.lastSeenIteration, 1);
-  assert.ok(result[0]!.hash.length > 0);
+  assert.equal(result[0]!.hash, 'child_failed:42:OOM error occurred');
 });
 
 test('trackBlockers: existing blocker accumulates count', () => {
@@ -209,8 +209,7 @@ test('writeDiagnosticsJson: writes file when count >= threshold', async () => {
   assert.equal(parsed[0]!.first_seen_iteration, 1);
   assert.equal(parsed[0]!.current_iteration, 3);
   assert.equal(parsed[0]!.severity, 'warning');
-  assert.ok(parsed[0]!.suggested_fix.includes('child_failed'));
-  assert.ok(parsed[0]!.suggested_fix.includes('5'));
+  assert.equal(parsed[0]!.suggested_fix, 'Investigate child_failed for issue #5: OOM error occurred');
 });
 
 test('writeDiagnosticsJson: does NOT write when count < threshold', async () => {
@@ -234,8 +233,8 @@ test('writeAlertMd: writes when count >= threshold', async () => {
   await writeAlertMd('/ses', records, 3, writeFile as never);
   assert.equal(written.length, 1);
   assert.equal(written[0]!.path, '/ses/ALERT.md');
-  assert.ok(written[0]!.data.includes('ALERT'));
-  assert.ok(written[0]!.data.includes('7'));
+  assert.ok(written[0]!.data.includes('# ALERT: Persistent Blockers Detected'));
+  assert.ok(written[0]!.data.includes('## child_failed (issue 7)'));
 });
 
 test('writeAlertMd: does NOT write when count < threshold', async () => {
@@ -414,6 +413,11 @@ test('runSelfHealingAndDiagnostics: missing diagnostics_blocker_threshold defaul
 
   // count=5 >= default threshold=5 → diagnostics.json should be written
   assert.ok(written['/ses/diagnostics.json'], 'diagnostics.json should be written with default threshold of 5');
+  const diag = JSON.parse(written['/ses/diagnostics.json']!) as Array<{ type: string; severity: string; suggested_fix: string }>;
+  assert.equal(diag.length, 1);
+  assert.equal(diag[0]!.type, 'child_failed');
+  assert.equal(diag[0]!.severity, 'warning');
+  assert.equal(diag[0]!.suggested_fix, 'Investigate child_failed for issue #1: err');
 });
 
 // --- stuck: true written to orchestrator.json ---
