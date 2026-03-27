@@ -2196,7 +2196,7 @@ function AppInner() {
   const [activityCollapsed, setActivityCollapsed] = useState(false);
   const [commandOpen, setCommandOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const mobileSidebarRef = useRef<HTMLDivElement>(null);
+
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('connecting');
   const [qaCoverageRefreshKey, setQaCoverageRefreshKey] = useState('');
   const prevPhaseRef = useRef<string>('');
@@ -2512,7 +2512,7 @@ function AppInner() {
           {mobileMenuOpen && (
             <div className="fixed inset-0 z-40 md:hidden animate-fade-in" onClick={() => setMobileMenuOpen(false)}>
               <div className="absolute inset-0 bg-black/50" />
-              <div ref={mobileSidebarRef} className="relative h-full w-64 max-w-[80vw] bg-background animate-slide-in-left" onClick={(e) => e.stopPropagation()}>
+              <div className="relative h-full w-64 max-w-[80vw] bg-background animate-slide-in-left" onClick={(e) => e.stopPropagation()}>
                 <Sidebar sessions={sessions} selectedSessionId={selectedSessionId} onSelectSession={(id) => { selectSession(id); setMobileMenuOpen(false); }} collapsed={false} onToggle={() => setMobileMenuOpen(false)} sessionCost={sessionCost} onStopSession={handleStopSession} onCopySessionId={(id) => void handleCopySessionId(id)} />
               </div>
             </div>

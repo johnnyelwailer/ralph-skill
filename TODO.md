@@ -6,7 +6,7 @@
 
 - [x] [review] Gate 5: `smoke.spec.ts:135` and `smoke.spec.ts:154` reference removed panel toggle buttons ('Documents', 'Activity') that no longer exist — both tests fail. Update these tests to match the new always-visible stacked-panel layout: remove assertions on toggle buttons, assert that both panels are visible simultaneously on mobile, and remove the 44px tap-target assertions for the removed toggles. (priority: high)
 
-- [ ] [review] Gate 4: `mobileSidebarRef` (AppView.tsx:2199) is declared with `useRef<HTMLDivElement>(null)` and attached to the mobile drawer div, but the ref value is never read anywhere — dead code. Remove the ref declaration and the `ref={mobileSidebarRef}` prop from AppView.tsx:2515. (priority: low)
+- [x] [review] Gate 4: `mobileSidebarRef` (AppView.tsx:2199) is declared with `useRef<HTMLDivElement>(null)` and attached to the mobile drawer div, but the ref value is never read anywhere — dead code. Remove the ref declaration and the `ref={mobileSidebarRef}` prop from AppView.tsx:2515. (priority: low)
 
 ### Up Next
 
