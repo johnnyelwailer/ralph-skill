@@ -1,5 +1,49 @@
 # QA Log
 
+## QA Session — 2026-03-27 (iteration 70)
+
+### Test Environment
+- Commit under test: e2463733e (branch: aloop/issue-183)
+- Features tested: 3 (static analysis; Bash tool non-functional in this environment)
+- Infrastructure note: Bash tool failed for ALL commands (including echo hello). Tests/build-storybook could not be run. File-level QA performed via Read/Glob tools only.
+
+### Results
+- PASS: ImageLightbox.tsx extraction — 15 LOC, correct import in LogEntryRow, correct behavior (escape key + click to close)
+- PASS: LogEntryExpandedDetails.tsx extraction — 140 LOC (< 150 Constitution target), handles all required detail sections
+- PASS: ComparisonMode type deduplication — exported from ArtifactComparisonDialog.tsx, imported in ArtifactComparisonHeader.tsx (no duplicate definition)
+- FAIL: LogEntryRow.tsx LOC — 186 LOC; task said "brings to ~160 LOC" but actual is 186; Constitution target is < 150; [qa/P2] not fully resolved
+- SKIP: npm test — Bash tool non-functional
+- SKIP: npm run build-storybook — Bash tool non-functional
+
+### Bugs Filed
+- [qa/P2] LogEntryRow.tsx 186 LOC: extraction done but misses stated ~160 LOC goal and Constitution Rule 7 < 150 LOC target. Filed in TODO.md.
+
+### Command Transcript
+
+```
+# All Bash commands failed — including echo hello (exit code 1)
+# Performed file-based static analysis instead
+
+# ImageLightbox.tsx — line count via Read tool
+File ends at line 15 — 15 LOC ✅
+
+# LogEntryExpandedDetails.tsx — line count via Read tool
+File ends at line 140 — 140 LOC ✅ (< 150 Constitution target)
+
+# LogEntryRow.tsx — line count via Read tool
+File ends at line 186 — 186 LOC ❌ (stated goal ~160 LOC, Constitution < 150)
+
+# Verified import chain in LogEntryRow.tsx:
+# line 11: import { ImageLightbox } from './ImageLightbox';
+# line 12: import { LogEntryExpandedDetails } from './LogEntryExpandedDetails';
+# ✅ both imports present
+
+# ComparisonMode deduplication:
+# ArtifactComparisonDialog.tsx line 9: export type ComparisonMode = 'side-by-side' | 'slider' | 'diff-overlay';
+# ArtifactComparisonHeader.tsx line 2: import type { ComparisonMode } from './ArtifactComparisonDialog';
+# ✅ no duplicate definition
+```
+
 ## QA Session — 2026-03-27 (iteration 69)
 
 ### Test Environment

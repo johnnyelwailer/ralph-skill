@@ -9,6 +9,7 @@
 - [x] [qa/P2] LogEntryRow.tsx is 287 LOC: review gate specified ~220 LOC, actual is 30% over; Constitution Rule 7 targets < 150 LOC — needs further splitting into two focused sub-components: extract `ImageLightbox` (lines 15-27, ~15 LOC) into its own file and extract `LogEntryExpandedDetails` (lines 182-274, ~95 LOC: file changes, artifacts, token/cost row, output viewer, raw event detail) into `src/components/session/LogEntryExpandedDetails.tsx` — this brings LogEntryRow to ~160 LOC (priority: high)
 
 ### Up Next
+- [ ] [qa/P2] LogEntryRow.tsx is still 186 LOC after ImageLightbox + LogEntryExpandedDetails extraction: task stated "brings LogEntryRow to ~160 LOC" but actual result is 186 LOC; Constitution Rule 7 target is < 150 LOC. Needs further extraction — identify remaining logic (e.g., inline rendering of phase dot, provider·model label, result icon row) that can be factored into small sub-components to bring LogEntryRow under 150 LOC. Tested at iter 70. (priority: medium)
 - [ ] [qa/P1] Extract session progress bar section from AppView.tsx into `src/components/session/ProgressBar.tsx` and write `ProgressBar.stories.tsx` — the progress bar section (AppView.tsx lines 591-593, `data-testid="header-progress"`) wraps `ui/progress.tsx` with `progressPercent` and `phaseBarColor` props; also takes `currentPhase` to derive color via `phaseBarColors` lookup (priority: high)
 
 ### Completed

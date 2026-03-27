@@ -20,7 +20,7 @@
 | ProgressBar component + stories | never | — | FAIL | Component not yet extracted; open task in TODO.md |
 | ActivityLog split — ActivityPanel.tsx | 2026-03-27 | a53963ea8 | PASS | 103 LOC, within 150 LOC Constitution target |
 | ActivityLog split — ArtifactComparisonDialog.tsx | 2026-03-27 | 11dc2bfec | PASS | Split into 5 sub-components: ArtifactComparisonDialog.tsx 90 LOC, ArtifactComparisonHeader.tsx 71 LOC, SideBySideView.tsx 25 LOC, SliderView.tsx 67 LOC, DiffOverlayView.tsx 48 LOC — all under 150 LOC Constitution target |
-| ActivityLog split — LogEntryRow.tsx | 2026-03-27 | 11dc2bfec | FAIL | 287 LOC — still 30% over review gate's ~220 LOC; bug [qa/P2] still open in TODO.md (re-tested iter 69) |
+| ActivityLog split — LogEntryRow.tsx | 2026-03-27 | e2463733e | FAIL | 186 LOC — improved from 287 (ImageLightbox 15 LOC + LogEntryExpandedDetails 140 LOC extracted); still over 150 LOC Constitution target and stated ~160 LOC goal; [qa/P2] partially resolved but LOC not yet compliant |
 | ActivityLog split — ActivityLog.tsx barrel | 2026-03-27 | a53963ea8 | PASS | 5-line barrel re-exporting all split symbols correctly |
 | ActivityLog.test.tsx branch coverage (Gate 3) | 2026-03-27 | a53963ea8 | PASS | All 4 Gate 3 branches covered: withCurrent, deduped session_start, hasResult suppression, loadOutput fetch paths |
 | AppView.tsx ActivityLog re-exports | 2026-03-27 | a53963ea8 | PASS | Backward compat re-exports — ArtifactViewer.test.tsx and formatHelpers.test.tsx import from AppView |
@@ -31,3 +31,6 @@
 | ArtifactComparisonDialog.test.tsx — Gate 3 branch coverage | 2026-03-27 | 11dc2bfec | PASS | 333 tests pass; all 5 Gate 3 branches covered: mode tabs, ArrowLeft/ArrowRight keyboard, baseline dropdown Number(value), badge colors (<5 green, 5-20 yellow, ≥20 red), no-baseline "first capture" label |
 | Storybook build post-ArtifactComparisonDialog split | 2026-03-27 | 11dc2bfec | PASS | build-storybook exits 0 successfully |
 | ProgressBar component + stories | 2026-03-27 | 11dc2bfec | FAIL | ProgressBar.tsx not yet extracted from AppView.tsx; [qa/P1] task still open in TODO.md |
+| ImageLightbox.tsx extraction | 2026-03-27 | e2463733e | PASS | Correctly extracted to src/components/session/ImageLightbox.tsx; 15 LOC, < 150 Constitution target; LogEntryRow imports it correctly |
+| LogEntryExpandedDetails.tsx extraction | 2026-03-27 | e2463733e | PASS | Correctly extracted to src/components/session/LogEntryExpandedDetails.tsx; 140 LOC, < 150 Constitution target; handles file changes, artifacts, token/cost row, output viewer, raw event detail |
+| ComparisonMode type deduplication | 2026-03-27 | 372867c16 | PASS | Exported from ArtifactComparisonDialog.tsx:9; imported (not redefined) in ArtifactComparisonHeader.tsx:2; no duplicate type definition |
