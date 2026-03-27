@@ -39,6 +39,20 @@ interface CycleEntry {
   agent: string;
 }
 
+interface PeriodicConfig {
+  every: number;
+  inject_before?: string;
+  inject_after?: string;
+}
+
+function gcd(a: number, b: number): number {
+  return b === 0 ? a : gcd(b, a % b);
+}
+
+function lcm(a: number, b: number): number {
+  return (a / gcd(a, b)) * b;
+}
+
 type CostRoutingPreference = 'prefer_cheap' | 'prefer_capable';
 
 const DEFAULT_COST_ROUTING: Record<string, CostRoutingPreference> = {
@@ -140,18 +154,69 @@ async function buildCycleFromPipeline(
       return null;
     }
 
-    const cycle: CycleEntry[] = [];
+    const baseSteps: CycleEntry[] = [];
+    const periodicSteps: Array<{ entry: CycleEntry; periodic: PeriodicConfig }> = [];
+
     for (const step of parsed.pipeline) {
       const agentName = step.agent;
       if (!agentName) continue;
 
       const agentConfig = await getAgentConfig(agentName, projectRoot, deps);
-      const repeat = typeof step.repeat === 'number' ? step.repeat : 1;
-      for (let i = 0; i < repeat; i++) {
-        cycle.push({ filename: agentConfig.prompt, agent: agentName });
+      if (step.periodic && typeof step.periodic.every === 'number') {
+        periodicSteps.push({
+          entry: { filename: agentConfig.prompt, agent: agentName },
+          periodic: step.periodic as PeriodicConfig,
+        });
+      } else {
+        const repeat = typeof step.repeat === 'number' ? step.repeat : 1;
+        for (let i = 0; i < repeat; i++) {
+          baseSteps.push({ filename: agentConfig.prompt, agent: agentName });
+        }
       }
     }
-    return cycle.length > 0 ? cycle : null;
+
+    if (periodicSteps.length === 0) {
+      return baseSteps.length > 0 ? baseSteps : null;
+    }
+
+    const superCyclePasses = periodicSteps.reduce((acc, { periodic }) => lcm(acc, periodic.every), 1);
+    const superCycle: CycleEntry[] = [];
+
+    for (let p = 0; p < superCyclePasses; p++) {
+      const pass = [...baseSteps];
+
+      for (const { entry, periodic } of periodicSteps) {
+        if ((p + 1) % periodic.every === 0) {
+          if (periodic.inject_before) {
+            const anchorIdx = pass.findIndex(e => e.agent === periodic.inject_before);
+            if (anchorIdx !== -1) {
+              pass.splice(anchorIdx, 0, { ...entry });
+            } else {
+              pass.unshift({ ...entry });
+            }
+          } else if (periodic.inject_after) {
+            let anchorIdx = -1;
+            for (let i = pass.length - 1; i >= 0; i--) {
+              if (pass[i].agent === periodic.inject_after) {
+                anchorIdx = i;
+                break;
+              }
+            }
+            if (anchorIdx !== -1) {
+              pass.splice(anchorIdx + 1, 0, { ...entry });
+            } else {
+              pass.push({ ...entry });
+            }
+          } else {
+            pass.push({ ...entry });
+          }
+        }
+      }
+
+      superCycle.push(...pass);
+    }
+
+    return superCycle.length > 0 ? superCycle : null;
   } catch (err) {
     console.error('Error parsing pipeline.yml:', err);
     return null;
