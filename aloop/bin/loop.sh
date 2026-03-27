@@ -2073,9 +2073,27 @@ run_queue_if_present() {
 
         local queue_prompt_content
         queue_prompt_content=$(cat "$QUEUE_ITEM")
+        queue_prompt_content="$(substitute_prompt_placeholders "$queue_prompt_content")"
+        mkdir -p "$ARTIFACTS_DIR/iter-$ITERATION"
         cd "$WORK_DIR"
         if invoke_provider "$queue_iter_provider" "$queue_prompt_content" "$FRONTMATTER_MODEL"; then
             update_provider_health_on_success "$queue_iter_provider"
+            if [ "$queue_iter_mode" = "proof" ]; then
+                LAST_PROOF_ITERATION="$ITERATION"
+                proof_manifest_path="$ARTIFACTS_DIR/iter-$ITERATION/proof-manifest.json"
+                if [ -f "$proof_manifest_path" ]; then
+                    write_log_entry "proof_manifest_found" \
+                        "iteration" "$ITERATION" \
+                        "path" "$proof_manifest_path" \
+                        "last_proof_iteration" "$LAST_PROOF_ITERATION"
+                else
+                    write_log_entry "proof_manifest_missing" \
+                        "iteration" "$ITERATION" \
+                        "path" "$proof_manifest_path" \
+                        "last_proof_iteration" "$LAST_PROOF_ITERATION"
+                    echo "Warning: proof-manifest.json not found at $proof_manifest_path"
+                fi
+            fi
             if [ "$queue_iter_mode" = "plan" ]; then
                 LAST_PLAN_COMMIT=$(git rev-parse HEAD 2>/dev/null || echo "")
             fi

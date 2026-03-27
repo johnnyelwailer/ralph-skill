@@ -3681,6 +3681,96 @@ exit 0
         $plan.cyclePosition | Should -Be 0
     }
 
+    It 'queue_override proof iteration emits proof_manifest_found when manifest is present' {
+        # Install a proof-aware fake provider that writes proof-manifest.json
+        $proofPs1 = Join-Path $fakeBinDir '_proof_provider.ps1'
+        [IO.File]::WriteAllText($proofPs1, @'
+$promptText = ($input | Out-String)
+if ($promptText -match 'Proof Mode') {
+    if ($promptText -match 'iter-(\d+)') {
+        $iterNum = $matches[1]
+        $artifactDir = Join-Path $PWD "../session/artifacts/iter-$iterNum"
+        if (-not (Test-Path $artifactDir)) { New-Item -ItemType Directory -Force $artifactDir | Out-Null }
+        "[]" | Set-Content (Join-Path $artifactDir 'proof-manifest.json')
+    }
+}
+Write-Output "Fake proof provider: ok"
+exit 0
+'@)
+        Set-Content (Join-Path $fakeBinDir 'claude.cmd') "@echo off`r`npwsh -NoProfile -File `"$proofPs1`" %*`r`n"
+        $shimPath = Join-Path $fakeBinDir 'claude'
+        [IO.File]::WriteAllText($shimPath, "$($script:shebang)/bin/sh`npwsh -NoProfile -File `"$proofPs1`" `"`$@`"`n")
+        if ($IsLinux -or $IsMacOS) { chmod +x $shimPath }
+
+        try {
+            $e = New-QueueEnv
+            Set-Content (Join-Path $e.QueueDir '10-proof.md') "---`nagent: proof`n---`n# Proof Mode`nCollect proof iter-{{ITERATION}}."
+
+            $result = Invoke-QueueLoop -Env $e -MaxIter 1
+            $result.ExitCode | Should -Be 0
+
+            $log = Get-Content $e.LogFile | ForEach-Object { $_ | ConvertFrom-Json }
+            $events = $log | ForEach-Object { $_.event }
+            $events | Should -Contain 'queue_override_complete'
+            $events | Should -Contain 'proof_manifest_found'
+            $events | Should -Not -Contain 'proof_manifest_missing'
+        }
+        finally {
+            # Restore default fake provider
+            $restorePs1 = Join-Path $fakeBinDir '_fake_provider.ps1'
+            Set-Content (Join-Path $fakeBinDir 'claude.cmd') "@echo off`r`npwsh -NoProfile -File `"$restorePs1`" %*`r`n"
+            $shimPath = Join-Path $fakeBinDir 'claude'
+            [IO.File]::WriteAllText($shimPath, "$($script:shebang)/bin/sh`npwsh -NoProfile -File `"$restorePs1`" `"`$@`"`n")
+            if ($IsLinux -or $IsMacOS) { chmod +x $shimPath }
+        }
+    }
+
+    It 'queue_override proof iteration emits proof_manifest_missing when manifest is absent' {
+        # Install a proof-aware fake provider that omits proof-manifest.json
+        $proofMissingPs1 = Join-Path $fakeBinDir '_proof_missing_provider.ps1'
+        [IO.File]::WriteAllText($proofMissingPs1, @'
+$promptText = ($input | Out-String)
+if ($promptText -match 'Proof Mode') {
+    if ($promptText -match 'iter-(\d+)') {
+        $iterNum = $matches[1]
+        $artifactDir = Join-Path $PWD "../session/artifacts/iter-$iterNum"
+        if (-not (Test-Path $artifactDir)) { New-Item -ItemType Directory -Force $artifactDir | Out-Null }
+        # intentionally omit proof-manifest.json
+    }
+}
+Write-Output "Fake proof-missing provider: ok"
+exit 0
+'@)
+        Set-Content (Join-Path $fakeBinDir 'claude.cmd') "@echo off`r`npwsh -NoProfile -File `"$proofMissingPs1`" %*`r`n"
+        $shimPath = Join-Path $fakeBinDir 'claude'
+        [IO.File]::WriteAllText($shimPath, "$($script:shebang)/bin/sh`npwsh -NoProfile -File `"$proofMissingPs1`" `"`$@`"`n")
+        if ($IsLinux -or $IsMacOS) { chmod +x $shimPath }
+
+        try {
+            $e = New-QueueEnv
+            Set-Content (Join-Path $e.QueueDir '11-proof-missing.md') "---`nagent: proof`n---`n# Proof Mode`nCollect proof iter-{{ITERATION}}."
+
+            $result = Invoke-QueueLoop -Env $e -MaxIter 1
+            $result.ExitCode | Should -Be 0
+
+            $log = Get-Content $e.LogFile | ForEach-Object { $_ | ConvertFrom-Json }
+            $events = $log | ForEach-Object { $_.event }
+            $events | Should -Contain 'queue_override_complete'
+            $events | Should -Contain 'proof_manifest_missing'
+            $events | Should -Not -Contain 'proof_manifest_found'
+            # proof_manifest_missing must not cause iteration_error
+            ($log | Where-Object { $_.event -eq 'iteration_error' }).Count | Should -Be 0
+        }
+        finally {
+            # Restore default fake provider
+            $restorePs1 = Join-Path $fakeBinDir '_fake_provider.ps1'
+            Set-Content (Join-Path $fakeBinDir 'claude.cmd') "@echo off`r`npwsh -NoProfile -File `"$restorePs1`" %*`r`n"
+            $shimPath = Join-Path $fakeBinDir 'claude'
+            [IO.File]::WriteAllText($shimPath, "$($script:shebang)/bin/sh`npwsh -NoProfile -File `"$restorePs1`" `"`$@`"`n")
+            if ($IsLinux -or $IsMacOS) { chmod +x $shimPath }
+        }
+    }
+
     It 'records queue-requests-opencode branch coverage evidence at >=80%' {
         $e = New-QueueEnv
 

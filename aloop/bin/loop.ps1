@@ -2147,6 +2147,8 @@ function Run-QueueIfPresent {
 
         try {
             $queuePromptContent = Get-Content -Path $queueItem.FullName -Raw
+            $queuePromptContent = Resolve-PromptPlaceholders -PromptContent $queuePromptContent -IterationNumber $iteration
+            New-Item -ItemType Directory -Path (Join-Path $artifactsDir "iter-$iteration") -Force | Out-Null
             Push-Location $WorkDir
             try {
                 $providerOutput = Invoke-Provider -ProviderName $queueIterProvider -PromptContent $queuePromptContent -ModelOverride ([string]$script:frontmatter.model)
@@ -2156,6 +2158,24 @@ function Run-QueueIfPresent {
             }
             Show-AgentSummary -ProviderName $queueIterProvider -ProviderOutput $providerOutput
             Update-ProviderHealthOnSuccess -ProviderName $queueIterProvider
+            if ($queueIterMode -eq 'proof') {
+                $script:lastProofIteration = $iteration
+                $proofManifestPath = Join-Path $artifactsDir "iter-$iteration/proof-manifest.json"
+                if (Test-Path $proofManifestPath) {
+                    Write-LogEntry -Event "proof_manifest_found" -Data @{
+                        iteration = $iteration
+                        path = $proofManifestPath
+                        last_proof_iteration = $script:lastProofIteration
+                    }
+                } else {
+                    Write-LogEntry -Event "proof_manifest_missing" -Data @{
+                        iteration = $iteration
+                        path = $proofManifestPath
+                        last_proof_iteration = $script:lastProofIteration
+                    }
+                    Write-Warning "proof-manifest.json not found at $proofManifestPath"
+                }
+            }
             if ($queueIterMode -eq 'plan') {
                 try {
                     $script:lastPlanCommit = (git rev-parse HEAD | Out-String).Trim()
