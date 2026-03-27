@@ -16,6 +16,9 @@
   (a) Starts a real aloop session with a proof-mode iteration
   (b) Checks `aloop log` events for `proof_manifest_found` (file present) and `proof_manifest_missing` (file absent, no iteration failure)
   without reading source code. (priority: high)
+  **QA iter-22 status**: Clean behavioral re-test attempted (QA_LOG.md iter-22). Behavioral tests PASS for artifacts/iter-N/, aloop update, pipeline.yml finalizer compilation. proof_manifest events BLOCKED — /tmp disk full (SIGABRT) prevented proof-phase execution. A new bug was found: allTasksMarkedDone=true at startup bypasses the finalizer (see [qa/P2] below). Gate 6 remains open until proof_manifest events verified in a session that reaches the finalizer.
+
+- [ ] [qa/P2] Loop exits as "completed" without running finalizer when all TODOs are done at session start: When `aloop start` is run on a project where `TODO.md` has all tasks marked `[x]`, the compiled `loop-plan.json` has `allTasksMarkedDone: true` and the loop immediately exits as "completed" without entering the finalizer or running the proof agent. Reproduced in qa-proof-final-1774617658-20260327-132110 and qa-proof-pipeline-1774617540-20260327-131927. Spec says "completion can only happen via finalizer." Filed at iter 22. (priority: medium)
 
 ### Completed
 
