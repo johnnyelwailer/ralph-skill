@@ -26,3 +26,4 @@
 - [x] [review] Gate 4: Dead import in `orchestrate.ts:19` — `import { createAdapter, type OrchestratorAdapter }` is present but neither symbol is used anywhere in the file (grep returns only the import line). Constitution Rule 13: no dead code. Remove the unused import. (priority: high)
 - [x] Remove dead import `createAdapter` from `process-requests.ts:16` — unused import violates Constitution Rule 13
 - [x] [qa/P1] index.test.ts "index CLI catches errors and prints clean messages without stack traces" fails consistently: test runs `aloop orchestrate --autonomy-level invalid` expecting `^Error: Invalid autonomy level: invalid` on stderr, but receives `ERR_MODULE_NOT_FOUND`. Pre-existing before this branch. 1/5 index tests fail. (priority: high) [reviewed: gates 1-9 pass]
+- [x] qa: final regression pass — all 9 gates confirmed at f16a53633 [reviewed: gates 1-9 pass]
