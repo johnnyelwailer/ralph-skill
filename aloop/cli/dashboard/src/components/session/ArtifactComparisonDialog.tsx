@@ -6,7 +6,7 @@ import { SideBySideView } from './SideBySideView';
 import { SliderView } from './SliderView';
 import { DiffOverlayView } from './DiffOverlayView';
 
-type ComparisonMode = 'side-by-side' | 'slider' | 'diff-overlay';
+export type ComparisonMode = 'side-by-side' | 'slider' | 'diff-overlay';
 
 export function ArtifactComparisonDialog({
   artifact, currentIteration, allManifests, onClose,

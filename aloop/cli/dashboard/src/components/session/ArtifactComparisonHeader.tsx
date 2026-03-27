@@ -1,6 +1,5 @@
 import type { ArtifactEntry } from '@/lib/types';
-
-type ComparisonMode = 'side-by-side' | 'slider' | 'diff-overlay';
+import type { ComparisonMode } from './ArtifactComparisonDialog';
 
 type ArtifactComparisonHeaderProps = {
   artifact: ArtifactEntry;
