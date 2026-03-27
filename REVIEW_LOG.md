@@ -293,6 +293,38 @@ None — no functional code changes in either commit.
 
 ---
 
+## Review — 2026-03-27 — commit aff2a82de..0bc016063
+
+**Verdict: PASS** (dist rebuild + QA tracking; all prior findings remain resolved)
+**Scope:** `aloop/cli/dist/index.js`, `aloop/cli/dist/bin/loop.sh`, `aloop/cli/dist/bin/loop.ps1`, `aloop/cli/dist/dashboard/`, `aloop/cli/dist/templates/`, `TODO.md`, `QA_COVERAGE.md`, `QA_LOG.md`
+
+### What Changed Since Last PASS
+
+- `19440428e`: Rebuilt dist artifacts via `npm run build` — restores `#!/usr/bin/env node` shebang on line 1 of `dist/index.js` and brings back `dist/dashboard/index.html`, `dist/bin/loop.sh`, `dist/bin/loop.ps1`, and all templates. Marks TODO rebuild task [x].
+- `0bc016063`: QA iter 8 — updated `QA_COVERAGE.md` with 2 new rows (shebang, dashboard); appended full command transcript to `QA_LOG.md` confirming all issue #176 acceptance criteria at HEAD.
+
+### Prior Findings Resolution
+
+All findings from prior PASS review remain resolved (no regressions from dist rebuild).
+
+### Observations
+
+- **Gate 5 (concrete):** `head -1 aloop/cli/dist/index.js` → `#!/usr/bin/env node`. QA agent ran packaged install via `npm pack`, executed `aloop --version` → `1.0.0`, and `aloop --help` — not just test output, actual binary execution. 38/38 adapter tests + 5/5 index tests confirmed passing at `19440428e`.
+- **Gate 6 (strong evidence):** QA_LOG.md iter 8 transcript includes binary installation and execution checks — goes beyond test pass counts. `grep -c 'api\.github\.com' dist/index.js → 0` confirms no URL hardcoding in built artifact.
+
+### Gates that Pass
+
+- **Gate 1:** No change to spec compliance posture. 2 ACs remain open (orchestrate.ts migration, LocalAdapter) — pre-existing, explicitly scoped out of this PR.
+- **Gate 2:** No new tests; existing 38/38 adapter + 5/5 index tests pass. N/A for dist/QA files.
+- **Gate 3:** No new code modules; dist is build output. N/A.
+- **Gate 4:** No dead code in dist rebuild. Minor: rebuild task sits in "In Progress" section with [x] rather than moved to "Completed" — cosmetic only, not a Constitution violation.
+- **Gate 5:** 1020/1103 total tests pass; 82 failures all pre-existing on master. type-check errors pre-existing in `gh.test.ts` and `process-requests.test.ts`. PASS.
+- **Gate 6:** QA_LOG.md iter 8 contains binary install + execution transcript with concrete outputs — valid proof for a dist artifact change.
+- **Gate 7:** N/A — dashboard HTML restored (same content), no layout changes.
+- **Gate 8:** No dependency changes.
+- **Gate 9:** No user-facing behavior or docs changes. Dist rebuild is internal.
+
+---
 ## Review — 2026-03-27 — commit 422521987..f16a53633
 
 **Verdict: PASS** (QA tracking commit only; all prior findings remain resolved)
