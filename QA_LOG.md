@@ -207,3 +207,54 @@ Fix required: replace all occurrences:
 - `sidebarCollapsed` → `!sidebarOpen`
 - `setSidebarCollapsed(!sidebarCollapsed)` → `toggleSidebar()`
 - `setSidebarCollapsed(false)` → `openSidebar()`
+
+## QA Session — 2026-03-27 (iteration 27)
+
+### Test Environment
+- Commit under test: 64b5223cc (chore: remove dead mobileSidebarRef from mobile drawer)
+- Build: `npm run build` in aloop/cli — SUCCESS (dist/index.js 612.4kb)
+- Unit tests: `npx vitest run` in aloop/cli/dashboard — 148 passed
+- E2E tests: `npx playwright test` in aloop/cli/dashboard — 11 passed
+
+### Test Targets
+1. smoke.spec.ts panel toggle tests (prev FAIL → re-test after Gate 5 fix)
+2. Dead code removal: mobileSidebarRef (Gate 4)
+3. Full E2E smoke + proof suite
+
+### Results
+- PASS: smoke.spec.ts:135 — mobile stacked layout (both panels visible)
+- PASS: smoke.spec.ts:147 — mobile tap targets 44x44px
+- PASS: All 5 proof.spec.ts tests (mobile hamburger, drawer, swipe, tablet, desktop)
+- PASS: All 148 unit tests
+- PASS: All 11 E2E tests
+
+### Bugs Filed
+None — all tests pass.
+
+### Command Transcript
+
+```
+$ cd aloop/cli && npm run build
+  dist/index.js  612.4kb ⚡ Done in 8ms
+  [build:shebang, build:templates, build:bin, build:agents all succeeded]
+
+$ cd aloop/cli/dashboard && npx vitest run
+  Test Files  20 passed (20)
+  Tests       148 passed (148)
+  Duration    2.59s
+
+$ cd aloop/cli/dashboard && npx playwright test --reporter=line
+  Running 11 tests using 2 workers
+  [1-11] all passed
+  11 passed (15.4s)
+```
+
+### Summary
+
+Gate 5 fix (commit 35ef8ced7) resolved the previously-failing smoke tests:
+- smoke:135 now asserts both panels are visible simultaneously on mobile (stacked layout)
+- smoke:147 checks tap targets for steer/send/stop controls instead of removed toggle buttons
+
+Gate 4 fix (commit 64b5223cc) removed the dead `mobileSidebarRef` — no regressions introduced.
+
+All 11 E2E tests and 148 unit tests are green. Issue #113 acceptance criteria are met.
