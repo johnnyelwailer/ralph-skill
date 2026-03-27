@@ -160,3 +160,35 @@
 - **Gate 10:** QA_COVERAGE.md current — 7 features tracked, 6 PASS / 1 FAIL (adapter LOC). Tracking reflects actual state.
 
 ---
+
+## Review — 2026-03-27 — commit 1446f4d35..265501b63
+
+**Verdict: PASS** (2 prior findings resolved; 2 observations)
+**Scope:** `aloop/cli/src/lib/adapter.ts`, `aloop/cli/src/lib/adapter-github.ts`, `aloop/cli/src/commands/process-requests.ts`, `QA_COVERAGE.md`, `QA_LOG.md`
+
+### Prior Findings Resolution
+
+- **Prior Gate 4 (adapter.ts LOC — RESOLVED):** `adapter.ts` split in `83b6b38e3`. `adapter.ts` is now 115 lines (interface + factory + re-export only). `GitHubAdapter` extracted to `adapter-github.ts` at 252 lines. Both files under 300 LOC threshold. Finding resolved.
+
+- **Prior Gate 4 (dead import in process-requests.ts — RESOLVED):** `import { createAdapter }` removed from `process-requests.ts` in `426dbd5ed`. Confirmed: `grep createAdapter src/commands/process-requests.ts` returns no output. Finding resolved.
+
+### Observations
+
+- **Gate 4 (clean split):** `adapter.ts` now serves purely as the interface + factory barrel — 115 lines, no implementation. `adapter-github.ts` imports types back from `adapter.js` and is self-contained at 252 lines. No circular dependency issues, no stray imports.
+
+- **Gate 5:** Full test suite at 1103 tests, 1020 pass, 82 fail — identical to prior iteration (82 pre-existing failures on master, unchanged). 38/38 adapter tests pass after the file split (`npx tsx --test src/lib/adapter.test.ts` => 38 pass, 0 fail). The `adapter.test.ts` imports from `./adapter.js` which re-exports `GitHubAdapter` from `adapter-github.js` — tests exercise all methods through the same surface.
+
+### Gates that Pass
+
+- **Gate 1:** No spec compliance regression. Open AC ("orchestrate.ts uses adapter interface") pre-exists; no new violations.
+- **Gate 2:** No test changes; 38/38 concrete-value tests unchanged.
+- **Gate 3:** Pure refactor (no new branches). Same 38 tests cover the same code paths in `adapter-github.ts`.
+- **Gate 4:** `adapter.ts` = 115 LOC, `adapter-github.ts` = 252 LOC — both under 300 LOC. No dead imports anywhere in changed files.
+- **Gate 5:** 1020/1103 pass; 82 failures are all pre-existing on master. Type-check errors all pre-existing (requests.ts/requests.test.ts, not touched by this iteration).
+- **Gate 6:** Purely internal refactor (file split + dead import removal). No observable output required; skipping proof is correct.
+- **Gate 7:** N/A — no UI changes.
+- **Gate 8:** No dependency changes.
+- **Gate 9:** No user-facing behavior changed; README/docs not affected.
+- **Gate 10:** QA_COVERAGE.md current — 9 features tracked, all 9 PASS. Coverage up from 7 to 9 features since last FAIL review.
+
+---
