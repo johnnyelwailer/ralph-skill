@@ -169,3 +169,35 @@ Branch where `staleIds.length > 0` but no issue matches: still untested. `change
 Internal plumbing, no proof required; no UI changes; no version changes; no doc-impacting behavior.
 
 ---
+
+## Review — 2026-03-27 — commit f0f56a228..70c4571f0
+
+**Verdict: FAIL** (0 new findings; Gates 2 and 3 carried from prior iterations)
+**Scope:** `aloop/cli/src/commands/dashboard.test.ts`, `aloop/cli/src/lib/scan-diagnostics.ts`, `aloop/cli/src/lib/scan-diagnostics.test.ts`
+
+### What the last build iterations fixed (PASS)
+
+- **Gate 4 (9c25d0537 then 7bb514de3):** Dead `now: () => Date` param removed from `writeDiagnosticsJson` — function signature, test callsites at lines 202 and 222 all updated. `SelfHealingDeps.now` is legitimately retained (used in `cleanStaleSessions:136` and `runSelfHealingAndDiagnostics:171`).
+- **Gate 5 (9c25d0537):** `makeDefaultRequestSpawnSync` in `dashboard.test.ts:34` now wraps the function body in parentheses and applies `as unknown as typeof spawnSync` cast. Resolves the `SpawnSyncReturns<string | NonSharedBuffer>` vs `SpawnSyncReturns<NonSharedBuffer>` overload mismatch. Standard and correct.
+
+### Gate 1 PASS
+
+Both fixes are spec-consistent. No deviation from spec in either change.
+
+### Gate 2 FAIL — 4 shallow assertions (carried, unchanged)
+
+None of the 4 open Gate 2 items were addressed by this iteration:
+- `scan-diagnostics.test.ts:86` — `assert.ok(result[0]!.hash.length > 0)` — existence check; should assert exact value `'child_failed:42:OOM error occurred'`
+- `scan-diagnostics.test.ts:212-213` — `.includes('child_failed')` / `.includes('5')` — substring checks; should assert exact `'Investigate child_failed for issue #5: OOM error occurred'`
+- `scan-diagnostics.test.ts:237-238` — `.includes('ALERT')` / `.includes('7')` — substring checks; should assert specific markdown section header and issue number in context
+- `scan-diagnostics.test.ts:416` — `assert.ok(written['/ses/diagnostics.json'])` — existence-only; should parse and assert array length, type, severity, and suggested_fix fields
+
+### Gate 3 FAIL — cleanStaleSessions branch coverage (carried, unchanged)
+
+`cleanStaleSessions` branch where `staleIds.length > 0` but no issue's `child_session` matches a stale ID: `changed` stays false, `orchestrator.json` not rewritten. Still no test for this path.
+
+### Gates 4, 5, 6, 7, 8, 9, 10 PASS
+
+Gate 4: no dead code remains after `now` param removal. Gate 5: `npm test` 0 failures, `tsc --noEmit` clean, `npm run build` clean. Gates 6-9: internal fixes, no proof/UI/version/doc changes. Gate 10: no `QA_COVERAGE.md` exists — passes by convention.
+
+---
