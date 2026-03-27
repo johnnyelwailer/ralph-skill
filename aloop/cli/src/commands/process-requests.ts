@@ -17,6 +17,8 @@ export { processCrResultFiles };
 import { EtagCache } from '../lib/github-monitor.js';
 import { deriveComponentLabels } from '../lib/labels.js';
 import { buildPrBody, ensureMetadataSection, buildIssueLabels } from '../lib/issue-metadata.js';
+import { runSelfHealingAndDiagnostics, type BlockerRecord } from '../lib/scan-diagnostics.js';
+import { createAdapter } from '../lib/adapter.js';
 
 // --- Orchestrator event system (data-driven from pipeline.yml) ---
 
