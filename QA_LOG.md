@@ -88,3 +88,55 @@ $ git stash && tsx --test src/commands/orchestrate.test.ts
 # pass 321 | fail 25  (same as on branch — pre-existing)
 $ git stash pop
 ```
+
+---
+
+## QA Session — 2026-03-27 iter 3 (issue #176)
+
+### Test Environment
+- Binary under test: N/A — dashboard deps not installed; tested via `tsx` directly
+- Commit under test: 426dbd5ed (latest)
+- Features tested: 4 (re-tests of previously FAIL + new fixes)
+
+### Results
+- PASS: adapter.ts LOC threshold — split into adapter.ts (115 LOC) + adapter-github.ts (252 LOC), both under 300 LOC threshold (previously FAIL at ae9830e8c with 350 LOC)
+- PASS: Dead import removal in process-requests.ts — grep returns no matches for createAdapter
+- PASS: All 38 adapter tests pass after file split
+- PASS: index CLI error handling — 5/5 tests pass (carry-over from iter 2)
+
+### Bugs Filed
+None — all previously-open findings resolved.
+
+### Command Transcript
+```
+# LOC check
+$ wc -l src/lib/adapter.ts src/lib/adapter-github.ts
+  115 src/lib/adapter.ts
+  252 src/lib/adapter-github.ts
+# Both under 300 LOC threshold ✓
+
+# Dead import check: process-requests.ts
+$ grep -n 'createAdapter\|OrchestratorAdapter' src/commands/process-requests.ts
+# (no output) ✓
+
+# Dead import check: orchestrate.ts
+$ grep -n 'createAdapter\|OrchestratorAdapter' src/commands/orchestrate.ts
+# (no output) ✓
+
+# Adapter unit tests after split
+$ node_modules/.bin/tsx --test src/lib/adapter.test.ts
+# tests 38 | pass 38 | fail 0 ✓
+
+# Build artifact — no hardcoded github.com API URLs
+$ node_modules/.bin/esbuild src/index.ts --bundle --platform=node --format=esm --packages=external --outfile=/tmp/aloop-qa-test.js
+$ grep -c 'https://github\.com/api\|https://api\.github\.com' /tmp/aloop-qa-test.js
+# 0 ✓
+
+# No createAdapter in built artifact (tree-shaken, not yet called from orchestrate.ts — expected)
+$ grep -c 'createAdapter\|OrchestratorAdapter' /tmp/aloop-qa-test.js
+# 0 ✓
+
+# Index CLI tests
+$ node_modules/.bin/tsx --test src/index.test.ts
+# tests 5 | pass 5 | fail 0 ✓
+```
