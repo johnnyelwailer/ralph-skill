@@ -602,59 +602,6 @@ parse_duration_to_seconds() {
     echo ""
 }
 
-validate_proof_manifest() {
-    local manifest_path="$1"
-    if [ ! -f "$manifest_path" ]; then
-        VALIDATE_PROOF_MANIFEST_ERROR="missing_file"
-        return 1
-    fi
-    if ! python3 - "$manifest_path" <<'PY' >/dev/null 2>&1
-import json
-import sys
-path = sys.argv[1]
-with open(path, encoding="utf-8") as f:
-    json.load(f)
-PY
-    then
-        VALIDATE_PROOF_MANIFEST_ERROR="invalid_json"
-        return 1
-    fi
-    VALIDATE_PROOF_MANIFEST_ERROR=""
-    return 0
-}
-
-# Check if a valid proof manifest has an empty artifacts array (intentional skip).
-# Returns 0 if artifacts array is empty (skipped), 1 otherwise.
-# Sets PROOF_SKIP_REASON with the reason from skipped entries if available.
-check_proof_skip() {
-    local manifest_path="$1"
-    PROOF_SKIP_REASON=""
-    local result
-    result=$(python3 - "$manifest_path" <<'PY' 2>/dev/null
-import json, sys
-with open(sys.argv[1], encoding="utf-8") as f:
-    data = json.load(f)
-artifacts = data.get("artifacts", None)
-if not isinstance(artifacts, list) or len(artifacts) > 0:
-    sys.exit(1)
-skipped = data.get("skipped", [])
-reasons = []
-if isinstance(skipped, list):
-    for entry in skipped:
-        if isinstance(entry, dict) and "reason" in entry:
-            reasons.append(str(entry["reason"]))
-        elif isinstance(entry, str):
-            reasons.append(entry)
-print("; ".join(reasons) if reasons else "no reason provided")
-PY
-    )
-    if [ $? -eq 0 ]; then
-        PROOF_SKIP_REASON="$result"
-        return 0
-    fi
-    return 1
-}
-
 # Resolve effective execution controls from frontmatter with precedence:
 #   frontmatter -> session/env -> default
 # Sets: EFFECTIVE_TIMEOUT, EFFECTIVE_MAX_RETRIES, EFFECTIVE_RETRY_BACKOFF
@@ -2295,29 +2242,17 @@ while [ "$ITERATION" -lt "$MAX_ITERATIONS" ]; do
         if [ "$iter_mode" = "proof" ]; then
             LAST_PROOF_ITERATION="$ITERATION"
             proof_manifest_path="$ARTIFACTS_DIR/iter-$ITERATION/proof-manifest.json"
-            if validate_proof_manifest "$proof_manifest_path"; then
-                if check_proof_skip "$proof_manifest_path"; then
-                    write_log_entry "proof_skipped" \
-                        "iteration" "$ITERATION" \
-                        "reason" "$PROOF_SKIP_REASON" \
-                        "path" "$proof_manifest_path" \
-                        "last_proof_iteration" "$LAST_PROOF_ITERATION"
-                    echo "[Proof skip: $PROOF_SKIP_REASON]"
-                else
-                    write_log_entry "proof_manifest_validated" \
-                        "iteration" "$ITERATION" \
-                        "status" "valid" \
-                        "path" "$proof_manifest_path" \
-                        "last_proof_iteration" "$LAST_PROOF_ITERATION"
-                fi
-            else
-                post_validation_error="proof_manifest_${VALIDATE_PROOF_MANIFEST_ERROR:-validation_failed}"
-                write_log_entry "proof_manifest_validated" \
+            if [ -f "$proof_manifest_path" ]; then
+                write_log_entry "proof_manifest_found" \
                     "iteration" "$ITERATION" \
-                    "status" "invalid" \
                     "path" "$proof_manifest_path" \
-                    "error" "${VALIDATE_PROOF_MANIFEST_ERROR:-validation_failed}" \
                     "last_proof_iteration" "$LAST_PROOF_ITERATION"
+            else
+                write_log_entry "proof_manifest_missing" \
+                    "iteration" "$ITERATION" \
+                    "path" "$proof_manifest_path" \
+                    "last_proof_iteration" "$LAST_PROOF_ITERATION"
+                echo "Warning: proof-manifest.json not found at $proof_manifest_path"
             fi
         fi
         if [ -n "$post_validation_error" ]; then

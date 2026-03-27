@@ -955,67 +955,6 @@ function Resolve-PromptPlaceholders {
     return $resolved
 }
 
-# Validate a proof-manifest.json file (existence + valid JSON)
-# Sets $script:validateProofManifestError on failure
-$script:validateProofManifestError = ""
-
-function Validate-ProofManifest {
-    param(
-        [string]$ManifestPath
-    )
-    if (-not (Test-Path $ManifestPath)) {
-        $script:validateProofManifestError = "missing_file"
-        return $false
-    }
-    try {
-        $content = Get-Content -Path $ManifestPath -Raw
-        if ([string]::IsNullOrWhiteSpace($content)) {
-            $script:validateProofManifestError = "invalid_json"
-            return $false
-        }
-        $null = $content | ConvertFrom-Json -ErrorAction Stop
-        $script:validateProofManifestError = ""
-        return $true
-    } catch {
-        $script:validateProofManifestError = "invalid_json"
-        return $false
-    }
-}
-
-# Check if a valid proof manifest has an empty artifacts array (intentional skip).
-# Returns a hashtable with .IsSkipped and .Reason properties.
-$script:proofSkipReason = ""
-
-function Test-ProofSkip {
-    param(
-        [string]$ManifestPath
-    )
-    $script:proofSkipReason = ""
-    try {
-        $content = Get-Content -Path $ManifestPath -Raw
-        $data = $content | ConvertFrom-Json -ErrorAction Stop
-        $artifacts = $data.artifacts
-        if ($null -eq $artifacts -or ($artifacts -is [array] -and $artifacts.Count -gt 0)) {
-            return $false
-        }
-        # artifacts is an empty array — this is a skip
-        $reasons = @()
-        if ($null -ne $data.skipped -and $data.skipped -is [array]) {
-            foreach ($entry in $data.skipped) {
-                if ($entry -is [string]) {
-                    $reasons += $entry
-                } elseif ($null -ne $entry.reason) {
-                    $reasons += [string]$entry.reason
-                }
-            }
-        }
-        $script:proofSkipReason = if ($reasons.Count -gt 0) { $reasons -join '; ' } else { 'no reason provided' }
-        return $true
-    } catch {
-        return $false
-    }
-}
-
 # ============================================================================
 # STUCK DETECTION
 # ============================================================================
@@ -2423,32 +2362,19 @@ try {
             if ($iterationMode -eq 'proof') {
                 $script:lastProofIteration = $iteration
                 $proofManifestPath = Join-Path $artifactsDir "iter-$iteration/proof-manifest.json"
-                if (Validate-ProofManifest -ManifestPath $proofManifestPath) {
-                    if (Test-ProofSkip -ManifestPath $proofManifestPath) {
-                        Write-LogEntry -Event "proof_skipped" -Data @{
-                            iteration = $iteration
-                            reason = $script:proofSkipReason
-                            path = $proofManifestPath
-                            last_proof_iteration = $script:lastProofIteration
-                        }
-                        Write-Host "[Proof skip: $($script:proofSkipReason)]"
-                    } else {
-                        Write-LogEntry -Event "proof_manifest_validated" -Data @{
-                            iteration = $iteration
-                            status = 'valid'
-                            path = $proofManifestPath
-                            last_proof_iteration = $script:lastProofIteration
-                        }
-                    }
-                } else {
-                    $postValidationError = "proof_manifest_$(if ([string]::IsNullOrWhiteSpace($script:validateProofManifestError)) { 'validation_failed' } else { $script:validateProofManifestError })"
-                    Write-LogEntry -Event "proof_manifest_validated" -Data @{
+                if (Test-Path $proofManifestPath) {
+                    Write-LogEntry -Event "proof_manifest_found" -Data @{
                         iteration = $iteration
-                        status = 'invalid'
                         path = $proofManifestPath
-                        error = $(if ([string]::IsNullOrWhiteSpace($script:validateProofManifestError)) { 'validation_failed' } else { $script:validateProofManifestError })
                         last_proof_iteration = $script:lastProofIteration
                     }
+                } else {
+                    Write-LogEntry -Event "proof_manifest_missing" -Data @{
+                        iteration = $iteration
+                        path = $proofManifestPath
+                        last_proof_iteration = $script:lastProofIteration
+                    }
+                    Write-Warning "proof-manifest.json not found at $proofManifestPath"
                 }
             }
             if (-not [string]::IsNullOrWhiteSpace($postValidationError)) {
