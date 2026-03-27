@@ -19,3 +19,35 @@
 
 - [~] Migrate `orchestrate.ts` to use adapter interface instead of raw `execGh` — spec file scope is `adapter.ts` + `adapter.test.ts` only; orchestrate.ts migration is a follow-on PR
 - [~] `LocalAdapter` (file-based backend) — not in this issue's spec
+
+---
+
+## Spec-Review — 2026-03-27
+
+### PASS gates
+
+- AC2 GitHubAdapter wraps `gh` CLI — PASS
+- AC3 No hardcoded `github.com` — `baseUrl` = `config.ghHost ?? GH_HOST ?? 'github.com'` — PASS
+- AC4 `createAdapter` factory — reads `config.type`, throws for unknown — PASS
+- AC5 Unit tests with mocked `gh` calls — 38/38 pass — PASS
+- AC6 GHE URLs via `GH_HOST` env or `ghHost` constructor param — PASS
+- LOC threshold — `adapter.ts` 115, `adapter-github.ts` 252, both under 300 — PASS
+
+### FAIL gates — interface shape deviates from TASK_SPEC.md spec
+
+**Missing methods (AC1):**
+
+- [review] `getPrComments(number, since?)` absent from interface and GitHubAdapter — TASK_SPEC.md requires it
+- [review] `getPrReviews(number)` absent from interface and GitHubAdapter — TASK_SPEC.md requires it
+
+**Signature mismatches (AC1):**
+
+- [review] `createIssue` returns `number`; spec requires `Promise<{ number: number; url: string }>`
+- [review] `closeIssue(issueNumber)` drops `reason: string` parameter required by spec
+- [review] `listIssues` renamed to `queryIssues`; spec names it `listIssues`
+- [review] `getIssueComments(number, since?)` renamed to `listComments(issueNumber)` — `since` param dropped
+- [review] `ensureLabelsExist(labels: string[])` renamed to `ensureLabelExists(label: string, opts?)` — spec requires plural form taking an array
+- [review] `getPrStatus` return type: spec `{ state, mergeable, checks[] }`, impl `{ mergeable: boolean, mergeStateStatus: string }` — missing `state` field and `checks` array
+- [review] `updateIssue` opts: spec requires `labelsAdd?` and `labelsRemove?` fields; impl has neither
+
+**Required fix:** Reconcile `OrchestratorAdapter` interface in `adapter.ts` with TASK_SPEC.md spec shape, then add missing method implementations to `GitHubAdapter` and corresponding tests.
