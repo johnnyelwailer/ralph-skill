@@ -140,3 +140,49 @@
 - No doc changes required for internal fix. P2 loop.sh help text gap (opencode provider missing, wrong round-robin default) is tracked in TODO.md as a spec-gap item.
 
 ---
+
+## Review — 2026-03-27 — commit 66f15d126..4cc6d7305
+
+**Verdict: FAIL** (3 findings → written to TODO.md as [review] tasks)
+**Scope:** `aloop/cli/dashboard/src/components/session/ActivityLog.tsx` (barrel), `ActivityPanel.tsx`, `LogEntryRow.tsx`, `ArtifactComparisonDialog.tsx`, `ActivityLog.test.tsx`, `AppView.tsx`
+
+**Commits reviewed:**
+- `a53963ea8` refactor: split ActivityLog.tsx into ActivityPanel, LogEntryRow, ArtifactComparisonDialog
+- `4cc6d7305` chore(qa): session iter 27 — ActivityLog split verified, 2 bugs filed
+
+**Prior findings resolution:**
+- Gate 4 (ActivityLog.tsx 616 lines): RESOLVED — ActivityLog.tsx is now a 5-line barrel re-export. ActivityPanel.tsx = 103 lines ✓, LogEntryRow.tsx = 287 lines ✗ (pre-existing P2 bug), ArtifactComparisonDialog.tsx = 219 lines ✗ (new finding).
+- Gate 3 (ActivityLog.test.tsx): RESOLVED in part — test file exists and covers ActivityPanel and LogEntryRow branches. One test is tautological (new finding).
+
+### Gate-by-gate summary
+
+**Gate 1 — Spec Compliance: PASS**
+- Both prior [review] tasks addressed: ActivityLog.tsx split complete, ActivityLog.test.tsx created. AppView.tsx updated to import/re-export from barrel (pattern intentional — used by tests like ArtifactViewer.test.tsx:5 and formatHelpers.test.tsx:10).
+
+**Gate 2 — Test Depth: FAIL**
+- `ActivityLog.test.tsx:158-177` test "suppresses synthetic entry when result timestamp >= iterationStartedAt" has a tautological assertion. The `screen.getByText(/2 events/)` assertion checks `deduped.length` (always 2 regardless of synthetic entry presence). With `iterationStartedAt = ts3 (now+200s)` and result timestamp `ts2 (now+100s)`, `ts2 < ts3` → `hasResult=false` → synthetic spinner IS added, but the test never calls `document.querySelector('.animate-spin')` to verify presence/absence. A broken `hasResult` guard that never suppressed would still pass this test.
+
+**Gate 3 — Coverage: FAIL**
+- `ActivityPanel.tsx`: well-covered by `ActivityLog.test.tsx` — deduped/withCurrent/hasResult branches all tested ✓
+- `LogEntryRow.tsx`: loadOutput success/non-ok/throw/null-iteration covered ✓
+- `ArtifactComparisonDialog.tsx` (219 lines, new module): 0% branch coverage. Uncovered: comparison mode switching (3-state tab click), keyboard ArrowLeft/ArrowRight on slider, baseline dropdown onChange with `Number(value)` parse, diff_percentage badge color branches (< 5 / 5-20 / ≥ 20), no-baseline fallback path.
+
+**Gate 4 — Code Quality: FAIL**
+- `ArtifactComparisonDialog.tsx` is 219 lines — violates Constitution Rule 7 (< 150 LOC). The prior review task estimated "~215 LOC" but the Constitution is non-negotiable. File needs further splitting into header/controls, side-by-side view, slider view, diff-overlay view.
+- `ActivityPanel.tsx` (103 lines), `ActivityLog.tsx` (5 lines barrel) ✓.
+- `LogEntryRow.tsx` (287 lines) — pre-existing P2 bug already tracked.
+- No dead code in new files. AppView.tsx re-exports are consumed by tests (ArtifactViewer.test.tsx, formatHelpers.test.tsx, etc.) — intentional pattern.
+
+**Gate 5 — Integration Sanity: PASS (unverified — cannot run in this environment)**
+- QA iter 27 commit message states "ActivityLog split verified." TypeScript clean per QA report.
+
+**Gate 6 — Proof: PASS**
+- Pure code reorganization (splitting one file into multiple). No new UI or visual behavior. Existing ActivityLog screenshots from iter 26/27 remain valid. Empty proof artifacts are the expected correct outcome.
+
+**Gate 7 — Layout: SKIP** (no CSS/layout changes)
+
+**Gate 8 — Versions: SKIP** (no dependency changes)
+
+**Gate 9 — Documentation: PASS** (no user-facing behavior changes)
+
+---
