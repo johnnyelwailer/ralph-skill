@@ -4,7 +4,7 @@
 
 ### In Progress
 - [x] [review] Gate 2+3: Add `SessionCard.test.tsx` — SessionCard.tsx has no unit tests. All other extracted components in this PR have test files (StatusDot.test.tsx, PhaseBadge.test.tsx, ElapsedTimer.test.tsx). Test the key branches: suppressClick=true skips onSelect and calls onClearSuppressClick; costUnavailable shows "Cost: unavailable" in tooltip; cardCost number formats correctly; stuckCount>0 shows red stuck line (priority: high)
-- [ ] [review] Gate 2+3: Add `SteerInput.test.tsx` — SteerInput.tsx has no unit tests. Test branches: isRunning=true renders Stop dropdown (not Resume); isRunning=false renders Resume button (not Stop); Send button disabled when steerInstruction is empty string; Send button disabled when steerSubmitting=true; Enter key without Shift calls onSteer (priority: high)
+- [x] [review] Gate 2+3: Add `SteerInput.test.tsx` — SteerInput.tsx has no unit tests. Test branches: isRunning=true renders Stop dropdown (not Resume); isRunning=false renders Resume button (not Stop); Send button disabled when steerInstruction is empty string; Send button disabled when steerSubmitting=true; Enter key without Shift calls onSteer (priority: high)
 - [ ] [review] Gate 6: Capture Playwright screenshots for all SessionCard stories (Running, Selected, WithCost, Exited, Stopped, ReviewPhase, PlanPhase, NoBranch, Stuck, CostUnavailable) and SteerInput stories (Idle, WithText, Sending, StopSubmitting, Paused, PausedWithText, ResumeSubmitting) and save to proof-artifacts/ — all prior extracted components have screenshots; these two are missing (priority: high)
 
 ### Up Next
