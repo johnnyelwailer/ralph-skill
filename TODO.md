@@ -1,4 +1,4 @@
-# Issue #38: CI: Add dashboard unit tests (vitest)
+# Issue #183: Dashboard Component Architecture Refactor
 
 ## Current Phase: Implementation
 
@@ -9,18 +9,36 @@ _(none)_
 _(none)_
 
 ### Completed
-- [x] Create `.github/workflows/ci.yml` with Node.js setup, dependency install, and a dashboard unit test step that runs `npm test` in `aloop/cli/dashboard/`
-- [x] Verify the workflow file is valid YAML and the test step references the correct working directory (`aloop/cli/dashboard`)
+- [x] Split ActivityLog.tsx into ActivityPanel, LogEntryRow, ArtifactComparisonDialog
+- [x] Split ArtifactComparisonDialog into focused sub-components (ArtifactComparisonHeader, DiffOverlayView, SideBySideView, SliderView)
+- [x] Deduplicate ComparisonMode type by exporting from ArtifactComparisonDialog
+- [x] Extract ImageLightbox and LogEntryExpandedDetails from LogEntryRow
+- [x] Remove dead prop isCurrentIteration from LogEntryRow
+- [x] Add unit tests for ImageLightbox and LogEntryExpandedDetails
 
 ### Spec-Gap Analysis
-- spec-gap analysis: no discrepancies found — spec fully fulfilled
-- All acceptance criteria verified: CI workflow runs `vitest run` via `npm test`, triggers on PRs to master, uses jsdom (no browser needed), excludes Playwright e2e tests
-- Tests pass locally: 87 tests, 2 test files
+
+**[spec-gap] P1: AppView.tsx remains 1299 LOC — spec requires <100 LOC**
+- Spec (SPEC-ADDENDUM.md §Dashboard Component Architecture): "`AppView.tsx` is reduced to <100 LOC (layout shell only)"
+- Code: `aloop/cli/dashboard/src/AppView.tsx` — 1299 lines
+- Suggested fix: Continue extracting components from AppView.tsx until it is a thin layout shell; the bulk of AppView.tsx logic has not been moved to focused components yet
+
+**[spec-gap] P2: Missing .test.tsx for 6 components**
+- Spec (SPEC-ADDENDUM.md): "Every component in `components/` has a corresponding `.test.tsx` file"
+- Missing tests: `ActivityPanel.tsx`, `ArtifactComparisonHeader.tsx`, `DiffOverlayView.tsx`, `LogEntryRow.tsx`, `SideBySideView.tsx`, `SliderView.tsx`
+- Suggested fix: Add unit tests for each of these components
+
+**[spec-gap] P2: Missing .stories.tsx for 10 components**
+- Spec (SPEC-ADDENDUM.md): "Every component in `components/` has a corresponding `.stories.tsx` file"
+- Missing stories: `ActivityPanel.tsx`, `ArtifactComparisonDialog.tsx`, `ArtifactComparisonHeader.tsx`, `DiffOverlayView.tsx`, `ImageLightbox.tsx`, `LogEntryExpandedDetails.tsx`, `LogEntryRow.tsx`, `ResponsiveLayout.tsx`, `SideBySideView.tsx`, `SliderView.tsx`
+- Suggested fix: Add Storybook stories for each of these components
+
+**[spec-gap] P3: LogEntryRow.tsx is 186 LOC (target ~150 LOC)**
+- Spec (SPEC-ADDENDUM.md): "Target: ~150 LOC per file. Files above 200 LOC should be split."
+- Code: `aloop/cli/dashboard/src/components/session/LogEntryRow.tsx` — 186 lines (within 200 LOC limit but over ~150 target)
+- Note: already flagged in QA commit (iter 70): "LogEntryRow still 186 LOC (bug filed)"
+- Suggested fix: Extract one more small concern from LogEntryRow to bring it under 150 LOC
 
 ### Notes
-- No `.github/workflows/` directory or `ci.yml` exists on master or this branch
-- The spec says "Dashboard deps should already be installed from the core workflow" but that core workflow hasn't been created yet — we need to include basic setup (checkout + Node + npm ci) so the dashboard test step can run
-- Vitest uses jsdom — no browser install needed
-- Do NOT include Playwright e2e tests
-- Dashboard tests are in `aloop/cli/dashboard/src/App.test.tsx`, config in `vitest.config.ts`
-- `npm test` maps to `vitest run` in dashboard's `package.json`
+- Issue #38 CI workflow (vitest) was previously completed and its tasks remain committed
+- The refactor is incremental — AppView.tsx still needs significant extraction work
