@@ -17,6 +17,7 @@ import {
 import { deriveComponentLabels } from '../lib/labels.js';
 import { buildPrBody } from '../lib/issue-metadata.js';
 import type { OrchestratorAdapter } from '../lib/adapter.js';
+import { createAdapter } from '../lib/adapter.js';
 
 export interface OrchestrateCommandOptions {
   spec?: string;
@@ -998,6 +999,17 @@ export async function orchestrateCommandWithDeps(
   const budgetCap = parseBudget(options.budget);
   const autonomyLevel = await resolveOrchestratorAutonomyLevel(options, homeDir, deps);
   const autoMergeToMain = await resolveAutoMerge(options, homeDir, deps);
+
+  // Instantiate adapter when a repo is configured and none is already provided
+  if (filterRepo && !deps.adapter) {
+    const { spawnSync: nodeSpawnSync } = await import('node:child_process');
+    const execGhFn = deps.execGh ?? (async (args: string[]) => {
+      const result = nodeSpawnSync('gh', args, { encoding: 'utf8' });
+      if (result.status !== 0) throw new Error(result.stderr ?? 'gh failed');
+      return { stdout: result.stdout, stderr: result.stderr };
+    });
+    deps = { ...deps, adapter: createAdapter({ type: 'github', repo: filterRepo }, execGhFn) };
+  }
 
   const now = deps.now();
   const timestamp = `${now.getUTCFullYear()}${String(now.getUTCMonth() + 1).padStart(2, '0')}${String(now.getUTCDate()).padStart(2, '0')}-${String(now.getUTCHours()).padStart(2, '0')}${String(now.getUTCMinutes()).padStart(2, '0')}${String(now.getUTCSeconds()).padStart(2, '0')}`;
