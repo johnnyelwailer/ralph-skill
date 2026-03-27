@@ -45,7 +45,7 @@ describe('App.tsx AppView integration coverage - app controls', () => {
     vi.stubGlobal('fetch', fetchMock);
 
     render(createElement(App));
-    await screen.findByRole('button', { name: /stop/i });
+    await screen.findByRole('button', { name: /stop loop options/i });
 
     const steerInput = screen.getByPlaceholderText('Steer...');
     expect(steerInput).toHaveClass('min-h-[44px]');
@@ -126,7 +126,7 @@ describe('App.tsx AppView integration coverage - app controls', () => {
     vi.stubGlobal('fetch', fetchMock);
 
     const { container } = render(createElement(App));
-    await screen.findByRole('button', { name: /stop/i });
+    await screen.findByRole('button', { name: /stop loop options/i });
 
     // On tablet viewport, sidebar starts closed. Ctrl+B opens it.
     fireEvent.keyDown(document, { key: 'b', ctrlKey: true });

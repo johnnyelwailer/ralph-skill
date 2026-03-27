@@ -3,18 +3,13 @@
 ## Current Phase: Issue #183 — Storybook 8 setup with react-vite and Tailwind decorators
 
 ### In Progress
-- [x] [review] Gate 2+3: Add `SessionCard.test.tsx` — SessionCard.tsx has no unit tests. All other extracted components in this PR have test files (StatusDot.test.tsx, PhaseBadge.test.tsx, ElapsedTimer.test.tsx). Test the key branches: suppressClick=true skips onSelect and calls onClearSuppressClick; costUnavailable shows "Cost: unavailable" in tooltip; cardCost number formats correctly; stuckCount>0 shows red stuck line (priority: high)
-- [x] [review] Gate 2+3: Add `SteerInput.test.tsx` — SteerInput.tsx has no unit tests. Test branches: isRunning=true renders Stop dropdown (not Resume); isRunning=false renders Resume button (not Stop); Send button disabled when steerInstruction is empty string; Send button disabled when steerSubmitting=true; Enter key without Shift calls onSteer (priority: high)
-- [x] [review] Gate 6: Capture Playwright screenshots for all SessionCard stories (Running, Selected, WithCost, Exited, Stopped, ReviewPhase, PlanPhase, NoBranch, Stuck, CostUnavailable) and SteerInput stories (Idle, WithText, Sending, StopSubmitting, Paused, PausedWithText, ResumeSubmitting) and save to proof-artifacts/ — all prior extracted components have screenshots; these two are missing (priority: high)
 
 ### Bugs
-- [ ] [qa/P1] Integration test ambiguous Stop button selector: `App.coverage.integration-app.test.ts` line 129 uses `screen.findByRole('button', { name: /stop/i })` which now matches two elements (StatusDot "Stopped" sr-only button + SteerInput "Stop loop options" button) after SteerInput extraction → test throws `Found multiple elements with the role "button" and name /stop/i` → should use a more specific query (e.g. `name: /stop loop/i` or `getByRole('button', { name: /stop loop options/i })`) to target only the SteerInput stop button. Tested at iter 25. (priority: high)
 
 ### Up Next
-- [x] [qa/P1] Extract `SessionCard` from AppView.tsx into `src/components/session/SessionCard.tsx` and write `SessionCard.stories.tsx` — SessionCard is currently an inner function at AppView.tsx:502 and cannot have isolated stories until extracted
-- [x] [qa/P1] Extract steer footer UI from AppView.tsx into `src/components/session/SteerInput.tsx` and write `SteerInput.stories.tsx` — the Footer inner function (AppView.tsx ~line 1651) contains the steer textarea + send/stop/resume buttons
-- [ ] [qa/P1] Extract activity log section from AppView.tsx into `src/components/session/ActivityLog.tsx` and write `ActivityLog.stories.tsx` — the log/terminal output panel is inline in AppView.tsx with no isolated component
-- [ ] [qa/P1] Extract session progress bar section from AppView.tsx into `src/components/session/ProgressBar.tsx` and write `ProgressBar.stories.tsx` — the progress bar section (AppView.tsx ~line 770) wraps `ui/progress.tsx` with session-specific data/layout
+- [x] [qa/P1] Fix integration test ambiguous Stop button selector — changed lines 48 and 129 of `App.coverage.integration-app.test.ts` from `screen.findByRole('button', { name: /stop/i })` to `{ name: /stop loop options/i }` targeting only the SteerInput stop button (priority: high)
+- [ ] [qa/P1] Extract activity log section from AppView.tsx into `src/components/session/ActivityLog.tsx` and write `ActivityLog.stories.tsx` — `ActivityPanel` is currently an exported function inside AppView.tsx (~line 993) and cannot have isolated stories until moved to its own file (priority: high)
+- [ ] [qa/P1] Extract session progress bar section from AppView.tsx into `src/components/session/ProgressBar.tsx` and write `ProgressBar.stories.tsx` — the progress bar section (AppView.tsx ~line 712) wraps `ui/progress.tsx` with session-specific data/layout inline (priority: high)
 
 ### Completed
 - [x] Add `storybook` and `build-storybook` scripts to `aloop/cli/dashboard/package.json`
@@ -25,3 +20,8 @@
 - [x] Run `npm install` in `aloop/cli/dashboard/` and fix any dependency resolution errors
 - [x] Run `npm run build-storybook` and confirm build completes successfully (confirmed 2026-03-27)
 - [x] Verify `npm run storybook` launches on port 6006 (build-check confirmed sufficient)
+- [x] [qa/P1] Extract `SessionCard` from AppView.tsx into `src/components/session/SessionCard.tsx` and write `SessionCard.stories.tsx`
+- [x] [qa/P1] Extract steer footer UI from AppView.tsx into `src/components/session/SteerInput.tsx` and write `SteerInput.stories.tsx`
+- [x] [review] Gate 2+3: Add `SessionCard.test.tsx` — key branches: suppressClick, costUnavailable, cardCost formatting, stuckCount>0 red line
+- [x] [review] Gate 2+3: Add `SteerInput.test.tsx` — key branches: isRunning Stop/Resume, Send disabled states, Enter key calls onSteer
+- [x] [review] Gate 6: Capture Playwright screenshots for all SessionCard and SteerInput stories and save to proof-artifacts/
