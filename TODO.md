@@ -4,6 +4,8 @@
 
 ### In Progress
 
+- [ ] [review] Gate 4: `loop.tests.ps1` — dead code in fake providers after test deletion. The `proof-invalid-manifest` scenario branch is now unreachable: line 91 (bash fake provider, `elif [ "$SCENARIO" = "proof-invalid-manifest" ]`) and line 751 (ps1 fake provider, `} elseif ($state.scenario -eq 'proof-invalid-manifest') {`). The only test that exercised this scenario (`'proof manifest validation fails proof iteration when JSON is invalid'`) was deleted in `fd4a70cfd`. Remove both branches from the fake providers. (priority: medium)
+
 - [x] [review] Gate 2/3/4: `loop.tests.ps1` not updated after refactor in `0ca241668`. Three categories of stale tests:
   (a) `Describe 'loop.ps1 — Validate-ProofManifest'` (loop.tests.ps1:434-490): tests a function that was deleted from loop.ps1 — BeforeAll will throw "Failed to locate Validate-ProofManifest in loop.ps1"
   (b) Integration tests at lines 250-297 and 1067-1092: assert `proof_manifest_validated` event (no longer emitted) and `iteration_error` with `proof_manifest_invalid_json` (no longer happens, missing manifest now only logs a warning)

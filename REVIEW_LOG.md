@@ -73,3 +73,37 @@ Gate 9: PASS — README, SPEC, SPEC-ADDENDUM have no stale references to removed
 Gate 10: CONDITIONAL — QA_COVERAGE.md shows 8 PASS / 10 features = 80%, but QA results derived from source inspection (Gate 6 FAIL invalidates QA evidence). If QA source-reading results are excluded, coverage is unverifiable. Not failing independently since the spec-gap finding is the root cause blocker.
 
 ---
+
+## Review — 2026-03-27 — commit 11739028f..b99c24992
+
+**Verdict: FAIL** (1 finding → written to TODO.md as [review] task)
+**Scope:** aloop/bin/loop.tests.ps1, SPEC.md, QA_COVERAGE.md, QA_LOG.md, TODO.md
+
+Summary of what changed since last review (11739028f):
+- `fd4a70cfd`: test: update loop.tests.ps1 for proof manifest existence-only check — addressed prior Gate 2/3/4 finding
+- `94604040f`: fix(spec): correct 9 stale references placing proof in continuous cycle — addressed prior spec-gap task
+- `b99c24992`: QA iter-22 behavioral re-test — addressed prior Gate 6 QA methodology finding (partially)
+
+Gate 1: PASS — Test changes correctly implement all 4 items in the review task spec: Validate-ProofManifest block deleted, proof_manifest_validated assertions replaced with proof_manifest_found, invalid-manifest failure tests replaced with proof_manifest_missing no-error tests, new events have dedicated coverage. SPEC.md corrections are internally consistent with authoritative design (lines 404, 407, 420).
+
+Gate 2: PASS — New tests assert specific, concrete values. `proof manifest found logs event details` (loop.tests.ps1:252/1003) checks `$found.iteration > 0` and `$found.last_proof_iteration == $found.iteration` — not just existence. `proof_manifest_missing does not cause iteration_error` (loop.tests.ps1:273/1024) asserts specific event count and confirms zero iteration_error entries.
+
+Gate 3: PASS — Both `proof_manifest_found` and `proof_manifest_missing` events now have coverage in bash (Sh-family, lines 252-289) and ps1 (lines 1003-1039) integration tests.
+
+Gate 4: **FAIL** — `loop.tests.ps1:91` (bash fake provider) and `loop.tests.ps1:751` (ps1 fake provider): `proof-invalid-manifest` scenario branches are now dead code. The only test that created an env with this scenario was deleted in `fd4a70cfd`. These branches can never execute.
+
+Gate 5: PASS — `npm test`: 1091 pass / 32 fail (same 32 pre-existing failures as prior reviews); `tsc --noEmit` clean; build succeeds.
+
+Gate 6: PASS (skip for fd4a70cfd and 94604040f — internal plumbing and doc fixes, no observable output). QA iter-22 (b99c24992) uses behavioral-only testing; methodology disclosed, minor `grep loop.sh` for event name lookup disclosed as not affecting PASS/FAIL conclusions. Remaining proof_manifest event verification is BLOCKED (environmental: /tmp disk full) — ongoing [review] task in TODO.md.
+
+Gate 7: SKIP — no UI/layout changes.
+
+Gate 8: SKIP — no dependency changes.
+
+Gate 9: PASS — SPEC.md corrections align spec with implementation. No user-facing behavioral docs or CLI commands changed.
+
+Gate 10: PASS — QA_COVERAGE.md: 7 PASS / 15 features = 46.7% > 30%. No stale [qa/P1] bugs (only [qa/P2] filed this iteration, not stale).
+
+Prior Gate 2/3/4 finding: RESOLVED. Prior Gate 6 finding: PARTIALLY addressed — behavioral re-test done for 3 of 5 features; proof_manifest events remain BLOCKED (environmental, not a code shortcut).
+
+---
