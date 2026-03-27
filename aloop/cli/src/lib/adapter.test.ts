@@ -386,6 +386,89 @@ describe('GitHubAdapter', () => {
     });
   });
 
+  describe('closePr', () => {
+    it('closes a PR without comment', async () => {
+      let calledArgs: string[] = [];
+      const execGh: GhExecFn = async (args) => { calledArgs = args; return { stdout: '', stderr: '' }; };
+      const adapter = new GitHubAdapter(config, execGh);
+      await adapter.closePr(8);
+      assert.deepEqual(calledArgs, ['pr', 'close', '8', '--repo', 'owner/repo']);
+    });
+
+    it('closes a PR with a comment', async () => {
+      let calledArgs: string[] = [];
+      const execGh: GhExecFn = async (args) => { calledArgs = args; return { stdout: '', stderr: '' }; };
+      const adapter = new GitHubAdapter(config, execGh);
+      await adapter.closePr(8, { comment: 'Closing: duplicate' });
+      assert.ok(calledArgs.includes('--comment'));
+      assert.ok(calledArgs.includes('Closing: duplicate'));
+    });
+  });
+
+  describe('getPrDiff', () => {
+    it('returns the diff output', async () => {
+      const execGh = mockGh({
+        'pr diff': { stdout: 'diff --git a/foo.ts b/foo.ts\n+const x = 1;\n', stderr: '' },
+      });
+      const adapter = new GitHubAdapter(config, execGh);
+      const diff = await adapter.getPrDiff(10);
+      assert.ok(diff.includes('+const x = 1;'));
+    });
+  });
+
+  describe('queryPrs', () => {
+    it('lists PRs and returns number + url', async () => {
+      const execGh = mockGh({
+        'pr list': {
+          stdout: JSON.stringify([
+            { number: 3, url: 'https://github.com/owner/repo/pull/3' },
+            { number: 4, url: 'https://github.com/owner/repo/pull/4' },
+          ]),
+          stderr: '',
+        },
+      });
+      const adapter = new GitHubAdapter(config, execGh);
+      const prs = await adapter.queryPrs();
+      assert.equal(prs.length, 2);
+      assert.equal(prs[0].number, 3);
+      assert.ok(prs[0].url.includes('/pull/3'));
+    });
+
+    it('passes head/base/state filters', async () => {
+      let calledArgs: string[] = [];
+      const execGh: GhExecFn = async (args) => {
+        calledArgs = args;
+        return { stdout: '[]', stderr: '' };
+      };
+      const adapter = new GitHubAdapter(config, execGh);
+      await adapter.queryPrs({ head: 'feat', base: 'main', state: 'open' });
+      assert.ok(calledArgs.includes('--head'));
+      assert.ok(calledArgs.includes('feat'));
+      assert.ok(calledArgs.includes('--base'));
+      assert.ok(calledArgs.includes('main'));
+      assert.ok(calledArgs.includes('--state'));
+      assert.ok(calledArgs.includes('open'));
+    });
+  });
+
+  describe('checkBranchExists', () => {
+    it('returns true when branch exists', async () => {
+      const execGh = mockGh({
+        'api repos': { stdout: 'feat-branch\n', stderr: '' },
+      });
+      const adapter = new GitHubAdapter(config, execGh);
+      const exists = await adapter.checkBranchExists('feat-branch');
+      assert.equal(exists, true);
+    });
+
+    it('returns false when branch does not exist', async () => {
+      const execGh: GhExecFn = async () => { throw new Error('HTTP 404'); };
+      const adapter = new GitHubAdapter(config, execGh);
+      const exists = await adapter.checkBranchExists('no-such-branch');
+      assert.equal(exists, false);
+    });
+  });
+
   describe('fetchBulkIssueState', () => {
     it('delegates to fetchBulkIssueState from github-monitor', async () => {
       const graphqlResponse = {
