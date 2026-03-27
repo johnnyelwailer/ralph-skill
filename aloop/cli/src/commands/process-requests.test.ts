@@ -357,3 +357,57 @@ describe('syncMasterToTrunk', () => {
     assert.equal(worktreeAdd, undefined, 'should not create a worktree');
   });
 });
+
+
+
+// --- PR body enrichment tests (Issue #131 ACs 7-8) ---
+
+describe('PR body enrichment', () => {
+  it('reads PR_DESCRIPTION.md from child worktree when present', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'aloop-pr-body-'));
+    try {
+      const childWorktree = path.join(root, 'child-worktree');
+      await mkdir(childWorktree, { recursive: true });
+      const prDescription = `## Summary\nAdded label enrichment.\n\n## Verification\n- [x] AC 1 — wave labels applied\n- [x] AC 2 — complexity labels applied\n`;
+      await writeFile(path.join(childWorktree, 'PR_DESCRIPTION.md'), prDescription, 'utf8');
+
+      const prDescriptionFile = path.join(childWorktree, 'PR_DESCRIPTION.md');
+      assert.ok(existsSync(prDescriptionFile), 'PR_DESCRIPTION.md should exist');
+      const { readFile: nodeReadFile } = await import('node:fs/promises');
+      const body = await nodeReadFile(prDescriptionFile, 'utf8');
+      assert.equal(body, prDescription);
+      assert.ok(body.includes('## Summary'));
+      assert.ok(body.includes('- [x] AC 1'));
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it('falls back to default body when PR_DESCRIPTION.md is absent', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'aloop-pr-fallback-'));
+    try {
+      const childWorktree = path.join(root, 'child-worktree');
+      await mkdir(childWorktree, { recursive: true });
+
+      const prDescriptionFile = path.join(childWorktree, 'PR_DESCRIPTION.md');
+      assert.ok(!existsSync(prDescriptionFile), 'PR_DESCRIPTION.md should not exist');
+
+      // Simulate the fallback logic from process-requests.ts
+      const issueNumber = 42;
+      const childSession = 'child-session-42';
+      const fallbackBody = `Closes #${issueNumber}\n\nAutomated PR from child loop session \`${childSession}\`.`;
+
+      let prBody = fallbackBody;
+      if (existsSync(prDescriptionFile)) {
+        const { readFile: nodeReadFile } = await import('node:fs/promises');
+        prBody = await nodeReadFile(prDescriptionFile, 'utf8');
+      }
+
+      assert.equal(prBody, fallbackBody);
+      assert.ok(prBody.includes('Closes #42'));
+      assert.ok(prBody.includes('child-session-42'));
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+});

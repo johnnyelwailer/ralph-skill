@@ -23,11 +23,20 @@ The orchestrator review is NOT a line-by-line code review (the child's own revie
 4. Evaluate each of the 5 review dimensions above.
 5. Write your verdict.
 
+## PR Description Verification
+
+If the PR body contains a **Verification** section with acceptance criteria checkboxes:
+- Scan for any criteria marked `- [ ]` (unchecked) or containing `NOT verified`.
+- If ANY acceptance criterion is listed as NOT verified, the verdict MUST be `request-changes`.
+- List each unverified criterion in your summary so the child loop knows exactly what to fix.
+- Only `approve` when all acceptance criteria are checked `- [x]` or explicitly verified.
+
 ## Rules
 
 - When in doubt, `request-changes`. It's cheaper to re-iterate than to revert a bad merge.
 - A PR that passes CI but violates the constitution is still rejected.
 - A PR without tests for new behavior is rejected.
 - A PR that implements something different from what the issue asked is rejected.
+- A PR whose body lists any acceptance criterion as NOT verified is rejected.
 - Provide actionable feedback — tell the child exactly what to fix, not just "this is wrong."
 - Keep summary concise but specific (2-5 sentences).
