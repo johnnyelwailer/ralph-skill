@@ -16,7 +16,6 @@ import {
 } from '../lib/github-monitor.js';
 import { deriveComponentLabels } from '../lib/labels.js';
 import { buildPrBody } from '../lib/issue-metadata.js';
-import { createAdapter, type OrchestratorAdapter } from '../lib/adapter.js';
 
 export interface OrchestrateCommandOptions {
   spec?: string;
