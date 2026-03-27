@@ -91,6 +91,54 @@ $ git stash pop
 
 ---
 
+## QA Session — 2026-03-27 iter 4 (issue #176)
+
+### Test Environment
+- Binary under test: N/A — dashboard deps not installed; tested via `tsx` directly
+- Commit under test: 5218a6cd5 (chore(review): PASS — gates 1-10 pass)
+- Features tested: 5 (final regression pass)
+
+### Results
+- PASS: adapter.test.ts — 38/38 tests pass at latest commit
+- PASS: adapter.ts LOC — 115 LOC (under 300 threshold)
+- PASS: adapter-github.ts LOC — 252 LOC (under 300 threshold)
+- PASS: No dead imports in orchestrate.ts or process-requests.ts
+- PASS: No hardcoded github.com API URLs in built artifact
+- PASS: index.test.ts — 5/5 tests pass
+
+### Bugs Filed
+None — all acceptance criteria verified at final commit.
+
+### Command Transcript
+```
+# Adapter unit tests
+$ node_modules/.bin/tsx --test src/lib/adapter.test.ts
+# tests 38 | pass 38 | fail 0 ✓
+
+# LOC check
+$ wc -l src/lib/adapter.ts src/lib/adapter-github.ts
+  115 src/lib/adapter.ts
+  252 src/lib/adapter-github.ts  ✓ both under 300
+
+# Dead import check
+$ grep -n 'createAdapter|OrchestratorAdapter' src/commands/orchestrate.ts src/commands/process-requests.ts
+# (no output) ✓
+
+# Build artifact checks
+$ node_modules/.bin/esbuild src/index.ts --bundle --platform=node --format=esm --packages=external --outfile=/tmp/aloop-qa-final.js
+# 482.8kb built
+$ grep -c 'https://github\.com/api|https://api\.github\.com' /tmp/aloop-qa-final.js
+# 0 ✓
+$ grep -c 'createAdapter|OrchestratorAdapter' /tmp/aloop-qa-final.js
+# 0 ✓
+
+# Index CLI tests
+$ node_modules/.bin/tsx --test src/index.test.ts
+# tests 5 | pass 5 | fail 0 ✓
+```
+
+---
+
 ## QA Session — 2026-03-27 iter 3 (issue #176)
 
 ### Test Environment
