@@ -244,3 +244,50 @@ None — all failing behaviors already tracked in TODO.md.
 # Test 5: --output json (no diagnostics)
 # Returns scan summary JSON without diagnostics field — still FAIL
 ```
+## QA Session — 2026-03-27 (issue-147 scan-diagnostics, re-test after now-param + TS-cast fixes)
+
+### Test Environment
+- Binary under test: `/tmp/aloop-test-install-7Bohdi/bin/aloop`
+- Version: `1.0.0`
+- Commit: `7bb514de3`
+- Temp dir: `/tmp/qa-test-qB9kLO`
+- Features tested: 4 (diagnostics.json writing after now-param removal, full test suite, non-existent dir error handling, --output json diagnostics)
+
+### Results
+- PASS: diagnostics.json writes correctly after `now` param removal — spec-compliant array, current_iteration=5, ALERT.md=YES, stuck=True — **still working**
+- PASS: test suite — 1153/1154 pass, 0 fail — **still passing** after both recent fixes
+- FAIL: non-existent session dir silently exits 0 — still open (re-confirmed at 7bb514de3)
+- FAIL: --output json does not include diagnostics/blocker summary — still open (re-confirmed at 7bb514de3)
+
+### Bugs Filed
+None — both FAILs already tracked in QA_COVERAGE.md; no new bugs this session.
+
+### Command Transcript
+
+```
+# Binary: /tmp/aloop-test-install-7Bohdi/bin/aloop  (7bb514de3)
+# Version: 1.0.0
+
+# Test 1: diagnostics.json writing (now param removed from writeDiagnosticsJson)
+# Run 1-5: process-requests on fresh session, loop-plan.json starts at iter=1
+# After run 5: loop-plan.json.iteration=6
+# blockers.json: [{hash: "no_progress:...", count: 5, firstSeenIteration: 1, lastSeenIteration: 5}]
+# diagnostics.json: [{type: "no_progress", current_iteration: 5, severity: "warning", ...}] ✓
+# ALERT.md: YES ✓, orchestrator.json stuck: True ✓
+
+# Test 2: Full test suite
+# npm test --prefix aloop/cli
+# 1153 pass, 0 fail, 1 skipped ✓
+
+# Test 3: Non-existent session dir
+# $ aloop process-requests --session-dir /tmp/nonexistent-dir-xyz-qa99
+# (no output)
+# Exit: 0  ← BUG — still unfixed
+
+# Test 4: --output json missing diagnostics
+# Run 5 iterations to trigger diagnostics, then:
+# $ aloop process-requests --session-dir $SESSION_DIR2 --output json
+# Returns: {iteration, triage, specQuestions, dispatched, queueProcessed, ...}
+# Missing: diagnostics key, blockers key  ← BUG — still unfixed
+```
+

@@ -9,9 +9,10 @@
 | process-requests: ALERT.md creation | 2026-03-27 | 82432eb7a | PASS | ALERT.md fires at count=5 (threshold) as spec requires — FIXED |
 | process-requests: stuck flag in orchestrator.json | 2026-03-27 | 8d0ee5afb | PASS | stuck: true written at count=5 — FIXED |
 | process-requests: error handling (missing session-dir) | 2026-03-27 | ea766e506 | PASS | exits 1 with clear error when --session-dir not provided |
-| process-requests: error handling (non-existent dir) | 2026-03-27 | aca3bd052 | FAIL | silently exits 0 when session dir does not exist — still unfixed |
+| process-requests: error handling (non-existent dir) | 2026-03-27 | 7bb514de3 | FAIL | silently exits 0 when session dir does not exist — still unfixed |
 | process-requests: JSON output mode | 2026-03-27 | ea766e506 | PASS | --output json works, returns scan summary |
-| process-requests: diagnostics in JSON output | 2026-03-27 | aca3bd052 | FAIL | --output json does not include diagnostics/blocker summary — still unfixed |
+| process-requests: diagnostics in JSON output | 2026-03-27 | 7bb514de3 | FAIL | --output json does not include diagnostics/blocker summary — still unfixed |
 | process-requests: blockers.json backward compat ({} init) | 2026-03-27 | e67019313 | PASS | {} is now coerced to [] — no TypeError, blockers.json correctly initialized as array — FIXED |
-| test suite (17 pre-existing regressions) | 2026-03-27 | aca3bd052 | PASS | 1153/1154 tests pass, 0 fail — all 17 regressions fixed by e45ac895d |
+| test suite (now param removal + TS cast) | 2026-03-27 | 7bb514de3 | PASS | 1153/1154 tests pass, 0 fail — writeDiagnosticsJson now param removed + type cast both pass |
+| process-requests: diagnostics.json writing (now param removed) | 2026-03-27 | 7bb514de3 | PASS | diagnostics.json still written correctly after unused now param removed from writeDiagnosticsJson |
 | label auto-creation adapter | 2026-03-27 | ea766e506 | SKIP | gh CLI blocked by aloop PATH hardening in test environment; cannot test without real GitHub access |
