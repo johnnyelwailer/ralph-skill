@@ -4,11 +4,7 @@
 
 ### In Progress
 
-- [x] [review] Gate 5: `proof.spec.ts:149` FAIL — desktop Sidebar missing `isDesktop={isDesktop}` prop at AppView.tsx:2509; "Collapse sidebar" button is visible at desktop viewport when it must be hidden. Add `isDesktop={isDesktop}` to the Sidebar at line 2509. (priority: high)
-
-- [x] [review] Gate 4/5: `handleTouchStart`/`handleTouchEnd` (AppView.tsx:2211-2225) are defined but never attached to any JSX element — swipe-right-to-open gesture is completely broken (`proof.spec.ts:103` fails). Two fixes required: (1) attach `onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}` to the root `<div>` at AppView.tsx:2505; (2) fix `handleTouchEnd` to call `setMobileMenuOpen(true)` instead of `openSidebar()` — the mobile drawer renders on `mobileMenuOpen` state, not `sidebarOpen`, so `openSidebar()` never shows the drawer. (priority: high)
-
-- [ ] [review] Gate 5: `smoke.spec.ts:135` and `smoke.spec.ts:154` reference removed panel toggle buttons ('Documents', 'Activity') that no longer exist — both tests fail. Update these tests to match the new always-visible stacked-panel layout: remove assertions on toggle buttons, assert that both panels are visible simultaneously on mobile, and remove the 44px tap-target assertions for the removed toggles. (priority: high)
+- [x] [review] Gate 5: `smoke.spec.ts:135` and `smoke.spec.ts:154` reference removed panel toggle buttons ('Documents', 'Activity') that no longer exist — both tests fail. Update these tests to match the new always-visible stacked-panel layout: remove assertions on toggle buttons, assert that both panels are visible simultaneously on mobile, and remove the 44px tap-target assertions for the removed toggles. (priority: high)
 
 - [ ] [review] Gate 4: `mobileSidebarRef` (AppView.tsx:2199) is declared with `useRef<HTMLDivElement>(null)` and attached to the mobile drawer div, but the ref value is never read anywhere — dead code. Remove the ref declaration and the `ref={mobileSidebarRef}` prop from AppView.tsx:2515. (priority: low)
 
@@ -40,6 +36,8 @@
 
 ### Completed
 
+- [x] [review] Gate 5: `proof.spec.ts:149` FAIL — desktop Sidebar missing `isDesktop={isDesktop}` prop at AppView.tsx:2509; "Collapse sidebar" button is visible at desktop viewport when it must be hidden. Fixed: added `isDesktop={isDesktop}` to the Sidebar at line 2509.
+- [x] [review] Gate 4/5: `handleTouchStart`/`handleTouchEnd` were defined but never attached — swipe-right-to-open gesture was broken. Fixed: attached touch handlers to root `<div>`, changed `handleTouchEnd` to call `setMobileMenuOpen(true)`.
 - [x] Responsive layout: panels stack vertically on mobile, side-by-side at tablet/desktop (`flex-col` → `sm:flex-row` / `lg:flex-row`)
 - [x] Mobile hamburger menu: sidebar collapses to drawer overlay on mobile (`hidden md:flex` sidebar + `mobileMenuOpen` drawer)
 - [x] 44px minimum tap targets on mobile (`min-h-[44px] min-w-[44px] md:min-h-0 md:min-w-0`)

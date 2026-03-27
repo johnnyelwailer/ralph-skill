@@ -132,23 +132,16 @@ test('layout at 1920x1080 shows all three columns', async ({ page }) => {
   }
 });
 
-test('layout at 375x667 (mobile) shows only one panel and mobile menu', async ({ page }) => {
+test('layout at 375x667 (mobile) stacks both panels and hides sidebar', async ({ page }) => {
   await page.setViewportSize({ width: 375, height: 667 });
   await page.goto('/');
 
   // Sidebar should be hidden
   await expect(page.locator('aside')).not.toBeVisible();
-  
-  // Documents should be visible by default
+
+  // Both panels should be visible simultaneously in the stacked layout
   await expect(page.getByRole('heading', { name: 'Documents' })).toBeVisible();
-  
-  // Activity should be hidden on mobile by default (it has hidden lg:flex)
-  await expect(page.getByRole('heading', { name: 'Activity' })).not.toBeVisible();
-  
-  // Toggle to Activity via mobile menu button
-  await page.getByRole('button', { name: 'Activity' }).click();
   await expect(page.getByRole('heading', { name: 'Activity' })).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Documents' })).not.toBeVisible();
 });
 
 test('layout at 390x844 (mobile) keeps key controls at minimum 44x44 tap size', async ({ page }) => {
@@ -156,8 +149,6 @@ test('layout at 390x844 (mobile) keeps key controls at minimum 44x44 tap size', 
   await page.goto('/');
 
   await assertMinTapTarget(page.getByRole('button', { name: 'Toggle sidebar' }), 'Toggle sidebar button');
-  await assertMinTapTarget(page.getByRole('button', { name: 'Documents' }), 'Documents panel toggle');
-  await assertMinTapTarget(page.getByRole('button', { name: 'Activity' }), 'Activity panel toggle');
   await assertMinTapTarget(page.getByPlaceholder('Steer...'), 'Steer textarea');
 
   const footerButtons = page.locator('footer button');
