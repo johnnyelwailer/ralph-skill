@@ -6,7 +6,7 @@
 
 ### Up Next
 - [x] [qa/P1] Extract `SessionCard` from AppView.tsx into `src/components/session/SessionCard.tsx` and write `SessionCard.stories.tsx` — SessionCard is currently an inner function at AppView.tsx:502 and cannot have isolated stories until extracted
-- [ ] [qa/P1] Extract steer footer UI from AppView.tsx into `src/components/session/SteerInput.tsx` and write `SteerInput.stories.tsx` — the Footer inner function (AppView.tsx ~line 1651) contains the steer textarea + send/stop/resume buttons
+- [x] [qa/P1] Extract steer footer UI from AppView.tsx into `src/components/session/SteerInput.tsx` and write `SteerInput.stories.tsx` — the Footer inner function (AppView.tsx ~line 1651) contains the steer textarea + send/stop/resume buttons
 - [ ] [qa/P1] Extract activity log section from AppView.tsx into `src/components/session/ActivityLog.tsx` and write `ActivityLog.stories.tsx` — the log/terminal output panel is inline in AppView.tsx with no isolated component
 - [ ] [qa/P1] Extract session progress bar section from AppView.tsx into `src/components/session/ProgressBar.tsx` and write `ProgressBar.stories.tsx` — the progress bar section (AppView.tsx ~line 770) wraps `ui/progress.tsx` with session-specific data/layout
 
