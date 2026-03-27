@@ -3,7 +3,7 @@
 ## Current Phase: Implementation
 
 ### In Progress
-_(none)_
+- [ ] [review] Gate 3: `LogEntryExpandedDetails.tsx` — 4 uncovered branches in new module (≥90% required): (1) `hasOutput=true, outputLoading=true` → loading spinner never tested; (2) `hasOutput=true, outputLoading=false, outputText` non-empty → output text display never tested; (3) `hasOutput=true, outputLoading=false, outputText=''` → "No output available" message never tested; (4) `tokens_cache_read > 0` → cache line display branch never tested. Add test cases for these 4 branches in `LogEntryExpandedDetails.test.tsx` (priority: high)
 
 ### Up Next
 _(none)_
