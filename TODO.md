@@ -10,7 +10,7 @@
 - [x] [review/Gate2] `scan-diagnostics.test.ts:212-213` — Rewrite substring checks `suggested_fix.includes('child_failed')` and `suggested_fix.includes('5')` to assert exact value `'Investigate child_failed for issue #5: OOM error occurred'` — the old `suggested_actions` check was replaced but the new assertions are equally shallow (priority: medium)
 - [x] [review/Gate2] `scan-diagnostics.test.ts` (`runSelfHealingAndDiagnostics: missing diagnostics_blocker_threshold defaults to 5`) — Rewrite `assert.ok(written['/ses/diagnostics.json'])` to parse and assert content: verify array length, type, severity, and suggested_fix fields — existence-only check doesn't verify output is correct (priority: medium)
 - [x] [review/Gate2] `scan-diagnostics.test.ts:237-238` — Rewrite `assert.ok(...includes('ALERT'))` and `includes('7')` to assert specific markdown section header and issue number in proper context (priority: medium)
-- [x] [review/Gate3] `scan-diagnostics.ts:cleanStaleSessions` — Add test for the branch where `staleIds.length > 0` but no issue in `orchState.issues` has a matching `child_session` — `changed` stays false and `orchestrator.json` is NOT rewritten (priority: medium)
+- [x] [review/Gate3] `scan-diagnostics.ts:cleanStaleSessions` — Add test for the branch where `staleIds.length > 0` but no issue in `orchState.issues` has a matching `child_session` — `changed` stays false and `orchestrator.json` is NOT rewritten (priority: medium) [reviewed: gates 1-9 pass]
 - [ ] Add dashboard integration to read and display `diagnostics.json` (priority: medium)
 - [ ] Add `no_progress` escalation: pause loop after N consecutive no-progress scans (write `state: paused` to status.json per SPEC-ADDENDUM.md:1050) (priority: low)
 

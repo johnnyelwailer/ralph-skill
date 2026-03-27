@@ -1,5 +1,45 @@
 # Review Log
 
+## Review — 2026-03-27 — commit fd0186e95..e8cf657e0
+
+**Verdict: PASS** (all prior findings resolved; gates 1-9 pass)
+**Scope:** `aloop/cli/src/lib/scan-diagnostics.test.ts` (assertion strengthening + new coverage test)
+
+### Prior findings resolved
+
+All 5 open items from the last FAIL review (fd0186e95) are confirmed fixed:
+
+- **Gate 2 (4 items):**
+  - `scan-diagnostics.test.ts:86`: `assert.ok(result[0]!.hash.length > 0)` → `assert.equal(result[0]!.hash, 'child_failed:42:OOM error occurred')` — exact value, matches `hashBlocker` output ✓
+  - `scan-diagnostics.test.ts:212`: `.includes('child_failed')` / `.includes('5')` → `assert.equal(parsed[0]!.suggested_fix, 'Investigate child_failed for issue #5: OOM error occurred')` — exact value, matches `writeDiagnosticsJson` template ✓
+  - `scan-diagnostics.test.ts:236-237`: `.includes('ALERT')` / `.includes('7')` → `.includes('# ALERT: Persistent Blockers Detected')` / `.includes('## child_failed (issue 7)')` — specific section headers matching `writeAlertMd` output exactly ✓
+  - `scan-diagnostics.test.ts:459-464`: existence-only → adds `diag.length === 1`, `type === 'child_failed'`, `severity === 'warning'`, `suggested_fix === 'Investigate child_failed for issue #1: err'` — all concrete values ✓
+
+- **Gate 3:** New test `runSelfHealingAndDiagnostics: stale session with no matching child_session does not rewrite orchestrator.json` (lines 292-334): verifies `active.json` is cleaned (stale entry removed) but `orchestrator.json` is NOT written when no issue's `child_session` matches any stale ID. Correctly exercises the `changed = false` path in `cleanStaleSessions`. ✓
+
+### Gate 1 — PASS
+
+No production code changed. All prior spec-compliance work (threshold=5, array schema, stuck:true, ALERT.md at N=threshold, stale session cleanup) remains in place and correct per SPEC-ADDENDUM.md §1041-1064.
+
+### Gate 2 — PASS
+
+All 4 prior shallow assertions replaced with exact/specific values. New test at line 459 also uses concrete assertions. No new shallow patterns introduced. A broken `hashBlocker`, `writeDiagnosticsJson`, or `writeAlertMd` implementation would actually fail these tests.
+
+### Gate 3 — PASS
+
+`cleanStaleSessions` no-match branch now covered. The test setup (two issues with mismatched `child_session` values) correctly isolates the branch where `staleIds.length > 0` but `changed` stays false.
+
+### Gates 4, 5, 6, 7, 8, 9 — PASS
+
+- Gate 4: No dead code. Test helper `makeState` / `makePassResult` are existing fixtures — no new dead code.
+- Gate 5: 1155 tests, 1154 pass, 0 fail (1 skip is a pre-existing copilot provider skip unrelated to this change). `tsc --noEmit` clean.
+- Gate 6: Internal test-only changes. No proof artifacts needed; skipping with empty artifacts is correct.
+- Gate 7: No UI changes.
+- Gate 8: No dependency changes.
+- Gate 9: No user-facing behavior changes.
+
+---
+
 ## Review — 2026-03-27 — commit 717c9799b..0ae809cbd
 
 **Verdict: FAIL** (1 new finding; Gates 2, 3, 4 still open from prior iterations)
