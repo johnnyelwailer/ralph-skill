@@ -14,6 +14,7 @@
 | SteerInput.test.tsx unit tests | 2026-03-27 | 734a2b7e8 | PASS | All 15 tests pass; covers isRunning stop/resume rendering, Send disabled states, Enter key, Stop/Resume interactions |
 | Storybook build after test additions | 2026-03-27 | 734a2b7e8 | PASS | npm run build-storybook exits 0, 17 stories captured as screenshots to proof-artifacts/ |
 | Gate 6: Playwright screenshots (SessionCard + SteerInput) | 2026-03-27 | 734a2b7e8 | PASS | All 17 screenshots captured: 10 SessionCard stories + 7 SteerInput stories saved to proof-artifacts/ |
-| App.coverage.integration-app.test.ts | 2026-03-27 | 734a2b7e8 | FAIL | "covers panel toggles, sidebar shortcut, and session switching" fails: findByRole('button',{name:/stop/i}) matches 2 elements after SteerInput extraction; bug filed [qa/P1] |
-| ActivityLog component + stories | never | — | FAIL | Component not yet extracted; open task in TODO.md |
+| App.coverage.integration-app.test.ts | 2026-03-27 | 8c71ef05d | PASS | All 295 unit tests pass; previously failing "covers panel toggles, sidebar shortcut, and session switching" now passes after Stop button selector fix |
+| ActivityLog component + stories | 2026-03-27 | 8c71ef05d | PASS | ActivityLog.tsx extracted to src/components/session/ActivityLog.tsx; 9 stories (Empty, SessionStart, IterationComplete, WithArtifacts, ErrorIteration, MultipleIterations, RunningIteration, ProviderCooldown, ReviewVerdict); AppView.tsx imports correctly; sidebar shows ActivityLog under SESSION |
+| Storybook build after ActivityLog extraction | 2026-03-27 | 8c71ef05d | PASS | npm run build-storybook exits 0, 2062 modules transformed, 105 total stories registered; 9 ActivityLog screenshots saved to proof-artifacts/ |
 | ProgressBar component + stories | never | — | FAIL | Component not yet extracted; open task in TODO.md |

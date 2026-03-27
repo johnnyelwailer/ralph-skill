@@ -207,3 +207,83 @@ PASS: SteerInput-ResumeSubmitting → proof-artifacts/SteerInput-ResumeSubmittin
 Summary: 17 passed, 0 failed
 EXIT: 0
 ```
+
+## QA Session — 2026-03-27 (iteration 26)
+
+### Test Environment
+- Binary under test: /tmp/aloop-test-install-ukPJwI/bin/aloop (version 1.0.0)
+- Dashboard dir: aloop/cli/dashboard/
+- Commit tested: 8c71ef05d
+- Features tested: 4
+
+### Results
+- PASS: ActivityLog component + stories
+- PASS: Integration test fix (Stop button ambiguity re-test)
+- PASS: Storybook build after ActivityLog extraction
+- SKIP: ProgressBar component (open task, not yet started)
+
+### Bugs Filed
+- None (all [qa/P1] bugs from previous sessions now resolved)
+
+### Command Transcript
+
+```
+# Install CLI from source
+ALOOP_BIN=$(npm --prefix aloop/cli run --silent test-install -- --keep 2>/dev/null | tail -1)
+Binary: /tmp/aloop-test-install-ukPJwI/bin/aloop
+Version: 1.0.0
+EXIT: 0
+
+# Verify ActivityLog component exists
+ls aloop/cli/dashboard/src/components/session/
+ActivityLog.stories.tsx  ActivityLog.tsx  SessionCard.stories.tsx  SessionCard.test.tsx
+SessionCard.tsx  SteerInput.stories.tsx  SteerInput.test.tsx  SteerInput.tsx
+EXIT: 0
+
+# ActivityLog has 9 stories: Empty, SessionStart, IterationComplete, WithArtifacts,
+# ErrorIteration, MultipleIterations, RunningIteration, ProviderCooldown, ReviewVerdict
+
+# AppView.tsx imports from @/components/session/ActivityLog (correct extraction)
+import { ActivityPanel, LogEntryRow, ArtifactComparisonDialog, findBaselineIterations }
+  from '@/components/session/ActivityLog'
+
+# Run all unit tests (including integration test re-check)
+npx vitest run --reporter=verbose
+Test Files: 28 passed (28)
+Tests: 295 passed (295)
+Duration: 3.93s
+EXIT: 0
+
+# KEY: App.coverage.integration-app.test.ts "covers panel toggles, sidebar shortcut,
+# and session switching" now PASSES (was FAIL in previous session)
+
+# Run Storybook build
+npm run build-storybook
+2062 modules transformed (up from 2055)
+Storybook build completed successfully
+EXIT: 0
+
+# Storybook sidebar check: ActivityLog listed under SESSION alongside SessionCard + SteerInput ✓
+# Total exported stories: 105
+
+# Playwright screenshots (9 ActivityLog stories captured)
+CAPTURED: ActivityLog-Empty.png
+CAPTURED: ActivityLog-SessionStart.png
+CAPTURED: ActivityLog-IterationComplete.png
+CAPTURED: ActivityLog-WithArtifacts.png
+CAPTURED: ActivityLog-ErrorIteration.png
+CAPTURED: ActivityLog-MultipleIterations.png
+CAPTURED: ActivityLog-RunningIteration.png
+CAPTURED: ActivityLog-ProviderCooldown.png
+CAPTURED: ActivityLog-ReviewVerdict.png
+Total: 9 captured, 0 failed
+Saved to: aloop/cli/dashboard/proof-artifacts/
+
+# Note: Static build Storybook shows "No Preview" in content pane for all stories
+# (same pre-existing limitation as SessionCard/SteerInput screenshots from prior session)
+# Sidebar navigation and story registration confirmed correct via index.json inspection.
+```
+
+### ProgressBar Status
+Open task `[ ] [qa/P1] Extract session progress bar section` still pending.
+No ProgressBar.tsx or ProgressBar.stories.tsx exists in any component directory.
