@@ -293,6 +293,50 @@ None — no functional code changes in either commit.
 
 ---
 
+## Review — 2026-03-27 — commit 104477ef6..838c85a7f (spec-review trigger)
+
+**Verdict: FAIL** (Gate 1 — interface shape deviates from TASK_SPEC.md; 9 [review] tasks remain unresolved in TODO.md from prior FAIL commit 838c85a7f)
+**Scope:** `aloop/cli/src/lib/adapter.ts`, `aloop/cli/src/lib/adapter-github.ts`, `README.md`, `TODO.md`
+
+### What Changed Since Last REVIEW_LOG Entry (`422521987..f16a53633`)
+
+- `0e62a93db`: QA final regression pass (tracking only)
+- `806ab6c09`: Dist rebuild — shebang and dashboard restored
+- `e736c4f0c`, `779efdc5e`: PASS review commits (REVIEW_LOG not updated in those commits — gap in log)
+- `6f1f3a8cc`: TODO.md cleanup — reformatted to "Completed / Out of Scope"; no code changes
+- `8814903c5`: README.md — fixed interface method count (18→19), clarified OpenCode provider
+- `838c85a7f`: FAIL review commit (build agent) — wrote spec compliance [review] tasks to TODO.md
+
+### Findings
+
+- **Gate 1 (FAIL):** `OrchestratorAdapter` interface at `adapter.ts:61-102` does not conform to TASK_SPEC.md. The [review] tasks written in `838c85a7f` remain unresolved:
+  - **Missing:** `getPrComments(number: number, since?: string)` — not in interface or GitHubAdapter
+  - **Missing:** `getPrReviews(number: number)` — not in interface or GitHubAdapter
+  - **Return type:** `createIssue` → `Promise<number>` (spec: `Promise<{ number: number; url: string }>`)
+  - **Missing param:** `closeIssue(issueNumber)` drops `reason: string` (spec requires it)
+  - **Renamed:** `listIssues` → `queryIssues` (spec name: `listIssues`)
+  - **Renamed + dropped param:** `getIssueComments(number, since?)` → `listComments(issueNumber)` — `since?` dropped
+  - **Renamed + singular:** `ensureLabelsExist(labels: string[])` → `ensureLabelExists(label: string, opts?)` — spec requires array form
+  - **Return type mismatch:** `getPrStatus` → `{ mergeable: boolean; mergeStateStatus: string }` (spec: `{ state: string; mergeable: boolean; checks: Array<{ name, status, conclusion }> }`)
+  - **Missing fields:** `updateIssue` opts lacks `labelsAdd?` and `labelsRemove?` required by spec
+
+### Prior Findings Status
+
+All prior PASS/FAIL findings through `422521987..f16a53633` remain resolved. The Gate 1 failures above are new spec-compliance issues raised by the `spec-review` trigger.
+
+### Gates that Pass
+
+- **Gate 2:** 38 tests in `adapter.test.ts` use concrete value assertions (`assert.equal`, `deepEqual`, exact strings). Not shallow.
+- **Gate 3:** 38/38 pass. No new untested branches in changed files.
+- **Gate 4:** `adapter.ts` = 115 LOC, `adapter-github.ts` = 252 LOC — both under 300 LOC. README count corrected to 19 (accurate). No dead code.
+- **Gate 5:** 38/38 adapter tests pass (confirmed live). 82 pre-existing failures unchanged.
+- **Gate 6:** All commits are QA tracking, dist rebuild, or docs. No observable output required; skipping is correct.
+- **Gate 7:** N/A — no UI changes.
+- **Gate 8:** No dependency changes.
+- **Gate 9:** README accurately lists the 19 methods actually in `adapter.ts` (names match implementation). Gate 9 checks implementation accuracy — PASS.
+
+---
+
 ## Review — 2026-03-27 — commit aff2a82de..0bc016063
 
 **Verdict: PASS** (dist rebuild + QA tracking; all prior findings remain resolved)
