@@ -1,5 +1,91 @@
 # QA Log
 
+## QA Session — 2026-03-27 (iteration 23)
+
+### Test Environment
+- Binary under test: `/tmp/aloop-test-install-AQIKs4/bin/aloop` v1.0.0
+- Commit under test: abfe37d9b (latest)
+- Features tested: 4 (2 new fixes + 2 re-tests + 1 pre-existing failure confirmation)
+- Playwright E2E: available (/tmp now 42% full, 7.4GB free)
+
+### Results
+- PASS: Desktop Sidebar Collapse button hidden at desktop viewport (`isDesktop={isDesktop}` fix) — proof.spec.ts:149 ✓
+- PASS: Swipe-right-to-open sidebar gesture on mobile (`handleTouchStart/handleTouchEnd` fix) — proof.spec.ts:103 ✓
+- PASS: All 5 proof.spec.ts tests via Playwright E2E
+- PASS: All 148 unit tests
+- FAIL: smoke.spec.ts:135 — test expects Activity panel hidden on mobile (now always-visible stacked layout); already tracked in TODO.md
+- FAIL: smoke.spec.ts:154 — test looks for removed 'Documents'/'Activity' toggle buttons; already tracked in TODO.md
+
+### Bugs Filed
+None — smoke.spec.ts failures already tracked in TODO.md as `[ ] [review] Gate 5` (not new bugs).
+
+### Command Transcript
+
+```
+$ ALOOP_BIN=$(npm --prefix aloop/cli run --silent test-install -- --keep 2>/dev/null | tail -1)
+$ echo "Binary: $ALOOP_BIN"
+Binary: /tmp/aloop-test-install-AQIKs4/bin/aloop
+$ "$ALOOP_BIN" --version
+1.0.0
+
+$ npm --prefix aloop/cli/dashboard test -- --reporter=verbose 2>&1 | tail -5
+Test Files  20 passed (20)
+Tests       148 passed (148)
+Duration    2.74s
+
+$ cd aloop/cli/dashboard
+$ npx playwright test e2e/proof.spec.ts --reporter=line
+Running 5 tests using 1 worker
+  5 passed (5.5s)
+
+$ npx playwright test e2e/smoke.spec.ts --reporter=line
+Running 6 tests using 1 worker
+  2 failed
+    e2e/smoke.spec.ts:135:1 › layout at 375x667 (mobile) shows only one panel and mobile menu
+      FAIL: line 146 — Activity heading expected not visible but IS visible (panels now stacked)
+      FAIL: line 149 — getByRole('button', { name: 'Activity' }) — button removed
+    e2e/smoke.spec.ts:154:1 › layout at 390x844 (mobile) keeps key controls at minimum 44x44 tap size
+      FAIL: line 159 — getByRole('button', { name: 'Documents' }) — button removed
+  4 passed (20.8s)
+```
+
+### Structural Verification
+
+**isDesktop prop on Sidebar** (AppView.tsx:2509):
+```
+<Sidebar ... isDesktop={isDesktop} />
+```
+
+**Collapse button guarded by isDesktop** (AppView.tsx:938):
+```
+{!isDesktop && (
+  <button aria-label="Collapse sidebar" ...>...</button>
+)}
+```
+→ At desktop viewport (isDesktop=true), Collapse button is not rendered ✓
+
+**Touch handlers attached to root div** (AppView.tsx:2505):
+```
+<div className="h-screen flex flex-col ..." onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
+```
+
+**handleTouchEnd calls setMobileMenuOpen** (AppView.tsx:2216-2224):
+```
+const handleTouchEnd = useCallback((e: React.TouchEvent) => {
+  if (!isMobile || touchStartXRef.current === null) return;
+  const startX = touchStartXRef.current;
+  touchStartXRef.current = null;
+  if (startX > SWIPE_EDGE_THRESHOLD_PX) return;
+  const endX = e.changedTouches[0]?.clientX ?? 0;
+  if (endX - startX >= SWIPE_MIN_DISTANCE_PX) {
+    setMobileMenuOpen(true);  ← correct: uses mobileMenuOpen state
+  }
+}, [isMobile]);
+```
+→ Mobile drawer renders on `{mobileMenuOpen && ...}` at line 2512 ✓
+
+---
+
 ## QA Session — 2026-03-27 (iteration 22)
 
 ### Test Environment
