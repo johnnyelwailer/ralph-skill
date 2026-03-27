@@ -55,6 +55,7 @@ interface DashboardRuntimeOptions {
   heartbeatIntervalMs?: number;
   requestPollIntervalMs?: number;
   ghCommandRunner?: GhCommandRunner;
+  requestSpawnSync?: typeof spawnSync;
 }
 
 const DOC_FILES = ['TODO.md', 'SPEC.md', 'RESEARCH.md', 'REVIEW_LOG.md', 'STEERING.md'];
@@ -375,6 +376,7 @@ async function processGhConventionRequests(
   sessionId: string,
   logPath: string,
   ghCommandRunner: GhCommandRunner,
+  requestSpawnSync?: typeof spawnSync,
 ): Promise<void> {
   const aloopDir = path.join(workdir, '.aloop');
   const sessionDir = path.dirname(logPath);
@@ -385,7 +387,8 @@ async function processGhConventionRequests(
     aloopDir,
     sessionDir,
     logPath,
-    ghCommandRunner
+    ghCommandRunner,
+    spawnSync: requestSpawnSync,
   });
 }
 
@@ -632,6 +635,7 @@ export async function startDashboardServer(
   const assetsDir = path.resolve(options.assetsDir ?? (await resolveDefaultAssetsDir()));
   const runtimeDir = path.resolve(options.runtimeDir ?? path.join(os.homedir(), '.aloop'));
   const ghCommandRunner = runtimeOptions.ghCommandRunner ?? defaultGhCommandRunner;
+  const requestSpawnSync = runtimeOptions.requestSpawnSync;
   const sessionId = path.basename(sessionDir);
 
   const statusPath = path.join(sessionDir, 'status.json');
@@ -729,7 +733,7 @@ export async function startDashboardServer(
     const promptsDir = path.join(sessionDir, 'prompts');
 
     Promise.all([
-      processGhConventionRequests(workdir, sessionId, logPath, ghCommandRunner),
+      processGhConventionRequests(workdir, sessionId, logPath, ghCommandRunner, requestSpawnSync),
       monitorSessionState({ sessionDir, workdir, promptsDir }).catch(error => {
         console.warn(`dashboard: session monitor failed: ${(error as Error).message}`);
       })
