@@ -10,16 +10,16 @@
   (c) Zero tests for the new `proof_manifest_found` and `proof_manifest_missing` events.
   Fix: (1) delete the Validate-ProofManifest describe block, (2) update integration test at line 266 to assert `proof_manifest_found` event instead of `proof_manifest_validated`, (3) update/remove assertions at lines 287-293 and 1088-1092 that expect JSON-invalid failure behavior, (4) add a test verifying proof_manifest_missing does NOT cause iteration_error. (priority: high)
 
+### Up Next
+
 - [ ] [review] Gate 6: QA agent violated CONSTITUTION rule 16. The QA session (commit `8f782ea43`, QA_LOG.md lines 37-74) used `sed` and `grep` to read source files (`loop.sh`, `loop.ps1`) for all "PASS" results — this is explicitly prohibited ("QA agents never read source code. They test exclusively through CLI commands, HTTP endpoints, and browser interaction"). All QA results derived from source inspection are invalid. Need a clean behavioral re-test that:
   (a) Starts a real aloop session with a proof-mode iteration
   (b) Checks `aloop log` events for `proof_manifest_found` (file present) and `proof_manifest_missing` (file absent, no iteration failure)
   without reading source code. (priority: high)
 
-### Up Next
-
-- [ ] [spec-gap/P2] SPEC.md internal inconsistency: the authoritative Proof-of-Work design section (lines 404, 407, 420) correctly states proof is **finalizer-only** with an 8-step continuous cycle (`plan → build × 5 → qa → review`). However, lines 717 and 775 (acceptance criteria) and lines 1321, 3426, 4081 (Configurable Agent Pipeline sections) incorrectly describe a 9-step cycle with proof **in** the continuous cycle. Implementation matches finalizer-only design. Fix: update SPEC.md — change the 5 stale references. Files: `SPEC.md`
-
 ### Completed
+
+- [x] [spec-gap/P2] Fixed SPEC.md internal inconsistency: updated 9 stale references that incorrectly placed proof in the continuous 9-step cycle. Corrected to reflect authoritative design: 8-step continuous cycle (`plan → build × 5 → qa → review`) with proof running only in the completion finalizer. Affected lines: 5, 717, 733, 775, 1299, 1321, 1868, 2124, 3426.
 
 - [x] Expand `aloop/templates/subagent-hints-proof.md` with vision-model delegation examples: added when-to-delegate guidance, task tool syntax with screenshot paths and baseline comparisons, vision-reviewer output format, and accessibility-checker vs vision-reviewer usage guidance.
 

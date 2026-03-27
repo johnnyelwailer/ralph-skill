@@ -2,7 +2,7 @@
 
 ## Desired Outcome
 
-Aloop is an autonomous coding agent orchestrator that runs configurable agent pipelines with multi-provider support (Claude, Codex, Gemini, Copilot, OpenCode), a real-time dashboard, GitHub integration, and a parallel orchestrator for complex multi-issue projects. It operates in two modes: **loop** (single-track iterative development) and **orchestrator** (fan-out via GitHub issues with wave scheduling and concurrent child loops). The default pipeline is `plan → build × 5 → proof → qa → review`, but pipelines are fully configurable via agent YAML definitions (see Configurable Agent Pipeline).
+Aloop is an autonomous coding agent orchestrator that runs configurable agent pipelines with multi-provider support (Claude, Codex, Gemini, Copilot, OpenCode), a real-time dashboard, GitHub integration, and a parallel orchestrator for complex multi-issue projects. It operates in two modes: **loop** (single-track iterative development) and **orchestrator** (fan-out via GitHub issues with wave scheduling and concurrent child loops). The default pipeline continuous cycle is `plan → build × 5 → qa → review` (with proof running only in the completion finalizer), but pipelines are fully configurable via agent YAML definitions (see Configurable Agent Pipeline).
 
 ## Constraints
 - **TypeScript / Bun** — CLI source is TypeScript, built with Bun into a bundled `dist/index.js`
@@ -713,8 +713,8 @@ The prompt does NOT prescribe what types of proof to generate or what tools to u
 
 ### Acceptance Criteria
 
-- [ ] Proof is a first-class phase in the loop cycle, with its own `PROMPT_proof.md` template
-- [ ] Default pipeline becomes: plan → build × 5 → proof → qa → review (9-step)
+- [ ] Proof is a first-class finalizer phase, with its own `PROMPT_proof.md` template
+- [ ] Default pipeline continuous cycle: plan → build × 5 → qa → review (8-step); proof runs in finalizer only
 - [ ] Proof agent autonomously decides what to prove, how, and whether to skip
 - [ ] Artifacts are saved to `~/.aloop/sessions/<session-id>/artifacts/iter-<N>/`
 - [ ] `proof-manifest.json` is written with structured artifact metadata and skip reasons
@@ -730,7 +730,7 @@ The prompt does NOT prescribe what types of proof to generate or what tools to u
 
 ## QA Agent — Black-Box User Testing (Priority: P1)
 
-A dedicated QA agent that tests features as a real user would — running commands, clicking through the dashboard, testing error paths — without ever reading source code. It runs after proof and before review in the default pipeline.
+A dedicated QA agent that tests features as a real user would — running commands, clicking through the dashboard, testing error paths — without ever reading source code. It runs after build and before review in the default continuous cycle.
 
 ### QA Agent Behavior
 
@@ -772,7 +772,7 @@ The QA agent is a **black-box tester**. It:
 ### Acceptance Criteria
 
 - [ ] QA is a first-class phase in the loop cycle, with its own `PROMPT_qa.md` template
-- [ ] Default pipeline includes QA: plan → build × 5 → proof → qa → review (9-step)
+- [ ] Default pipeline includes QA: plan → build × 5 → qa → review (8-step continuous cycle); proof runs in finalizer only
 - [ ] QA agent never reads source code — tests only through public interfaces
 - [ ] Bugs filed as `[qa/P1]` tasks with reproduction steps
 - [ ] QA_COVERAGE.md tracks per-feature test history
@@ -1296,7 +1296,7 @@ The orchestrator and child implementation loops use the **same `loop.sh`/`loop.p
 - Manages the full refinement pipeline: spec gap analysis → epic decomposition → epic refinement → sub-issue decomposition → sub-issue refinement → dispatch
 
 **Child implementation loop** — a `loop.sh` instance with build prompts:
-- Cycle: fixed rotation (plan → build → build → proof → qa → review)
+- Cycle: fixed rotation (plan → build × 5 → qa → review); proof runs in finalizer
 - Primarily **cycle-driven** — proactive, predictable. Queue used only for steering/overrides.
 - Reads its sub-spec from the issue body (seeded into its worktree), NOT the repo's SPEC.md
 - Knows nothing about GitHub, other children, orchestration, or the full spec
@@ -1318,7 +1318,7 @@ Aloop Runtime (TS/Bun) ← host process, always running
   │     └── scans GitHub state, refines issues, decides dispatch
   │
   ├── Child loop.sh (issue #11)
-  │     ├── cycle: [plan, build×5, proof, qa, review]
+  │     ├── cycle: [plan, build×5, qa, review]
   │     ├── queue/: steering overrides only
   │     └── reads sub-issue body as its spec
   │
@@ -1865,7 +1865,7 @@ The orchestrator scan agent identifies `Ready` sub-issues (Project status) and w
    - Creates branch: `aloop/issue-<number>`
    - Creates worktree
    - Seeds child's working directory with sub-spec from issue body
-   - Compiles child's `loop-plan.json` with implementation cycle (plan-build-proof-qa-review)
+   - Compiles child's `loop-plan.json` with implementation cycle (plan → build × 5 → qa → review) and proof in finalizer
    - Launches child `loop.sh` instance
    - Sets Project status to `In progress`
 4. Remaining issues queue until a slot opens or dependencies merge
@@ -2121,7 +2121,7 @@ aloop orchestrate --spec SPEC.md --plan-only
 | Existing Component | Role in Orchestrator |
 |-------------------|---------------------|
 | `loop.ps1` / `loop.sh` | Runs BOTH orchestrator loop AND child loops — same script, different prompts |
-| `loop-plan.json` | Orchestrator: single scan prompt cycle. Children: plan-build-proof-qa-review cycle |
+| `loop-plan.json` | Orchestrator: single scan prompt cycle. Children: plan → build × 5 → qa → review cycle; proof in finalizer |
 | `queue/` folder | Orchestrator: primary work driver (reactive). Children: steering overrides only |
 | `requests/` folder | Orchestrator agents write side-effect requests → runtime processes |
 | Frontmatter prompts | Orchestrator has `PROMPT_orch_*.md`, children have `PROMPT_plan/build/review.md` |
@@ -3423,7 +3423,7 @@ This is a static one-liner — it doesn't change per skill, per task, or per ite
 
 ## Configurable Agent Pipeline (Priority: P2)
 
-The default `plan → build × 5 → proof → qa → review` cycle is a **configurable, runtime-mutable pipeline of agents**. This cycle is the default configuration, compiled into `loop-plan.json` at session start. Pipelines are fully customizable via agent YAML definitions.
+The default `plan → build × 5 → qa → review` cycle is a **configurable, runtime-mutable pipeline of agents**. This cycle is the default configuration, compiled into `loop-plan.json` at session start. Proof runs in the finalizer, not in the continuous cycle. Pipelines are fully customizable via agent YAML definitions.
 
 ### Core Concept: Agents as the Unit
 
@@ -4078,7 +4078,7 @@ opencode run -m openrouter/google/gemini-3.1-flash-lite-preview \
 - Pipeline config lives in `.aloop/pipeline.yml` (or inline in `config.yml`) — this is the **source of truth**
 - `loop-plan.json` is a **compiled artifact** — never hand-edit it, always regenerate from config
 - The relationship is like TypeScript → JavaScript: you edit the source, the compiler produces the runtime artifact
-- Default pipeline (plan → build × 5 → proof → qa → review) is generated if no config exists — backward compatible
+- Default pipeline (plan → build × 5 → qa → review) is generated if no config exists — proof runs in the finalizer, not in the cycle — backward compatible
 - Agent definitions live in `.aloop/agents/` — each is a YAML file with prompt reference, provider preference, reasoning effort, and transition rules
 - The loop script becomes a generic agent runner: read `loop-plan.json`, resolve next agent, invoke, repeat
 - Runtime pipeline mutations are applied via the host-side monitor rewriting `loop-plan.json`
