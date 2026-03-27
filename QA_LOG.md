@@ -1,5 +1,63 @@
 # QA Log
 
+## QA Session — 2026-03-27 (iteration 69)
+
+### Test Environment
+- Commit under test: 11dc2bfec (branch: aloop/issue-183)
+- Features tested: 5
+
+### Results
+- PASS: ArtifactComparisonDialog split (Gate 4) — all 5 sub-components under 150 LOC
+- PASS: ArtifactComparisonDialog.test.tsx (Gate 3) — 333 tests pass, all 5 required branches covered
+- PASS: Storybook build post-split — exits 0
+- FAIL: LogEntryRow.tsx still 287 LOC — [qa/P2] bug still open (re-test confirms not fixed)
+- FAIL: ProgressBar component — not yet extracted from AppView.tsx — [qa/P1] task still open
+
+### Bugs Filed
+- None new. Two existing bugs re-confirmed:
+  - [qa/P2] LogEntryRow.tsx 287 LOC (still open in TODO.md)
+  - [qa/P1] ProgressBar not yet extracted (still open in TODO.md)
+
+### Command Transcript
+
+```
+# Check split component LOC
+$ find src/components/session -name "ArtifactComparison*.tsx" -o -name "SideBySideView.tsx" -o -name "SliderView.tsx" -o -name "DiffOverlayView.tsx" | xargs wc -l
+  481 ArtifactComparisonDialog.test.tsx
+   90 ArtifactComparisonDialog.tsx       ✅ (was 219, now under 150 LOC)
+   71 ArtifactComparisonHeader.tsx       ✅
+   48 DiffOverlayView.tsx                ✅
+   25 SideBySideView.tsx                 ✅
+   67 SliderView.tsx                     ✅
+EXIT: 0
+
+# Run test suite
+$ npm test -- --run
+  30 test files passed
+  333 tests passed (was 307 before Gate 3 tests added)
+EXIT: 0
+
+# Verify Gate 3 branches (verbose output confirms):
+# ✅ mode tabs: "calls setMode with 'slider'", "calls setMode with 'diff-overlay'", "marks active tab"
+# ✅ keyboard: "ArrowLeft key decrements sliderPos by 2", "ArrowRight key increments sliderPos by 2", clamp tests
+# ✅ baseline dropdown: "calls setSelectedBaseline with number on change"
+# ✅ badge colors: "renders green class when diff_percentage < 5", "yellow class 5-20", "red class >= 20"
+# ✅ no-baseline: "renders 'No baseline — first capture' when no baselines exist"
+
+# Re-test LogEntryRow LOC
+$ wc -l src/components/session/LogEntryRow.tsx
+287 LogEntryRow.tsx   ❌ still 287, [qa/P2] not resolved
+
+# Check ProgressBar
+$ find src/components/session -name "ProgressBar*"
+(no output)   ❌ [qa/P1] not yet implemented
+
+# Storybook build
+$ npm run build-storybook
+...Storybook build completed successfully
+EXIT: 0
+```
+
 ## QA Session — 2026-03-27
 
 ### Test Environment
