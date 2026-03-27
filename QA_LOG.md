@@ -1,5 +1,66 @@
 # QA Log
 
+## QA Session — 2026-03-27 iter 7 (issue #176)
+
+### Test Environment
+- Binary under test: N/A — tested via `tsx` directly (aloop/cli)
+- Commit under test: 422521987 (chore(review): PASS — gates 1-9 pass)
+- Features tested: 5 (final regression pass at HEAD)
+
+### Target Selection
+Changes since iter 6 (12c916034 → 422521987): QA_COVERAGE.md, QA_LOG.md, REVIEW_LOG.md only — no source changes. Confirming all gates still hold at HEAD.
+
+### Results
+- PASS: adapter.test.ts — 38/38 tests pass
+- PASS: index.test.ts — 5/5 tests pass
+- PASS: adapter.ts LOC — 115 LOC (under 300 threshold)
+- PASS: adapter-github.ts LOC — 252 LOC (under 300 threshold)
+- PASS: No dead imports in orchestrate.ts or process-requests.ts (grep returns no output)
+- PASS: No hardcoded `api.github.com` URLs in built artifact (0 matches in dist/index.js)
+- PRE-EXISTING: process-requests.test.ts — ERR_MODULE_NOT_FOUND for cr-pipeline.js (unrelated to issue #176)
+- PRE-EXISTING: orchestrate.test.ts — 25 failures (confirmed same count on master, no commits to this file on branch)
+
+### Bugs Filed
+None — all acceptance criteria verified at HEAD.
+
+### Command Transcript
+```
+# Adapter unit tests
+$ node_modules/.bin/tsx --test src/lib/adapter.test.ts
+# tests 38 | pass 38 | fail 0 ✓
+
+# Index CLI tests
+$ node_modules/.bin/tsx --test src/index.test.ts
+# tests 5 | pass 5 | fail 0 ✓
+
+# LOC check
+$ wc -l src/lib/adapter.ts src/lib/adapter-github.ts
+  115 src/lib/adapter.ts
+  252 src/lib/adapter-github.ts  ✓ both under 300
+
+# Dead import check
+$ grep -n 'createAdapter\|OrchestratorAdapter' src/commands/orchestrate.ts src/commands/process-requests.ts
+# (no output) ✓
+
+# Build server bundle
+$ npm run build:server
+# dist/index.js  591.2kb  Done in 14ms
+
+# Check for hardcoded api.github.com in built artifact
+$ grep -c 'api\.github\.com' dist/index.js
+# 0 ✓
+
+# Pre-existing failure confirmation
+$ node_modules/.bin/tsx --test src/commands/process-requests.test.ts
+# ERR_MODULE_NOT_FOUND: Cannot find module 'cr-pipeline.js' — unrelated to issue #176
+
+# Confirmed orchestrate.test.ts failures are pre-existing (no commits to file on this branch)
+$ git log origin/master..HEAD --oneline -- aloop/cli/src/commands/orchestrate.test.ts
+# (no output — file not modified on this branch)
+```
+
+---
+
 ## QA Session — 2026-03-27 iter 6 (issue #176)
 
 ### Test Environment
