@@ -36,13 +36,14 @@ describe('createAdapter', () => {
 
 describe('GitHubAdapter', () => {
   describe('createIssue', () => {
-    it('creates an issue and returns the number', async () => {
+    it('creates an issue and returns the number and url', async () => {
       const execGh = mockGh({
         'issue create': { stdout: 'https://github.com/owner/repo/issues/42\n', stderr: '' },
       });
       const adapter = new GitHubAdapter(config, execGh);
-      const num = await adapter.createIssue({ title: 'Bug', body: 'Details' });
-      assert.equal(num, 42);
+      const result = await adapter.createIssue({ title: 'Bug', body: 'Details' });
+      assert.equal(result.number, 42);
+      assert.ok(result.url.includes('/issues/42'));
     });
 
     it('creates an issue with labels', async () => {
@@ -63,8 +64,8 @@ describe('GitHubAdapter', () => {
         'issue create': { stdout: 'https://git.corp.example.com/owner/repo/issues/99\n', stderr: '' },
       });
       const adapter = new GitHubAdapter(config, execGh);
-      const num = await adapter.createIssue({ title: 'T', body: 'B' });
-      assert.equal(num, 99);
+      const result = await adapter.createIssue({ title: 'T', body: 'B' });
+      assert.equal(result.number, 99);
     });
 
     it('throws if issue number cannot be parsed', async () => {
@@ -112,7 +113,7 @@ describe('GitHubAdapter', () => {
     });
   });
 
-  describe('queryIssues', () => {
+  describe('listIssues', () => {
     it('lists issues with filters', async () => {
       const execGh = mockGh({
         'issue list': {
@@ -124,19 +125,19 @@ describe('GitHubAdapter', () => {
         },
       });
       const adapter = new GitHubAdapter(config, execGh);
-      const issues = await adapter.queryIssues({ state: 'open', labels: ['bug'] });
+      const issues = await adapter.listIssues({ state: 'open', labels: ['bug'] });
       assert.equal(issues.length, 2);
       assert.equal(issues[0].number, 1);
     });
   });
 
-  describe('createPr', () => {
+  describe('createPR', () => {
     it('creates a PR and returns number + url', async () => {
       const execGh = mockGh({
         'pr create': { stdout: 'https://github.com/owner/repo/pull/15\n', stderr: '' },
       });
       const adapter = new GitHubAdapter(config, execGh);
-      const pr = await adapter.createPr({ base: 'main', head: 'feat', title: 'PR', body: 'desc' });
+      const pr = await adapter.createPR({ base: 'main', head: 'feat', title: 'PR', body: 'desc' });
       assert.equal(pr.number, 15);
       assert.ok(pr.url.includes('/pull/15'));
     });
@@ -146,17 +147,17 @@ describe('GitHubAdapter', () => {
         'pr create': { stdout: 'https://git.corp.example.com/owner/repo/pull/7\n', stderr: '' },
       });
       const adapter = new GitHubAdapter(config, execGh);
-      const pr = await adapter.createPr({ base: 'main', head: 'feat', title: 'PR', body: '' });
+      const pr = await adapter.createPR({ base: 'main', head: 'feat', title: 'PR', body: '' });
       assert.equal(pr.number, 7);
     });
   });
 
-  describe('mergePr', () => {
+  describe('mergePR', () => {
     it('merges with squash by default', async () => {
       let calledArgs: string[] = [];
       const execGh: GhExecFn = async (args) => { calledArgs = args; return { stdout: '', stderr: '' }; };
       const adapter = new GitHubAdapter(config, execGh);
-      await adapter.mergePr(15);
+      await adapter.mergePR(15);
       assert.ok(calledArgs.includes('--squash'));
       assert.ok(calledArgs.includes('--delete-branch'));
     });
@@ -165,35 +166,72 @@ describe('GitHubAdapter', () => {
       let calledArgs: string[] = [];
       const execGh: GhExecFn = async (args) => { calledArgs = args; return { stdout: '', stderr: '' }; };
       const adapter = new GitHubAdapter(config, execGh);
-      await adapter.mergePr(15, { method: 'rebase' });
+      await adapter.mergePR(15, { method: 'rebase' });
       assert.ok(calledArgs.includes('--rebase'));
     });
   });
 
-  describe('getPrStatus', () => {
-    it('parses mergeable status', async () => {
+  describe('getPRStatus', () => {
+    it('parses mergeable status with passing CI', async () => {
       const execGh = mockGh({
         'pr view': {
-          stdout: JSON.stringify({ mergeable: 'MERGEABLE', mergeStateStatus: 'CLEAN' }),
+          stdout: JSON.stringify({
+            mergeable: 'MERGEABLE',
+            statusCheckRollup: [{ status: 'COMPLETED', conclusion: 'SUCCESS' }],
+            reviews: [{ state: 'APPROVED' }],
+          }),
           stderr: '',
         },
       });
       const adapter = new GitHubAdapter(config, execGh);
-      const status = await adapter.getPrStatus(10);
+      const status = await adapter.getPRStatus(10);
       assert.equal(status.mergeable, true);
-      assert.equal(status.mergeStateStatus, 'CLEAN');
+      assert.equal(status.ci_status, 'success');
+      assert.deepEqual(status.reviews, [{ verdict: 'approved' }]);
     });
 
     it('detects non-mergeable', async () => {
       const execGh = mockGh({
         'pr view': {
-          stdout: JSON.stringify({ mergeable: 'CONFLICTING', mergeStateStatus: 'DIRTY' }),
+          stdout: JSON.stringify({ mergeable: 'CONFLICTING', statusCheckRollup: [], reviews: [] }),
           stderr: '',
         },
       });
       const adapter = new GitHubAdapter(config, execGh);
-      const status = await adapter.getPrStatus(10);
+      const status = await adapter.getPRStatus(10);
       assert.equal(status.mergeable, false);
+    });
+
+    it('detects pending CI', async () => {
+      const execGh = mockGh({
+        'pr view': {
+          stdout: JSON.stringify({
+            mergeable: 'MERGEABLE',
+            statusCheckRollup: [{ status: 'IN_PROGRESS', conclusion: null }],
+            reviews: [],
+          }),
+          stderr: '',
+        },
+      });
+      const adapter = new GitHubAdapter(config, execGh);
+      const status = await adapter.getPRStatus(10);
+      assert.equal(status.ci_status, 'pending');
+    });
+
+    it('detects failed CI', async () => {
+      const execGh = mockGh({
+        'pr view': {
+          stdout: JSON.stringify({
+            mergeable: 'MERGEABLE',
+            statusCheckRollup: [{ status: 'COMPLETED', conclusion: 'FAILURE' }],
+            reviews: [],
+          }),
+          stderr: '',
+        },
+      });
+      const adapter = new GitHubAdapter(config, execGh);
+      const status = await adapter.getPRStatus(10);
+      assert.equal(status.ci_status, 'failure');
     });
   });
 

@@ -20,7 +20,7 @@ Acceptance criteria:
 
 ### In Progress
 
-- [ ] [review] Gate 1: `OrchestratorAdapter` interface in `adapter.ts` deviates from spec's method names and return types — `queryIssues` must be renamed to `listIssues` (spec line ~988); `createPr`/`mergePr`/`getPrStatus` must be `createPR`/`mergePR`/`getPRStatus` (spec convention); `createIssue` must return `{ number: number; url: string }` not bare `number` (spec line ~983); `getPRStatus` must return `{ mergeable, ci_status: 'success'|'failure'|'pending', reviews: Array<{ verdict: string }> }` not `{ mergeable, mergeStateStatus }` (spec line ~997); `updateIssue` must accept `labels_add` and `labels_remove` fields (spec line ~985) — fix the interface and implementation in `src/lib/adapter.ts` and update all call sites and tests accordingly (priority: high)
+- [x] [review] Gate 1: `OrchestratorAdapter` interface in `adapter.ts` deviates from spec's method names and return types — `queryIssues` must be renamed to `listIssues` (spec line ~988); `createPr`/`mergePr`/`getPrStatus` must be `createPR`/`mergePR`/`getPRStatus` (spec convention); `createIssue` must return `{ number: number; url: string }` not bare `number` (spec line ~983); `getPRStatus` must return `{ mergeable, ci_status: 'success'|'failure'|'pending', reviews: Array<{ verdict: string }> }` not `{ mergeable, mergeStateStatus }` (spec line ~997); `updateIssue` must accept `labels_add` and `labels_remove` fields (spec line ~985) — fix the interface and implementation in `src/lib/adapter.ts` and update all call sites and tests accordingly (priority: high)
 
 - [ ] [review] Gate 2: No tests added for adapter instantiation branches in `orchestrateCommandWithDeps` — the `if (filterRepo && !deps.adapter)` block at ~line 1004 has two branches (adapter created vs skipped) with no test verifying adapter presence on deps after the call; and `process-requests.ts` line 323 `const adapter = repo ? createAdapter(...) : undefined` ternary is completely untested — add tests for: (a) `orchestrateCommandWithDeps` with `repo` option creates adapter and passes to child deps, (b) without `repo` adapter remains undefined (priority: high)
 
@@ -28,13 +28,9 @@ Acceptance criteria:
 
 ### Up Next
 
-- [x] Thread adapter through child deps in orchestrate.ts — in `orchestrateCommandWithDeps`, pass `deps.adapter` into all constructed child deps objects: the `DispatchDeps`, `PrLifecycleDeps`, and the `ScanLoopDeps` object used when calling `runOrchestratorScanLoop`; also pass adapter into the `applyEstimateResults` call at line 1327
+- [ ] Migrate issue lifecycle calls in orchestrate.ts (TriageDeps / triage functions) — replace `deps.execGh(['issue', ...])` with `deps.adapter.closeIssue()`, `adapter.addLabels()`, `adapter.removeLabels()`, `adapter.postComment()`, `adapter.listIssues()`, and `adapter.updateIssue()` in `triageIssue` (~line 345), `syncLabelsScan` (~line 2192), and `runTriageMonitorCycle`; also replace `deps.execGhIssueCreate` with `adapter.createIssue()` in `dispatchIssues` (~line 682) and DoR/spec-question creation (~line 2497)
 
-- [x] Thread adapter through scanDeps in process-requests.ts — instantiate adapter via `createAdapter({ type: 'github', repo }, execGhFn)` and include it in `scanDeps` and `scanDeps.prLifecycleDeps`; import `createAdapter` from `../lib/adapter.js`
-
-- [ ] Migrate issue lifecycle calls in orchestrate.ts (TriageDeps / triage functions) — replace `deps.execGh(['issue', ...])` with `deps.adapter.closeIssue()`, `adapter.addLabels()`, `adapter.removeLabels()`, `adapter.postComment()`, `adapter.queryIssues()`, and `adapter.updateIssue()` in `triageIssue` (~line 345), `syncLabelsScan` (~line 2192), and `runTriageMonitorCycle`; also replace `deps.execGhIssueCreate` with `adapter.createIssue()` in `dispatchIssues` (~line 682) and DoR/spec-question creation (~line 2497)
-
-- [ ] Migrate PR lifecycle calls in orchestrate.ts (PrLifecycleDeps) — replace `deps.execGh` calls in `createPrForIssue` (~line 4293), `mergeChildPr` (~line 3594), `getPrMergeStatus` (~line 3452), and `getPrChecks` (~line 3497) with `deps.adapter.createPr()`, `adapter.mergePr()`, `adapter.getPrStatus()`, `adapter.getPrChecks()`; replace PR close/comment via execGh at ~line 3805 with adapter equivalents
+- [ ] Migrate PR lifecycle calls in orchestrate.ts (PrLifecycleDeps) — replace `deps.execGh` calls in `createPrForIssue` (~line 4293), `mergeChildPr` (~line 3594), `getPrMergeStatus` (~line 3452), and `getPrChecks` (~line 3497) with `deps.adapter.createPR()`, `adapter.mergePR()`, `adapter.getPRStatus()`, `adapter.getPrChecks()`; replace PR close/comment via execGh at ~line 3805 with adapter equivalents
 
 - [ ] Migrate scanLoop / bulk fetch execGh calls in orchestrate.ts — replace `deps.execGh` calls in `fetchAndApplyBulkIssueState` (~line 5210), issue close in `runOrchestratorScanPass` (~line 3935), and auto-merge PR creation in `runOrchestratorScanLoop` (~line 5744) with adapter calls
 
@@ -54,4 +50,5 @@ Acceptance criteria:
 - [x] `adapter?` field added to `TriageDeps`, `OrchestrateDeps`, `DispatchDeps`, `PrLifecycleDeps`, `ScanLoopDeps` interfaces
 - [x] Adapter instantiated in `orchestrateCommandWithDeps` when `filterRepo` is provided
 - [x] `adapter?` field added to `applyEstimateResults` deps type; `deps.adapter` passed through in `orchestrateCommandWithDeps`
+- [x] Thread adapter through child deps in orchestrate.ts — `deps.adapter` passed into `DispatchDeps`, `PrLifecycleDeps`, `ScanLoopDeps`, and `applyEstimateResults`
 - [x] Adapter threaded through scanDeps in process-requests.ts (scanDeps, prLifecycleDeps, dispatchDeps)

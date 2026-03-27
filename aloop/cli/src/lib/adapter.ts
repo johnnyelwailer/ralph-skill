@@ -35,7 +35,8 @@ export interface AdapterPr {
 
 export interface PrStatus {
   mergeable: boolean;
-  mergeStateStatus: string;
+  ci_status: 'success' | 'failure' | 'pending';
+  reviews: Array<{ verdict: string }>;
 }
 
 export interface PrChecksResult {
@@ -59,16 +60,16 @@ export interface AdapterComment {
 
 export interface OrchestratorAdapter {
   // Issue CRUD
-  createIssue(opts: { title: string; body: string; labels?: string[] }): Promise<number>;
-  updateIssue(issueNumber: number, opts: { title?: string; body?: string; state?: string }): Promise<void>;
+  createIssue(opts: { title: string; body: string; labels?: string[] }): Promise<{ number: number; url: string }>;
+  updateIssue(issueNumber: number, opts: { title?: string; body?: string; state?: string; labels_add?: string[]; labels_remove?: string[] }): Promise<void>;
   closeIssue(issueNumber: number): Promise<void>;
   getIssue(issueNumber: number): Promise<AdapterIssue>;
-  queryIssues(opts?: { state?: string; labels?: string[]; limit?: number }): Promise<AdapterIssue[]>;
+  listIssues(opts?: { state?: string; labels?: string[]; limit?: number }): Promise<AdapterIssue[]>;
 
   // PR operations
-  createPr(opts: { base: string; head: string; title: string; body: string }): Promise<AdapterPr>;
-  mergePr(prNumber: number, opts?: { method?: 'squash' | 'merge' | 'rebase'; deleteBranch?: boolean }): Promise<void>;
-  getPrStatus(prNumber: number): Promise<PrStatus>;
+  createPR(opts: { base: string; head: string; title: string; body: string }): Promise<AdapterPr>;
+  mergePR(prNumber: number, opts?: { method?: 'squash' | 'merge' | 'rebase'; deleteBranch?: boolean }): Promise<void>;
+  getPRStatus(prNumber: number): Promise<PrStatus>;
   getPrChecks(prNumber: number): Promise<PrChecksResult>;
 
   // Comments
@@ -95,22 +96,29 @@ export class GitHubAdapter implements OrchestratorAdapter {
     this.execGh = execGh;
   }
 
-  async createIssue(opts: { title: string; body: string; labels?: string[] }): Promise<number> {
+  async createIssue(opts: { title: string; body: string; labels?: string[] }): Promise<{ number: number; url: string }> {
     const args = ['issue', 'create', '--repo', this.repo, '--title', opts.title, '--body', opts.body];
     for (const label of opts.labels ?? []) {
       args.push('--label', label);
     }
     const result = await this.execGh(args);
-    const match = result.stdout.match(/\/issues\/(\d+)/);
+    const url = result.stdout.trim();
+    const match = url.match(/\/issues\/(\d+)/);
     if (!match) throw new Error(`Failed to parse issue number from: ${result.stdout}`);
-    return parseInt(match[1], 10);
+    return { number: parseInt(match[1], 10), url };
   }
 
-  async updateIssue(issueNumber: number, opts: { title?: string; body?: string; state?: string }): Promise<void> {
+  async updateIssue(issueNumber: number, opts: { title?: string; body?: string; state?: string; labels_add?: string[]; labels_remove?: string[] }): Promise<void> {
     const args = ['issue', 'edit', String(issueNumber), '--repo', this.repo];
     if (opts.title) args.push('--title', opts.title);
     if (opts.body) args.push('--body', opts.body);
     await this.execGh(args);
+    if (opts.labels_add?.length) {
+      await this.addLabels(issueNumber, opts.labels_add);
+    }
+    if (opts.labels_remove?.length) {
+      await this.removeLabels(issueNumber, opts.labels_remove);
+    }
     if (opts.state === 'closed') {
       await this.closeIssue(issueNumber);
     } else if (opts.state === 'open') {
@@ -147,7 +155,7 @@ export class GitHubAdapter implements OrchestratorAdapter {
     };
   }
 
-  async queryIssues(opts?: { state?: string; labels?: string[]; limit?: number }): Promise<AdapterIssue[]> {
+  async listIssues(opts?: { state?: string; labels?: string[]; limit?: number }): Promise<AdapterIssue[]> {
     const args = [
       'issue', 'list', '--repo', this.repo,
       '--state', opts?.state ?? 'open',
@@ -176,7 +184,7 @@ export class GitHubAdapter implements OrchestratorAdapter {
     }));
   }
 
-  async createPr(opts: { base: string; head: string; title: string; body: string }): Promise<AdapterPr> {
+  async createPR(opts: { base: string; head: string; title: string; body: string }): Promise<AdapterPr> {
     const result = await this.execGh([
       'pr', 'create', '--repo', this.repo,
       '--base', opts.base, '--head', opts.head,
@@ -187,7 +195,7 @@ export class GitHubAdapter implements OrchestratorAdapter {
     return { number, url: result.stdout.trim() };
   }
 
-  async mergePr(prNumber: number, opts?: { method?: 'squash' | 'merge' | 'rebase'; deleteBranch?: boolean }): Promise<void> {
+  async mergePR(prNumber: number, opts?: { method?: 'squash' | 'merge' | 'rebase'; deleteBranch?: boolean }): Promise<void> {
     const method = opts?.method ?? 'squash';
     const args = ['pr', 'merge', String(prNumber), '--repo', this.repo, `--${method}`];
     if (opts?.deleteBranch !== false) {
@@ -196,15 +204,29 @@ export class GitHubAdapter implements OrchestratorAdapter {
     await this.execGh(args);
   }
 
-  async getPrStatus(prNumber: number): Promise<PrStatus> {
+  async getPRStatus(prNumber: number): Promise<PrStatus> {
     const result = await this.execGh([
       'pr', 'view', String(prNumber), '--repo', this.repo,
-      '--json', 'mergeable,mergeStateStatus',
+      '--json', 'mergeable,statusCheckRollup,reviews',
     ]);
-    const data = JSON.parse(result.stdout) as { mergeable: string; mergeStateStatus: string };
+    const data = JSON.parse(result.stdout) as {
+      mergeable: string;
+      statusCheckRollup?: Array<{ status: string; conclusion: string | null }>;
+      reviews?: Array<{ state: string }>;
+    };
+    const checks = data.statusCheckRollup ?? [];
+    let ci_status: 'success' | 'failure' | 'pending';
+    if (checks.some((c) => c.status !== 'COMPLETED')) {
+      ci_status = 'pending';
+    } else if (checks.some((c) => c.conclusion !== 'SUCCESS' && c.conclusion !== 'NEUTRAL' && c.conclusion !== 'SKIPPED')) {
+      ci_status = 'failure';
+    } else {
+      ci_status = 'success';
+    }
     return {
       mergeable: data.mergeable === 'MERGEABLE',
-      mergeStateStatus: data.mergeStateStatus,
+      ci_status,
+      reviews: (data.reviews ?? []).map((r) => ({ verdict: r.state.toLowerCase() })),
     };
   }
 
