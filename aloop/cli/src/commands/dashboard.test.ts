@@ -31,7 +31,7 @@ async function reservePort(): Promise<number> {
 }
 
 function makeDefaultRequestSpawnSync(): typeof spawnSync {
-  return (cmd: string, args?: readonly string[], opts?: object) => {
+  return ((cmd: string, args?: readonly string[], opts?: object) => {
     const ghArgs = (args ?? []) as string[];
     // Idempotency checks: gh pr list → empty array, gh pr view → empty obj, gh issue view → empty obj
     if (cmd === 'gh') {
@@ -50,7 +50,7 @@ function makeDefaultRequestSpawnSync(): typeof spawnSync {
       }
     }
     return spawnSync(cmd, args as string[], opts as Parameters<typeof spawnSync>[2]);
-  };
+  }) as unknown as typeof spawnSync;
 }
 
 async function createServerFixture(
