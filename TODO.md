@@ -39,6 +39,18 @@ _(none)_
 - Note: already flagged in QA commit (iter 70): "LogEntryRow still 186 LOC (bug filed)"
 - Suggested fix: Extract one more small concern from LogEntryRow to bring it under 150 LOC
 
+### Spec Review — 2026-03-27
+
+**Scope:** Two most recently completed tasks — "Remove dead prop isCurrentIteration from LogEntryRow" and "Add unit tests for ImageLightbox and LogEntryExpandedDetails".
+
+**Findings:**
+
+- [PASS] `isCurrentIteration` prop removed: grep confirms zero occurrences in `dashboard/src/`. Satisfies SPEC-ADDENDUM.md "typed props" (no dead props).
+- [PASS] `ImageLightbox.test.tsx`: 3 tests covering Escape key, overlay click, and img stopPropagation. Satisfies SPEC-ADDENDUM.md "unit tests with Testing Library, covering props, states, interactions".
+- [PASS] `LogEntryExpandedDetails.test.tsx`: 6 tests covering file path list, token/cost display, no-cost state, error event detail, comparison dialog shown, comparison dialog hidden. Satisfies SPEC-ADDENDUM.md same requirement.
+
+Pre-existing spec-gaps (P1–P3 above) remain open and are accurately documented — no new gaps introduced by this iteration.
+
 ### Notes
 - Issue #38 CI workflow (vitest) was previously completed and its tasks remain committed
 - The refactor is incremental — AppView.tsx still needs significant extraction work
