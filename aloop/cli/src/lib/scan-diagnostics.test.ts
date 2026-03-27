@@ -395,3 +395,55 @@ test('runSelfHealingAndDiagnostics: missing diagnostics_blocker_threshold defaul
   // count=5 >= default threshold=5 → diagnostics.json should be written
   assert.ok(written['/ses/diagnostics.json'], 'diagnostics.json should be written with default threshold of 5');
 });
+
+// --- stuck: true written to orchestrator.json ---
+
+test('runSelfHealingAndDiagnostics: writes stuck:true to orchestrator.json when blocker count >= threshold', async () => {
+  const orchState = makeState({ diagnostics_blocker_threshold: 5 });
+  const files: Record<string, string> = {
+    '/ses/orchestrator.json': JSON.stringify(orchState),
+  };
+  const written: Record<string, string> = {};
+  const deps = {
+    readFile: async (p: string) => {
+      if (files[p] !== undefined) return files[p]!;
+      throw new Error(`not found: ${p}`);
+    },
+    writeFile: async (p: string, d: string) => { written[p] = d; },
+    existsSync: () => false,
+    now: () => new Date('2024-01-01T00:00:00Z'),
+    isProcessAlive: (_pid: number) => true,
+  };
+
+  const existing: BlockerRecord[] = [
+    { hash: 'h1', type: 'child_failed', affectedIssue: 3, errorSnippet: 'OOM', firstSeenIteration: 1, lastSeenIteration: 5, count: 5 },
+  ];
+  const pass = makePassResult({ iteration: 6, allDone: true });
+
+  await runSelfHealingAndDiagnostics(pass, '/ses', existing, orchState, null, deps);
+
+  assert.ok(written['/ses/orchestrator.json'], 'orchestrator.json should be written');
+  const saved = JSON.parse(written['/ses/orchestrator.json']!) as OrchestratorState;
+  assert.equal(saved.stuck, true);
+});
+
+test('runSelfHealingAndDiagnostics: does NOT write stuck when no blocker reaches threshold', async () => {
+  const written: Record<string, string> = {};
+  const deps = {
+    readFile: async (_p: string) => { throw new Error('no file'); },
+    writeFile: async (p: string, d: string) => { written[p] = d; },
+    existsSync: () => false,
+    now: () => new Date('2024-01-01T00:00:00Z'),
+    isProcessAlive: (_pid: number) => true,
+  };
+
+  const state = makeState({ diagnostics_blocker_threshold: 5 });
+  const existing: BlockerRecord[] = [
+    { hash: 'h1', type: 'child_failed', affectedIssue: 3, errorSnippet: 'OOM', firstSeenIteration: 1, lastSeenIteration: 4, count: 4 },
+  ];
+  const pass = makePassResult({ iteration: 5, allDone: true });
+
+  await runSelfHealingAndDiagnostics(pass, '/ses', existing, state, null, deps);
+
+  assert.ok(!written['/ses/orchestrator.json'], 'orchestrator.json should NOT be written when count < threshold');
+});

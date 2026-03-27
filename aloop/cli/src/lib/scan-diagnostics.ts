@@ -160,5 +160,17 @@ export async function runSelfHealingAndDiagnostics(
   if (aloopRoot) await cleanStaleSessions(aloopRoot, sessionDir, state, deps);
   await writeDiagnosticsJson(sessionDir, updated, threshold, deps.now, deps.writeFile);
   await writeAlertMd(sessionDir, updated, threshold, deps.writeFile);
+  const hasStuckBlocker = updated.some((r) => r.count >= threshold);
+  if (hasStuckBlocker) {
+    const stateFile = `${sessionDir}/orchestrator.json`;
+    let orchState: OrchestratorState;
+    try { orchState = JSON.parse(await deps.readFile(stateFile, 'utf8')) as OrchestratorState; }
+    catch { orchState = state; }
+    if (!orchState.stuck) {
+      orchState.stuck = true;
+      orchState.updated_at = deps.now().toISOString();
+      await deps.writeFile(stateFile, `${JSON.stringify(orchState, null, 2)}\n`, 'utf8');
+    }
+  }
   return updated;
 }

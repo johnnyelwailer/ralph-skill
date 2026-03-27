@@ -115,6 +115,7 @@ export interface OrchestratorState {
   created_at: string;
   updated_at: string;
   diagnostics_blocker_threshold?: number;
+  stuck?: boolean;
 }
 
 // --- Replan types ---
