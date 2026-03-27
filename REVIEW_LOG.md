@@ -50,3 +50,44 @@ Internal plumbing work (new TS module + wiring). No proof-manifest.json exists a
 No UI changes, no new dependencies (versions unchanged), no user-facing behavior changes requiring doc updates.
 
 ---
+
+## Review — 2026-03-27 — commit 565d7a0c6..5bcc23f0a
+
+**Verdict: FAIL** (5 gates failing → 3 new/updated [review] tasks written to TODO.md; prior open tasks still unresolved)
+**Scope:** `aloop/cli/src/lib/scan-diagnostics.ts`, `aloop/cli/src/lib/scan-diagnostics.test.ts`
+
+### What the last build iteration fixed (PASS)
+
+Both completed Gate 1 items are correct and spec-compliant:
+- `DEFAULT_THRESHOLD = 5` (`scan-diagnostics.ts:22`) — matches SPEC-ADDENDUM.md:1047 ✓
+- `writeDiagnosticsJson` rewritten to array of `{type, message, first_seen_iteration, current_iteration, severity, suggested_fix}` (`scan-diagnostics.ts:76-90`) — matches SPEC-ADDENDUM.md:1053 ✓
+- `severity` logic: 'warning' at threshold, 'critical' at threshold×2 — consistent with spec's distinction between "diagnostic" and "critical blocker" ✓
+
+### Gate 1 FAIL — stuck: true still not implemented (carried)
+
+`runSelfHealingAndDiagnostics` still does not write `stuck: true` to `orchestrator.json` on escalation. SPEC-ADDENDUM.md:1049 is unambiguous. This was the third Gate 1 open item from the prior review and was not addressed in this iteration.
+
+### Gate 2 FAIL — 4 shallow assertions (2 new, 2 carried)
+
+- `scan-diagnostics.test.ts:86` — `assert.ok(result[0]!.hash.length > 0)` existence check; assert exact hash `'child_failed:42:OOM error occurred'` (carried, not fixed)
+- `scan-diagnostics.test.ts:192-193` — NEW: `suggested_fix.includes('child_failed')` / `includes('5')` substring checks introduced by the schema rewrite; should assert exact `'Investigate child_failed for issue #5: OOM error occurred'`
+- `scan-diagnostics.test.ts:217-218` — `data.includes('ALERT')` and `data.includes('7')` substring checks (carried, not fixed)
+- `scan-diagnostics.test.ts:396` — NEW: `assert.ok(written['/ses/diagnostics.json'])` existence-only check on the default-threshold test; should parse and assert content
+
+### Gate 3 FAIL — cleanStaleSessions branch coverage (carried)
+
+Branch where `staleIds.length > 0` but no issue matches: still untested. `changed` stays false, `orchestrator.json` not rewritten. Not addressed by this iteration.
+
+### Gate 4 FAIL — dead parameter in writeDiagnosticsJson (NEW)
+
+`scan-diagnostics.ts:72` — `now: () => Date` parameter accepted but never used inside the function. Was used by the old schema (`updated_at: now().toISOString()`); not removed when schema was rewritten. All callsites still pass `deps.now` / `() => new Date(...)` unnecessarily.
+
+### Gate 5 FAIL — pre-existing regressions (carried)
+
+17 tests still failing: orchestrate.test.ts (12), dashboard.test.ts (4), EtagCache (1). Not related to this iteration's changes and not addressed.
+
+### Gates 6, 7, 8, 9 PASS
+
+Internal plumbing, no proof required; no UI changes; no version changes; no doc-impacting behavior.
+
+---
