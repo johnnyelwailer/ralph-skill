@@ -11,7 +11,7 @@
 
 ### In Progress
 
-- [x] Rebuild and commit dist artifacts — `dist/dashboard/index.html` is staged for deletion and `dist/index.js` is unstaged-modified (missing `#!/usr/bin/env node` shebang); run `npm run build` in `aloop/cli` and commit results so the PR ships a working CLI artifact (priority: high)
+- [x] Rebuild and commit dist artifacts — `dist/dashboard/index.html` is staged for deletion and `dist/index.js` is unstaged-modified (missing `#!/usr/bin/env node` shebang); run `npm run build` in `aloop/cli` and commit results so the PR ships a working CLI artifact (priority: high) [reviewed: gates 1-9 pass]
 
 ### Completed
 
