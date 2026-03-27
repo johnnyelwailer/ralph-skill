@@ -1,5 +1,49 @@
 # Review Log
 
+## Review — 2026-03-27 — commit 11aa51bb0..d948d2ece
+
+**Verdict: FAIL** (4 gates failing — Gate 1 now PASS; Gates 2, 3, 4, 5 still open)
+**Scope:** `aloop/cli/src/lib/scan-diagnostics.ts`, `aloop/cli/src/lib/scan-diagnostics.test.ts`, `aloop/cli/src/commands/orchestrate.ts`
+
+### What this iteration fixed (PASS)
+
+**Gate 1 — PASS (fully resolved)**
+
+- `writeAlertMd` trigger changed from `r.count >= threshold * 2` to `r.count >= threshold` (`scan-diagnostics.ts:99`) — matches spec escalation at N=threshold. QA PASS at 82432eb7a.
+- `runSelfHealingAndDiagnostics` now writes `stuck: true` to `orchestrator.json` when any blocker reaches threshold (`scan-diagnostics.ts:163-174`). Implementation is correct: reads current state from disk (picks up cleanStaleSessions changes), is idempotent via `if (!orchState.stuck)` guard, updates `updated_at`. QA PASS at 82432eb7a.
+- `OrchestratorState` interface extended with `stuck?: boolean` (`orchestrate.ts:123`). Correct.
+- Two new unit tests cover stuck:true write (count=5 >= threshold=5) and non-write (count=4 < threshold=5). Both pass. Assertions are concrete (`assert.equal(saved.stuck, true)`).
+
+### Gate 2 FAIL — 4 shallow assertions (all carried, none fixed)
+
+- `scan-diagnostics.test.ts:87` — `assert.ok(result[0]!.hash.length > 0)`: assert exact hash `'child_failed:42:OOM error occurred'`
+- `scan-diagnostics.test.ts:192-193` — `suggested_fix.includes('child_failed')` / `includes('5')`: assert exact `'Investigate child_failed for issue #5: OOM error occurred'`
+- `scan-diagnostics.test.ts:217-218` — `data.includes('ALERT')` / `data.includes('7')`: assert specific markdown section header and issue in context
+- `scan-diagnostics.test.ts:396` — `assert.ok(written['/ses/diagnostics.json'])`: parse and assert content (array length, type, severity, suggested_fix)
+
+### Gate 3 FAIL — coverage gap (carried)
+
+`cleanStaleSessions`: branch where `staleIds.length > 0` but no `orchState.issues` entry has a matching `child_session` — `changed` stays false, `orchestrator.json` not rewritten. Still untested.
+
+### Gate 4 FAIL — dead parameter (carried)
+
+`scan-diagnostics.ts:71` — `now: () => Date` parameter in `writeDiagnosticsJson` signature. Never called inside the function (old schema used `now().toISOString()` for `updated_at`; new schema removed that field). All callsites still pass `deps.now` unnecessarily.
+
+### Gate 5 FAIL — pre-existing regressions (carried)
+
+32 total test failures, all pre-existing and unrelated to this iteration's changes:
+- dashboard.test.ts: 5 failures (host monitor GH convention, unsupported request type, non-zero exit, archive collision, loop.sh runtime path)
+- orchestrate.test.ts: 12 failures (validateDoR, launchChildLoop, checkPrGates, reviewPrDiff, processPrLifecycle, etc.)
+- EtagCache: 1 failure
+
+Build: PASS. Type check: PASS (tsc not directly runnable but tsx --test succeeds).
+
+### Gates 6, 7, 8, 9 PASS
+
+Internal plumbing only; no proof manifest required; no UI changes; no version changes; no doc-impacting behavior.
+
+---
+
 ## Review — 2026-03-27 — commit 630bc9c54..a854aa15c (+ 2 WIP commits)
 
 **Verdict: FAIL** (4 gates failing → 8 [review] tasks written to TODO.md)
