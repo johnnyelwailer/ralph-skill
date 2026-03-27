@@ -1,5 +1,49 @@
 # QA Log
 
+## QA Session — 2026-03-27 iter 2 (issue #176)
+
+### Test Environment
+- Binary under test: N/A — dashboard deps not installed (vite not found); server bundle built via `npm run build:server`
+- Commit under test: ae9830e8c
+- Features tested: 5
+
+### Results
+- PASS: index.test.ts — 5/5 tests pass (including previously failing [qa/P1] "catches errors without stack traces")
+- PASS: Dead import removal — no `createAdapter`/`OrchestratorAdapter` in orchestrate.ts source or built artifact
+- PASS: adapter.test.ts — 38/38 tests pass at latest commit
+- FAIL: adapter.ts LOC — 350 lines, above the 300 LOC threshold from SPEC-ADDENDUM.md; open review task `[review] Gate 4: adapter.ts is 351 lines` remains unresolved
+
+### Bugs Filed
+- None new (adapter.ts LOC violation already tracked in TODO.md as open review task)
+
+### Command Transcript
+
+```
+# Build server bundle (dashboard deps not installed)
+$ npm run build:server
+# dist/index.js 591.2kb  Done in 11ms
+
+# Re-test previously failing index test
+$ node_modules/.bin/tsx --test src/index.test.ts
+# tests 5 | pass 5 | fail 0  ← previously 1 fail (ERR_MODULE_NOT_FOUND), now fixed
+
+# Verify dead import removal in orchestrate.ts
+$ grep -n 'createAdapter\|OrchestratorAdapter' src/commands/orchestrate.ts
+# (no output — import removed)
+$ grep -n 'createAdapter\|OrchestratorAdapter' dist/index.js
+# (no output — not in built artifact either)
+
+# Re-run adapter test suite
+$ node_modules/.bin/tsx --test src/lib/adapter.test.ts
+# tests 38 | pass 38 | fail 0
+
+# Check adapter.ts LOC
+$ wc -l src/lib/adapter.ts
+# 350 src/lib/adapter.ts  ← over 300 LOC threshold; review task still open
+```
+
+---
+
 ## QA Session — 2026-03-27 (issue #176)
 
 ### Test Environment
