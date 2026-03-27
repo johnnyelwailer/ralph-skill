@@ -313,13 +313,32 @@ async function readLoopSettingsFromPipeline(
     for (const { key, set } of numFields) {
       if (typeof loop[key] === 'number') {
         set(settings, loop[key]);
+      } else if (typeof loop[key] === 'string') {
+        const n = Number(loop[key]);
+        if (!Number.isNaN(n)) set(settings, n);
       }
     }
+    // Handle inline arrays [0, 60, 120, 300] — YAML parser doesn't support them
+    const parseInlineArray = (raw: unknown): number[] | null => {
+      if (typeof raw !== 'string' || !raw.startsWith('[') || !raw.endsWith(']')) return null;
+      const inner = raw.slice(1, -1).trim();
+      if (!inner) return [];
+      const parts = inner.split(',').map(s => s.trim()).filter(Boolean);
+      const nums = parts.map(Number);
+      if (nums.some(Number.isNaN)) return null;
+      return nums;
+    };
     if (Array.isArray(loop.cooldown_ladder) && loop.cooldown_ladder.every((v: unknown) => typeof v === 'number')) {
       settings.cooldown_ladder = loop.cooldown_ladder;
+    } else {
+      const parsed = parseInlineArray(loop.cooldown_ladder);
+      if (parsed) settings.cooldown_ladder = parsed;
     }
     if (Array.isArray(loop.health_lock_retry_delays_ms) && loop.health_lock_retry_delays_ms.every((v: unknown) => typeof v === 'number')) {
       settings.health_lock_retry_delays_ms = loop.health_lock_retry_delays_ms;
+    } else {
+      const parsed = parseInlineArray(loop.health_lock_retry_delays_ms);
+      if (parsed) settings.health_lock_retry_delays_ms = parsed;
     }
     if (typeof loop.rate_limit_backoff === 'string' && ['exponential', 'linear', 'fixed'].includes(loop.rate_limit_backoff)) {
       settings.rate_limit_backoff = loop.rate_limit_backoff;

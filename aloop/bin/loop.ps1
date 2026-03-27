@@ -97,6 +97,74 @@ if (-not (Test-Path $SessionDir)) {
 }
 
 # ============================================================================
+# LOOP SETTINGS — configurable from loop-plan.json and meta.json
+# ============================================================================
+
+$script:InterIterationSleep = 3
+$script:RequestTimeout = 300
+$script:RequestPollInterval = 2
+$script:UnavailableSleep = 60
+$script:ConcurrentCapCooldown = 120
+$script:PhaseRetriesMultiplier = 2
+$script:CooldownLadder = @(0, 120, 300, 900, 1800, 3600)
+$script:healthLockRetryDelaysMs = @(50, 100, 150, 200, 250)
+
+function Load-LoopSettings {
+    $loopPlanFile = Join-Path $SessionDir 'loop-plan.json'
+    if (-not (Test-Path $loopPlanFile)) { return }
+    try {
+        $plan = Get-Content $loopPlanFile -Raw | ConvertFrom-Json
+        $s = if ($plan.loopSettings) { $plan.loopSettings } elseif ($plan.loop_settings) { $plan.loop_settings } else { $null }
+        if (-not $s) { return }
+        if ($null -ne $s.max_iterations) { $script:MaxIterations = [int]$s.max_iterations }
+        if ($null -ne $s.max_stuck) { $script:MaxStuck = [int]$s.max_stuck }
+        if ($null -ne $s.inter_iteration_sleep) { $script:InterIterationSleep = [int]$s.inter_iteration_sleep }
+        if ($null -ne $s.phase_retries_multiplier) { $script:PhaseRetriesMultiplier = [int]$s.phase_retries_multiplier }
+        if ($null -ne $s.concurrent_cap_cooldown) { $script:ConcurrentCapCooldown = [int]$s.concurrent_cap_cooldown }
+        if ($null -ne $s.request_timeout) { $script:RequestTimeout = [int]$s.request_timeout }
+        if ($null -ne $s.request_poll_interval) { $script:RequestPollInterval = [int]$s.request_poll_interval }
+        if ($null -ne $s.unavailable_sleep) { $script:UnavailableSleep = [int]$s.unavailable_sleep }
+        if ($s.cooldown_ladder -and $s.cooldown_ladder.Count -ge 2) {
+            $script:CooldownLadder = @($s.cooldown_ladder | ForEach-Object { [int]$_ })
+        }
+        if ($s.health_lock_retry_delays_ms -and $s.health_lock_retry_delays_ms.Count -ge 2) {
+            $script:healthLockRetryDelaysMs = @($s.health_lock_retry_delays_ms | ForEach-Object { [int]$_ })
+        }
+    } catch {
+        Write-Warning "Failed to load loop settings from loop-plan.json: $_"
+    }
+}
+
+function Refresh-LoopSettingsFromMeta {
+    $metaFile = Join-Path $SessionDir 'meta.json'
+    if (-not (Test-Path $metaFile)) { return }
+    try {
+        $meta = Get-Content $metaFile -Raw | ConvertFrom-Json
+        $s = if ($meta.loop_settings) { $meta.loop_settings } else { $null }
+        if (-not $s) { return }
+        if ($null -ne $s.max_iterations) { $script:MaxIterations = [int]$s.max_iterations }
+        if ($null -ne $s.max_stuck) { $script:MaxStuck = [int]$s.max_stuck }
+        if ($null -ne $s.inter_iteration_sleep) { $script:InterIterationSleep = [int]$s.inter_iteration_sleep }
+        if ($null -ne $s.phase_retries_multiplier) { $script:PhaseRetriesMultiplier = [int]$s.phase_retries_multiplier }
+        if ($null -ne $s.concurrent_cap_cooldown) { $script:ConcurrentCapCooldown = [int]$s.concurrent_cap_cooldown }
+        if ($null -ne $s.request_timeout) { $script:RequestTimeout = [int]$s.request_timeout }
+        if ($null -ne $s.request_poll_interval) { $script:RequestPollInterval = [int]$s.request_poll_interval }
+        if ($null -ne $s.unavailable_sleep) { $script:UnavailableSleep = [int]$s.unavailable_sleep }
+        if ($s.cooldown_ladder -and $s.cooldown_ladder.Count -ge 2) {
+            $script:CooldownLadder = @($s.cooldown_ladder | ForEach-Object { [int]$_ })
+        }
+        if ($s.health_lock_retry_delays_ms -and $s.health_lock_retry_delays_ms.Count -ge 2) {
+            $script:healthLockRetryDelaysMs = @($s.health_lock_retry_delays_ms | ForEach-Object { [int]$_ })
+        }
+    } catch {
+        # Silently ignore — meta.json may be temporarily locked during writes
+    }
+}
+
+# Load settings from loop-plan.json at startup
+Load-LoopSettings
+
+# ============================================================================
 # DEVCONTAINER AUTO-ROUTING — detect and route provider calls through container
 # ============================================================================
 
@@ -1240,7 +1308,6 @@ function Extract-OpenCodeUsage {
 # ============================================================================
 
 $providerHealthDir = if ($env:ALOOP_HEALTH_DIR) { $env:ALOOP_HEALTH_DIR } else { Join-Path (Join-Path $HOME '.aloop') 'health' }
-$healthLockRetryDelaysMs = @(50, 100, 150, 200, 250)
 
 function Ensure-ProviderHealthDir {
     if (-not (Test-Path $providerHealthDir)) {
@@ -1276,21 +1343,21 @@ function Open-ProviderHealthStreamWithRetry {
         [string]$OperationName
     )
 
-    for ($i = 0; $i -lt $healthLockRetryDelaysMs.Count; $i++) {
+    for ($i = 0; $i -lt $script:healthLockRetryDelaysMs.Count; $i++) {
         try {
             return [System.IO.File]::Open($Path, $FileMode, $FileAccess, $FileShare)
         }
         catch [System.IO.IOException] {
-            if ($i -eq ($healthLockRetryDelaysMs.Count - 1)) {
+            if ($i -eq ($script:healthLockRetryDelaysMs.Count - 1)) {
                 Write-LogEntry -Event "health_lock_failed" -Data @{
                     provider = $ProviderName
                     operation = $OperationName
                     path = $Path
-                    retries = $healthLockRetryDelaysMs.Count
+                    retries = $script:healthLockRetryDelaysMs.Count
                 }
                 return $null
             }
-            Start-Sleep -Milliseconds $healthLockRetryDelaysMs[$i]
+            Start-Sleep -Milliseconds $script:healthLockRetryDelaysMs[$i]
         }
     }
     return $null
@@ -1385,14 +1452,12 @@ function Set-ProviderHealthState {
 
 function Get-ProviderCooldownSeconds {
     param([int]$ConsecutiveFailures)
-    switch ($ConsecutiveFailures) {
-        1       { return 0 }
-        2       { return 120 }
-        3       { return 300 }
-        4       { return 900 }
-        5       { return 1800 }
-        default { return 3600 }
+    $idx = $ConsecutiveFailures - 1
+    if ($idx -lt 0) { $idx = 0 }
+    if ($idx -ge $script:cooldownLadder.Count) {
+        $idx = $script:cooldownLadder.Count - 1
     }
+    return $script:cooldownLadder[$idx]
 }
 
 function Classify-ProviderFailure {
@@ -1435,7 +1500,7 @@ function Update-ProviderHealthOnFailure {
         $newStatus     = 'degraded'
         $cooldownUntil = $null
     } else {
-        $cooldownSecs = if ($reason -eq 'concurrent_cap') { 120 } else { Get-ProviderCooldownSeconds -ConsecutiveFailures $failures }
+        $cooldownSecs = if ($reason -eq 'concurrent_cap') { $script:concurrentCapCooldown } else { Get-ProviderCooldownSeconds -ConsecutiveFailures $failures }
         if ($cooldownSecs -gt 0) {
             $newStatus     = 'cooldown'
             $cooldownUntil = $now.AddSeconds($cooldownSecs).ToString('o')
@@ -1528,7 +1593,7 @@ function Resolve-HealthyProvider {
         }
 
         # All providers unavailable — sleep until earliest cooldown expires
-        $sleepSecs = 60
+        $sleepSecs = $script:unavailableSleep
         $providersCsv = ($RoundRobinProviders -join ',')
         if ($degradedCount -eq $count) {
             Write-LogEntry -Event 'all_providers_degraded' -Data @{
@@ -1998,60 +2063,6 @@ if ($LaunchMode -eq 'resume') {
     Write-LogEntry -Event "session_restart" -Data @{}
 }
 
-# Load loop settings from loop-plan.json (config-driven pipeline).
-# Defaults are defined here; values in loop-plan.json override them.
-$script:InterIterationSleep = 3
-$script:RequestTimeout = 300
-$script:RequestPollInterval = 2
-$script:UnavailableSleep = 60
-$script:ConcurrentCapCooldown = 120
-$script:PhaseRetriesMultiplier = 2
-$script:TriageInterval = 5
-$script:ScanPassThrottleMs = 30000
-$script:RateLimitBackoff = 'fixed'
-
-function Load-LoopSettings {
-    $loopPlanFile = Join-Path $SessionDir "loop-plan.json"
-    if (-not (Test-Path $loopPlanFile)) { return }
-    try {
-        $plan = Get-Content -Path $loopPlanFile -Raw | ConvertFrom-Json
-        $s = $plan.loopSettings
-        if (-not $s) { return }
-        $numMappings = @{
-            'inter_iteration_sleep' = { param($v) $script:InterIterationSleep = [int]$v }
-            'request_timeout'       = { param($v) $script:RequestTimeout = [int]$v }
-            'request_poll_interval' = { param($v) $script:RequestPollInterval = [int]$v }
-            'unavailable_sleep'     = { param($v) $script:UnavailableSleep = [int]$v }
-            'concurrent_cap_cooldown' = { param($v) $script:ConcurrentCapCooldown = [int]$v }
-            'phase_retries_multiplier' = { param($v) $script:PhaseRetriesMultiplier = [int]$v }
-            'triage_interval'       = { param($v) $script:TriageInterval = [int]$v }
-            'scan_pass_throttle_ms' = { param($v) $script:ScanPassThrottleMs = [int]$v }
-        }
-        foreach ($key in $numMappings.Keys) {
-            $val = $s.$key
-            if ($null -ne $val) {
-                & $numMappings[$key] $val
-            }
-        }
-        $rlb = $s.rate_limit_backoff
-        if ($rlb -in @('exponential', 'linear', 'fixed')) {
-            $script:RateLimitBackoff = $rlb
-        }
-        # Cooldown ladder
-        $cl = $s.cooldown_ladder
-        if ($cl -is [System.Collections.IEnumerable] -and $cl -isnot [string] -and $cl.Count -ge 2) {
-            $script:CooldownLadder = @($cl | ForEach-Object { [int]$_ })
-        }
-        # Health lock retry delays
-        $hl = $s.health_lock_retry_delays_ms
-        if ($hl -is [System.Collections.IEnumerable] -and $hl -isnot [string] -and $hl.Count -ge 2) {
-            $script:HealthLockRetryDelays = @($hl | ForEach-Object { [int]$_ / 1000 })
-        }
-    } catch {
-        Write-Warning "Failed to load loop settings from loop-plan.json: $_"
-    }
-}
-
 # Prime cycle position from loop-plan.json if present.
 [void](Resolve-CyclePromptFromPlan)
 Load-LoopSettings
@@ -2075,16 +2086,21 @@ function Wait-ForRequests {
             Write-LogEntry -Event "waiting_for_requests" -Data @{ count = $pendingRequests.Count }
             Write-Host "Waiting for $($pendingRequests.Count) pending requests to be processed..." -ForegroundColor Yellow
             $waitStart = [int][DateTimeOffset]::Now.ToUnixTimeSeconds()
-            $timeout = $script:RequestTimeout
+            $timeout = $script:requestTimeout
 
             while (Get-ChildItem -Path $requestsDir -Filter '*.json' -File -ErrorAction SilentlyContinue) {
-                Start-Sleep -Seconds $script:RequestPollInterval
+                Start-Sleep -Seconds $script:requestPollInterval
                 $elapsed = [int][DateTimeOffset]::Now.ToUnixTimeSeconds() - $waitStart
                 if ($elapsed -gt $timeout) {
                     Write-LogEntry -Event "request_timeout" -Data @{ elapsed = $elapsed }
                     Write-Warning "Timeout waiting for requests to be processed ($elapsed s)"
                     break
                 }
+            }
+            Write-Host "Requests processed." -ForegroundColor Green
+        }
+    }
+}
             }
             Write-Host "Requests processed." -ForegroundColor Green
         }
@@ -2189,6 +2205,8 @@ try {
         if ($Provider -eq 'round-robin') {
             Refresh-ProvidersFromMeta
         }
+        # Hot-reload loop settings from meta.json (supports runtime config changes)
+        Refresh-LoopSettingsFromMeta
         $iterationProvider = Resolve-IterationProvider -IterationNumber $iteration
 
         if (Run-QueueIfPresent -IterationProvider $iterationProvider) {

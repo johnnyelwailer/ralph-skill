@@ -843,3 +843,78 @@ test('compileLoopPlan — opencode respects explicit cost_routing overrides', as
   // Review remains default prefer_capable because override only touched plan/build
   assert.ok(reviewPrompt.includes('model: openrouter/anthropic/claude-opus-4.6'));
 });
+
+test('compileLoopPlan — includes loopSettings from pipeline.yml in loop-plan.json', async () => {
+  const { promptsDir, sessionDir, root } = await setupDirs('clp-loop-settings-');
+  const pipelineDir = path.join(root, '.aloop');
+  await mkdir(pipelineDir, { recursive: true });
+  await writeFile(
+    path.join(pipelineDir, 'pipeline.yml'),
+    [
+      'pipeline:',
+      '  - agent: plan',
+      '  - agent: build',
+      '    repeat: 5',
+      '  - agent: qa',
+      '  - agent: review',
+      'loop:',
+      '  max_iterations: 100',
+      '  inter_iteration_sleep: 5',
+      '  cooldown_ladder: [0, 60, 120, 300]',
+      '  request_timeout: 600',
+      '  concurrent_cap_cooldown: 60',
+    ].join('\n'),
+    'utf8',
+  );
+
+  const plan = await compileLoopPlan({
+    mode: 'plan-build-review',
+    provider: 'claude',
+    promptsDir,
+    sessionDir,
+    enabledProviders: ['claude'],
+    roundRobinOrder: ['claude'],
+    models: { claude: 'opus' },
+    projectRoot: root,
+  });
+
+  const loopPlanJson = JSON.parse(await readFile(path.join(sessionDir, 'loop-plan.json'), 'utf8'));
+  assert.ok(loopPlanJson.loopSettings, 'loopSettings should be present');
+  assert.equal(loopPlanJson.loopSettings.max_iterations, 100);
+  assert.equal(loopPlanJson.loopSettings.inter_iteration_sleep, 5);
+  assert.deepStrictEqual(loopPlanJson.loopSettings.cooldown_ladder, [0, 60, 120, 300]);
+  assert.equal(loopPlanJson.loopSettings.request_timeout, 600);
+  assert.equal(loopPlanJson.loopSettings.concurrent_cap_cooldown, 60);
+});
+
+test('compileLoopPlan — omits loopSettings when pipeline.yml has no loop section', async () => {
+  const { promptsDir, sessionDir, root } = await setupDirs('clp-no-loop-settings-');
+  const pipelineDir = path.join(root, '.aloop');
+  await mkdir(pipelineDir, { recursive: true });
+  await writeFile(
+    path.join(pipelineDir, 'pipeline.yml'),
+    [
+      'pipeline:',
+      '  - agent: plan',
+      '  - agent: build',
+      '    repeat: 5',
+      '  - agent: qa',
+      '  - agent: review',
+    ].join('\n'),
+    'utf8',
+  );
+
+  await compileLoopPlan({
+    mode: 'plan-build-review',
+    provider: 'claude',
+    promptsDir,
+    sessionDir,
+    enabledProviders: ['claude'],
+    roundRobinOrder: ['claude'],
+    models: { claude: 'opus' },
+    projectRoot: root,
+  });
+
+  const loopPlanJson = JSON.parse(await readFile(path.join(sessionDir, 'loop-plan.json'), 'utf8'));
+  assert.equal(loopPlanJson.loopSettings, undefined, 'loopSettings should be absent');
+});

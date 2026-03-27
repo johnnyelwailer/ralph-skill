@@ -286,7 +286,7 @@ load_loop_settings() {
     if [ ! -f "$LOOP_PLAN_FILE" ] || ! command -v python3 >/dev/null 2>&1; then
         return
     fi
-    python3 - "$LOOP_PLAN_FILE" <<'PY' | while IFS= read -r line; do eval "$line"; done
+    python3 - "$LOOP_PLAN_FILE" <<'PY'
 import json, sys
 path = sys.argv[1]
 with open(path) as f:
@@ -308,24 +308,23 @@ mappings = [
 ]
 for key, var, cast in mappings:
     if key in s and s[key] is not None:
-        print(f'{var}="{cast(s[key])}"')
+        print(f'export {var}="{cast(s[key])}"')
 # Rate limit backoff strategy
 rlb = s.get("rate_limit_backoff")
 if isinstance(rlb, str) and rlb in ("exponential", "linear", "fixed"):
-    print(f'RATE_LIMIT_BACKOFF="{rlb}"')
-# Cooldown ladder
+    print(f'export RATE_LIMIT_BACKOFF="{rlb}"')
 cl = s.get("cooldown_ladder")
 if isinstance(cl, list) and len(cl) >= 2:
     vals = ",".join(str(int(v)) for v in cl if isinstance(v, (int, float)))
     if vals:
-        print(f'COOLDOWN_LADDER="{vals}"')
-# Health lock retry delays
+        print(f'export COOLDOWN_LADDER="{vals}"')
 hl = s.get("health_lock_retry_delays_ms")
 if isinstance(hl, list) and len(hl) >= 2:
     vals = " ".join(str(int(v) / 1000) for v in hl if isinstance(v, (int, float)))
     if vals:
-        print(f'HEALTH_LOCK_RETRY_DELAYS="{vals}"')
+        print(f'HEALTH_LOCK_RETRY_DELAYS=({vals})')
 PY
+    | while IFS= read -r line; do eval "$line"; done
 }
 
 # Initialize configurable settings with defaults
@@ -342,6 +341,53 @@ RATE_LIMIT_BACKOFF="fixed"
 
 # Load settings from loop-plan.json at startup
 load_loop_settings
+
+# Hot-reload loop settings from meta.json (supports runtime changes via aloop steer/CLI)
+refresh_loop_settings_from_meta() {
+    local meta_file="$SESSION_DIR/meta.json"
+    if [ ! -f "$meta_file" ] || ! command -v python3 >/dev/null 2>&1; then
+        return
+    fi
+    python3 - "$meta_file" <<'PY'
+import json, sys
+path = sys.argv[1]
+with open(path) as f:
+    m = json.load(f)
+s = m.get("loop_settings")
+if not s or not isinstance(s, dict):
+    sys.exit(0)
+mappings = [
+    ("max_iterations", "MAX_ITERATIONS", int),
+    ("max_stuck", "MAX_STUCK", int),
+    ("inter_iteration_sleep", "INTER_ITERATION_SLEEP", int),
+    ("phase_retries_multiplier", "PHASE_RETRIES_MULTIPLIER", int),
+    ("concurrent_cap_cooldown", "CONCURRENT_CAP_COOLDOWN", int),
+    ("request_timeout", "REQUEST_TIMEOUT", int),
+    ("request_poll_interval", "REQUEST_POLL_INTERVAL", int),
+    ("unavailable_sleep", "UNAVAILABLE_SLEEP", int),
+    ("triage_interval", "TRIAGE_INTERVAL", int),
+    ("scan_pass_throttle_ms", "SCAN_PASS_THROTTLE_MS", int),
+]
+for key, var, cast in mappings:
+    if key in s and s[key] is not None:
+        print(f'export {var}="{cast(s[key])}"')
+# Rate limit backoff strategy
+rlb = s.get("rate_limit_backoff")
+if isinstance(rlb, str) and rlb in ("exponential", "linear", "fixed"):
+    print(f'export RATE_LIMIT_BACKOFF="{rlb}"')
+cl = s.get("cooldown_ladder")
+if isinstance(cl, list) and len(cl) >= 2:
+    vals = ",".join(str(int(v)) for v in cl if isinstance(v, (int, float)))
+    if vals:
+        print(f'export COOLDOWN_LADDER="{vals}"')
+hl = s.get("health_lock_retry_delays_ms")
+if isinstance(hl, list) and len(hl) >= 2:
+    vals = " ".join(str(int(v) / 1000) for v in hl if isinstance(v, (int, float)))
+    if vals:
+        print(f'HEALTH_LOCK_RETRY_DELAYS=({vals})')
+PY
+    | while IFS= read -r line; do eval "$line"; done
+}
 
 # Re-read provider list from meta.json each iteration (supports hot-reload)
 refresh_providers_from_meta() {
@@ -2173,6 +2219,8 @@ while [ "$ITERATION" -lt "$MAX_ITERATIONS" ]; do
     if [ "$PROVIDER" = "round-robin" ]; then
         refresh_providers_from_meta
     fi
+    # Hot-reload loop settings from meta.json (supports runtime config changes)
+    refresh_loop_settings_from_meta
     iter_provider=$(resolve_iteration_provider $ITERATION)
 
     if run_queue_if_present "$iter_provider"; then
