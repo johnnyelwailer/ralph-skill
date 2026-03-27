@@ -36,6 +36,7 @@ interface DashboardState {
   artifacts: ArtifactManifest[];
   meta: unknown | null;
   repoUrl: string | null;
+  diagnostics: unknown[];
 }
 
 interface SessionContext {
@@ -281,13 +282,15 @@ async function loadStateForContext(
   const statusPath = path.join(ctx.sessionDir, 'status.json');
   const metaPath = path.join(ctx.sessionDir, 'meta.json');
   const logPath = path.join(ctx.sessionDir, 'log.jsonl');
+  const diagnosticsPath = path.join(ctx.sessionDir, 'diagnostics.json');
   const activeSessionsPath = path.join(runtimeDir, 'active.json');
   const recentSessionsPath = path.join(runtimeDir, 'history.json');
 
-  const [status, meta, log, activeSessions, recentSessions, docsEntries, artifacts] = await Promise.all([
+  const [status, meta, log, diagnostics, activeSessions, recentSessions, docsEntries, artifacts] = await Promise.all([
     readJsonFile(statusPath),
     readJsonFile(metaPath),
     readLogTail(logPath),
+    readJsonArrayFile(diagnosticsPath),
     readJsonArrayFile(activeSessionsPath),
     readJsonArrayFile(recentSessionsPath),
     Promise.all(
@@ -347,6 +350,7 @@ async function loadStateForContext(
     artifacts,
     meta,
     repoUrl: getRepoUrl(ctx.workdir),
+    diagnostics,
   };
 }
 

@@ -2091,6 +2091,52 @@ test('GET /api/qa-coverage returns 0% when file has no parseable table', async (
   }
 });
 
+test('GET /api/state includes diagnostics from diagnostics.json in session dir', async () => {
+  const fixture = await createServerFixture();
+
+  const diagnosticsRecords = [
+    {
+      type: 'child_failed',
+      message: 'OOM error occurred',
+      first_seen_iteration: 1,
+      current_iteration: 3,
+      severity: 'high',
+      suggested_fix: 'Investigate child_failed for issue #5: OOM error occurred',
+    },
+  ];
+
+  try {
+    await writeFile(
+      path.join(fixture.sessionDir, 'diagnostics.json'),
+      JSON.stringify(diagnosticsRecords),
+      'utf8',
+    );
+
+    const response = await fetch(`${fixture.handle.url}/api/state`);
+    assert.equal(response.status, 200);
+    const payload = (await response.json()) as { diagnostics: unknown[] };
+
+    assert.equal(payload.diagnostics.length, 1);
+    assert.deepEqual(payload.diagnostics, diagnosticsRecords);
+  } finally {
+    await fixture.handle.close();
+  }
+});
+
+test('GET /api/state returns empty diagnostics array when diagnostics.json is absent', async () => {
+  const fixture = await createServerFixture();
+
+  try {
+    const response = await fetch(`${fixture.handle.url}/api/state`);
+    assert.equal(response.status, 200);
+    const payload = (await response.json()) as { diagnostics: unknown[] };
+
+    assert.deepEqual(payload.diagnostics, []);
+  } finally {
+    await fixture.handle.close();
+  }
+});
+
 test.after(() => {
   const getActiveHandles = (process as unknown as { _getActiveHandles?: () => unknown[] })._getActiveHandles;
   if (!getActiveHandles) return;
