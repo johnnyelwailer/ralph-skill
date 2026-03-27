@@ -19,7 +19,7 @@ export interface SelfHealingDeps {
   isProcessAlive?: (pid: number) => boolean;
 }
 
-const DEFAULT_THRESHOLD = 3;
+const DEFAULT_THRESHOLD = 5;
 
 function hashBlocker(type: string, affectedIssue: number | null, snippet: string): string {
   return `${type}:${String(affectedIssue)}:${snippet.slice(0, 64)}`;

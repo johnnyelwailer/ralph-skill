@@ -368,7 +368,7 @@ test('runSelfHealingAndDiagnostics: label ensureLabelExists error is swallowed',
 
 // --- default threshold ---
 
-test('runSelfHealingAndDiagnostics: missing diagnostics_blocker_threshold defaults to 3', async () => {
+test('runSelfHealingAndDiagnostics: missing diagnostics_blocker_threshold defaults to 5', async () => {
   const written: Record<string, string> = {};
   const deps = {
     readFile: async (_p: string) => { throw new Error('no file'); },
@@ -380,12 +380,12 @@ test('runSelfHealingAndDiagnostics: missing diagnostics_blocker_threshold defaul
 
   const state = makeState(); // no diagnostics_blocker_threshold
   const existing: BlockerRecord[] = [
-    { hash: 'h1', type: 'child_failed', affectedIssue: 1, errorSnippet: 'err', firstSeenIteration: 1, lastSeenIteration: 3, count: 3 },
+    { hash: 'h1', type: 'child_failed', affectedIssue: 1, errorSnippet: 'err', firstSeenIteration: 1, lastSeenIteration: 5, count: 5 },
   ];
-  const pass = makePassResult({ iteration: 4, allDone: true });
+  const pass = makePassResult({ iteration: 6, allDone: true });
 
   await runSelfHealingAndDiagnostics(pass, '/ses', existing, state, null, deps);
 
-  // count=3 >= default threshold=3 → diagnostics.json should be written
-  assert.ok(written['/ses/diagnostics.json'], 'diagnostics.json should be written with default threshold of 3');
+  // count=5 >= default threshold=5 → diagnostics.json should be written
+  assert.ok(written['/ses/diagnostics.json'], 'diagnostics.json should be written with default threshold of 5');
 });
