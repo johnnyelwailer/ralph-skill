@@ -1252,22 +1252,13 @@ function Get-ProviderHealthState {
 
     $state = New-ProviderHealthState
     if ($parsed.PSObject.Properties.Name -contains 'status') { $state.status = [string]$parsed.status }
-    if ($parsed.PSObject.Properties.Name -contains 'last_success') {
-        $ls = $parsed.last_success
-        if ($ls -is [datetime]) {
-            $state.last_success = [DateTimeOffset]::new($ls.ToUniversalTime(), [TimeSpan]::Zero).ToString('o')
-        } else { $state.last_success = [string]$ls }
-    }
-    if ($parsed.PSObject.Properties.Name -contains 'last_failure') {
-        $lf = $parsed.last_failure
-        if ($lf -is [datetime]) {
-            $state.last_failure = [DateTimeOffset]::new($lf.ToUniversalTime(), [TimeSpan]::Zero).ToString('o')
-        } else { $state.last_failure = [string]$lf }
-    }
+    if ($parsed.PSObject.Properties.Name -contains 'last_success') { $state.last_success = $parsed.last_success }
+    if ($parsed.PSObject.Properties.Name -contains 'last_failure') { $state.last_failure = $parsed.last_failure }
     if ($parsed.PSObject.Properties.Name -contains 'failure_reason') { $state.failure_reason = $parsed.failure_reason }
     if ($parsed.PSObject.Properties.Name -contains 'consecutive_failures') { $state.consecutive_failures = [int]$parsed.consecutive_failures }
     if ($parsed.PSObject.Properties.Name -contains 'cooldown_until') {
         $cu = $parsed.cooldown_until
+        # ConvertFrom-Json may auto-convert ISO 8601 strings to DateTime objects; normalise back to ISO string
         if ($cu -is [datetime]) {
             $state.cooldown_until = [DateTimeOffset]::new($cu.ToUniversalTime(), [TimeSpan]::Zero).ToString('o')
         } else {
