@@ -2,6 +2,16 @@
 
 ## Tasks
 
+### In Progress
+
+- [ ] [review] Gate 5: `proof.spec.ts:149` FAIL — desktop Sidebar missing `isDesktop={isDesktop}` prop at AppView.tsx:2509; "Collapse sidebar" button is visible at desktop viewport when it must be hidden. Add `isDesktop={isDesktop}` to the Sidebar at line 2509. (priority: high)
+
+- [ ] [review] Gate 4/5: `handleTouchStart`/`handleTouchEnd` (AppView.tsx:2211-2225) are defined but never attached to any JSX element — swipe-right-to-open gesture is completely broken (`proof.spec.ts:103` fails). Attach `onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}` to the root `<div>` at AppView.tsx:2505, OR explicitly remove the dead handlers if swipe is descoped. (priority: high)
+
+- [ ] [review] Gate 5: `smoke.spec.ts:135` and `smoke.spec.ts:154` reference removed panel toggle buttons ('Documents', 'Activity') that no longer exist — both tests fail. Update these tests to match the new always-visible stacked-panel layout: remove assertions on toggle buttons, assert that both panels are visible simultaneously on mobile, and remove the 44px tap-target assertions for the removed toggles. (priority: high)
+
+- [ ] [review] Gate 4: `mobileSidebarRef` (AppView.tsx:2199) is declared with `useRef<HTMLDivElement>(null)` and attached to the mobile drawer div, but the ref value is never read anywhere — dead code. Remove the ref declaration and the `ref={mobileSidebarRef}` prop from AppView.tsx:2515. (priority: low)
+
 ### Up Next
 
 - [x] Fix steer input: `position: fixed` at viewport bottom on mobile with safe-area inset (priority: high)
