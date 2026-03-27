@@ -2053,7 +2053,7 @@ function Footer({
   isRunning: boolean;
 }) {
   return (
-    <footer className="border-t border-border px-3 py-2 md:px-4 shrink-0">
+    <footer className="fixed bottom-0 inset-x-0 z-30 border-t border-border bg-background px-3 pt-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] sm:relative sm:inset-x-auto sm:bottom-auto sm:z-auto sm:pb-2 md:px-4 shrink-0">
       <div className="flex items-center gap-1.5 sm:gap-3">
         <Textarea
           className="min-h-[44px] md:min-h-[32px] h-auto md:h-8 resize-none text-xs flex-1 min-w-0"
@@ -2480,7 +2480,7 @@ function AppInner() {
           )}
           <div className="flex flex-col flex-1 min-w-0">
             <Header sessionName={sessionName} isRunning={isRunning} currentState={currentState} currentPhase={currentPhase} currentIteration={currentIteration} providerName={providerName} modelName={modelName} tasksCompleted={tasksCompleted} tasksTotal={tasksTotal} progressPercent={progressPercent} updatedAt={state?.updatedAt ?? ''} loading={loading} loadError={loadError} connectionStatus={connectionStatus} onOpenCommand={() => setCommandOpen(true)} onOpenSwitcher={() => setSidebarCollapsed(false)} startedAt={startedAt} avgDuration={avgDuration} maxIterations={maxIterations} stuckCount={stuckCount} onToggleMobileMenu={() => setMobileMenuOpen((p) => !p)} selectedSessionId={selectedSessionId} qaCoverageRefreshKey={qaCoverageRefreshKey} sessionCost={sessionCost} totalCost={totalCost} budgetCap={budgetCap} budgetUsedPercent={budgetUsedPercent} costError={costError} costLoading={costLoading} budgetWarnings={budgetWarnings} budgetPauseThreshold={budgetPauseThreshold} />
-            <main className="flex-1 min-h-0 p-2 md:p-3">
+            <main className="flex-1 min-h-0 p-2 pb-[calc(60px+env(safe-area-inset-bottom))] sm:pb-2 md:p-3">
               <div className={`flex gap-3 h-full flex-col ${sidebarCollapsed ? 'sm:flex-row' : ''} lg:flex-row`}>
                 {docsPanel}
                 {activityPanel}
