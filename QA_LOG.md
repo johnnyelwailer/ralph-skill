@@ -1,5 +1,76 @@
 # QA Log
 
+## QA Session — 2026-03-27 iter 8 (issue #176)
+
+### Test Environment
+- Binary under test: /tmp/aloop-test-install-zwEm1t/bin/aloop (installed via npm pack + npm install -g)
+- aloop --version: 1.0.0
+- Commit under test: 19440428e (chore: rebuild dist artifacts with shebang and dashboard restored)
+- Features tested: 5
+
+### Target Selection
+New commit since iter 7 (422521987 → 19440428e): full dist rebuild adding `#!/usr/bin/env node` shebang to dist/index.js and restoring dist/dashboard/index.html + templates. Testing shebang, packaged install path, all prior acceptance criteria.
+
+### Results
+- PASS: dist/index.js shebang — `#!/usr/bin/env node` on line 1
+- PASS: dist/dashboard/index.html — dashboard assets restored in dist/
+- PASS: packaged install — binary installs via npm pack, runs `aloop --version` → 1.0.0, `aloop --help` shows expected commands
+- PASS: adapter.test.ts — 38/38 tests pass
+- PASS: index.test.ts — 5/5 tests pass
+- PASS: adapter.ts LOC — 115 LOC, adapter-github.ts 252 LOC (both under 300)
+- PASS: Dead imports — no createAdapter/OrchestratorAdapter in orchestrate.ts or process-requests.ts
+- PASS: No hardcoded api.github.com in dist/index.js (0 matches)
+
+### Bugs Filed
+None — all acceptance criteria verified at HEAD.
+
+### Command Transcript
+```
+# Verify shebang in dist/index.js
+$ head -1 aloop/cli/dist/index.js
+#!/usr/bin/env node  ✓
+
+# Verify dashboard restored
+$ ls aloop/cli/dist/dashboard/
+assets  index.html  ✓
+
+# Install from source (npm pack → npm install -g in isolated prefix)
+$ ALOOP_BIN=$(npm run --silent test-install -- --keep 2>/dev/null | tail -1)
+$ echo "Binary: $ALOOP_BIN"
+Binary: /tmp/aloop-test-install-zwEm1t/bin/aloop
+$ "$ALOOP_BIN" --version
+1.0.0  ✓
+$ "$ALOOP_BIN" --help | head -4
+Usage: aloop [options] [command]
+Aloop CLI for dashboard and project orchestration  ✓
+
+# Adapter unit tests
+$ node_modules/.bin/tsx --test src/lib/adapter.test.ts
+# tests 38 | pass 38 | fail 0  ✓
+
+# Index CLI tests
+$ node_modules/.bin/tsx --test src/index.test.ts
+# tests 5 | pass 5 | fail 0  ✓
+
+# LOC check
+$ wc -l src/lib/adapter.ts src/lib/adapter-github.ts
+  115 src/lib/adapter.ts
+  252 src/lib/adapter-github.ts  ✓ both under 300
+
+# Dead import check
+$ grep -n 'createAdapter\|OrchestratorAdapter' src/commands/orchestrate.ts src/commands/process-requests.ts
+# (no output) ✓
+
+# No hardcoded api.github.com in dist
+$ grep -c 'api\.github\.com' aloop/cli/dist/index.js
+0  ✓
+
+# Clean up test install prefix
+$ rm -rf /tmp/aloop-test-install-zwEm1t
+```
+
+---
+
 ## QA Session — 2026-03-27 iter 7 (issue #176)
 
 ### Test Environment
