@@ -44,6 +44,59 @@
 
 ---
 
+## Review — 2026-03-27 — commit 75e241b48..899d1277f
+
+**Verdict: FAIL** (2 findings → written to TODO.md as [review] tasks)
+**Scope:** `aloop/cli/dashboard/src/components/session/SessionCard.test.tsx`, `SteerInput.test.tsx`, `ActivityLog.tsx`, `ActivityLog.stories.tsx`, `activityLogHelpers.ts`, `AppView.tsx`, `App.coverage.integration-app.test.ts`, proof-artifacts/
+
+**Commits reviewed:**
+- `6a1eeeca0` test: add SessionCard unit tests covering key branches
+- `734a2b7e8` test: add SteerInput.test.tsx covering send, stop/resume, and keyboard branches
+- `f16697994` fix(test): resolve ambiguous Stop button selector in integration tests
+- `8c71ef05d` feat: add ActivityLog.stories.tsx and remove duplicate inline definitions from AppView.tsx
+- `218df13c1` chore(qa): session iter 25 — unit tests pass, Gate 6 screenshots captured
+- `899d1277f` chore(qa): session iter 26 — ActivityLog component verified, integration tests pass, 9 screenshots captured
+
+### Gate-by-gate summary
+
+**Gate 1 — Spec Compliance: PASS**
+- All three prior [review] tasks resolved: SessionCard.test.tsx added with 12 tests, SteerInput.test.tsx added with 15 tests, and Playwright screenshots captured for all 17 stories.
+- Integration test Stop button selector fixed from `/stop/i` to `/stop loop options/i` — matches the [qa/P1] task exactly.
+- ActivityLog extracted to `ActivityLog.tsx` (616 LOC) + `activityLogHelpers.ts` (149 LOC), with 9 Storybook stories as specified by the [qa/P1] task.
+
+**Gate 2 — Test Depth: PASS (with minor caveats)**
+- `SessionCard.test.tsx`: Covers suppressClick (true/false with concrete spy assertions), cardCost null/number/formatting (4 decimal places exact string match), tooltip with session id, costUnavailable, and stuckCount. Line 168 uses `toBeTruthy()` to check element existence — marginal per Gate 2, but followed by a concrete `classList.contains('text-red-500')` assertion on line 169 that would fail on a broken implementation.
+- `SteerInput.test.tsx`: Covers isRunning/Stop/Resume rendering with specific text queries, Send disabled on empty/whitespace/steerSubmitting, Enter-without-Shift calls onSteer, Stop menu items `onStop(false)` and `onStop(true)` with exact argument assertions, Resume click calls onResume. Line 102 finds resume button by `svg.lucide-play` class — fragile but functional.
+
+**Gate 3 — Coverage: FAIL**
+- `SessionCard.test.tsx` and `SteerInput.test.tsx`: PASS — prior findings resolved, branches covered.
+- `ActivityLog.tsx` (616-line new module): 0% unit test coverage. `parseLogLine` is tested via re-export in `parseLogLine.test.tsx`, but `ActivityPanel`'s React logic is untested. Uncovered branches: (a) `withCurrent` when `isRunning=false || currentIteration===null` short-circuits, (b) `hasResult` suppression of synthetic entry when current iteration already has a complete/error entry within the current run, (c) `deduped` deduplication of multiple `session_start` events, (d) `loadOutput` fetch success, non-ok response (`outputText=''`), and catch path in `LogEntryRow`. Constitution Rule 11 and Gate 3 both require test coverage for new modules.
+
+**Gate 4 — Code Quality: FAIL**
+- `ActivityLog.tsx` is 616 lines. Constitution Rule 7 mandates < 150 LOC per file and "If a file grows beyond that, split it." The file contains four separable units: `ActivityPanel` (~116 LOC), `LogEntryRow` (~220 LOC), `ImageLightbox` (~15 LOC), `ArtifactComparisonDialog` (~215 LOC), plus `findBaselineIterations`. The builder consolidated all into one file despite creating a new module from scratch.
+- `activityLogHelpers.ts`: 149 lines ✓ — exactly at limit.
+- No dead code, no unused imports in changed files ✓.
+
+**Gate 5 — Integration Sanity: PASS**
+- `tsc --noEmit`: clean.
+- `npm test`: 28 files / 295 tests — all pass. One transient failure in `useCost.test.ts:105` on first run cleared on re-run (pre-existing flaky test, not a regression).
+
+**Gate 6 — Proof: PASS**
+- SessionCard: 11 screenshots in `proof-artifacts/` ✓
+- SteerInput: 7 screenshots ✓
+- ActivityLog: 10 screenshots (Empty, SessionStart, IterationComplete, WithArtifacts, ErrorIteration, MultipleIterations, RunningIteration, ProviderCooldown, ReviewVerdict, SidebarCheck) ✓
+
+**Gate 7 — Layout: SKIP** (no CSS/layout changes — extraction only)
+
+**Gate 8 — Versions: SKIP** (no dependency changes)
+
+**Gate 9 — Documentation: PASS** (no user-facing behavior changes)
+
+**Gate 10 — QA Coverage: PASS**
+- QA_COVERAGE.md: 19/20 features PASS (95%); ProgressBar extraction (1 feature) pending — not stale (just added). Above 30% threshold. No stale [qa/P1] bugs (ProgressBar P1 is new, not multi-iteration).
+
+---
+
 ## Review — 2026-03-27 — commit dc13ca694..c45a7759f
 
 **Verdict: PASS** (0 findings)

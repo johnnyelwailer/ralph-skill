@@ -3,6 +3,8 @@
 ## Current Phase: Issue #183 — Storybook 8 setup with react-vite and Tailwind decorators
 
 ### In Progress
+- [ ] [review] Gate 3: `ActivityLog.tsx` has no unit tests — add `ActivityLog.test.tsx` covering `ActivityPanel`'s untested branches: (1) `withCurrent` memo when `isRunning=false` vs `true`, (2) `deduped` memo deduplicating multiple `session_start` entries, (3) `hasResult` returning true suppresses the synthetic running entry, (4) `loadOutput` fetch success/failure/catch paths in `LogEntryRow` (priority: high)
+- [ ] [review] Gate 4: `ActivityLog.tsx` is 616 lines — violates Constitution Rule 7 (< 150 LOC target). Split into at minimum: `ActivityPanel.tsx` (~116 LOC), `LogEntryRow.tsx` (~220 LOC), `ArtifactComparisonDialog.tsx` (~215 LOC), plus keep `findBaselineIterations` in a helpers file. Update imports in AppView.tsx accordingly (priority: high)
 
 ### Bugs
 
