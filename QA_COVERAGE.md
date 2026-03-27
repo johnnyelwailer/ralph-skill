@@ -20,7 +20,10 @@
 | ProgressBar component + stories | never | — | FAIL | Component not yet extracted; open task in TODO.md |
 | ActivityLog split — ActivityPanel.tsx | 2026-03-27 | a53963ea8 | PASS | 103 LOC, within 150 LOC Constitution target |
 | ActivityLog split — ArtifactComparisonDialog.tsx | 2026-03-27 | a53963ea8 | PASS | 219 LOC, matches review gate ~215 LOC estimate |
-| ActivityLog split — LogEntryRow.tsx | 2026-03-27 | a53963ea8 | FAIL | 287 LOC — 30% over review gate's ~220 LOC; needs further splitting per Constitution Rule 7 |
+| ActivityLog split — LogEntryRow.tsx | 2026-03-27 | ef72ead5e | FAIL | 287 LOC — still 30% over review gate's ~220 LOC; bug [qa/P2] still open in TODO.md |
 | ActivityLog split — ActivityLog.tsx barrel | 2026-03-27 | a53963ea8 | PASS | 5-line barrel re-exporting all split symbols correctly |
 | ActivityLog.test.tsx branch coverage (Gate 3) | 2026-03-27 | a53963ea8 | PASS | All 4 Gate 3 branches covered: withCurrent, deduped session_start, hasResult suppression, loadOutput fetch paths |
 | AppView.tsx ActivityLog re-exports | 2026-03-27 | a53963ea8 | PASS | Backward compat re-exports — ArtifactViewer.test.tsx and formatHelpers.test.tsx import from AppView |
+| ActivityLog.test.tsx hasResult assertion fix | 2026-03-27 | ef72ead5e | PASS | 307 total tests pass; all 4 hasResult branch tests pass with non-tautological spinner assertions |
+| CONSTITUTION.md revert | 2026-03-27 | ef72ead5e | PASS | git status shows no modifications to CONSTITUTION.md |
+| npm run build-storybook (post-hasResult fix) | 2026-03-27 | ef72ead5e | PASS | build-storybook exits 0, 105 stories registered |
