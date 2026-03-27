@@ -291,3 +291,47 @@ None — both FAILs already tracked in QA_COVERAGE.md; no new bugs this session.
 # Missing: diagnostics key, blockers key  ← BUG — still unfixed
 ```
 
+## QA Session — 2026-03-27 (issue-147 scan-diagnostics, re-test after Gate2+Gate3 test strengthening)
+
+### Test Environment
+- Binary under test: `/tmp/aloop-test-install-FmbhCg/bin/aloop`
+- Version: `1.0.0`
+- Commit: `b71a889a6`
+- Temp dirs: `/tmp/qa-test-aD1LVE`, cleaned up
+- Features tested: 4 (test suite Gate2+Gate3, non-existent dir, --output json diagnostics, cleanStaleSessions no-match branch)
+
+### Results
+- PASS: test suite — 1154 pass, 0 fail, 1 skipped — one more vs 1153: new cleanStaleSessions no-match test added
+- PASS: cleanStaleSessions no-matching-child_session branch — orchestrator.json NOT rewritten — confirmed
+- FAIL: non-existent session dir silently exits 0 — still open (re-confirmed at b71a889a6)
+- FAIL: --output json does not include diagnostics/blocker summary — still open (re-confirmed at b71a889a6)
+
+### Bugs Filed
+None — both FAILs already tracked in QA_COVERAGE.md and TODO.md; no new bugs this session.
+
+### Command Transcript
+
+```
+# Binary: /tmp/aloop-test-install-FmbhCg/bin/aloop  (b71a889a6)
+# Version: 1.0.0
+
+# Test 1: Full test suite after Gate2+Gate3 assertion strengthening
+# npm test --prefix aloop/cli
+# 1154 pass, 0 fail, 1 skipped (was 1153 pass — new cleanStaleSessions no-match test now running)
+
+# Test 2: Non-existent session dir
+# $ aloop process-requests --session-dir /tmp/nonexistent-dir-xyz-qa-b71a889
+# (no output)
+# Exit: 0  -- BUG: should error, still unfixed
+
+# Test 3: --output json missing diagnostics
+# Run 5 iterations on fresh session -> diagnostics.json written, stuck=True
+# $ aloop process-requests --session-dir $SESSION_DIR --output json
+# Returns: {iteration, triage, specQuestions, dispatched, ...} -- no diagnostics key -- BUG still unfixed
+
+# Test 4: cleanStaleSessions no-matching-child_session branch
+# orchestrator.json: issue #5 present, no child_session field
+# $ aloop process-requests --session-dir $SESSION_DIR2
+# Exit: 0, orchestrator.json after run: issues unchanged, no stale markers written
+# changed stays false, orchestrator.json NOT rewritten -- PASS
+```
