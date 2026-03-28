@@ -1,5 +1,53 @@
 # QA Log
 
+## QA Session — 2026-03-28 (iteration 23)
+
+### Test Environment
+- Binary under test: /tmp/aloop-test-install-3Y8l4P/bin/aloop (version 1.0.0)
+- Commit: 274636ea8
+- Features tested: 4
+
+### Results
+- PASS: LogEntryExpandedDetails branch coverage ≥90% (93.47%, was FAIL at 86.95%)
+- PASS: vitest coverage config includes new components (all extracted components now in coverage)
+- PASS: All dashboard tests (350/350)
+- PASS: TypeScript type-check (tsc --noEmit, exit 0)
+- FAIL: SliderView.tsx branch coverage 70% — new bug filed [qa/P1]
+- FAIL: LogEntryRow.tsx branch coverage 89.15% — new bug filed [qa/P1]
+
+### Bugs Filed
+- [qa/P1] SliderView.tsx branch coverage 70% (lines 19-26,52 uncovered)
+- [qa/P1] LogEntryRow.tsx branch coverage 89.15% (lines 177-183 uncovered)
+
+### Command Transcript
+
+```
+# Install CLI from source
+ALOOP_BIN=$(npm --prefix aloop/cli run --silent test-install -- --keep 2>/dev/null | tail -1)
+# Binary: /tmp/aloop-test-install-3Y8l4P/bin/aloop
+# Version: 1.0.0
+
+# Test 1: All dashboard tests
+cd aloop/cli/dashboard && npm run test -- --run
+# → 32 test files passed, 350/350 tests (exit 0)
+
+# Test 2: LogEntryExpandedDetails branch coverage (re-test of previous FAIL)
+npx vitest run --coverage --coverage.include='**/LogEntryExpandedDetails.tsx'
+# → LogEntryExpandedDetails.tsx: 93.47% branch coverage (PASS, was 86.95%)
+
+# Test 3: Full coverage (vitest config fix re-test + new component coverage check)
+npx vitest run --coverage
+# → EXIT CODE: 0
+# → All extracted components appear in report
+# → SliderView.tsx: 70% branch (FAIL — lines 19-26,52)
+# → LogEntryRow.tsx: 89.15% branch (FAIL — lines 177-183)
+# → All other new components ≥90% branch
+
+# Test 4: TypeScript type-check
+npx tsc --noEmit
+# → EXIT CODE: 0 (no errors)
+```
+
 ## QA Session — 2026-03-27 (current iteration)
 
 ### Test Environment
