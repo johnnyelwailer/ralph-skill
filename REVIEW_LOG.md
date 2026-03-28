@@ -462,3 +462,32 @@ All 9 interface-shape deviations from the prior FAIL review (`b6e32bf40`) are re
 - **Gate 7:** N/A — no UI changes.
 - **Gate 8:** No dependency changes.
 - **Gate 9:** No user-facing behavior or docs changed.
+
+---
+
+## Review — 2026-03-28 — commit d7a7e3054..a642b00af
+
+**Verdict: PASS** (prior Gate 5 finding resolved; all gates pass)
+**Scope:** `aloop/cli/src/lib/adapter-github.ts`, `TODO.md`, `QA_LOG.md`, `QA_COVERAGE.md`
+
+### Prior Finding Resolution
+
+- **Gate 5 (TS errors from prototype mixin — RESOLVED):** `593eab560` fixes all 21 TS errors (TS2420, TS2339, TS2740) introduced by the `Object.assign(GitHubAdapter.prototype, PR_METHODS)` mixin. Fix uses TypeScript interface merging — a separate `export interface GitHubAdapter` declaration at `adapter-github.ts:207-217` lists all 9 PR methods, making them visible to the type system without adding implementation LOC. Verified live: `tsc --noEmit | grep "TS2420\|TS2339\|TS2740"` → no output. Total TS errors remain 71, all in pre-existing out-of-scope files (`requests.ts`, `requests.test.ts`).
+
+### Observations
+
+- **Gate 1 (concrete):** `adapter-github.ts:207-217` interface merging block lists all 9 PR method signatures matching TASK_SPEC.md. No spec-compliance regression from this change.
+- **Gate 4 (clean):** 19 lines added (interface declaration + 4 new type imports). LOC: `adapter-github.ts` = 219 (under 300), `adapter-github-pr.ts` = 137, `adapter.ts` = 132. No dead code. The approach avoids `declare` in class body — using module-level interface merging is the idiomatic TypeScript pattern for this scenario.
+- **Gate 5 (concrete):** 47/47 adapter tests pass. 319/27 orchestrate baseline unchanged. 0 adapter TS errors confirmed live.
+
+### Gates that Pass
+
+- **Gate 1:** Interface shape unchanged — fully reconciled with TASK_SPEC.md as of `58a94fd19`. This fix is TS-only.
+- **Gate 2:** 47/47 adapter tests with concrete assertions. No test changes in this build.
+- **Gate 3:** 47/47 pass. Interface declaration is compile-time only; no new runtime branches to cover.
+- **Gate 4:** No dead code. LOC thresholds respected. The 4 new imports (`AdapterPr`, `PrStatus`, `PrChecksResult`, `AdapterReview`) are all used in the interface merging block.
+- **Gate 5:** 0 TS errors in adapter files. 71 total errors all pre-existing in out-of-scope files. 47/47 adapter tests pass. Orchestrate baseline 319/27 confirmed.
+- **Gate 6:** QA_LOG.md iter 12 contains concrete command transcript with `grep TS2420|TS2339|TS2740` → no output and `# tests 47 | pass 47` counts — valid proof for a TS fix.
+- **Gate 7:** N/A — no UI changes.
+- **Gate 8:** No dependency changes.
+- **Gate 9:** No user-facing behavior or docs changed.
