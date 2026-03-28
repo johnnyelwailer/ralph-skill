@@ -491,3 +491,39 @@ All 9 interface-shape deviations from the prior FAIL review (`b6e32bf40`) are re
 - **Gate 7:** N/A — no UI changes.
 - **Gate 8:** No dependency changes.
 - **Gate 9:** No user-facing behavior or docs changed.
+
+---
+
+## Review — 2026-03-28 — commit 959b45f17..6e2cb3e22
+
+**Verdict: FAIL** (1 finding — Gate 5: dist artifact not rebuilt after source fix)
+**Scope:** `aloop/bin/loop.sh`, `TODO.md`, `QA_COVERAGE.md`, `QA_LOG.md`
+
+### What Changed Since Last PASS
+
+- `a0a7210b4`: `TODO.md` only — documented pre-existing loop.sh round-robin default mismatch as spec-gap/P2. No code changes.
+- `847ab1c30`: Fixed `aloop/bin/loop.sh` — `ROUND_ROBIN_PROVIDERS` default: `claude,gemini,opencode` → `claude,opencode,codex,gemini,copilot` (line 31); help text updated to match (line 65). Also updated `TODO.md` to mark spec-gap as fixed.
+- `6e2cb3e22`: QA iter 13 — confirmed source fix correct; found dist artifact stale; filed `[qa/P1]` in `TODO.md`.
+
+### Findings
+
+- **Gate 5 (FAIL):** `aloop/cli/dist/bin/loop.sh` was not rebuilt after the `aloop/bin/loop.sh` source fix in `847ab1c30`. At HEAD:
+  - `dist/bin/loop.sh:31` → `ROUND_ROBIN_PROVIDERS="claude,gemini,opencode"` (stale — should be `claude,opencode,codex,gemini,copilot`)
+  - `dist/bin/loop.sh:65` → `(default: claude,codex,gemini,copilot)` (stale — should be `claude,opencode,codex,gemini,copilot`)
+  - A user installing the packaged CLI gets wrong round-robin defaults.
+  - Already tracked as `[qa/P1]` in TODO.md with complete fix description (`npm run build` in `aloop/cli/`). No additional `[review]` task written to avoid duplication.
+
+### Prior Findings Resolution
+
+All prior findings through the last PASS (`d7a7e3054..a642b00af`) remain resolved. No regressions from these commits.
+
+### Gates that Pass
+
+- **Gate 1:** `aloop/bin/loop.sh` fix is a pre-existing gap (spec-gap/P2, outside TASK_SPEC.md scope). Adapter interface fully reconciled with TASK_SPEC.md as of prior PASS. No new spec violations.
+- **Gate 2:** No test changes. N/A.
+- **Gate 3:** No new modules. N/A.
+- **Gate 4:** Source fix is clean — two lines changed in `loop.sh`, accurate values, no dead code. TODO.md updates accurate.
+- **Gate 6:** QA_LOG.md iter 13 reports Test 1 PASS (source verified) and Test 1b FAIL (dist stale) accurately. Evidence matches findings.
+- **Gate 7:** N/A — no UI changes.
+- **Gate 8:** No dependency changes.
+- **Gate 9:** Source `loop.sh` help text is now correct. Dist stale is a Gate 5 concern, not a docs freshness issue.
