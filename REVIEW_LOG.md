@@ -130,3 +130,45 @@ Restored functions have no dead code. New `stat` and `rm` imports are used. No s
 - Gate 10: All `[qa/P1]` bugs filed 2026-03-28 (< 3 iterations old)
 
 ---
+
+## Review — 2026-03-28 — commits 5cd8c898b..8a2efa43b (build: review-state fix + label enrichment)
+
+**Verdict: PASS** (2 observations)
+**Scope:** `aloop/cli/src/commands/orchestrate.ts`
+
+### Gate 1 — PASS
+
+Prior Gate 5 finding resolved: `'review'` added to `OrchestratorIssueState` union, eliminating TS2367 at `process-requests.ts:551`. Label enrichment fix restores `wave/${wave}` and `deriveComponentLabels` in `applyDecompositionPlan`.
+
+### Gate 2 — PASS
+
+Suite 395 ("applyDecompositionPlan label enrichment") subtests 1–4 all pass with concrete value assertions:
+- `labels.includes('wave/1')` / `labels.includes('wave/2')` — not just shape checks
+- Component label presence verified with exact string (`'component/orchestrator'`)
+- Empty `file_hints` correctly produces no component labels
+
+Subtests 5, 6, 8 fail (dependency body injection), but these are pre-existing tracked qa/P1 bugs, not new regressions.
+
+### Gate 3 — PASS
+
+The one-line `labels` change introduces two branches (`file_hints` present vs absent via `?? []`). Both are covered by subtests 2 and 4. `OrchestratorIssueState` union addition has no runtime branch to cover.
+
+### Gate 4 — PASS
+
+`deriveComponentLabels` import used, no dead code. No leftover TODOs or commented-out code in touched files.
+
+### Gate 5 — PASS (prior finding resolved)
+
+`tsc --noEmit`: 3 errors remain, all pre-existing qa/P1 (priority field in EstimateResult in test file). Zero errors in non-test sources. Test suite: 41 failures, all pre-existing. No new regressions introduced by this build.
+
+Observation: Gate 5 finding from last review (TS2367 at process-requests.ts:551) confirmed fixed at `ffb36b37f`.
+
+### Gates 6–10 — Pass / N/A
+
+- Gate 6: Internal TypeScript type/label changes — skip correct
+- Gate 7: No UI changes
+- Gate 8: No new dependencies
+- Gate 9: No user-facing behavior changed
+- Gate 10: QA coverage 75% (12/16 features PASS); open P1 bugs filed 2026-03-28 (< 3 iterations old)
+
+---
