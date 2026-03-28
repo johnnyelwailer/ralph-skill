@@ -160,8 +160,9 @@ describe('LogEntryRow', () => {
     
     const triggerComparison = screen.getByTestId('trigger-comparison');
     fireEvent.click(triggerComparison);
-    
+
     expect(screen.getByTestId('log-entry-expanded-details')).toBeInTheDocument();
+    expect(screen.getByTestId('close-comparison')).toBeInTheDocument();
   });
 
   it('triggers onCloseComparison callback when close button clicked', () => {
@@ -183,6 +184,8 @@ describe('LogEntryRow', () => {
     
     const closeComparison = screen.getByTestId('close-comparison');
     fireEvent.click(closeComparison);
+
+    expect(screen.queryByTestId('close-comparison')).not.toBeInTheDocument();
   });
 
   it('triggers onLightbox callback and shows ImageLightbox', () => {
