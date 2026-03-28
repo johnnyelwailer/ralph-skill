@@ -87,6 +87,74 @@ describe('GitHubAdapter', () => {
     });
   });
 
+  describe('updateIssue', () => {
+    it('body-only update passes --body arg in base edit call', async () => {
+      const calls: string[][] = [];
+      const execGh: GhExecFn = async (args) => { calls.push(args); return { stdout: '', stderr: '' }; };
+      const adapter = new GitHubAdapter(config, execGh);
+      await adapter.updateIssue(7, { body: 'New body' });
+      assert.equal(calls.length, 1);
+      assert.ok(calls[0].includes('--body'));
+      assert.ok(calls[0].includes('New body'));
+    });
+
+    it('labels_add makes a separate --add-label call per label', async () => {
+      const calls: string[][] = [];
+      const execGh: GhExecFn = async (args) => { calls.push(args); return { stdout: '', stderr: '' }; };
+      const adapter = new GitHubAdapter(config, execGh);
+      await adapter.updateIssue(7, { labels_add: ['bug', 'p1'] });
+      // base edit call + 2 add-label calls
+      assert.equal(calls.length, 3);
+      assert.ok(calls[1].includes('--add-label'));
+      assert.ok(calls[1].includes('bug'));
+      assert.ok(calls[2].includes('--add-label'));
+      assert.ok(calls[2].includes('p1'));
+    });
+
+    it('labels_remove makes a separate --remove-label call per label', async () => {
+      const calls: string[][] = [];
+      const execGh: GhExecFn = async (args) => { calls.push(args); return { stdout: '', stderr: '' }; };
+      const adapter = new GitHubAdapter(config, execGh);
+      await adapter.updateIssue(7, { labels_remove: ['stale'] });
+      // base edit call + 1 remove-label call
+      assert.equal(calls.length, 2);
+      assert.ok(calls[1].includes('--remove-label'));
+      assert.ok(calls[1].includes('stale'));
+    });
+
+    it('state "closed" calls gh issue close', async () => {
+      const calls: string[][] = [];
+      const execGh: GhExecFn = async (args) => { calls.push(args); return { stdout: '', stderr: '' }; };
+      const adapter = new GitHubAdapter(config, execGh);
+      await adapter.updateIssue(7, { state: 'closed' });
+      const closeCall = calls.find((a) => a.includes('close'));
+      assert.ok(closeCall, 'expected a gh issue close call');
+      assert.ok(closeCall.includes('7'));
+    });
+
+    it('state "open" calls gh issue reopen', async () => {
+      const calls: string[][] = [];
+      const execGh: GhExecFn = async (args) => { calls.push(args); return { stdout: '', stderr: '' }; };
+      const adapter = new GitHubAdapter(config, execGh);
+      await adapter.updateIssue(7, { state: 'open' });
+      const reopenCall = calls.find((a) => a.includes('reopen'));
+      assert.ok(reopenCall, 'expected a gh issue reopen call');
+      assert.ok(reopenCall.includes('7'));
+    });
+
+    it('combined update with body + labels_add + state makes all calls', async () => {
+      const calls: string[][] = [];
+      const execGh: GhExecFn = async (args) => { calls.push(args); return { stdout: '', stderr: '' }; };
+      const adapter = new GitHubAdapter(config, execGh);
+      await adapter.updateIssue(7, { body: 'Updated', labels_add: ['p0'], state: 'closed' });
+      // base edit (with --body) + 1 add-label + 1 close = 3 calls
+      assert.equal(calls.length, 3);
+      assert.ok(calls[0].includes('--body'));
+      assert.ok(calls[1].includes('--add-label'));
+      assert.ok(calls[2].includes('close'));
+    });
+  });
+
   describe('getIssue', () => {
     it('returns parsed issue data', async () => {
       const execGh = mockGh({
@@ -329,6 +397,41 @@ describe('GitHubAdapter', () => {
       assert.equal(comments.length, 1);
       assert.equal(comments[0].author, 'alice');
       assert.equal(comments[0].body, 'Hi');
+    });
+
+    it('since filter returns only comments after the given date', async () => {
+      const execGh = mockGh({
+        'issue view': {
+          stdout: JSON.stringify({
+            comments: [
+              { id: 'IC_1', author: { login: 'alice' }, body: 'Old', createdAt: '2026-01-01T00:00:00Z' },
+              { id: 'IC_2', author: { login: 'bob' }, body: 'New', createdAt: '2026-06-01T00:00:00Z' },
+            ],
+          }),
+          stderr: '',
+        },
+      });
+      const adapter = new GitHubAdapter(config, execGh);
+      const comments = await adapter.listComments(5, '2026-03-01T00:00:00Z');
+      assert.equal(comments.length, 1);
+      assert.equal(comments[0].body, 'New');
+    });
+
+    it('since filter returns empty array when all comments are older than since', async () => {
+      const execGh = mockGh({
+        'issue view': {
+          stdout: JSON.stringify({
+            comments: [
+              { id: 'IC_1', author: { login: 'alice' }, body: 'Old', createdAt: '2025-01-01T00:00:00Z' },
+              { id: 'IC_2', author: { login: 'bob' }, body: 'Also old', createdAt: '2025-06-01T00:00:00Z' },
+            ],
+          }),
+          stderr: '',
+        },
+      });
+      const adapter = new GitHubAdapter(config, execGh);
+      const comments = await adapter.listComments(5, '2026-01-01T00:00:00Z');
+      assert.equal(comments.length, 0);
     });
   });
 
