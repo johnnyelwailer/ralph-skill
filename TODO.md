@@ -98,3 +98,21 @@ New bugs found at 58a94fd19 during re-verification pass:
 
 - [x] [review] Gate 5/Constitution Rule 12: Revert out-of-scope changes to `orchestrate.ts`, `process-requests.ts`, `plan.ts`, and templates — builder removed `deriveComponentLabels`/`buildPrBody` calls from `orchestrate.ts` and simplified `createPrForChild`, changed dispatch preemption logic in `runOrchestratorScanPass`, added review artifact cleanup to `processPrLifecycle`/`monitorChildSessions`; removed `formatReviewCommentHistory`/`getDirectorySizeBytes` from `process-requests.ts`; added `WORKING_ARTIFACTS` export to `plan.ts`. TASK_SPEC.md file scope is `adapter.ts` + `adapter.test.ts` only; TODO.md explicitly marks orchestrate.ts migration as out-of-scope. These changes introduced 12 new orchestrate.test.ts failures. Revert all changes to files outside the spec scope. Fixed at 22df46648. (priority: critical)
 - [x] [review] Gate 4/Constitution Rule 7: Split `adapter-github.ts` (327 LOC) — Constitution target is <150 LOC; prior reviews used a 300 LOC threshold; file now exceeds it at 327 lines. Extracted PR methods (`getPrStatus`, `getPrComments`, `getPrReviews`, `mergePr`, `closePr`, `getPrDiff`, `queryPrs`, `getPrChecks`) into `adapter-github-pr.ts` (137 LOC). `adapter-github.ts` is now 200 LOC. Both under 300 LOC. Fixed iter 10. (priority: high)
+
+## Spec-Gap Analysis — 2026-03-28
+
+### Issue #176 scope (adapter.ts + adapter-github.ts + adapter.test.ts)
+
+All TASK_SPEC.md acceptance criteria satisfied at HEAD:
+- AC1: OrchestratorAdapter interface has all required methods (createIssue, updateIssue, closeIssue, listIssues, getIssueComments, postComment, createPr, mergePr, getPrStatus, getPrComments, getPrReviews, ensureLabelsExist, syncProjectStatus?, repoSlug, baseUrl) — PASS
+- AC2: GitHubAdapter implements OrchestratorAdapter wrapping `gh` CLI — PASS
+- AC3: No hardcoded github.com — uses `config.ghHost ?? GH_HOST ?? 'github.com'` — PASS
+- AC4: createAdapter factory uses adapter type from config (default: "github") — PASS
+- AC5: 47/47 unit tests pass with mocked gh calls — PASS
+- AC6: GHE URLs via ghHost constructor param or GH_HOST env — PASS
+
+No P1 or P2 gaps in issue #176 scope.
+
+### Pre-existing gap found outside issue #176 scope
+
+- [ ] [spec-gap/P2] `loop.sh` default round-robin provider list mismatches `config.yml` and `loop.ps1`: `loop.sh:31` defaults `ROUND_ROBIN_PROVIDERS="claude,gemini,opencode"` (3 providers — missing codex, copilot); `loop.ps1:31` defaults to all 5 `@('claude','opencode','codex','gemini','copilot')`; `config.yml:43-49` round_robin_order lists all 5. Additionally, `loop.sh:65` help text documents the default as `"claude,codex,gemini,copilot"` — a third inconsistent value (missing opencode). SPEC.md states config.yml is the single source of truth for defaults. **Files:** `aloop/bin/loop.sh:31,65`, `aloop/config.yml:43-49`, `aloop/bin/loop.ps1:31`. **Suggested fix:** Update `ROUND_ROBIN_PROVIDERS` in loop.sh to `"claude,opencode,codex,gemini,copilot"` (matching config.yml order) and update help text to match. **Note:** Pre-existing gap, unrelated to issue #176 scope; meta.json hot-reload mitigates at runtime but bare invocation without meta.json gets wrong default.
