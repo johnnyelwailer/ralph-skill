@@ -1,5 +1,66 @@
 # QA Log
 
+## QA Session — 2026-03-28 (iteration 52)
+
+### Test Environment
+- Binary under test: /tmp/aloop-test-install-QhoQOK/bin/aloop (version 1.0.0)
+- Commit: 67d41e26d
+- Features tested: 5
+
+### Results
+- PASS: SliderView.tsx branch coverage ≥90% (re-test, was FAIL)
+- PASS: LogEntryRow.tsx branch coverage ≥90% (re-test, was FAIL)
+- PASS: All dashboard tests pass (368/368, 34 test files)
+- PASS: TypeScript type-check (tsc --noEmit, no errors)
+- FAIL: ResponsiveLayout.tsx branch coverage ≥90% (75%, lines 45,92 uncovered)
+
+### Bugs Filed
+- [qa/P1] ResponsiveLayout.tsx branch coverage 75% (lines 45, 92): below 90% spec requirement
+
+### Command Transcript
+
+```
+# Install from source
+$ npm --prefix aloop/cli run --silent test-install -- --keep
+Binary: /tmp/aloop-test-install-QhoQOK/bin/aloop
+
+$ /tmp/aloop-test-install-QhoQOK/bin/aloop --version
+1.0.0
+
+# Run dashboard tests with coverage
+$ cd aloop/cli/dashboard && npm run test -- --reporter=verbose --coverage
+...
+ Test Files  34 passed (34)
+      Tests  368 passed (368)
+   Duration  5.07s
+
+Coverage highlights:
+  SliderView.tsx        | 96.55 | 90.00 | 100 | 100 | 19
+  LogEntryRow.tsx       | 100   | 93.97 | 100 | 100 | 66,71,114,122
+  ResponsiveLayout.tsx  | 92.10 | 75.00 | 100 | 94.11 | 45,92  ← FAIL
+
+# TypeScript check
+$ npx tsc --noEmit
+(no output)
+Exit code: 0
+
+# Check AppView.tsx LOC (ongoing spec-gap)
+$ wc -l aloop/cli/dashboard/src/AppView.tsx
+1299 (spec requires <100, already tracked as spec-gap/P1)
+
+# aloop status
+$ aloop status
+Active Sessions:
+  orchestrator-20260321-172932-issue-183-20260327-180626  pid=989860  running  iter 52, qa
+Provider Health:
+  claude     healthy
+  codex      healthy
+  opencode   healthy
+Exit code: 0
+```
+
+---
+
 ## QA Session — 2026-03-28 (iteration 23)
 
 ### Test Environment
