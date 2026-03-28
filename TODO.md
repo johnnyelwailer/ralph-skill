@@ -16,7 +16,7 @@ Acceptance criteria:
 
 ### In Progress
 
-- [ ] [qa/P1] orchestrate.ts missing label enrichment code: `applyDecompositionPlan` at line 659 only adds `['aloop', 'aloop/wave-${wave}']` — missing `wave/${wave}` label that tests at orchestrate.test.ts:652 and 6035-6123 assert — add `wave/${wave}` to the labels array alongside `aloop/wave-${wave}`; also restore the `deriveComponentLabels` import and usage if it was previously used to add component labels (priority: high)
+- [x] [qa/P1] orchestrate.ts missing label enrichment code: `applyDecompositionPlan` at line 659 only adds `['aloop', 'aloop/wave-${wave}']` — missing `wave/${wave}` label that tests at orchestrate.test.ts:652 and 6035-6123 assert — add `wave/${wave}` to the labels array alongside `aloop/wave-${wave}`; also restore the `deriveComponentLabels` import and usage if it was previously used to add component labels (priority: high)
 
 - [x] [review] Gate 5: `process-requests.ts:551` — `issue.state !== 'review'` is a dead comparison because `OrchestratorIssueState` is `'pending' | 'in_progress' | 'pr_open' | 'merged' | 'failed'` with no `'review'` member — TypeScript error TS2367; add `'review'` to `OrchestratorIssueState` in orchestrate.ts (the check is used to sync child branches for issues in review state, so 'review' is a real state that should exist); this was part of the qa/P1 for process-requests.ts but was not fixed when exports were restored at commit 82ffc2a71 (priority: high)
 

@@ -7,6 +7,7 @@ import type { OutputMode } from './status.js';
 import { writeQueueOverride, WORKING_ARTIFACTS } from '../lib/plan.js';
 import { compileLoopPlan } from './compile-loop-plan.js';
 import { writeSpecBackfill } from '../lib/specBackfill.js';
+import { deriveComponentLabels } from '../lib/labels.js';
 import { normalizeCiDetailForSignature } from '../lib/ci-utils.js';
 import {
   EtagCache,
@@ -656,7 +657,7 @@ export async function applyDecompositionPlan(
 
   for (const planIssue of plan.issues) {
     const wave = waveMap.get(planIssue.id)!;
-    const labels = ['aloop', `aloop/wave-${wave}`];
+    const labels = ['aloop', `aloop/wave-${wave}`, `wave/${wave}`, ...deriveComponentLabels(planIssue.file_hints ?? [])];
 
     let ghNumber: number;
     if (deps.execGhIssueCreate && repo) {
