@@ -4,6 +4,8 @@
 
 ### In Progress
 
+- [ ] [review] Gate 5: Fix TypeScript errors introduced by prototype mixin — `Object.assign(GitHubAdapter.prototype, PR_METHODS)` added 12 new TS errors (80 pre-existing → 92 total). `adapter-github.ts:18` TS2420 (class doesn't implement OrchestratorAdapter), 19× TS2339 in adapter.test.ts (PR methods not visible on GitHubAdapter type), `adapter.ts:129` TS2740. Fix: add `declare` method signatures in `GitHubAdapter` class body for each mixin method, or restructure to avoid the mixin (e.g. include PR methods directly in the class, or use a proper interface-merging pattern). The 80 pre-existing errors are all in requests.ts/requests.test.ts — not introduced by this PR. (priority: high)
+
 - [x] Revert out-of-scope changes to `orchestrate.ts`, `process-requests.ts`, and `plan.ts` (priority: critical)
   - `plan.ts`: Remove `WORKING_ARTIFACTS` export (added out-of-scope)
   - `process-requests.ts`: Revert to hardcoded artifact list and original V8 cache cleanup code

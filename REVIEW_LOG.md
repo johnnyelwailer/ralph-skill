@@ -429,3 +429,36 @@ All 9 interface-shape deviations from the prior FAIL review (`b6e32bf40`) are re
 - **Gate 7:** N/A — no UI changes. ✓
 - **Gate 8:** No dependency changes. ✓
 - **Gate 9:** No README/docs changes; template changes are out-of-scope but don't affect user-facing docs for this issue. ✓
+
+---
+
+## Review — 2026-03-28 — commit 3878654c0..0ff656a71
+
+**Verdict: FAIL** (1 finding → 1 [review] task written to TODO.md)
+**Scope:** `aloop/cli/src/lib/adapter-github.ts`, `aloop/cli/src/lib/adapter-github-pr.ts` (new), `aloop/cli/src/commands/orchestrate.ts`, `aloop/cli/src/commands/process-requests.ts`, `aloop/cli/src/lib/plan.ts`, `TODO.md`, `QA_LOG.md`, `QA_COVERAGE.md`
+
+### Prior Findings Resolution
+
+- **Prior Gate 5 / Constitution Rule 12 (out-of-scope regressions — RESOLVED):** `orchestrate.ts`, `process-requests.ts`, and `plan.ts` reverted to pre-change baseline in `22df46648`. Confirmed: orchestrate.test.ts baseline restored — 319 pass / 27 fail (same as before the regressions). Finding resolved.
+
+- **Prior Gate 4 / Constitution Rule 7 (adapter-github.ts 327 LOC — RESOLVED):** `adapter-github.ts` split in `8ff1119ab`. PR methods extracted to new `adapter-github-pr.ts` (137 LOC) using prototype mixin (`Object.assign(GitHubAdapter.prototype, PR_METHODS)`). `adapter-github.ts` now 200 LOC. Both files under 300 LOC threshold. Finding resolved on the LOC count.
+
+### New Finding
+
+- **Gate 5 (FAIL):** Prototype mixin pattern introduced 21 new TypeScript errors (80 pre-existing → 92 total):
+  - `adapter-github.ts:18` TS2420 — class 'GitHubAdapter' incorrectly implements interface 'OrchestratorAdapter' (PR methods absent from static class body)
+  - 19× TS2339 in `adapter.test.ts` — PR method properties (`createPr`, `mergePr`, `getPrStatus`, `getPrChecks`, `getPrComments`, `getPrReviews`, `closePr`, `getPrDiff`, `queryPrs`) don't exist on `GitHubAdapter` type
+  - `adapter.ts:129` TS2740 — factory return type: `GitHubAdapter` missing required interface members
+  - Before split (at `3878654c0`), all methods were in the class body — no adapter-related TS errors. The `Object.assign(GitHubAdapter.prototype, PR_METHODS)` approach is not TypeScript-aware.
+  - Written as `[review]` task in TODO.md (priority: high).
+
+### Gates that Pass
+
+- **Gate 1:** Interface shape fully reconciled — all TASK_SPEC.md methods present with correct signatures. 47/47 adapter tests pass.
+- **Gate 2:** `adapter.test.ts` — all 47 tests use concrete assertions (`assert.equal`, `deepEqual`, exact strings, exact args). `getPrReviews` asserts `state === 'APPROVED'` and `state === 'CHANGES_REQUESTED'` on two separate reviews — not shallow.
+- **Gate 3:** 47/47 adapter tests pass. `adapter-github-pr.ts` covered by the same test suite (new/deleted/filter branches all tested).
+- **Gate 4:** LOC check: `adapter-github.ts` = 200, `adapter-github-pr.ts` = 137, `adapter.ts` = 132 — all under 300 LOC threshold. No dead imports (revert clean, grep returns no matches for out-of-scope symbols). The TypeScript error concern is captured in Gate 5.
+- **Gate 6:** Purely internal changes (file split + revert). No observable output required; skipping is correct.
+- **Gate 7:** N/A — no UI changes.
+- **Gate 8:** No dependency changes.
+- **Gate 9:** No user-facing behavior or docs changed.
