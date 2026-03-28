@@ -14,27 +14,11 @@ Acceptance criteria:
 
 ## Current Phase: Migration
 
-### QA Bugs
-
-- [x] [qa/P1] QA environment Bash tool non-functional: All shell commands return exit code 1 or 134 with no output → TypeScript build, unit test suite, and CLI binary install could not be executed → QA of compiled artifacts is blocked until env is fixed. Tested at 2026-03-27. RESOLVED: Bash functional in 2026-03-28 session.
-
-- [x] [qa/P1] process-requests.ts missing exported functions/types: commit d49686908 deleted `formatReviewCommentHistory`, `getDirectorySizeBytes`, `pruneLargeV8CacheDir`, `syncMasterToTrunk`, `syncChildBranches` (functions), `ChildBranchSyncDeps`, `SyncMasterToTrunkDeps` (interfaces), and re-exports of `processCrResultFiles`/`CrResultDeps` from `process-requests.ts` → `process-requests.test.ts` fails entirely at import because the 5 named function exports are gone → restore all removed exports (test imports `processCrResultFiles`/`CrResultDeps` from `cr-pipeline.js` directly, but the re-exports are also needed for production callers). Restored at 2026-03-28. All 14 tests pass.
-
-- [ ] [qa/P1] orchestrate.ts missing label enrichment code: commit d49686908 removed `deriveComponentLabels` import and `wave/N` label alongside `aloop/wave-N` in `applyDecompositionPlan` → 15 additional test failures in orchestrate.test.ts (54 failing vs 39 at merge base) → Spec requires issue creation to include `wave/N` label; removing it breaks label conventions — restore the deleted label code. Tested at 2026-03-28, commit 257a6f268. (priority: high)
-
 ### In Progress
 
-- [ ] [review] Gate 5: `process-requests.ts:551` — `issue.state !== 'review'` is a dead comparison because `OrchestratorIssueState` is `'pending' | 'in_progress' | 'pr_open' | 'merged' | 'failed'` with no `'review'` member — TypeScript error TS2367; either add `'review'` to `OrchestratorIssueState` in orchestrate.ts (if this is a real state), or remove the `!== 'review'` clause if it is not valid; this was part of the qa/P1 for process-requests.ts but was not fixed when exports were restored at commit 82ffc2a71 (priority: high)
+- [ ] [qa/P1] orchestrate.ts missing label enrichment code: `applyDecompositionPlan` at line 659 only adds `['aloop', 'aloop/wave-${wave}']` — missing `wave/${wave}` label that tests at orchestrate.test.ts:652 and 6035-6123 assert — add `wave/${wave}` to the labels array alongside `aloop/wave-${wave}`; also restore the `deriveComponentLabels` import and usage if it was previously used to add component labels (priority: high)
 
-- [x] [review] Gate 2: `updateIssue` in `adapter.ts:77-96` has zero test coverage despite a multi-step implementation (body edit, labels_add, labels_remove, state transitions each make separate `gh` calls) — add tests for: body-only update (assert `--body` arg), `labels_add` path (assert two `--add-label` calls for two labels), `labels_remove` path (assert `--remove-label`), `state: 'closed'` (assert `issue close` called), `state: 'open'` (assert `issue reopen` called), and combined update with body + labels_add + state (priority: high)
-
-- [x] [review] Gate 2/3: `listComments` `since` filter branch (adapter.ts:233-235) is untested — add a test that passes a `since` timestamp and asserts only comments after that date are returned, and a test with all-old comments returning empty array (priority: medium)
-
-- [x] [review] Gate 1: `OrchestratorAdapter` interface in `adapter.ts` deviates from spec's method names and return types — `queryIssues` must be renamed to `listIssues` (spec line ~988); `createPr`/`mergePr`/`getPrStatus` must be `createPR`/`mergePR`/`getPRStatus` (spec convention); `createIssue` must return `{ number: number; url: string }` not bare `number` (spec line ~983); `getPRStatus` must return `{ mergeable, ci_status: 'success'|'failure'|'pending', reviews: Array<{ verdict: string }> }` not `{ mergeable, mergeStateStatus }` (spec line ~997); `updateIssue` must accept `labels_add` and `labels_remove` fields (spec line ~985) — fix the interface and implementation in `src/lib/adapter.ts` and update all call sites and tests accordingly (priority: high)
-
-- [x] [review] Gate 2: ~~No tests for adapter instantiation branches~~ — adapter instantiation code removed pending re-implementation; gate no longer applicable
-
-- [x] [review] Gate 4: ~~execGh fallback breaks DI~~ — adapter instantiation code removed pending re-implementation; gate no longer applicable
+- [x] [review] Gate 5: `process-requests.ts:551` — `issue.state !== 'review'` is a dead comparison because `OrchestratorIssueState` is `'pending' | 'in_progress' | 'pr_open' | 'merged' | 'failed'` with no `'review'` member — TypeScript error TS2367; add `'review'` to `OrchestratorIssueState` in orchestrate.ts (the check is used to sync child branches for issues in review state, so 'review' is a real state that should exist); this was part of the qa/P1 for process-requests.ts but was not fixed when exports were restored at commit 82ffc2a71 (priority: high)
 
 ### Up Next
 
@@ -56,6 +40,12 @@ Acceptance criteria:
 
 - [ ] LocalAdapter implementation — file-based adapter storing issues as JSON in `.aloop/issues/`, PRs as branches; deferred per spec: "implement local adapter when there's demand"
 
+### QA Bugs (Resolved)
+
+- [x] [qa/P1] QA environment Bash tool non-functional: All shell commands return exit code 1 or 134 with no output → TypeScript build, unit test suite, and CLI binary install could not be executed → QA of compiled artifacts is blocked until env is fixed. Tested at 2026-03-27. RESOLVED: Bash functional in 2026-03-28 session.
+
+- [x] [qa/P1] process-requests.ts missing exported functions/types: commit d49686908 deleted `formatReviewCommentHistory`, `getDirectorySizeBytes`, `pruneLargeV8CacheDir`, `syncMasterToTrunk`, `syncChildBranches` (functions), `ChildBranchSyncDeps`, `SyncMasterToTrunkDeps` (interfaces), and re-exports of `processCrResultFiles`/`CrResultDeps` from `process-requests.ts` → `process-requests.test.ts` fails entirely at import because the 5 named function exports are gone → restore all removed exports (test imports `processCrResultFiles`/`CrResultDeps` from `cr-pipeline.js` directly, but the re-exports are also needed for production callers). Restored at 2026-03-28. All 14 tests pass.
+
 ### Completed
 
 - [x] `OrchestratorAdapter` interface aligned with spec (positional params, correct return types)
@@ -65,3 +55,8 @@ Acceptance criteria:
 - [x] `createIssue` returns `{ number, url }` per spec
 - [x] `updateIssue` accepts `labels_add` / `labels_remove` per spec
 - [x] `getPRStatus` returns `{ mergeable, ci_status, reviews }` per spec
+- [x] [review] Gate 2: `updateIssue` in `adapter.ts:77-96` — tests added for body-only update, `labels_add`, `labels_remove`, `state: 'closed'`, `state: 'open'`, and combined update
+- [x] [review] Gate 2/3: `listComments` `since` filter branch — tests added for since-filtered and all-old-comments cases
+- [x] [review] Gate 1: `OrchestratorAdapter` interface aligned with spec method names and return types
+- [x] [review] Gate 2: adapter instantiation branches — gate no longer applicable (instantiation code removed pending re-implementation)
+- [x] [review] Gate 4: execGh fallback breaks DI — gate no longer applicable (instantiation code removed pending re-implementation)
