@@ -65,3 +65,52 @@ Exit code: 1 (no output)
 - scanDeps (line 936): `adapter` included ✓
 - prLifecycleDeps (line 943): `adapter` passed ✓
 - dispatchDeps (line 1028): `adapter` passed ✓
+
+---
+
+## QA Session — 2026-03-28 (Issue #177 — OrchestratorAdapter interface + regression check)
+
+### Test Environment
+- Binary under test: N/A (library-only QA — testing adapter interface and test suite)
+- Commit under test: 257a6f268
+- Features targeted: 5
+- Method: Live execution via Bash (Bash tool functional this session)
+- Deps installed: `npm install` + `npm install --prefix dashboard`
+
+### Results
+
+- PASS: TypeScript build (`npm run build`) — all steps complete, exit 0
+- PASS: `adapter.test.ts` — 27/27 tests pass via `npx tsx --test src/lib/adapter.test.ts`
+- PASS: OrchestratorAdapter interface vs spec — all 11 methods match SPEC-ADDENDUM.md lines 982-1000 exactly
+- FAIL: `process-requests.ts` missing exported functions — bug filed as [qa/P1]
+- FAIL: `orchestrate.ts` missing label enrichment code — bug filed as [qa/P1]
+
+### Bugs Filed
+
+- [qa/P1] process-requests.ts missing 7 exports deleted by d49686908: `formatReviewCommentHistory`, `getDirectorySizeBytes`, `pruneLargeV8CacheDir`, `syncMasterToTrunk`, `syncChildBranches`, `processCrResultFiles`, `CrResultDeps`
+- [qa/P1] orchestrate.ts missing label enrichment: `wave/N` and `deriveComponentLabels` removed by d49686908; 15 additional test failures
+
+### Command Transcript
+
+```
+$ npm run build
+EXIT:0 (full build passes after npm install + npm install --prefix dashboard)
+
+$ npx tsx --test src/lib/adapter.test.ts
+# tests 27 / pass 27 / fail 0
+EXIT:0
+
+$ npx tsx --test src/commands/process-requests.test.ts
+SyntaxError: The requested module './process-requests.js' does not provide an export named 'syncChildBranches'
+# tests 1 / pass 0 / fail 1
+EXIT:1
+
+$ npx tsx --test src/commands/orchestrate.test.ts 2>&1 | grep "not ok" | wc -l
+54   (vs 39 at merge base c805d8db1 — 15 new failures from d49686908)
+```
+
+### Pre-existing Failures (not caused by this branch)
+
+- 39 orchestrate.test.ts failures (pre-existing at merge base c805d8db1)
+- 5 dashboard.test.ts failures (pre-existing)
+- 1 EtagCache (github-monitor.test.ts) failure (pre-existing)

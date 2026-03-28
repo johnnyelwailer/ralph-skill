@@ -16,7 +16,11 @@ Acceptance criteria:
 
 ### QA Bugs
 
-- [ ] [qa/P1] QA environment Bash tool non-functional: All shell commands return exit code 1 or 134 with no output → TypeScript build, unit test suite, and CLI binary install could not be executed → QA of compiled artifacts is blocked until env is fixed. Tested at 2026-03-27. (priority: high)
+- [x] [qa/P1] QA environment Bash tool non-functional: All shell commands return exit code 1 or 134 with no output → TypeScript build, unit test suite, and CLI binary install could not be executed → QA of compiled artifacts is blocked until env is fixed. Tested at 2026-03-27. RESOLVED: Bash functional in 2026-03-28 session.
+
+- [ ] [qa/P1] process-requests.ts missing 7 exported functions/types: commit d49686908 deleted `formatReviewCommentHistory`, `getDirectorySizeBytes`, `pruneLargeV8CacheDir`, `syncMasterToTrunk`, `syncChildBranches`, `processCrResultFiles`, and `CrResultDeps` from `process-requests.ts` → `process-requests.test.ts` fails entirely at import (`ERR_MODULE_NOT_FOUND` for the named exports) → Spec requires these functions to remain exported (they are tested and called from production code on trunk) — restore all removed exports. Tested at 2026-03-28, commit 257a6f268. (priority: high)
+
+- [ ] [qa/P1] orchestrate.ts missing label enrichment code: commit d49686908 removed `deriveComponentLabels` import and `wave/N` label alongside `aloop/wave-N` in `applyDecompositionPlan` → 15 additional test failures in orchestrate.test.ts (54 failing vs 39 at merge base) → Spec requires issue creation to include `wave/N` label; removing it breaks label conventions — restore the deleted label code. Tested at 2026-03-28, commit 257a6f268. (priority: high)
 
 ### In Progress
 
