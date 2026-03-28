@@ -1,10 +1,14 @@
 # Issue #176: OrchestratorAdapter interface and GitHubAdapter implementation
 
-## Current Phase: Fixing review findings [reviewed: gates 1-9 pass]
+## Current Phase: Complete — all AC satisfied, 47/47 tests pass, 0 TS errors in adapter files
 
 ### In Progress
 
-- [x] [review] Gate 5: Fix TypeScript errors introduced by prototype mixin — `Object.assign(GitHubAdapter.prototype, PR_METHODS)` added 21 new TS errors. `adapter-github.ts:18` TS2420 (class doesn't implement OrchestratorAdapter — missing createPr, mergePr, getPrStatus, getPrChecks, and 5 more), 19× TS2339 in adapter.test.ts (PR methods not visible on GitHubAdapter type), `adapter.ts:129` TS2740. **Fix:** add `declare` method signatures in `GitHubAdapter` class body for all 9 PR methods (`createPr`, `mergePr`, `getPrStatus`, `getPrChecks`, `getPrComments`, `getPrReviews`, `closePr`, `getPrDiff`, `queryPrs`). This tells TypeScript the methods exist at runtime without adding LOC to the implementation. Pre-existing errors in requests.ts/requests.test.ts/gh.test.ts/process-requests.ts are out of scope. (priority: high)
+(none — all tasks complete)
+
+### Completed (iter 12)
+
+- [x] [review] Gate 5: Fix TypeScript errors introduced by prototype mixin — resolved via interface merging (`export interface GitHubAdapter { ... }`) in `adapter-github.ts:207-217`. Zero TS errors in adapter files. Pre-existing errors in requests.ts/requests.test.ts/gh.test.ts/process-requests.ts are out of scope. (priority: high)
 
 - [x] Revert out-of-scope changes to `orchestrate.ts`, `process-requests.ts`, and `plan.ts` (priority: critical)
   - `plan.ts`: Remove `WORKING_ARTIFACTS` export (added out-of-scope)
@@ -115,4 +119,4 @@ No P1 or P2 gaps in issue #176 scope.
 
 ### Pre-existing gap found outside issue #176 scope
 
-- [ ] [spec-gap/P2] `loop.sh` default round-robin provider list mismatches `config.yml` and `loop.ps1`: `loop.sh:31` defaults `ROUND_ROBIN_PROVIDERS="claude,gemini,opencode"` (3 providers — missing codex, copilot); `loop.ps1:31` defaults to all 5 `@('claude','opencode','codex','gemini','copilot')`; `config.yml:43-49` round_robin_order lists all 5. Additionally, `loop.sh:65` help text documents the default as `"claude,codex,gemini,copilot"` — a third inconsistent value (missing opencode). SPEC.md states config.yml is the single source of truth for defaults. **Files:** `aloop/bin/loop.sh:31,65`, `aloop/config.yml:43-49`, `aloop/bin/loop.ps1:31`. **Suggested fix:** Update `ROUND_ROBIN_PROVIDERS` in loop.sh to `"claude,opencode,codex,gemini,copilot"` (matching config.yml order) and update help text to match. **Note:** Pre-existing gap, unrelated to issue #176 scope; meta.json hot-reload mitigates at runtime but bare invocation without meta.json gets wrong default.
+- [x] [spec-gap/P2] `loop.sh` default round-robin provider list mismatches `config.yml` and `loop.ps1`: `loop.sh:31` defaults `ROUND_ROBIN_PROVIDERS="claude,gemini,opencode"` (3 providers — missing codex, copilot); `loop.ps1:31` defaults to all 5 `@('claude','opencode','codex','gemini','copilot')`; `config.yml:43-49` round_robin_order lists all 5. Additionally, `loop.sh:65` help text documents the default as `"claude,codex,gemini,copilot"` — a third inconsistent value (missing opencode). SPEC.md states config.yml is the single source of truth for defaults. **Files:** `aloop/bin/loop.sh:31,65`, `aloop/config.yml:43-49`, `aloop/bin/loop.ps1:31`. **Suggested fix:** Update `ROUND_ROBIN_PROVIDERS` in loop.sh to `"claude,opencode,codex,gemini,copilot"` (matching config.yml order) and update help text to match. **Note:** Pre-existing gap, unrelated to issue #176 scope; meta.json hot-reload mitigates at runtime but bare invocation without meta.json gets wrong default. Fixed at iter 12.
