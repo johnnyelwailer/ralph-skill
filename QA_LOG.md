@@ -1,5 +1,56 @@
 # QA Log
 
+## QA Session — 2026-03-28 iter 11 (issue #176)
+
+### Test Environment
+- Binary under test: N/A — tested via `tsx` directly (aloop/cli)
+- Commit under test: 8ff1119ab (refactor(adapter): split adapter-github.ts into PR and issue modules)
+- Features tested: 4 (re-test of 2 iter-10 FAIL items + adapter test regression + index tests)
+
+### Target Selection
+Two FAIL bugs from iter 10 are claimed fixed:
+- [qa/P1] adapter-github.ts LOC threshold — fixed by split into adapter-github.ts + adapter-github-pr.ts (8ff1119ab)
+- [qa/P1] orchestrate.ts regression — fixed by revert at 22df46648
+
+Also re-tested: 47/47 adapter tests still pass after split; index tests still pass.
+
+### Results
+- PASS: adapter-github.ts LOC — 200 LOC (under 300) ✓; adapter-github-pr.ts 137 LOC (new, under 300) ✓; adapter.ts 132 LOC ✓
+- PASS: adapter tests — 47/47 pass after file split (no regression)
+- PASS: orchestrate.ts regression — 319 pass / 27 fail matches pre-regression baseline (12 regressions removed)
+- PASS: index tests — 5/5 pass
+- PASS: No hardcoded `github.com` in adapter-github-pr.ts (0 matches)
+
+### Bugs Filed
+None — all iter-10 FAIL items resolved and verified.
+
+### Command Transcript
+```
+# LOC check
+$ wc -l src/lib/adapter.ts src/lib/adapter-github.ts src/lib/adapter-github-pr.ts
+  132 src/lib/adapter.ts
+  200 src/lib/adapter-github.ts          ← under 300 ✓
+  137 src/lib/adapter-github-pr.ts       ← new file, under 300 ✓
+
+# Adapter unit tests
+$ node_modules/.bin/tsx --test src/lib/adapter.test.ts
+# tests 47 | pass 47 | fail 0  ✓
+
+# Orchestrate regression check
+$ node_modules/.bin/tsx --test src/commands/orchestrate.test.ts
+# tests 346 | pass 319 | fail 27  ← matches baseline (was 307/39 in iter 10 at 58a94fd19) ✓
+
+# Index CLI tests
+$ node_modules/.bin/tsx --test src/index.test.ts
+# tests 5 | pass 5 | fail 0  ✓
+
+# No hardcoded github.com in PR module
+$ grep -c 'github\.com' src/lib/adapter-github-pr.ts
+# 0  ✓
+```
+
+---
+
 ## QA Session — 2026-03-28 iter 10 (issue #176)
 
 ### Test Environment
