@@ -73,6 +73,41 @@ describe('ResponsiveLayout', () => {
     expect(result.current.sidebarOpen).toBe(true);
   });
 
+  it('setSidebarOpen sets value on non-desktop breakpoint', () => {
+    mockedBreakpoint = 'tablet';
+    const { result } = renderHook(() => useResponsiveLayout(), {
+      wrapper: ({ children }) => withResponsiveLayout(children),
+    });
+
+    expect(result.current.sidebarOpen).toBe(false);
+
+    act(() => {
+      result.current.setSidebarOpen(true);
+    });
+    expect(result.current.sidebarOpen).toBe(true);
+
+    act(() => {
+      result.current.setSidebarOpen(false);
+    });
+    expect(result.current.sidebarOpen).toBe(false);
+
+    act(() => {
+      result.current.openSidebar();
+    });
+    expect(result.current.sidebarOpen).toBe(true);
+
+    act(() => {
+      result.current.closeSidebar();
+    });
+    expect(result.current.sidebarOpen).toBe(false);
+  });
+
+  it('useResponsiveLayout throws when used outside ResponsiveLayout', () => {
+    expect(() => {
+      renderHook(() => useResponsiveLayout());
+    }).toThrow('useResponsiveLayout must be used within <ResponsiveLayout>');
+  });
+
   it('useBreakpointContext returns the current breakpoint', () => {
     mockedBreakpoint = 'mobile';
     const { result, rerender } = renderHook(() => useBreakpointContext(), {
