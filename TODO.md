@@ -24,6 +24,10 @@ Acceptance criteria:
 
 ### In Progress
 
+- [ ] [review] Gate 2: `updateIssue` in `adapter.ts:77-96` has zero test coverage despite a multi-step implementation (body edit, labels_add, labels_remove, state transitions each make separate `gh` calls) — add tests for: body-only update (assert `--body` arg), `labels_add` path (assert two `--add-label` calls for two labels), `labels_remove` path (assert `--remove-label`), `state: 'closed'` (assert `issue close` called), `state: 'open'` (assert `issue reopen` called), and combined update with body + labels_add + state (priority: high)
+
+- [ ] [review] Gate 2/3: `listComments` `since` filter branch (adapter.ts:233-235) is untested — add a test that passes a `since` timestamp and asserts only comments after that date are returned, and a test with all-old comments returning empty array (priority: medium)
+
 - [x] [review] Gate 1: `OrchestratorAdapter` interface in `adapter.ts` deviates from spec's method names and return types — `queryIssues` must be renamed to `listIssues` (spec line ~988); `createPr`/`mergePr`/`getPrStatus` must be `createPR`/`mergePR`/`getPRStatus` (spec convention); `createIssue` must return `{ number: number; url: string }` not bare `number` (spec line ~983); `getPRStatus` must return `{ mergeable, ci_status: 'success'|'failure'|'pending', reviews: Array<{ verdict: string }> }` not `{ mergeable, mergeStateStatus }` (spec line ~997); `updateIssue` must accept `labels_add` and `labels_remove` fields (spec line ~985) — fix the interface and implementation in `src/lib/adapter.ts` and update all call sites and tests accordingly (priority: high)
 
 - [x] [review] Gate 2: ~~No tests for adapter instantiation branches~~ — adapter instantiation code removed pending re-implementation; gate no longer applicable

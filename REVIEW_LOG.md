@@ -45,3 +45,48 @@ TypeScript build and unit test suite could not be executed (Bash tool non-functi
 - Gate 10: QA_COVERAGE.md exists; no stale P1 bugs older than 3 iterations
 
 ---
+
+## Review — 2026-03-28 — commits 298ac3309..d49686908 (build iterations 18 + 30)
+
+**Verdict: FAIL** (2 findings → written to TODO.md as [review] tasks)
+**Scope:** `aloop/cli/src/lib/adapter.ts`, `aloop/cli/src/lib/adapter.test.ts`, `aloop/cli/src/commands/orchestrate.ts`, `aloop/cli/src/commands/process-requests.ts`, `aloop/cli/src/lib/plan.ts`
+
+### Gate 1 — PASS (prior finding resolved)
+
+Interface in `adapter.ts` now exactly matches SPEC-ADDENDUM.md §"Orchestrator Adapter Pattern":
+- `listIssues`, `createPR`, `mergePR`, `getPRStatus` — correct names ✓
+- `createIssue` returns `{ number, url }` ✓
+- `updateIssue` accepts `labels_add`/`labels_remove` ✓
+- `getPRStatus` returns `{ mergeable, ci_status, reviews }` ✓
+
+### Gate 2 FAIL — No tests for `updateIssue`; `listComments` since-filter untested
+
+`updateIssue` (adapter.ts:77-96) is the most complex method in the adapter — it makes up to 4+ separate `gh` calls depending on the update shape — but `adapter.test.ts` has **zero tests** for it. `describe('GitHubAdapter')` in the test file has sections for every other method but no `describe('updateIssue')` block at all.
+
+Additionally, `listComments` (adapter.ts:227-237) has a `since` timestamp filter branch (lines 233-235) that is exercised by zero tests — the only test calls `listComments(5)` with no `since` argument.
+
+### Gate 3 FAIL — 0% branch coverage for `updateIssue`
+
+`updateIssue` has five conditional branches (body, labels_add, labels_remove, state=closed, state=open). None are covered.
+
+### Gate 4 — PASS
+
+Prior Gate 4 finding (dynamic `import('node:child_process')` + silent DI bypass in `orchestrateCommandWithDeps`) resolved by removing the adapter threading code (deferred to "Up Next"). No dead code detected in changed files. Removed dist artifacts from tracking is appropriate cleanup.
+
+### Gate 5 — FAIL (pre-existing regressions from d49686908, tracked as [qa/P1])
+
+`npm run type-check` fails with 10 TypeScript errors; `npm test` has 22 top-level test failures (47 sub-test failures):
+- `process-requests.test.ts` imports 6 now-deleted exports (`formatReviewCommentHistory`, `getDirectorySizeBytes`, `pruneLargeV8CacheDir`, `syncMasterToTrunk`, `syncChildBranches`, `ChildBranchSyncDeps`)
+- `orchestrate.test.ts` references `priority` field deleted from `EstimateResult`
+- `process-requests.ts:385` has a type overlap error
+
+These are already tracked as `[qa/P1]` items in TODO.md (filed 2026-03-28). No duplicate `[review]` tasks added.
+
+### Gates 6-9 — Pass / N/A
+
+- Gate 6: Internal TypeScript changes only — skip correct
+- Gate 7: No UI changes
+- Gate 8: No new dependencies
+- Gate 9: No user-facing behavior changed
+
+---
