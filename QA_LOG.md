@@ -1,5 +1,77 @@
 # QA Log
 
+## QA Session — 2026-03-28 iter 13 (issue #176)
+
+### Test Environment
+- Binary under test: /tmp/aloop-test-install-HXVBVF/bin/aloop (version 1.0.0) — cleaned up after session
+- Commit under test: 847ab1c30 (fix(loop): sync loop.sh round-robin defaults with config.yml)
+- Features tested: 5
+
+### Target Selection
+Most recently completed (iter 12): loop.sh round-robin default fix. Re-verified adapter suite, TS errors, LOC thresholds, and orchestrate baseline at new HEAD.
+
+### Results
+- PASS: aloop/bin/loop.sh round-robin defaults — source file:31 and help text both match config.yml and loop.ps1 (all five providers)
+- FAIL: aloop/cli/dist/bin/loop.sh round-robin defaults — dist artifact at HEAD has stale "claude,gemini,opencode" on line 31; help text says "claude,codex,gemini,copilot" — iter 12 source fix not reflected in dist
+- PASS: adapter test suite — 47/47 pass at HEAD 847ab1c30
+- PASS: TypeScript errors in adapter files — 0 errors in adapter*.ts; 71 pre-existing errors in other files unchanged
+- PASS: LOC thresholds — adapter.ts 132, adapter-github.ts 219, adapter-github-pr.ts 137 (all under 300)
+- PASS: orchestrate.ts baseline — 319 pass / 27 fail (matches expected baseline)
+
+### Bugs Filed
+- [qa/P1] dist/bin/loop.sh round-robin defaults stale: dist/bin/loop.sh:31 has "claude,gemini,opencode" and help text has "claude,codex,gemini,copilot" — source was fixed at iter 12 but dist not rebuilt
+
+### Command Transcript
+```
+$ ALOOP_BIN=$(npm --prefix aloop/cli run --silent test-install -- --keep 2>/dev/null | tail -1)
+Binary under test: /tmp/aloop-test-install-HXVBVF/bin/aloop
+$ $ALOOP_BIN --version
+1.0.0
+
+# Test 1a: aloop/bin/loop.sh source round-robin defaults
+$ grep -n "ROUND_ROBIN_PROVIDERS" aloop/bin/loop.sh | head -2
+31:ROUND_ROBIN_PROVIDERS="claude,opencode,codex,gemini,copilot"  ✓
+65:  --round-robin <list>    ... (default: claude,opencode,codex,gemini,copilot)  ✓
+
+$ cat aloop/config.yml | grep -A7 "round_robin_order"
+round_robin_order:
+  - claude / opencode / codex / gemini / copilot  ✓ matches loop.sh source
+
+$ grep "RoundRobinProviders" aloop/bin/loop.ps1 | head -1
+31:  [string[]]$RoundRobinProviders = @('claude', 'opencode', 'codex', 'gemini', 'copilot')  ✓ matches
+
+# Test 1b: dist/bin/loop.sh distributed artifact
+$ git show HEAD:aloop/cli/dist/bin/loop.sh | grep -n "ROUND_ROBIN_PROVIDERS" | head -2
+31:ROUND_ROBIN_PROVIDERS="claude,gemini,opencode"  ← STALE (only 3 providers)
+65:  --round-robin <list>    Comma-separated provider list (default: claude,codex,gemini,copilot)  ← STALE
+# BUG: dist artifact not rebuilt after iter 12 source fix
+
+# Test 2: adapter tests
+$ ./node_modules/.bin/tsx --test src/lib/adapter.test.ts
+# tests 47 | pass 47 | fail 0  ✓
+
+# Test 3: TS errors in adapter files
+$ npm run type-check 2>&1 | grep "adapter"
+# (no output) ✓ — 0 errors in adapter*.ts
+$ npm run type-check 2>&1 | grep -c "error TS"
+71  ← all pre-existing, none in adapter files
+
+# Test 4: LOC thresholds
+$ wc -l src/lib/adapter.ts src/lib/adapter-github.ts src/lib/adapter-github-pr.ts
+  132 src/lib/adapter.ts          ✓ under 300
+  219 src/lib/adapter-github.ts   ✓ under 300
+  137 src/lib/adapter-github-pr.ts  ✓ under 300
+
+# Test 5: orchestrate.ts baseline
+$ ./node_modules/.bin/tsx --test src/commands/orchestrate.test.ts
+# tests 346 | pass 319 | fail 27  ← matches baseline ✓
+
+# Cleanup
+$ rm -rf /tmp/aloop-test-install-HXVBVF
+```
+
+---
+
 ## QA Session — 2026-03-28 iter 12 (issue #176)
 
 ### Test Environment

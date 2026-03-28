@@ -1,10 +1,10 @@
 # Issue #176: OrchestratorAdapter interface and GitHubAdapter implementation
 
-## Current Phase: Complete — all AC satisfied, 47/47 tests pass, 0 TS errors in adapter files
+## Current Phase: Active — QA P1 bug filed (iter 13)
 
 ### In Progress
 
-(none — all tasks complete)
+- [ ] [qa/P1] `dist/bin/loop.sh` defaults not updated after iter 12 loop.sh source fix: at HEAD 847ab1c30 `aloop/cli/dist/bin/loop.sh:31` still has `ROUND_ROBIN_PROVIDERS="claude,gemini,opencode"` and help text (line 65) says `(default: claude,codex,gemini,copilot)` — both stale. The iter 12 source fix updated `aloop/bin/loop.sh` but did not rebuild the dist artifact. A user installing the packaged CLI gets wrong round-robin defaults. Fix: run `npm run build` in `aloop/cli/` and commit updated `dist/bin/loop.sh`. Tested iter 13. (priority: high)
 
 ### Completed (iter 12)
 
