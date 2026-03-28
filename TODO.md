@@ -1,46 +1,30 @@
 # Issue #176: OrchestratorAdapter interface and GitHubAdapter implementation
 
-## Current Phase: Fixing spec deviations
+## Current Phase: Fixing review findings
 
 ### In Progress
 
-- [x] Reconcile `OrchestratorAdapter` interface in `adapter.ts` with TASK_SPEC.md (priority: critical)
-  - Renamed `queryIssues` → `listIssues`
-  - Renamed `listComments` → `getIssueComments`; added `since?` param
-  - Fixed `createIssue`: positional `(title, body, labels[])` → returns `Promise<{ number: number; url: string }>`
-  - Fixed `closeIssue`: added `reason: string` parameter
-  - Fixed `updateIssue` opts: added `labelsAdd?: string[]` and `labelsRemove?: string[]`
-  - Fixed `mergePr`: positional `strategy` param instead of opts object
-  - Fixed `getPrStatus` return type: `{ state: string; mergeable: boolean; checks: Array<{name, status, conclusion}> }`
-  - Renamed `ensureLabelExists` → `ensureLabelsExist(labels: string[])`
-  - Added `getPrComments(number: number, since?: string)` method
-  - Added `getPrReviews(number: number)` method
-  - Added optional `syncProjectStatus?(issueNumber, status)` method
-  - Added `AdapterReview` type
+- [x] Revert out-of-scope changes to `orchestrate.ts`, `process-requests.ts`, and `plan.ts` (priority: critical)
+  - `plan.ts`: Remove `WORKING_ARTIFACTS` export (added out-of-scope)
+  - `process-requests.ts`: Revert to hardcoded artifact list and original V8 cache cleanup code
+  - `orchestrate.ts`: Revert review artifact cleanup additions in `processPrLifecycle`/`monitorChildSessions` and dispatch preemption logic rewrite in `runOrchestratorScanPass`; revert `WORKING_ARTIFACTS` import
+  - These changes introduced 12 orchestrate.test.ts regressions; reverting will restore the baseline
+  - Constitution Rule 12: scope is `adapter.ts` + `adapter-github.ts` + `adapter.test.ts` only
 
-- [x] Update `GitHubAdapter` in `adapter-github.ts` to implement corrected interface (priority: critical)
-  - Updated all method signatures to match the corrected interface
-  - Implemented `getPrComments` using `gh api repos/{repo}/issues/{pr}/comments`
-  - Implemented `getPrReviews` using `gh api repos/{repo}/pulls/{pr}/reviews`
-  - Updated `ensureLabelsExist` to accept `labels: string[]` and iterate
-  - Updated `getPrStatus` to fetch and return `state`, `mergeable`, and `checks[]`
-  - Updated `updateIssue` to handle `labelsAdd`/`labelsRemove` via `addLabels`/`removeLabels`
-
-- [x] Update tests in `adapter.test.ts` to cover corrected interface (priority: critical)
-  - Fixed test names/assertions for renamed/reshaped methods
-  - Added tests for `getPrComments` (with and without `since`)
-  - Added tests for `getPrReviews`
-  - Added tests for `ensureLabelsExist` with array input
-  - Added tests for `updateIssue` with `labelsAdd`/`labelsRemove`
-  - Added tests for corrected `getPrStatus` return shape (state + checks[])
-  - Added test for `closeIssue` with reason → `--comment` flag
-
-### Up Next
-
-- [x] Rebuild dist artifacts after interface fixes (`dist/index.js`, dashboard, templates)
+- [ ] Split `adapter-github.ts` (327 LOC) into `adapter-github.ts` + `adapter-github-pr.ts` to get both files under 300 LOC (priority: high)
+  - Extract PR-related methods into `adapter-github-pr.ts`: `createPr`, `mergePr`, `getPrStatus`, `getPrChecks`, `getPrComments`, `getPrReviews`, `closePr`, `getPrDiff`, `queryPrs`
+  - `adapter-github.ts` keeps: constructor, issue CRUD, comments, labels, `checkBranchExists`, `fetchBulkIssueState`
+  - Both files should be well under 300 LOC after split
+  - Update `adapter.ts` import to re-export from the new file if needed
+  - Adapter tests must still pass (47/47)
+  - Rebuild dist after split
 
 ### Completed
 
+- [x] Reconcile `OrchestratorAdapter` interface in `adapter.ts` with TASK_SPEC.md — verified 47/47 adapter tests pass
+- [x] Update `GitHubAdapter` in `adapter-github.ts` to implement corrected interface (all methods, signatures, return types)
+- [x] Update tests in `adapter.test.ts` to cover corrected interface (47/47 pass)
+- [x] Rebuild dist artifacts after interface fixes
 - [x] Define `OrchestratorAdapter` interface in `aloop/cli/src/lib/adapter.ts`
 - [x] Implement `GitHubAdapter` class in `aloop/cli/src/lib/adapter-github.ts` wrapping all `gh` CLI calls
 - [x] `GitHubAdapter` derives `baseUrl` from `ghHost` config / `GH_HOST` env var — no hardcoded `github.com`

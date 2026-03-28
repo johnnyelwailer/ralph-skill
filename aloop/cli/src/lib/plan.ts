@@ -2,20 +2,6 @@ import * as fs from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import * as path from 'node:path';
 
-/**
- * Working artifacts that live in worktree root during a loop but must never appear in PRs.
- * Single source of truth — used by gitignore seeding, git-rm-cached cleanup, and PR creation.
- */
-export const WORKING_ARTIFACTS = [
-  'TODO.md',
-  'STEERING.md',
-  'QA_COVERAGE.md',
-  'QA_LOG.md',
-  'REVIEW_LOG.md',
-  'TASK_SPEC.md',
-  'RESEARCH.md',
-];
-
 export interface LoopPlan {
   cycle: string[];
   cyclePosition: number;
