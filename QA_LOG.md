@@ -250,3 +250,62 @@ $ cat aloop/cli/dashboard/vitest.config.ts
 coverage.include only has: App.tsx, AppView.tsx, useIsTouchDevice.ts, tooltip.tsx, hover-card.tsx
 — ImageLightbox.tsx, LogEntryExpandedDetails.tsx, and all other new components are NOT included
 ```
+
+## QA Session — 2026-03-28 (iteration 55)
+
+### Test Environment
+- Binary under test: /tmp/aloop-test-install-bjEqot/bin/aloop (1.0.0) — cleaned up
+- Commit: 9eacb8750
+- Features tested: 4
+
+### Results
+- PASS: ResponsiveLayout branch coverage ≥90% (91.66% — was 75% FAIL, now fixed)
+- PASS: LogEntryRow callback assertions (review fixes applied, 9 tests pass)
+- PASS: All dashboard tests (370/370 pass, 34 test files)
+- PASS: TypeScript type-check (no errors)
+
+### Bugs Filed
+- None — all re-tested items now pass
+
+### Command Transcript
+
+```
+# Binary install
+$ ALOOP_BIN=$(npm --prefix aloop/cli run --silent test-install -- --keep 2>/dev/null | tail -1)
+Binary under test: /tmp/aloop-test-install-bjEqot/bin/aloop
+$ aloop --version
+1.0.0
+Exit: 0
+
+# Test 1: Full test suite
+$ cd aloop/cli/dashboard && npm run test
+Test Files: 34 passed (34)
+Tests: 370 passed (370)
+Exit: 0
+
+# Test 2: ResponsiveLayout branch coverage (was 75% FAIL)
+$ npx vitest run --coverage --coverage.include='**/ResponsiveLayout.tsx'
+File               | % Stmts | % Branch | % Funcs | % Lines | Uncovered Line #s
+ ...siveLayout.tsx |   97.36 |    91.66 |     100 |     100 | 56
+Exit: 0 — PASS (91.66% ≥ 90% spec requirement)
+Note: stderr shows intentional "useResponsiveLayout must be used within <ResponsiveLayout>" from
+error-branch test — this is expected and the test passes.
+
+# Test 3: LogEntryRow branch coverage + callback assertions
+$ npx vitest run LogEntryRow.test.tsx
+Tests: 9 passed (9)
+Exit: 0 — PASS
+
+$ npx vitest run --coverage --coverage.include='**/LogEntryRow.tsx'
+File             | % Stmts | % Branch | % Funcs | % Lines | Uncovered Line #s
+ LogEntryRow.tsx |   97.29 |    92.77 |     100 |     100 | 52,66,71,114,122
+Exit: 0 — PASS (92.77% ≥ 90%)
+
+# Test 4: TypeScript type-check
+$ npx tsc --noEmit
+(no output — clean)
+Exit: 0
+
+# Cleanup
+$ rm -rf /tmp/aloop-test-install-bjEqot
+```
