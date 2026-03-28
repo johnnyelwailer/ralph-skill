@@ -527,3 +527,34 @@ All prior findings through the last PASS (`d7a7e3054..a642b00af`) remain resolve
 - **Gate 7:** N/A — no UI changes.
 - **Gate 8:** No dependency changes.
 - **Gate 9:** Source `loop.sh` help text is now correct. Dist stale is a Gate 5 concern, not a docs freshness issue.
+
+## Review — 2026-03-28 — commit a2c2c7c87..2b3a28ce6
+
+**Verdict: PASS** (prior Gate 5 finding resolved; all gates pass)
+**Scope:** `aloop/cli/dist/bin/loop.sh`, `TODO.md`, `QA_COVERAGE.md`, `QA_LOG.md`
+
+### Prior Finding Resolution
+
+- **Gate 5 (stale dist/bin/loop.sh — RESOLVED):** `3e02707bb` rebuilds `dist/bin/loop.sh` via `npm run build:bin`. Confirmed live:
+  - `dist/bin/loop.sh:31` → `ROUND_ROBIN_PROVIDERS="claude,opencode,codex,gemini,copilot"` ✓
+  - `dist/bin/loop.sh:65` → `(default: claude,opencode,codex,gemini,copilot)` ✓
+  - Source and dist now identical for these lines (`diff` returns no output). Finding resolved.
+
+### Observations
+
+- **Gate 5 (concrete):** QA_LOG.md iter 14 transcript contains exact `grep -n "ROUND_ROBIN_PROVIDERS"` output showing line 31 value, followed by a help-text grep confirming the `(default: ...)` line. Not filler — specific file inspection with line numbers. 47/47 adapter tests confirmed; orchestrate baseline 319/27 unchanged.
+- **Gate 9 (accurate):** TODO.md `Current Phase` header updated to `Complete — All gates pass [reviewed: gates 1-10 pass]` — accurate. No docs drift.
+
+### Gates that Pass
+
+- **Gate 1:** No spec compliance regression. All TASK_SPEC.md ACs verified PASS since commit 58a94fd19. No new deviations.
+- **Gate 2:** No test changes. 47/47 adapter tests with concrete assertions carry from prior PASS.
+- **Gate 3:** No new modules. N/A.
+- **Gate 4:** dist/bin/loop.sh fix is 4 lines (correct values, no dead code). QA/TODO updates accurate. No dead code introduced.
+- **Gate 5:** dist artifact now in sync with source. 47/47 adapter tests pass. Orchestrate baseline 319/27 unchanged. All pre-existing TS errors (71) unchanged.
+- **Gate 6:** QA_LOG.md iter 14 contains command transcript with specific grep output and concrete counts — valid proof for a dist rebuild fix.
+- **Gate 7:** N/A — no UI changes.
+- **Gate 8:** No dependency changes.
+- **Gate 9:** TODO.md header update is accurate. dist fix makes packaged binary match documented behavior.
+- **Gate 10:** QA_COVERAGE.md has 16 features, all PASS at HEAD. No stale P1 bugs.
+
