@@ -188,10 +188,12 @@ When the product has GitHub integration features (`aloop gh start`, `aloop gh wa
    ```bash
    aloop gh watch &
    WATCH_PID=$!
+   MY_PIDS+=($WATCH_PID)
    gh pr review 1 --comment --body "Please also add a goodbye.txt file"
    # Wait and verify watch mode picks up the comment
    sleep 30
    kill $WATCH_PID 2>/dev/null
+   pkill -P $WATCH_PID 2>/dev/null
    ```
 
 5. **Verify PR quality:**
@@ -201,6 +203,8 @@ When the product has GitHub integration features (`aloop gh start`, `aloop gh wa
 
 6. **Clean up (MANDATORY — do this even if tests fail):**
    ```bash
+   # Kill all processes you spawned (see Process Hygiene)
+   cleanup_my_processes
    gh repo delete "$TESTREPO" --yes
    rm -rf /tmp/$TESTREPO
    # Also clean up any aloop sessions created during the test
@@ -212,6 +216,52 @@ When the product has GitHub integration features (`aloop gh start`, `aloop gh wa
 **If a GH feature is not yet implemented** (command returns "unknown command" or similar), that's a valid QA finding — file it as a bug noting the spec claims it exists but it doesn't.
 
 {{PROVIDER_HINTS}}
+
+## Process Hygiene (CRITICAL — prevents OOM kills)
+
+**Every background process you start MUST be tracked and killed before you exit.** Leaked processes accumulate across QA sessions and will OOM-kill the entire machine.
+
+**Rules:**
+1. **Record every PID.** Any time you run a command that spawns a background process (`&`, `aloop start`, `aloop dashboard`, `npx serve`, `node ... &`, etc.), immediately capture its PID:
+   ```bash
+   some-command &
+   MY_PIDS+=($!)
+   ```
+2. **Initialize a PID tracker** at the start of every QA session:
+   ```bash
+   MY_PIDS=()
+   ```
+3. **`aloop start` spawns child processes** (dashboard, loop.sh). After running `aloop start`, find and record the spawned PIDs:
+   ```bash
+   aloop start --max-iterations 3 &
+   ALOOP_PID=$!
+   MY_PIDS+=($ALOOP_PID)
+   # After it finishes or you're done, also find any orphaned children:
+   CHILD_PIDS=$(pgrep -P $ALOOP_PID 2>/dev/null)
+   MY_PIDS+=($CHILD_PIDS)
+   ```
+4. **Kill ALL tracked PIDs in your cleanup function** — define this early:
+   ```bash
+   cleanup_my_processes() {
+     for pid in "${MY_PIDS[@]}"; do
+       kill "$pid" 2>/dev/null
+       # Also kill children of that process
+       pkill -P "$pid" 2>/dev/null
+     done
+   }
+   trap cleanup_my_processes EXIT
+   ```
+5. **NEVER kill processes you didn't start.** Do NOT run `pkill node`, `pkill claude`, `killall`, or any broad process-killing command. Only kill PIDs you recorded in `MY_PIDS`.
+6. **Verify cleanup at end of session.** Before your final commit, check that none of your PIDs are still running:
+   ```bash
+   for pid in "${MY_PIDS[@]}"; do
+     if kill -0 "$pid" 2>/dev/null; then
+       echo "WARNING: PID $pid still alive, killing..."
+       kill -9 "$pid" 2>/dev/null
+       pkill -9 -P "$pid" 2>/dev/null
+     fi
+   done
+   ```
 
 ## Host Isolation (CRITICAL)
 
@@ -231,7 +281,7 @@ When the product has GitHub integration features (`aloop gh start`, `aloop gh wa
 2. `cd` into it, run `aloop scaffold`, set up a minimal spec
 3. Run `aloop start --max-iterations 1-3` — this creates a NEW session
 4. Now you can freely test `aloop stop`, `aloop steer`, `aloop status` against that session
-5. Clean up when done
+5. **Kill all spawned processes and clean up when done** (see Process Hygiene above)
 
 ## Rules
 
@@ -243,6 +293,7 @@ When the product has GitHub integration features (`aloop gh start`, `aloop gh wa
 - **Re-test after fixes.** Features that previously failed (FAIL in QA_COVERAGE.md) should be re-tested to verify the fix.
 - **QA bugs are high priority.** Tag them `[qa/P1]` so the build agent picks them up before new features.
 - **Clean up after yourself.** Delete temp dirs, throwaway repos, and test artifacts when done.
+- **Kill every process you started.** Run `cleanup_my_processes` before exiting. Verify no tracked PIDs survive. Leaked processes cause OOM kills.
 
 {{SAFETY_RULES}}
 

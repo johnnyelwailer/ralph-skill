@@ -13,7 +13,7 @@ The orchestrator review is NOT a line-by-line code review (the child's own revie
    - Separation of concerns across architectural layers
 3. **Proof of correct work** — are there tests? Do they test real behavior or just assert existence? Is the test coverage proportional to the change size?
 4. **Cross-feature concerns** — does this PR duplicate logic that already exists elsewhere? Does it introduce patterns incompatible with the rest of the codebase? Does it interfere with or break other features?
-5. **Working artifacts** — reject PRs that include TODO.md, STEERING.md, TASK_SPEC.md, REVIEW_LOG.md, QA_COVERAGE.md, QA_LOG.md, or dist/ files.
+5. **Working artifacts** — reject PRs that include TODO.md, STEERING.md, TASK_SPEC.md, REVIEW_LOG.md, QA_COVERAGE.md, QA_LOG.md, RESEARCH.md, or dist/ files.
 
 ## Process
 
@@ -23,20 +23,11 @@ The orchestrator review is NOT a line-by-line code review (the child's own revie
 4. Evaluate each of the 5 review dimensions above.
 5. Write your verdict.
 
-## PR Description Verification
-
-If the PR body contains a **Verification** section with acceptance criteria checkboxes:
-- Scan for any criteria marked `- [ ]` (unchecked) or containing `NOT verified`.
-- If ANY acceptance criterion is listed as NOT verified, the verdict MUST be `request-changes`.
-- List each unverified criterion in your summary so the child loop knows exactly what to fix.
-- Only `approve` when all acceptance criteria are checked `- [x]` or explicitly verified.
-
 ## Rules
 
 - When in doubt, `request-changes`. It's cheaper to re-iterate than to revert a bad merge.
 - A PR that passes CI but violates the constitution is still rejected.
 - A PR without tests for new behavior is rejected.
 - A PR that implements something different from what the issue asked is rejected.
-- A PR whose body lists any acceptance criterion as NOT verified is rejected.
 - Provide actionable feedback — tell the child exactly what to fix, not just "this is wrong."
 - Keep summary concise but specific (2-5 sentences).

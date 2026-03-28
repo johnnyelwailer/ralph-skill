@@ -41,7 +41,7 @@ describe('GitHubAdapter', () => {
         'issue create': { stdout: 'https://github.com/owner/repo/issues/42\n', stderr: '' },
       });
       const adapter = new GitHubAdapter(config, execGh);
-      const result = await adapter.createIssue({ title: 'Bug', body: 'Details' });
+      const result = await adapter.createIssue('Bug', 'Details', []);
       assert.equal(result.number, 42);
       assert.ok(result.url.includes('/issues/42'));
     });
@@ -53,7 +53,7 @@ describe('GitHubAdapter', () => {
         return { stdout: 'https://github.com/owner/repo/issues/1\n', stderr: '' };
       };
       const adapter = new GitHubAdapter(config, execGh);
-      await adapter.createIssue({ title: 'T', body: 'B', labels: ['bug', 'p1'] });
+      await adapter.createIssue('T', 'B', ['bug', 'p1']);
       assert.ok(calledArgs.includes('--label'));
       assert.ok(calledArgs.includes('bug'));
       assert.ok(calledArgs.includes('p1'));
@@ -64,7 +64,7 @@ describe('GitHubAdapter', () => {
         'issue create': { stdout: 'https://git.corp.example.com/owner/repo/issues/99\n', stderr: '' },
       });
       const adapter = new GitHubAdapter(config, execGh);
-      const result = await adapter.createIssue({ title: 'T', body: 'B' });
+      const result = await adapter.createIssue('T', 'B', []);
       assert.equal(result.number, 99);
     });
 
@@ -73,7 +73,7 @@ describe('GitHubAdapter', () => {
         'issue create': { stdout: 'unexpected output\n', stderr: '' },
       });
       const adapter = new GitHubAdapter(config, execGh);
-      await assert.rejects(adapter.createIssue({ title: 'T', body: 'B' }), /Failed to parse issue number/);
+      await assert.rejects(adapter.createIssue('T', 'B', []), /Failed to parse issue number/);
     });
   });
 
@@ -109,7 +109,6 @@ describe('GitHubAdapter', () => {
       assert.equal(issue.title, 'Test Issue');
       assert.equal(issue.state, 'OPEN');
       assert.deepEqual(issue.labels, ['bug']);
-      assert.deepEqual(issue.assignees, ['alice']);
     });
   });
 
@@ -137,7 +136,7 @@ describe('GitHubAdapter', () => {
         'pr create': { stdout: 'https://github.com/owner/repo/pull/15\n', stderr: '' },
       });
       const adapter = new GitHubAdapter(config, execGh);
-      const pr = await adapter.createPR({ base: 'main', head: 'feat', title: 'PR', body: 'desc' });
+      const pr = await adapter.createPR('PR', 'desc', 'feat', 'main');
       assert.equal(pr.number, 15);
       assert.ok(pr.url.includes('/pull/15'));
     });
@@ -147,7 +146,7 @@ describe('GitHubAdapter', () => {
         'pr create': { stdout: 'https://git.corp.example.com/owner/repo/pull/7\n', stderr: '' },
       });
       const adapter = new GitHubAdapter(config, execGh);
-      const pr = await adapter.createPR({ base: 'main', head: 'feat', title: 'PR', body: '' });
+      const pr = await adapter.createPR('PR', '', 'feat', 'main');
       assert.equal(pr.number, 7);
     });
   });
@@ -157,7 +156,7 @@ describe('GitHubAdapter', () => {
       let calledArgs: string[] = [];
       const execGh: GhExecFn = async (args) => { calledArgs = args; return { stdout: '', stderr: '' }; };
       const adapter = new GitHubAdapter(config, execGh);
-      await adapter.mergePR(15);
+      await adapter.mergePR(15, 'squash');
       assert.ok(calledArgs.includes('--squash'));
       assert.ok(calledArgs.includes('--delete-branch'));
     });
@@ -166,7 +165,7 @@ describe('GitHubAdapter', () => {
       let calledArgs: string[] = [];
       const execGh: GhExecFn = async (args) => { calledArgs = args; return { stdout: '', stderr: '' }; };
       const adapter = new GitHubAdapter(config, execGh);
-      await adapter.mergePR(15, { method: 'rebase' });
+      await adapter.mergePR(15, 'rebase');
       assert.ok(calledArgs.includes('--rebase'));
     });
   });

@@ -6,8 +6,8 @@
  * can implement this same interface.
  */
 
-import type { GhExecFn, GhExecResult, BulkIssueState, BulkFetchResult } from './github-monitor.js';
-import { parseRepoSlug, fetchBulkIssueState } from './github-monitor.js';
+import type { GhExecFn, GhExecResult, BulkFetchResult } from './github-monitor.js';
+import { fetchBulkIssueState } from './github-monitor.js';
 
 // ----- Supporting types -----
 
@@ -16,27 +16,6 @@ export interface AdapterConfig {
   type: string;
   /** Repository in "owner/name" format. */
   repo: string;
-}
-
-export interface AdapterIssue {
-  number: number;
-  title: string;
-  state: string;
-  body?: string;
-  labels: string[];
-  assignees: string[];
-  url?: string;
-}
-
-export interface AdapterPr {
-  number: number;
-  url: string;
-}
-
-export interface PrStatus {
-  mergeable: boolean;
-  ci_status: 'success' | 'failure' | 'pending';
-  reviews: Array<{ verdict: string }>;
 }
 
 export interface PrChecksResult {
@@ -49,40 +28,27 @@ export interface PrChecksResult {
   }>;
 }
 
-export interface AdapterComment {
-  id: number;
-  author: string;
-  body: string;
-  createdAt: string;
-}
-
-// ----- Interface -----
+// ----- Interface (spec-aligned) -----
 
 export interface OrchestratorAdapter {
-  // Issue CRUD
-  createIssue(opts: { title: string; body: string; labels?: string[] }): Promise<{ number: number; url: string }>;
-  updateIssue(issueNumber: number, opts: { title?: string; body?: string; state?: string; labels_add?: string[]; labels_remove?: string[] }): Promise<void>;
-  closeIssue(issueNumber: number): Promise<void>;
-  getIssue(issueNumber: number): Promise<AdapterIssue>;
-  listIssues(opts?: { state?: string; labels?: string[]; limit?: number }): Promise<AdapterIssue[]>;
-
-  // PR operations
-  createPR(opts: { base: string; head: string; title: string; body: string }): Promise<AdapterPr>;
-  mergePR(prNumber: number, opts?: { method?: 'squash' | 'merge' | 'rebase'; deleteBranch?: boolean }): Promise<void>;
-  getPRStatus(prNumber: number): Promise<PrStatus>;
-  getPrChecks(prNumber: number): Promise<PrChecksResult>;
+  // Issue lifecycle
+  createIssue(title: string, body: string, labels: string[]): Promise<{ number: number; url: string }>;
+  updateIssue(number: number, update: { body?: string; labels_add?: string[]; labels_remove?: string[]; state?: 'open' | 'closed' }): Promise<void>;
+  closeIssue(number: number): Promise<void>;
+  getIssue(number: number): Promise<{ number: number; title: string; body: string; state: string; labels: string[] }>;
+  listIssues(filters: { labels?: string[]; state?: 'open' | 'closed' | 'all' }): Promise<Array<{ number: number; title: string; state: string }>>;
 
   // Comments
-  postComment(issueOrPrNumber: number, body: string): Promise<void>;
-  listComments(issueNumber: number): Promise<AdapterComment[]>;
+  postComment(issueNumber: number, body: string): Promise<void>;
+  listComments(issueNumber: number, since?: string): Promise<Array<{ id: number; body: string; author: string; created_at: string }>>;
 
-  // Labels
-  addLabels(issueNumber: number, labels: string[]): Promise<void>;
-  removeLabels(issueNumber: number, labels: string[]): Promise<void>;
-  ensureLabelExists(label: string, opts?: { color?: string; description?: string }): Promise<void>;
+  // PR lifecycle
+  createPR(title: string, body: string, head: string, base: string): Promise<{ number: number; url: string }>;
+  mergePR(number: number, method: 'squash' | 'merge' | 'rebase'): Promise<void>;
+  getPRStatus(number: number): Promise<{ mergeable: boolean; ci_status: 'success' | 'failure' | 'pending'; reviews: Array<{ verdict: string }> }>;
 
-  // Bulk fetch
-  fetchBulkIssueState(opts?: { states?: string[]; since?: string; issueNumbers?: number[] }): Promise<BulkFetchResult>;
+  // Project status (optional)
+  setIssueStatus?(number: number, status: string): Promise<void>;
 }
 
 // ----- GitHubAdapter -----
@@ -96,9 +62,9 @@ export class GitHubAdapter implements OrchestratorAdapter {
     this.execGh = execGh;
   }
 
-  async createIssue(opts: { title: string; body: string; labels?: string[] }): Promise<{ number: number; url: string }> {
-    const args = ['issue', 'create', '--repo', this.repo, '--title', opts.title, '--body', opts.body];
-    for (const label of opts.labels ?? []) {
+  async createIssue(title: string, body: string, labels: string[]): Promise<{ number: number; url: string }> {
+    const args = ['issue', 'create', '--repo', this.repo, '--title', title, '--body', body];
+    for (const label of labels) {
       args.push('--label', label);
     }
     const result = await this.execGh(args);
@@ -108,32 +74,35 @@ export class GitHubAdapter implements OrchestratorAdapter {
     return { number: parseInt(match[1], 10), url };
   }
 
-  async updateIssue(issueNumber: number, opts: { title?: string; body?: string; state?: string; labels_add?: string[]; labels_remove?: string[] }): Promise<void> {
-    const args = ['issue', 'edit', String(issueNumber), '--repo', this.repo];
-    if (opts.title) args.push('--title', opts.title);
-    if (opts.body) args.push('--body', opts.body);
+  async updateIssue(number: number, update: { body?: string; labels_add?: string[]; labels_remove?: string[]; state?: 'open' | 'closed' }): Promise<void> {
+    const args = ['issue', 'edit', String(number), '--repo', this.repo];
+    if (update.body) args.push('--body', update.body);
     await this.execGh(args);
-    if (opts.labels_add?.length) {
-      await this.addLabels(issueNumber, opts.labels_add);
+    if (update.labels_add?.length) {
+      for (const label of update.labels_add) {
+        await this.execGh(['issue', 'edit', String(number), '--repo', this.repo, '--add-label', label]);
+      }
     }
-    if (opts.labels_remove?.length) {
-      await this.removeLabels(issueNumber, opts.labels_remove);
+    if (update.labels_remove?.length) {
+      for (const label of update.labels_remove) {
+        await this.execGh(['issue', 'edit', String(number), '--repo', this.repo, '--remove-label', label]);
+      }
     }
-    if (opts.state === 'closed') {
-      await this.closeIssue(issueNumber);
-    } else if (opts.state === 'open') {
-      await this.execGh(['issue', 'reopen', String(issueNumber), '--repo', this.repo]);
+    if (update.state === 'closed') {
+      await this.execGh(['issue', 'close', String(number), '--repo', this.repo]);
+    } else if (update.state === 'open') {
+      await this.execGh(['issue', 'reopen', String(number), '--repo', this.repo]);
     }
   }
 
-  async closeIssue(issueNumber: number): Promise<void> {
-    await this.execGh(['issue', 'close', String(issueNumber), '--repo', this.repo]);
+  async closeIssue(number: number): Promise<void> {
+    await this.execGh(['issue', 'close', String(number), '--repo', this.repo]);
   }
 
-  async getIssue(issueNumber: number): Promise<AdapterIssue> {
+  async getIssue(number: number): Promise<{ number: number; title: string; body: string; state: string; labels: string[] }> {
     const result = await this.execGh([
-      'issue', 'view', String(issueNumber), '--repo', this.repo,
-      '--json', 'number,title,state,body,labels,assignees,url',
+      'issue', 'view', String(number), '--repo', this.repo,
+      '--json', 'number,title,state,body,labels',
     ]);
     const data = JSON.parse(result.stdout) as {
       number: number;
@@ -141,28 +110,24 @@ export class GitHubAdapter implements OrchestratorAdapter {
       state: string;
       body?: string;
       labels?: Array<{ name: string }>;
-      assignees?: Array<{ login: string }>;
-      url?: string;
     };
     return {
       number: data.number,
       title: data.title,
+      body: data.body ?? '',
       state: data.state,
-      body: data.body,
       labels: (data.labels ?? []).map((l) => l.name),
-      assignees: (data.assignees ?? []).map((a) => a.login),
-      url: data.url,
     };
   }
 
-  async listIssues(opts?: { state?: string; labels?: string[]; limit?: number }): Promise<AdapterIssue[]> {
+  async listIssues(filters: { labels?: string[]; state?: 'open' | 'closed' | 'all' }): Promise<Array<{ number: number; title: string; state: string }>> {
     const args = [
       'issue', 'list', '--repo', this.repo,
-      '--state', opts?.state ?? 'open',
-      '--json', 'number,title,state,labels,assignees,url',
-      '--limit', String(opts?.limit ?? 100),
+      '--state', filters?.state ?? 'open',
+      '--json', 'number,title,state',
+      '--limit', '100',
     ];
-    for (const label of opts?.labels ?? []) {
+    for (const label of filters?.labels ?? []) {
       args.push('--label', label);
     }
     const result = await this.execGh(args);
@@ -170,41 +135,31 @@ export class GitHubAdapter implements OrchestratorAdapter {
       number: number;
       title: string;
       state: string;
-      labels?: Array<{ name: string }>;
-      assignees?: Array<{ login: string }>;
-      url?: string;
     }>;
     return items.map((item) => ({
       number: item.number,
       title: item.title,
       state: item.state,
-      labels: (item.labels ?? []).map((l) => l.name),
-      assignees: (item.assignees ?? []).map((a) => a.login),
-      url: item.url,
     }));
   }
 
-  async createPR(opts: { base: string; head: string; title: string; body: string }): Promise<AdapterPr> {
+  async createPR(title: string, body: string, head: string, base: string): Promise<{ number: number; url: string }> {
     const result = await this.execGh([
       'pr', 'create', '--repo', this.repo,
-      '--base', opts.base, '--head', opts.head,
-      '--title', opts.title, '--body', opts.body,
+      '--base', base, '--head', head,
+      '--title', title, '--body', body,
     ]);
     const match = result.stdout.match(/\/pull\/(\d+)/);
     const number = match ? parseInt(match[1], 10) : 0;
     return { number, url: result.stdout.trim() };
   }
 
-  async mergePR(prNumber: number, opts?: { method?: 'squash' | 'merge' | 'rebase'; deleteBranch?: boolean }): Promise<void> {
-    const method = opts?.method ?? 'squash';
-    const args = ['pr', 'merge', String(prNumber), '--repo', this.repo, `--${method}`];
-    if (opts?.deleteBranch !== false) {
-      args.push('--delete-branch');
-    }
+  async mergePR(number: number, method: 'squash' | 'merge' | 'rebase'): Promise<void> {
+    const args = ['pr', 'merge', String(number), '--repo', this.repo, `--${method}`, '--delete-branch'];
     await this.execGh(args);
   }
 
-  async getPRStatus(prNumber: number): Promise<PrStatus> {
+  async getPRStatus(prNumber: number): Promise<{ mergeable: boolean; ci_status: 'success' | 'failure' | 'pending'; reviews: Array<{ verdict: string }> }> {
     const result = await this.execGh([
       'pr', 'view', String(prNumber), '--repo', this.repo,
       '--json', 'mergeable,statusCheckRollup,reviews',
@@ -252,11 +207,11 @@ export class GitHubAdapter implements OrchestratorAdapter {
     };
   }
 
-  async postComment(issueOrPrNumber: number, body: string): Promise<void> {
-    await this.execGh(['issue', 'comment', String(issueOrPrNumber), '--repo', this.repo, '--body', body]);
+  async postComment(issueNumber: number, body: string): Promise<void> {
+    await this.execGh(['issue', 'comment', String(issueNumber), '--repo', this.repo, '--body', body]);
   }
 
-  async listComments(issueNumber: number): Promise<AdapterComment[]> {
+  async listComments(issueNumber: number, since?: string): Promise<Array<{ id: number; body: string; author: string; created_at: string }>> {
     const result = await this.execGh([
       'issue', 'view', String(issueNumber), '--repo', this.repo,
       '--json', 'comments',
@@ -269,12 +224,17 @@ export class GitHubAdapter implements OrchestratorAdapter {
         createdAt: string;
       }>;
     };
-    return (data.comments ?? []).map((c) => ({
+    let comments = (data.comments ?? []).map((c) => ({
       id: parseInt(c.id.replace(/\D/g, ''), 10) || 0,
-      author: c.author?.login ?? 'unknown',
       body: c.body,
-      createdAt: c.createdAt,
+      author: c.author?.login ?? 'unknown',
+      created_at: c.createdAt,
     }));
+    if (since) {
+      const sinceDate = new Date(since);
+      comments = comments.filter((c) => new Date(c.created_at) > sinceDate);
+    }
+    return comments;
   }
 
   async addLabels(issueNumber: number, labels: string[]): Promise<void> {
