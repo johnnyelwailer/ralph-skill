@@ -88,16 +88,23 @@
 
 **Required fix:** Reconcile `OrchestratorAdapter` interface in `adapter.ts` with TASK_SPEC.md spec shape, then add missing method implementations to `GitHubAdapter` and corresponding tests.
 
-## QA Bugs — iter 9 (2026-03-27)
+## QA Bugs — iter 9 (2026-03-27) — ALL FIXED at iter 10
 
-QA verified all interface deviations at HEAD (b6e32bf40). The following are filed as high-priority bugs blocking spec compliance:
+QA verified all interface deviations at HEAD (b6e32bf40). All 9 bugs below were fixed at 58a94fd19 and verified by iter 10 QA (47/47 adapter tests pass):
 
-- [ ] [qa/P1] Missing `getPrComments`: `getPrComments(number, since?)` absent from `OrchestratorAdapter` interface and `GitHubAdapter` — spec AC1 requires it. Tested iter 9. (priority: high)
-- [ ] [qa/P1] Missing `getPrReviews`: `getPrReviews(number)` absent from `OrchestratorAdapter` interface and `GitHubAdapter` — spec AC1 requires it. Tested iter 9. (priority: high)
-- [ ] [qa/P1] Wrong method name `queryIssues` vs `listIssues`: interface exports `queryIssues` but TASK_SPEC.md requires `listIssues`. Confirmed via test name "queryIssues" in adapter.test.ts. Tested iter 9. (priority: high)
-- [ ] [qa/P1] Wrong method name `listComments` vs `getIssueComments`: interface exports `listComments(issueNumber)` but spec requires `getIssueComments(number, since?)` — also drops `since` parameter. Tested iter 9. (priority: high)
-- [ ] [qa/P1] Wrong method name `ensureLabelExists` vs `ensureLabelsExist`: interface exports `ensureLabelExists(label, opts?)` (singular) but spec requires `ensureLabelsExist(labels: string[])` (plural, array). Tested iter 9. (priority: high)
-- [ ] [qa/P1] `createIssue` wrong return type: returns bare `number`, spec requires `Promise<{ number: number; url: string }>`. Test name confirms "returns the number" only. Tested iter 9. (priority: high)
-- [ ] [qa/P1] `closeIssue` missing `reason` parameter: interface drops `reason: string` — spec requires `closeIssue(number, reason: string)`. Tested iter 9. (priority: high)
-- [ ] [qa/P1] `getPrStatus` incomplete return type: returns `{ mergeable, mergeStateStatus }` but spec requires `{ state, mergeable, checks[] }` — `state` field and `checks` array absent. Tested iter 9. (priority: high)
-- [ ] [qa/P1] `updateIssue` opts missing `labelsAdd`/`labelsRemove`: no tests for label mutation via `updateIssue`; spec requires `{ labelsAdd?: string[]; labelsRemove?: string[] }` in opts. Tested iter 9. (priority: high)
+- [x] [qa/P1] Missing `getPrComments`: `getPrComments(number, since?)` absent from `OrchestratorAdapter` interface and `GitHubAdapter` — spec AC1 requires it. Tested iter 9. Fixed iter 10. (priority: high)
+- [x] [qa/P1] Missing `getPrReviews`: `getPrReviews(number)` absent from `OrchestratorAdapter` interface and `GitHubAdapter` — spec AC1 requires it. Tested iter 9. Fixed iter 10. (priority: high)
+- [x] [qa/P1] Wrong method name `queryIssues` vs `listIssues`: interface exports `queryIssues` but TASK_SPEC.md requires `listIssues`. Confirmed via test name "queryIssues" in adapter.test.ts. Tested iter 9. Fixed iter 10. (priority: high)
+- [x] [qa/P1] Wrong method name `listComments` vs `getIssueComments`: interface exports `listComments(issueNumber)` but spec requires `getIssueComments(number, since?)` — also drops `since` parameter. Tested iter 9. Fixed iter 10. (priority: high)
+- [x] [qa/P1] Wrong method name `ensureLabelExists` vs `ensureLabelsExist`: interface exports `ensureLabelExists(label, opts?)` (singular) but spec requires `ensureLabelsExist(labels: string[])` (plural, array). Tested iter 9. Fixed iter 10. (priority: high)
+- [x] [qa/P1] `createIssue` wrong return type: returns bare `number`, spec requires `Promise<{ number: number; url: string }>`. Test name confirms "returns the number" only. Tested iter 9. Fixed iter 10. (priority: high)
+- [x] [qa/P1] `closeIssue` missing `reason` parameter: interface drops `reason: string` — spec requires `closeIssue(number, reason: string)`. Tested iter 9. Fixed iter 10. (priority: high)
+- [x] [qa/P1] `getPrStatus` incomplete return type: returns `{ mergeable, mergeStateStatus }` but spec requires `{ state, mergeable, checks[] }` — `state` field and `checks` array absent. Tested iter 9. Fixed iter 10. (priority: high)
+- [x] [qa/P1] `updateIssue` opts missing `labelsAdd`/`labelsRemove`: no tests for label mutation via `updateIssue`; spec requires `{ labelsAdd?: string[]; labelsRemove?: string[] }` in opts. Tested iter 9. Fixed iter 10. (priority: high)
+
+## QA Bugs — iter 10 (2026-03-28)
+
+New bugs found at 58a94fd19 during re-verification pass:
+
+- [ ] [qa/P1] `adapter-github.ts` exceeds 300 LOC threshold: 327 lines at HEAD — TODO.md spec gate requires both adapter files under 300 LOC. Was 252 before adding new methods; adding getPrComments, getPrReviews, ensureLabelsExist array support pushed it over. Tested iter 10. (priority: high)
+- [ ] [qa/P1] `orchestrate.ts` regression — 12 subtest failures introduced by out-of-scope changes: `applyDecompositionPlan label enrichment` (7 subtests fail — wave/N and component/* labels not applied), `applyEstimateResults label enrichment` (4 subtests fail), `applyDecompositionPlan` (1 subtest fail). At b6e32bf40: 319 pass / 27 fail. At HEAD: 307 pass / 39 fail. TASK_SPEC.md marks orchestrate.ts migration as out-of-scope. Tested iter 10. (priority: high)

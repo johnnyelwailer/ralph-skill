@@ -1,5 +1,78 @@
 # QA Log
 
+## QA Session — 2026-03-28 iter 10 (issue #176)
+
+### Test Environment
+- Binary under test: /tmp/aloop-test-install-oCpuJQ/bin/aloop (version 1.0.0) — cleaned up
+- Commit under test: 58a94fd19 (feat(adapter): reconcile OrchestratorAdapter interface with TASK_SPEC.md and rebuild dist)
+- Features tested: 4 (all 9 [qa/P1] interface deviation fixes, LOC threshold, orchestrate.ts regressions, dist rebuild)
+
+### Target Selection
+All 9 [qa/P1] bugs filed in iter 9 are marked fixed in TODO.md. Re-testing each one plus:
+- LOC threshold check (was near 300 limit before adding new methods)
+- Regression check for `orchestrate.ts` and `process-requests.ts` (touched in this PR despite being marked out-of-scope)
+
+### Results
+- PASS: All 9 [qa/P1] interface deviation bugs — fixed and verified via adapter tests (47/47 pass)
+- PASS: `createIssue` returns `{ number, url }` — test "creates an issue and returns number and url" passes
+- PASS: `closeIssue` with `reason` param — test "passes reason as --comment when provided" passes
+- PASS: `listIssues` (renamed from `queryIssues`) — subtest passes
+- PASS: `getIssueComments(number, since?)` (renamed from `listComments`) — "uses api endpoint when since is provided" passes
+- PASS: `ensureLabelsExist(labels[])` (was `ensureLabelExists(label)`) — "creates each label with --force" passes
+- PASS: `getPrStatus` returns `{ state, mergeable, checks[] }` — "returns state, mergeable, and checks" passes
+- PASS: `updateIssue` with `labelsAdd`/`labelsRemove` — subtests pass
+- PASS: `getPrComments(number, since?)` — now present, tests pass
+- PASS: `getPrReviews(number)` — now present, tests pass
+- PASS: No hardcoded `github.com` in adapter (2 matches in dist are user-facing doc strings only, not URL construction)
+- PASS: dist rebuilt (dist/index.js timestamp matches source)
+- PASS: Shebang present in dist/index.js
+- FAIL: `adapter-github.ts` LOC threshold — 327 lines, exceeds 300 LOC limit (bug filed)
+- FAIL: `orchestrate.ts` regression — 12 subtests newly failing in applyDecompositionPlan / applyEstimateResults (bug filed)
+
+### Bugs Filed
+- [qa/P1] adapter-github.ts exceeds 300 LOC: 327 lines at HEAD vs 300 LOC threshold in TODO.md spec gate
+- [qa/P1] orchestrate.ts regression: applyDecompositionPlan + applyEstimateResults label enrichment — 12 subtests broke after out-of-scope orchestrate.ts changes
+
+### Comparison Data
+- iter 9 adapter tests: 38/38 → iter 10: 47/47 (9 new tests added for new/fixed methods)
+- iter 9 orchestrate tests: 346/319 pass, 27 fail → iter 10: 307 pass, 39 fail (+12 new failures)
+
+### Command Transcript
+
+```
+# Install
+cd aloop/cli && ALOOP_BIN=$(npm run --silent test-install -- --keep 2>/dev/null | tail -1)
+Binary under test: /tmp/aloop-test-install-oCpuJQ/bin/aloop
+aloop --version → 1.0.0
+
+# Adapter tests (47/47)
+npx tsx --test src/lib/adapter.test.ts
+# tests 47 | pass 47 | fail 0
+
+# LOC check
+wc -l src/lib/adapter.ts src/lib/adapter-github.ts
+  132 src/lib/adapter.ts
+  327 src/lib/adapter-github.ts   ← EXCEEDS 300 LOC threshold
+
+# Orchestrate regression check
+npx tsx --test src/commands/orchestrate.test.ts   [HEAD]
+# tests 346 | pass 307 | fail 39
+
+npx tsx --test src/commands/orchestrate.test.ts   [prev impl at b6e32bf40]
+# tests 346 | pass 319 | fail 27
+
+diff: HEAD introduces 3 new top-level failures (12 total subtests):
+  applyDecompositionPlan (1 subtest)
+  applyDecompositionPlan label enrichment (7 subtests) — wave/N, component/* labels not set
+  applyEstimateResults label enrichment (4 subtests)
+
+# requests.test.ts failures — confirmed pre-existing at b6e32bf40 (78/35/43 at both commits)
+# gh.test.ts extractRepoFromIssueUrl failures — confirmed pre-existing
+# process-requests.test.ts — confirmed pre-existing (cr-pipeline.js missing at both commits)
+```
+
+---
+
 ## QA Session — 2026-03-27 iter 9 (issue #176)
 
 ### Test Environment

@@ -2,7 +2,9 @@
 
 | Feature | Last Tested | Commit | Result | Notes |
 |---------|-------------|--------|--------|-------|
-| OrchestratorAdapter interface (issue #176) | 2026-03-27 | b6e32bf40 | FAIL | 9 interface deviations: wrong method names (queryIssues/listComments/ensureLabelExists), missing methods (getPrComments, getPrReviews), wrong return types (createIssue, getPrStatus), missing params (closeIssue reason, updateIssue labelsAdd/labelsRemove) — 9 [qa/P1] bugs filed |
+| OrchestratorAdapter interface (issue #176) | 2026-03-28 | 58a94fd19 | PASS | All 9 [qa/P1] interface deviations fixed; 47/47 adapter tests pass |
+| adapter-github.ts LOC threshold | 2026-03-28 | 58a94fd19 | FAIL | 327 LOC at HEAD, exceeds 300 LOC limit — [qa/P1] bug filed |
+| orchestrate.ts regression (applyDecompositionPlan/applyEstimateResults) | 2026-03-28 | 58a94fd19 | FAIL | 12 new subtest failures introduced by out-of-scope orchestrate.ts changes — [qa/P1] bug filed |
 | GitHubAdapter — GHE URL support (issue #176) | 2026-03-27 | b6e32bf40 | PASS | GHE tests still pass at HEAD |
 | createAdapter factory (issue #176) | 2026-03-27 | b6e32bf40 | PASS | factory tests still pass at HEAD |
 | No hardcoded github.com in adapter (issue #176) | 2026-03-27 | 19440428e | PASS | 0 matches in dist/index.js at HEAD |
