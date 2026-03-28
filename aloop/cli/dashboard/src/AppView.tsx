@@ -1,43 +1,29 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { marked } from 'marked';
 import { toast } from 'sonner';
 import {
   Activity, CheckCircle2, ChevronDown, ChevronRight, Circle, Clock,
-  GitBranch, GitCommit, FileText, Menu, MoreHorizontal, PanelLeftClose,
-  PanelLeftOpen, Play, Search, Send, Square, Terminal, Timer, XCircle, Zap, Loader2,
-  Heart, AlertTriangle, ExternalLink,
+  Menu, Search, Square, XCircle, Zap,
 } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card';
 import { Progress } from '@/components/ui/progress';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Toaster } from '@/components/ui/sonner';
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
-import { Textarea } from '@/components/ui/textarea';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { CostDisplay } from '@/components/progress/CostDisplay';
-import { ArtifactViewer } from '@/components/artifacts/ArtifactViewer';
-import { HealthPanel } from '@/components/health/ProviderHealth';
 import type { ProviderHealth } from '@/components/health/ProviderHealth';
 import { ElapsedTimer } from '@/components/shared/ElapsedTimer';
 import { PhaseBadge } from '@/components/shared/PhaseBadge';
 import { StatusDot, ConnectionIndicator } from '@/components/shared/StatusDot';
-import { SessionCard } from '@/components/session/SessionCard';
-import { SteerInput } from '@/components/session/SteerInput';
-import {
-  ActivityPanel, LogEntryRow, ArtifactComparisonDialog, findBaselineIterations,
-} from '@/components/session/ActivityLog';
+import { Sidebar } from '@/components/layout/Sidebar';
+export { Sidebar } from '@/components/layout/Sidebar';
+import { SessionDetail } from '@/components/session/SessionDetail';
+export { slugify, DocContent } from '@/components/session/SessionDetail';
 export {
   ActivityPanel, LogEntryRow, ArtifactComparisonDialog, findBaselineIterations,
 } from '@/components/session/ActivityLog';
 import {
-  isRecord, str, numStr, SIGNIFICANT_EVENTS, parseLogLine,
-  phaseDotColors, extractIterationUsage, IMAGE_EXT, isImageArtifact, artifactUrl,
-  parseManifest, extractModelFromOutput,
+  isRecord, str, numStr,
 } from '@/lib/activityLogHelpers';
 export {
   isRecord, str, numStr, SIGNIFICANT_EVENTS, parseLogLine,
@@ -48,12 +34,10 @@ import { useCost } from '@/hooks/useCost';
 import { parseTodoProgress } from '../../src/lib/parseTodoProgress';
 import { ResponsiveLayout, useResponsiveLayout } from '@/components/layout/ResponsiveLayout';
 
-import { stripAnsi, rgbStr, parseAnsiSegments, renderAnsiToHtml } from './lib/ansi';
 export { stripAnsi, rgbStr, parseAnsiSegments, renderAnsiToHtml } from './lib/ansi';
 
 import {
-  formatTime, formatTimeShort, formatSecs, formatDuration, formatDateKey,
-  relativeTime, formatTokenCount, parseDurationSeconds,
+  formatTime, formatSecs, parseDurationSeconds,
 } from './lib/format';
 export {
   formatTime, formatTimeShort, formatSecs, formatDuration, formatDateKey,
@@ -63,10 +47,9 @@ export {
 // ── Types ──
 
 import type {
-  SessionStatus, ArtifactManifest, DashboardState, SessionSummary,
-  FileChange, LogEntry, ArtifactEntry, ManifestPayload,
-  QACoverageFeature, QACoverageViewData, CostSessionResponse,
-  ConnectionStatus, IterationUsage,
+  DashboardState, SessionSummary,
+  QACoverageFeature, QACoverageViewData,
+  ConnectionStatus,
 } from './lib/types';
 export type {
   SessionStatus, ArtifactManifest, DashboardState, SessionSummary,
@@ -243,253 +226,6 @@ export function deriveProviderHealth(log: string, configuredProviders?: string[]
     } catch { /* skip */ }
   }
   return Array.from(providers.values()).sort((a, b) => a.name.localeCompare(b.name));
-}
-
-// ── Sidebar ──
-
-export function Sidebar({
-  sessions, selectedSessionId, onSelectSession, collapsed, onToggle, sessionCost, onStopSession, onCopySessionId, isDesktop,
-}: {
-  sessions: SessionSummary[];
-  selectedSessionId: string | null;
-  onSelectSession: (id: string | null) => void;
-  collapsed: boolean;
-  onToggle: () => void;
-  sessionCost: number;
-  onStopSession?: (id: string | null, force: boolean) => void;
-  onCopySessionId?: (id: string) => void;
-  isDesktop?: boolean;
-}) {
-  // Group by project
-  const { projectGroups, olderSessions } = useMemo(() => {
-    const now = Date.now();
-    const cutoff = 24 * 60 * 60 * 1000; // 24h
-    const active: SessionSummary[] = [];
-    const older: SessionSummary[] = [];
-
-    for (const s of sessions) {
-      const lastActivity = s.endedAt || s.startedAt;
-      const age = lastActivity ? now - new Date(lastActivity).getTime() : Infinity;
-      if (s.isActive || s.status === 'running' || age < cutoff) {
-        active.push(s);
-      } else {
-        older.push(s);
-      }
-    }
-
-    const groups = new Map<string, SessionSummary[]>();
-    for (const s of active) {
-      const key = s.projectName || 'Unknown';
-      if (!groups.has(key)) groups.set(key, []);
-      groups.get(key)!.push(s);
-    }
-    return { projectGroups: groups, olderSessions: older };
-  }, [sessions]);
-
-  const [olderOpen, setOlderOpen] = useState(false);
-  const [sessionCosts, setSessionCosts] = useState<Record<string, number | null>>({});
-  const [costUnavailable, setCostUnavailable] = useState(false);
-  const [contextMenuSessionId, setContextMenuSessionId] = useState<string | null>(null);
-  const [suppressClickSessionId, setSuppressClickSessionId] = useState<string | null>(null);
-  const [contextMenuPos, setContextMenuPos] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
-
-  useEffect(() => {
-    let cancelled = false;
-    const targets = sessions
-      .map((s) => s.id)
-      .filter((id) => id && id !== 'current')
-      .slice(0, 20);
-    if (targets.length === 0) return;
-
-    const loadSessionCosts = async () => {
-      const entries = await Promise.all(targets.map(async (id) => {
-        try {
-          const response = await fetch(`/api/cost/session/${encodeURIComponent(id)}`);
-          if (!response.ok) return [id, null] as const;
-          const payload = await response.json() as CostSessionResponse;
-          if (payload.error === 'opencode_unavailable') {
-            if (!cancelled) setCostUnavailable(true);
-            return [id, null] as const;
-          }
-          const value = typeof payload.total_usd === 'number'
-            ? payload.total_usd
-            : typeof payload.total_usd === 'string'
-              ? Number.parseFloat(payload.total_usd)
-              : NaN;
-          return [id, Number.isFinite(value) ? value : null] as const;
-        } catch {
-          return [id, null] as const;
-        }
-      }));
-
-      if (!cancelled) {
-        setSessionCosts((prev) => ({ ...prev, ...Object.fromEntries(entries) }));
-      }
-    };
-
-    void loadSessionCosts();
-    return () => { cancelled = true; };
-  }, [sessions]);
-
-  useEffect(() => {
-    if (!contextMenuSessionId) return;
-    const close = () => setContextMenuSessionId(null);
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') close();
-    };
-    document.addEventListener('pointerdown', close);
-    document.addEventListener('keydown', onKeyDown);
-    return () => {
-      document.removeEventListener('pointerdown', close);
-      document.removeEventListener('keydown', onKeyDown);
-    };
-  }, [contextMenuSessionId]);
-
-  if (collapsed) {
-    return (
-      <aside className="flex flex-col items-center border-r border-border bg-sidebar py-2 px-1 w-10 shrink-0">
-        <Tooltip>
-          <TooltipTrigger asChild>
-              <button type="button" aria-label="Expand sidebar" className="p-1 min-h-[44px] min-w-[44px] md:min-h-0 md:min-w-0 rounded hover:bg-accent text-muted-foreground hover:text-foreground transition-colors flex items-center justify-center" onClick={onToggle}>
-                <PanelLeftOpen className="h-4 w-4" />
-              </button>
-          </TooltipTrigger>
-          <TooltipContent side="right"><p>Expand sidebar (Ctrl+B)</p></TooltipContent>
-        </Tooltip>
-        <div className="mt-3 space-y-2">
-          {sessions.slice(0, 8).map((s) => (
-            <Tooltip key={s.id}>
-              <TooltipTrigger asChild>
-                <button type="button" className="block min-h-[44px] min-w-[44px] md:min-h-0 md:min-w-0 flex items-center justify-center" onClick={() => onSelectSession(s.id === 'current' ? null : s.id)}>
-                  <StatusDot status={s.isActive && s.status === 'running' ? 'running' : s.status} />
-                </button>
-              </TooltipTrigger>
-              <TooltipContent side="right"><p>{s.name} ({s.status})</p></TooltipContent>
-            </Tooltip>
-          ))}
-        </div>
-      </aside>
-    );
-  }
-
-  const isSelected = (s: SessionSummary) =>
-    selectedSessionId === null ? sessions.indexOf(s) === 0 : s.id === selectedSessionId;
-
-  const displaySessionCost = (s: SessionSummary): number | null =>
-    s.isActive ? sessionCost : (sessionCosts[s.id] ?? null);
-
-  const renderCard = (s: SessionSummary) => {
-    const cardCost = displaySessionCost(s);
-    return (
-      <SessionCard
-        key={s.id}
-        session={s}
-        cardCost={cardCost}
-        isSelected={isSelected(s)}
-        costUnavailable={costUnavailable}
-        suppressClick={suppressClickSessionId === s.id}
-        onSelect={() => onSelectSession(s.id === 'current' ? null : s.id)}
-        onOpenContextMenu={(x, y) => {
-          setSuppressClickSessionId(s.id);
-          setContextMenuPos({ x, y });
-          setContextMenuSessionId(s.id);
-        }}
-        onClearSuppressClick={() => setSuppressClickSessionId(null)}
-      />
-    );
-  };
-
-  return (
-    <aside className="flex flex-col border-r border-border bg-sidebar w-64 shrink-0 animate-slide-in-left">
-      <div className="flex items-center justify-between px-3 py-2 border-b border-border">
-        <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Sessions</span>
-        {!isDesktop && (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button type="button" aria-label="Collapse sidebar" className="p-1 min-h-[44px] min-w-[44px] md:min-h-0 md:min-w-0 rounded hover:bg-accent text-muted-foreground hover:text-foreground transition-colors flex items-center justify-center" onClick={onToggle}>
-                <PanelLeftClose className="h-4 w-4" />
-              </button>
-            </TooltipTrigger>
-            <TooltipContent><p>Collapse (Ctrl+B)</p></TooltipContent>
-          </Tooltip>
-        )}
-      </div>
-      <ScrollArea className="flex-1">
-        <div className="p-2 overflow-hidden">
-          {Array.from(projectGroups.entries()).map(([project, items]) => (
-            <Collapsible key={project} defaultOpen>
-              <CollapsibleTrigger className="flex items-center gap-1 w-full px-1 py-1 min-h-[44px] md:min-h-0 text-[10px] font-semibold text-muted-foreground/70 uppercase tracking-wider hover:text-muted-foreground">
-                <ChevronDown className="h-3 w-3 transition-transform group-data-[state=closed]:rotate-[-90deg]" />
-                {project}
-                <span className="ml-auto text-muted-foreground/40">{items.length}</span>
-              </CollapsibleTrigger>
-              <CollapsibleContent>
-                <div className="space-y-0.5 mb-2">{items.map(renderCard)}</div>
-              </CollapsibleContent>
-            </Collapsible>
-          ))}
-
-          {olderSessions.length > 0 && (
-            <Collapsible open={olderOpen} onOpenChange={setOlderOpen}>
-              <CollapsibleTrigger className="flex items-center gap-1 w-full px-1 py-1 min-h-[44px] md:min-h-0 text-[10px] font-semibold text-muted-foreground/40 uppercase tracking-wider hover:text-muted-foreground">
-                {olderOpen ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
-                Older
-                <span className="ml-auto">{olderSessions.length}</span>
-              </CollapsibleTrigger>
-              <CollapsibleContent>
-                <div className="space-y-0.5 mb-2">{olderSessions.map(renderCard)}</div>
-              </CollapsibleContent>
-            </Collapsible>
-          )}
-
-          {sessions.length === 0 && <p className="text-xs text-muted-foreground p-2">No sessions.</p>}
-        </div>
-      </ScrollArea>
-      {contextMenuSessionId && (
-        <div
-          role="menu"
-          className="fixed z-50 min-w-[170px] rounded-md border bg-popover p-1 text-popover-foreground shadow-md"
-          style={{ left: contextMenuPos.x, top: contextMenuPos.y }}
-          onPointerDown={(event) => event.stopPropagation()}
-        >
-          <button
-            type="button"
-            className="w-full flex items-center gap-2 rounded-sm px-2 py-1.5 min-h-[44px] md:min-h-0 text-sm text-left hover:bg-accent"
-            onClick={() => {
-              const selectId = contextMenuSessionId === 'current' ? null : contextMenuSessionId;
-              onSelectSession(selectId);
-              onStopSession?.(selectId, false);
-              setContextMenuSessionId(null);
-            }}
-          >
-            <Square className="h-3.5 w-3.5" /> Stop after iteration
-          </button>
-          <button
-            type="button"
-            className="w-full flex items-center gap-2 rounded-sm px-2 py-1.5 min-h-[44px] md:min-h-0 text-sm text-left text-destructive hover:bg-accent"
-            onClick={() => {
-              const selectId = contextMenuSessionId === 'current' ? null : contextMenuSessionId;
-              onSelectSession(selectId);
-              onStopSession?.(selectId, true);
-              setContextMenuSessionId(null);
-            }}
-          >
-            <Zap className="h-3.5 w-3.5" /> Kill immediately
-          </button>
-          <button
-            type="button"
-            className="w-full flex items-center gap-2 rounded-sm px-2 py-1.5 min-h-[44px] md:min-h-0 text-sm text-left hover:bg-accent"
-            onClick={() => {
-              onCopySessionId?.(contextMenuSessionId);
-              setContextMenuSessionId(null);
-            }}
-          >
-            <GitCommit className="h-3.5 w-3.5" /> Copy session ID
-          </button>
-        </div>
-      )}
-    </aside>
-  );
 }
 
 // ── Header ──
@@ -711,161 +447,6 @@ export function QACoverageBadge({ sessionId, refreshKey }: { sessionId: string |
     </div>
   );
 }
-
-// ── Docs Panel ──
-
-function DocsPanel({ docs, providerHealth, activityCollapsed, repoUrl }: { docs: Record<string, string>; providerHealth: ProviderHealth[]; activityCollapsed?: boolean; repoUrl?: string | null }) {
-  const docOrder = ['TODO.md', 'SPEC.md', 'RESEARCH.md', 'REVIEW_LOG.md', 'STEERING.md'];
-  const tabLabels: Record<string, string> = { 'TODO.md': 'TODO', 'SPEC.md': 'SPEC', 'RESEARCH.md': 'RESEARCH', 'REVIEW_LOG.md': 'REVIEW LOG', 'STEERING.md': 'STEERING' };
-
-  const availableDocs = docOrder.filter((n) => docs[n] != null && docs[n] !== '');
-  const extraDocs = Object.keys(docs).filter((n) => !docOrder.includes(n) && docs[n] != null && docs[n] !== '');
-  const allDocs = [...availableDocs, ...extraDocs];
-
-  const MAX_VISIBLE_TABS = 4;
-  const visibleTabs = allDocs.slice(0, MAX_VISIBLE_TABS);
-  const overflowTabs = allDocs.slice(MAX_VISIBLE_TABS);
-
-  // Always add Health as a special tab
-  const defaultTab = allDocs.includes('TODO.md') ? 'TODO.md' : allDocs[0] ?? '_health';
-  const [activeTab, setActiveTab] = useState(defaultTab);
-
-  useEffect(() => {
-    const validTabs = [...allDocs, '_health'];
-    if (!validTabs.includes(activeTab)) {
-      setActiveTab(defaultTab);
-    }
-  }, [activeTab, allDocs, defaultTab]);
-
-  return (
-    <Tabs value={activeTab} onValueChange={setActiveTab} className="flex flex-col h-full">
-      <div className="flex items-center shrink-0">
-        <TabsList className="h-auto md:h-8 bg-muted/50 flex-nowrap sm:flex-wrap justify-start flex-1 overflow-x-auto whitespace-nowrap">
-          {visibleTabs.map((n) => (
-            <TabsTrigger key={n} value={n} className="text-[10px] sm:text-[11px] px-2 py-1 md:h-6 data-[state=active]:bg-background">
-              {tabLabels[n] ?? n.replace(/\.md$/i, '')}
-            </TabsTrigger>
-          ))}
-          <TabsTrigger value="_health" className="text-[10px] sm:text-[11px] px-2 py-1 md:h-6 data-[state=active]:bg-background">
-            <Heart className="h-3 w-3 mr-1" /> Health
-          </TabsTrigger>
-          {overflowTabs.length > 0 && (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <button
-                  type="button"
-                  className="px-2 py-1 min-h-[44px] min-w-[44px] md:min-h-0 md:min-w-0 md:h-6 text-[11px] text-muted-foreground hover:text-foreground"
-                  aria-label="Open overflow document tabs"
-                >
-                  <MoreHorizontal className="h-3.5 w-3.5" />
-                </button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="min-w-[120px] p-1">
-                {overflowTabs.map((n) => (
-                  <DropdownMenuItem
-                    key={n}
-                    onSelect={() => setActiveTab(n)}
-                    className="w-full cursor-pointer text-left text-[11px] px-3 py-1.5"
-                  >
-                    {tabLabels[n] ?? n.replace(/\.md$/i, '')}
-                  </DropdownMenuItem>
-                ))}
-              </DropdownMenuContent>
-            </DropdownMenu>
-          )}
-        </TabsList>
-        {repoUrl && (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <a href={repoUrl} target="_blank" rel="noopener noreferrer" aria-label="Open repo on GitHub" className="inline-flex items-center justify-center min-h-[44px] min-w-[44px] md:min-h-0 md:min-w-0 md:h-6 md:w-6 rounded-sm text-muted-foreground hover:text-foreground hover:bg-background transition-colors ml-1 shrink-0">
-                <ExternalLink className="h-3 w-3" />
-              </a>
-            </TooltipTrigger>
-            <TooltipContent><p>Open repo on GitHub</p></TooltipContent>
-          </Tooltip>
-        )}
-      </div>
-      {allDocs.map((n) => (
-        <TabsContent key={n} value={n} className="flex-1 min-h-0 mt-0">
-          <DocContent content={docs[n] ?? ''} name={n} wide={activityCollapsed} />
-        </TabsContent>
-      ))}
-      <TabsContent value="_health" className="flex-1 min-h-0 mt-0">
-        <HealthPanel providers={providerHealth} />
-      </TabsContent>
-    </Tabs>
-  );
-}
-
-export function slugify(text: string): string {
-  return text.toLowerCase().replace(/[^\w\s-]/g, '').replace(/\s+/g, '-').replace(/-+/g, '-').trim();
-}
-
-export function DocContent({ content, name, wide }: { content: string; name: string; wide?: boolean }) {
-  const isSpec = /spec/i.test(name);
-  const { rendered, toc } = useMemo(() => {
-    if (!content) return { rendered: '', toc: [] as Array<{ level: number; text: string; id: string }> };
-    const headings: Array<{ level: number; text: string; id: string }> = [];
-    const renderer = new marked.Renderer();
-    renderer.heading = ({ tokens, depth }: { tokens: { raw: string }[]; depth: number }) => {
-      const text = tokens.map((t) => t.raw).join('');
-      const id = slugify(text);
-      headings.push({ level: depth, text, id });
-      return `<h${depth} id="${id}">${text}</h${depth}>`;
-    };
-    const html = marked.parse(content, { gfm: true, breaks: true, renderer }) as string;
-    return { rendered: html, toc: headings };
-  }, [content]);
-  if (!content) return <p className="text-xs text-muted-foreground p-3">No content for {name}.</p>;
-  const minLevel = toc.length > 0 ? Math.min(...toc.map((h) => h.level)) : 1;
-  const hasToc = isSpec && toc.length > 0;
-  const tocNav = hasToc ? (
-    <nav className="space-y-0.5 text-[11px]">
-      <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider mb-1 block">Table of Contents</span>
-      {toc.map((h) => (
-        <a key={h.id} href={`#${h.id}`} className="block text-muted-foreground hover:text-foreground transition-colors truncate" style={{ paddingLeft: `${(h.level - minLevel) * 12}px` }}>
-          {h.text}
-        </a>
-      ))}
-    </nav>
-  ) : null;
-
-  // Wide mode: TOC as sticky sidebar, doc as main content
-  if (wide && hasToc) {
-    return (
-      <div className="grid h-full" style={{ gridTemplateColumns: 'minmax(160px, 220px) 1fr' }}>
-        <div className="border-r border-border overflow-y-auto p-3 pr-2">
-          {tocNav}
-        </div>
-        <ScrollArea className="h-full">
-          <div className="prose-dashboard p-3 pr-4" dangerouslySetInnerHTML={{ __html: rendered }} />
-        </ScrollArea>
-      </div>
-    );
-  }
-
-  // Normal mode: collapsible TOC above doc
-  return (
-    <ScrollArea className="h-full">
-      {hasToc && (
-        <div className="p-3 pb-0">
-          <Collapsible defaultOpen={false}>
-            <CollapsibleTrigger className="flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground transition-colors font-medium uppercase tracking-wider">
-              <ChevronRight className="h-3 w-3 collapsible-chevron" /> Table of Contents
-            </CollapsibleTrigger>
-            <CollapsibleContent>
-              <div className="mt-1 mb-2 border-l-2 border-border pl-2">
-                {tocNav}
-              </div>
-            </CollapsibleContent>
-          </Collapsible>
-        </div>
-      )}
-      <div className="prose-dashboard p-3 pr-4" dangerouslySetInnerHTML={{ __html: rendered }} />
-    </ScrollArea>
-  );
-}
-
 
 // ── Command Palette ──
 
@@ -1153,21 +734,6 @@ function AppInner() {
     finally { setStopSubmitting(false); }
   }, [stopSubmitting]);
 
-  const handleStopSession = useCallback((id: string | null, force: boolean) => {
-    selectSession(id);
-    void handleStop(force);
-  }, [handleStop, selectSession]);
-
-  const handleCopySessionId = useCallback(async (id: string) => {
-    try {
-      if (!navigator?.clipboard?.writeText) throw new Error('Clipboard is unavailable in this browser.');
-      await navigator.clipboard.writeText(id);
-      toast.success(`Copied session ID: ${id}`);
-    } catch (e) {
-      toast.error((e as Error).message);
-    }
-  }, []);
-
   const [resumeSubmitting, setResumeSubmitting] = useState(false);
   const handleResume = useCallback(async () => {
     if (resumeSubmitting) return;
@@ -1180,48 +746,6 @@ function AppInner() {
     } catch (e) { toast.error((e as Error).message); }
     finally { setResumeSubmitting(false); }
   }, [resumeSubmitting]);
-
-  const docsPanel = (
-    <Card className={`flex flex-col min-h-0 min-w-0 overflow-hidden flex-1 ${activePanel !== 'docs' ? 'hidden lg:flex' : ''}`}>
-      <CardHeader className="py-2 px-3 shrink-0">
-        <CardTitle className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1"><FileText className="h-3.5 w-3.5" /> Documents</CardTitle>
-      </CardHeader>
-      <CardContent className="flex-1 min-h-0 min-w-0 px-3 pb-2">
-        <DocsPanel docs={state?.docs ?? {}} providerHealth={providerHealth} activityCollapsed={activityCollapsed} repoUrl={state?.repoUrl} />
-      </CardContent>
-    </Card>
-  );
-
-  const activityPanel = activityCollapsed ? (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <button type="button" className={`shrink-0 flex-col items-center gap-1 px-1 py-2 min-h-[44px] min-w-[44px] md:min-h-0 md:min-w-0 text-muted-foreground hover:text-foreground transition-colors hidden lg:flex ${activePanel !== 'activity' ? 'hidden lg:flex' : 'flex'}`} onClick={() => setActivityCollapsed(false)}>
-          <PanelLeftOpen className="h-4 w-4" />
-          <span className="text-[9px] uppercase tracking-wider font-medium [writing-mode:vertical-lr]">Activity</span>
-        </button>
-      </TooltipTrigger>
-      <TooltipContent side="left"><p>Show activity panel</p></TooltipContent>
-    </Tooltip>
-  ) : (
-    <Card className={`flex flex-col min-h-0 min-w-0 overflow-hidden flex-1 ${activePanel !== 'activity' ? 'hidden lg:flex' : ''}`}>
-      <CardHeader className="py-2 px-3 shrink-0">
-        <CardTitle className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center justify-between">
-          <span className="flex items-center gap-1"><Activity className="h-3.5 w-3.5" /> Activity</span>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button type="button" aria-label="Collapse activity panel" className="text-muted-foreground hover:text-foreground transition-colors hidden lg:block min-h-[44px] min-w-[44px] md:min-h-0 md:min-w-0 flex items-center justify-center" onClick={() => setActivityCollapsed(true)}>
-                <PanelLeftClose className="h-3.5 w-3.5" />
-              </button>
-            </TooltipTrigger>
-            <TooltipContent><p>Collapse activity panel</p></TooltipContent>
-          </Tooltip>
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="flex-1 min-h-0 min-w-0 px-3 pb-2">
-        <ActivityPanel log={state?.log ?? ''} artifacts={state?.artifacts ?? []} currentIteration={isRunning ? currentIterationNum : null} currentPhase={currentPhase} currentProvider={providerName} isRunning={isRunning} iterationStartedAt={iterationStartedAt} />
-      </CardContent>
-    </Card>
-  );
 
   return (
     <div className="h-screen flex flex-col bg-background text-foreground overflow-hidden" onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
@@ -1256,30 +780,30 @@ function AppInner() {
         )}
         <div className="flex flex-col flex-1 min-w-0">
           <Header sessionName={sessionName} isRunning={isRunning} currentState={currentState} currentPhase={currentPhase} currentIteration={currentIteration} providerName={providerName} modelName={modelName} tasksCompleted={tasksCompleted} tasksTotal={tasksTotal} progressPercent={progressPercent} updatedAt={state?.updatedAt ?? ''} loading={loading} loadError={loadError} connectionStatus={connectionStatus} onOpenCommand={() => setCommandOpen(true)} onOpenSwitcher={openSidebar} startedAt={startedAt} avgDuration={avgDuration} maxIterations={maxIterations} stuckCount={stuckCount} onToggleMobileMenu={toggleSidebar} selectedSessionId={selectedSessionId} qaCoverageRefreshKey={qaCoverageRefreshKey} sessionCost={sessionCost} totalCost={totalCost} budgetCap={budgetCap} budgetUsedPercent={budgetUsedPercent} costError={costError} costLoading={costLoading} budgetWarnings={budgetWarnings} budgetPauseThreshold={budgetPauseThreshold} />
-          {/* Mobile panel toggle */}
-          <div className="lg:hidden flex border-b border-border shrink-0">
-            <button
-              type="button"
-              className={`flex-1 py-1.5 text-xs font-medium text-center transition-colors ${activePanel === 'docs' ? 'bg-accent text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
-              onClick={() => setActivePanel('docs')}
-            >
-              <FileText className="h-3.5 w-3.5 inline mr-1" />Documents
-            </button>
-            <button
-              type="button"
-              className={`flex-1 py-1.5 text-xs font-medium text-center transition-colors ${activePanel === 'activity' ? 'bg-accent text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
-              onClick={() => setActivePanel('activity')}
-            >
-              <Activity className="h-3.5 w-3.5 inline mr-1" />Activity
-            </button>
-          </div>
-          <main className="flex-1 min-h-0 p-2 md:p-3">
-            <div className="flex gap-3 h-full">
-              {docsPanel}
-              {activityPanel}
-            </div>
-          </main>
-          <SteerInput steerInstruction={steerInstruction} setSteerInstruction={setSteerInstruction} onSteer={() => void handleSteer()} steerSubmitting={steerSubmitting} onStop={(f) => void handleStop(f)} stopSubmitting={stopSubmitting} onResume={() => void handleResume()} resumeSubmitting={resumeSubmitting} isRunning={isRunning} />
+          <SessionDetail
+            docs={state?.docs ?? {}}
+            log={state?.log ?? ''}
+            artifacts={state?.artifacts ?? []}
+            repoUrl={state?.repoUrl}
+            providerHealth={providerHealth}
+            activePanel={activePanel}
+            setActivePanel={setActivePanel}
+            activityCollapsed={activityCollapsed}
+            setActivityCollapsed={setActivityCollapsed}
+            currentIterationNum={currentIterationNum}
+            currentPhase={currentPhase}
+            currentProvider={providerName}
+            isRunning={isRunning}
+            iterationStartedAt={iterationStartedAt}
+            steerInstruction={steerInstruction}
+            setSteerInstruction={setSteerInstruction}
+            onSteer={() => void handleSteer()}
+            steerSubmitting={steerSubmitting}
+            onStop={(f) => void handleStop(f)}
+            stopSubmitting={stopSubmitting}
+            onResume={() => void handleResume()}
+            resumeSubmitting={resumeSubmitting}
+          />
         </div>
       </div>
       <CommandPalette open={commandOpen} onClose={() => setCommandOpen(false)} sessions={sessions} onSelectSession={selectSession} onStop={(f) => void handleStop(f)} />
