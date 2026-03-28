@@ -1,5 +1,59 @@
 # QA Log
 
+## QA Session — 2026-03-28 (iteration 56)
+
+### Test Environment
+- Binary under test: /tmp/aloop-test-install-dCSZes/bin/aloop (version 1.0.0)
+- Commit: b8fc74a93 (feat(dashboard): extract Sidebar and SessionDetail components from AppView.tsx — batch 1)
+- Features tested: 5
+
+### Results
+- PASS: All dashboard tests pass (406/406, 38 test files)
+- PASS: TypeScript type-check (tsc --noEmit, no errors)
+- PASS: SessionDetail.tsx branch coverage 93.75% (≥90%)
+- PASS: AppView.tsx LOC reduced 1299 → 823 (batch 1 extraction progress)
+- FAIL: Sidebar.tsx branch coverage 78.46% (below 90% — lines 83,100,159,215 uncovered)
+- FAIL: Sidebar.tsx 255 LOC (above 200 LOC spec limit)
+
+### Bugs Filed
+- [qa/P1] Sidebar.tsx branch coverage 78.46% (lines 83,100,159,215): below 90% spec requirement
+- [qa/P2] Sidebar.tsx 255 LOC: above 200 LOC spec limit (spec: files above 200 LOC should be split)
+
+### Command Transcript
+
+```
+$ ALOOP_BIN=$(npm --prefix aloop/cli run --silent test-install -- --keep 2>/dev/null | tail -1)
+# Binary under test: /tmp/aloop-test-install-dCSZes/bin/aloop
+$ "$ALOOP_BIN" --version
+1.0.0
+
+$ npx vitest run --coverage 2>&1 | grep -E "Tests |Test Files"
+ Test Files  38 passed (38)
+       Tests  406 passed (406)
+# Exit code: 0 — all 406 tests pass
+
+$ npx vitest run --coverage 2>&1 | grep -E "^\s+\S+\.tsx\s+\|" | grep -v "stories"
+# (branch coverage column is 3rd)
+  Sidebar.tsx      |   90.32 |    78.46 |   84.61 |   92.85 | ...83,100,159,215
+  SessionDetail.tsx |   100  |    93.75 |    100  |    100  | 30
+  DocsPanel.tsx    |   95.23 |    85.71 |     100 |   94.73 | 37
+  MainPanel.tsx    |   85.71 |    92.85 |      80 |   85.71 | 75
+  ResponsiveLayout.tsx | 97.36 | 91.66 |   100  |    100  | 56
+  AppView.tsx      |   80.59 |    66.93 |   79.45 |   88.06 | ...
+
+$ wc -l aloop/cli/dashboard/src/AppView.tsx aloop/cli/dashboard/src/components/layout/*.tsx
+  823 AppView.tsx
+   98 DocsPanel.tsx
+  147 MainPanel.tsx
+  100 ResponsiveLayout.tsx
+  255 Sidebar.tsx  # <-- FAIL: above 200 LOC limit
+
+$ npx tsc --noEmit
+# Exit code: 0 — no type errors
+
+$ rm -rf /tmp/aloop-test-install-dCSZes
+```
+
 ## QA Session — 2026-03-28 (iteration 52)
 
 ### Test Environment
