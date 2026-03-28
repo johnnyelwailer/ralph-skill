@@ -4,7 +4,7 @@
 
 ### In Progress
 
-- [ ] [review] Gate 5: Fix TypeScript errors introduced by prototype mixin — `Object.assign(GitHubAdapter.prototype, PR_METHODS)` added 12 new TS errors (80 pre-existing → 92 total). `adapter-github.ts:18` TS2420 (class doesn't implement OrchestratorAdapter), 19× TS2339 in adapter.test.ts (PR methods not visible on GitHubAdapter type), `adapter.ts:129` TS2740. Fix: add `declare` method signatures in `GitHubAdapter` class body for each mixin method, or restructure to avoid the mixin (e.g. include PR methods directly in the class, or use a proper interface-merging pattern). The 80 pre-existing errors are all in requests.ts/requests.test.ts — not introduced by this PR. (priority: high)
+- [x] [review] Gate 5: Fix TypeScript errors introduced by prototype mixin — `Object.assign(GitHubAdapter.prototype, PR_METHODS)` added 21 new TS errors. `adapter-github.ts:18` TS2420 (class doesn't implement OrchestratorAdapter — missing createPr, mergePr, getPrStatus, getPrChecks, and 5 more), 19× TS2339 in adapter.test.ts (PR methods not visible on GitHubAdapter type), `adapter.ts:129` TS2740. **Fix:** add `declare` method signatures in `GitHubAdapter` class body for all 9 PR methods (`createPr`, `mergePr`, `getPrStatus`, `getPrChecks`, `getPrComments`, `getPrReviews`, `closePr`, `getPrDiff`, `queryPrs`). This tells TypeScript the methods exist at runtime without adding LOC to the implementation. Pre-existing errors in requests.ts/requests.test.ts/gh.test.ts/process-requests.ts are out of scope. (priority: high)
 
 - [x] Revert out-of-scope changes to `orchestrate.ts`, `process-requests.ts`, and `plan.ts` (priority: critical)
   - `plan.ts`: Remove `WORKING_ARTIFACTS` export (added out-of-scope)

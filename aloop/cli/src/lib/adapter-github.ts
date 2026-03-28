@@ -12,6 +12,10 @@ import type {
   OrchestratorAdapter,
   AdapterIssue,
   AdapterComment,
+  AdapterPr,
+  PrStatus,
+  PrChecksResult,
+  AdapterReview,
 } from './adapter.js';
 import { PR_METHODS } from './adapter-github-pr.js';
 
@@ -195,6 +199,21 @@ export class GitHubAdapter implements OrchestratorAdapter {
       issueNumbers: opts?.issueNumbers,
     });
   }
+
+}
+
+// Declaration merging — tells TypeScript that GitHubAdapter has PR methods at runtime
+// (mixed in via Object.assign below). No implementation here; see adapter-github-pr.ts.
+export interface GitHubAdapter {
+  createPr(opts: { base: string; head: string; title: string; body: string }): Promise<AdapterPr>;
+  mergePr(prNumber: number, strategy: 'squash' | 'merge' | 'rebase'): Promise<void>;
+  getPrStatus(prNumber: number): Promise<PrStatus>;
+  getPrChecks(prNumber: number): Promise<PrChecksResult>;
+  getPrComments(prNumber: number, since?: string): Promise<AdapterComment[]>;
+  getPrReviews(prNumber: number): Promise<AdapterReview[]>;
+  closePr(prNumber: number, opts?: { comment?: string }): Promise<void>;
+  getPrDiff(prNumber: number): Promise<string>;
+  queryPrs(opts?: { head?: string; base?: string; state?: string; limit?: number }): Promise<AdapterPr[]>;
 }
 
 Object.assign(GitHubAdapter.prototype, PR_METHODS);
