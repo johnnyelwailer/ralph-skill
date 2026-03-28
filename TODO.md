@@ -24,6 +24,8 @@ Acceptance criteria:
 
 ### In Progress
 
+- [ ] [review] Gate 5: `process-requests.ts:551` — `issue.state !== 'review'` is a dead comparison because `OrchestratorIssueState` is `'pending' | 'in_progress' | 'pr_open' | 'merged' | 'failed'` with no `'review'` member — TypeScript error TS2367; either add `'review'` to `OrchestratorIssueState` in orchestrate.ts (if this is a real state), or remove the `!== 'review'` clause if it is not valid; this was part of the qa/P1 for process-requests.ts but was not fixed when exports were restored at commit 82ffc2a71 (priority: high)
+
 - [x] [review] Gate 2: `updateIssue` in `adapter.ts:77-96` has zero test coverage despite a multi-step implementation (body edit, labels_add, labels_remove, state transitions each make separate `gh` calls) — add tests for: body-only update (assert `--body` arg), `labels_add` path (assert two `--add-label` calls for two labels), `labels_remove` path (assert `--remove-label`), `state: 'closed'` (assert `issue close` called), `state: 'open'` (assert `issue reopen` called), and combined update with body + labels_add + state (priority: high)
 
 - [x] [review] Gate 2/3: `listComments` `since` filter branch (adapter.ts:233-235) is untested — add a test that passes a `since` timestamp and asserts only comments after that date are returned, and a test with all-old comments returning empty array (priority: medium)

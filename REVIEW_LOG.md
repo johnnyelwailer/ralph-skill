@@ -90,3 +90,43 @@ These are already tracked as `[qa/P1]` items in TODO.md (filed 2026-03-28). No d
 - Gate 9: No user-facing behavior changed
 
 ---
+
+## Review — 2026-03-28 — commits 8e1208aaf..82ffc2a71 (build: updateIssue tests + export restoration)
+
+**Verdict: FAIL** (1 finding → written to TODO.md as [review] task)
+**Scope:** `aloop/cli/src/lib/adapter.test.ts`, `aloop/cli/src/commands/process-requests.ts`
+
+### Gate 1 — PASS
+
+Interface alignment resolved in prior iteration; no spec-relevant changes in this build.
+
+### Gate 2 — PASS (prior findings resolved)
+
+`updateIssue` tests (`adapter.test.ts:91-155`) are concrete: 6 cases cover all 5 conditional branches with exact `calls.length` assertions and per-call arg checks. `listComments` since-filter tests (`adapter.test.ts:402-435`) test both partial-filter and all-old-comments cases with exact `comments.length` and `body` assertions. All 8 new tests pass.
+
+### Gate 3 — PASS (prior findings resolved)
+
+All branches of `updateIssue` covered. `listComments` since-filter branch covered.
+
+### Gate 4 — PASS
+
+Restored functions have no dead code. New `stat` and `rm` imports are used. No stray TODOs.
+
+### Gate 5 — FAIL — TypeScript type error not fixed in process-requests.ts
+
+`npm run type-check` fails with 4 errors. The current build resolved the export-restoration P1 but left one type error unfixed:
+
+- `process-requests.ts(551,71)` — `issue.state !== 'review'` is an impossible comparison because `OrchestratorIssueState` has no `'review'` member. This error was present before (line 385) and shifted to 551 after the 168-line insertion. The `[qa/P1]` was marked `[x]` resolved based on test passage, but `tsc --noEmit` still fails.
+- Pre-existing (not introduced by this build): `orchestrate.test.ts` 3 errors (`priority` field), tracked as qa/P1 for orchestrate.ts label enrichment. 46 test failures from same P1.
+
+1 new `[review]` task written to TODO.md.
+
+### Gates 6-10 — Pass / N/A
+
+- Gate 6: Internal test additions + export restoration — no observable output; skip correct
+- Gate 7: No UI changes
+- Gate 8: No new dependencies
+- Gate 9: No user-facing behavior changed
+- Gate 10: All `[qa/P1]` bugs filed 2026-03-28 (< 3 iterations old)
+
+---
