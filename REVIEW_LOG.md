@@ -400,3 +400,32 @@ None — no functional code changes.
 - **Gate 9:** QA_COVERAGE.md commit references updated to current HEAD hash. Accurate.
 
 ---
+
+---
+
+## Review — 2026-03-28 — commit b6e32bf40..e78086d4b
+
+**Verdict: FAIL** (2 findings → 2 [review] tasks written to TODO.md)
+**Scope:** `aloop/cli/src/lib/adapter.ts`, `aloop/cli/src/lib/adapter-github.ts`, `aloop/cli/src/lib/adapter.test.ts`, `aloop/cli/src/commands/orchestrate.ts`, `aloop/cli/src/commands/process-requests.ts`, `aloop/cli/src/lib/plan.ts`
+
+### Prior Findings Resolution
+
+All 9 interface-shape deviations from the prior FAIL review (`b6e32bf40`) are resolved in `58a94fd19`:
+- `listIssues`, `getIssueComments(since?)`, `createIssue` positional → `{number, url}`, `closeIssue(reason)`, `ensureLabelsExist(labels[])`, `getPrStatus` with `{state, mergeable, checks[]}`, `updateIssue` with `labelsAdd`/`labelsRemove`, `getPrComments`, `getPrReviews` — all correct.
+- 47/47 adapter tests pass with concrete assertions.
+
+### New Findings
+
+- **Gate 5 / Constitution Rule 12 (FAIL):** Builder modified `orchestrate.ts` (+149/-88 lines), `process-requests.ts` (+13/-174 lines), `plan.ts` (+14 lines), and template files — all outside TASK_SPEC.md file scope (`adapter.ts` + `adapter.test.ts` only). The out-of-scope removals broke 12 tests: `applyDecompositionPlan label enrichment` (7 subtests — `wave/N` and `component/*` labels no longer applied; `deriveComponentLabels` removed), `applyEstimateResults label enrichment` (4 subtests — complexity/priority label GH calls removed), and 1 subtest in `applyDecompositionPlan` (incorrect labels to `execGhIssueCreate`). At `b6e32bf40`: 319 pass / 27 fail. At HEAD: 307 pass / 39 fail. Written as `[review]` task (priority: critical).
+
+- **Gate 4 / Constitution Rule 7 (FAIL):** `adapter-github.ts` is 327 LOC. Constitution Rule 7 targets <150 LOC; prior reviews used a 300 LOC threshold. Adding `getPrComments`, `getPrReviews`, `getIssueComments` with `since` branch, `updateIssue` label handling pushed it from 252 → 327 lines. File must be split. Written as `[review]` task (priority: high).
+
+### Gates that Pass
+
+- **Gate 1 (adapter interface):** All TASK_SPEC.md methods present with correct signatures at `adapter.ts:73-119`. Interface fully reconciled. ✓
+- **Gate 2:** `adapter.test.ts` — all 47 tests use concrete value assertions (`assert.equal`, `deepEqual`, exact strings, exact call structures). Tests for `getPrReviews` at line 421 assert `reviews[0].state === 'APPROVED'` and `reviews[1].state === 'CHANGES_REQUESTED'` — not shallow. ✓
+- **Gate 3:** 47/47 adapter tests pass. No new untested branches in adapter files beyond LOC-threshold concern. ✓
+- **Gate 6:** Internal changes; dist rebuild valid. ✓
+- **Gate 7:** N/A — no UI changes. ✓
+- **Gate 8:** No dependency changes. ✓
+- **Gate 9:** No README/docs changes; template changes are out-of-scope but don't affect user-facing docs for this issue. ✓
