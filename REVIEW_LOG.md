@@ -346,3 +346,44 @@
 **Gate 9 — Documentation: PASS** (no user-facing behavior changes)
 
 ---
+
+## Review — 2026-03-28 — commit 59a665aad..849817f10
+
+**Verdict: FAIL** (2 findings → written to TODO.md as [review] tasks)
+**Scope:** `aloop/cli/dashboard/src/components/session/SliderView.test.tsx`, `aloop/cli/dashboard/src/components/session/LogEntryRow.test.tsx`, `QA_COVERAGE.md`, `QA_LOG.md`, `TODO.md`
+
+**Commits reviewed:**
+- `dcef1ee65` test(dashboard): add SliderView.test.tsx to reach ≥90% branch coverage
+- `67d41e26d` test: add LogEntryRow.test.tsx with branch coverage 92.77%
+- `849817f10` chore(qa): iter 52 — SliderView PASS (90%), LogEntryRow PASS (93.97%), ResponsiveLayout FAIL (75%)
+
+### Gate-by-gate summary
+
+**Gate 1 — Spec Compliance: PASS**
+- `[qa/P1] SliderView.tsx branch coverage 70%` task: 90% branch coverage confirmed by live run ✓
+- `[qa/P1] LogEntryRow.tsx branch coverage 89.15%` task: 92.77% branch coverage confirmed by live run ✓
+- Both tasks addressed exactly their stated criteria.
+
+**Gate 2 — Test Depth: FAIL**
+- `SliderView.test.tsx`: ArrowLeft/ArrowRight tests (lines 33-55) call the functional updater and assert exact values — `updater(50) === 48`, `updater(0) === 0`, `updater(50) === 52`, `updater(100) === 100`. Thorough. mousedown/mousemove/mouseup tests correctly verify interaction wiring without exact value assertions (jsdom getBoundingClientRect returns zeros; checking call counts is appropriate). ✓
+- `LogEntryRow.test.tsx:147-165`: `triggers onComparison callback` — final assertion checks `getByTestId('log-entry-expanded-details')` which was already in DOM before the comparison click. The mock renders `data-testid="close-comparison"` only when `showComparison` is truthy. Missing assertion: `getByTestId('close-comparison')` visible after click. A broken `onComparison` that never sets state would still pass.
+- `LogEntryRow.test.tsx:167-186`: `triggers onCloseComparison callback` — fires `fireEvent.click(closeComparison)` then makes **no assertion**. A broken handler that never clears state would still pass.
+
+**Gate 3 — Coverage: PASS**
+- `SliderView.tsx`: 90% branch coverage (live run) ✓ — line 19 (`if (!container) return`) the only uncovered branch; acceptable.
+- `LogEntryRow.tsx`: 92.77% branch coverage (live run) ✓ — note: QA_COVERAGE.md claims 93.97% but actual is 92.77%; both exceed ≥90% threshold.
+
+**Gate 4 — Code Quality: PASS**
+No dead code, unused imports, or commented-out code in either test file.
+
+**Gate 5 — Integration Sanity: PASS**
+368/368 tests pass (live verification). TypeScript clean per QA metadata (tsc --noEmit at commit 67d41e2).
+
+**Gate 6 — Proof: PASS**
+Purely internal changes (test additions, QA metadata). Empty proof is the expected correct outcome per Gate 6 rules.
+
+**Gates 7, 8: SKIP** (no UI/layout or dependency changes)
+
+**Gate 9 — Documentation: PASS** (no user-facing behavior changes)
+
+---
