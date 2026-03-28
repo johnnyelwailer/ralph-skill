@@ -3,16 +3,13 @@
 ## Current Phase: Implementation
 
 ### In Progress
-- [x] [review] Gate 3: `LogEntryExpandedDetails.tsx` — 4 uncovered branches written: (1) loading spinner, (2) non-empty outputText, (3) empty-string outputText → "No output available", (4) `tokens_cache_read > 0`. Tests exist in working tree but are not yet committed.
-- [x] [review] Gate 3: `LogEntryExpandedDetails.tsx` — reach ≥90% branch coverage. Two actions required: (1) commit the 4 tests already written in the working tree (`LogEntryExpandedDetails.test.tsx` has 10 tests, 4 are uncommitted); (2) add a test passing a non-null `artifacts` prop (`ManifestPayload` with at least one artifact entry) to cover the `{artifacts && <ArtifactViewer … />}` block at line 71-78 (line 76 reported uncovered). Branch coverage currently 86.95%; ≥90% required for new modules. (priority: high)
+*(none)*
 
 ### Up Next
-- [x] [qa/P1] ImageLightbox.tsx branch coverage 50% (line 5): measured `npx vitest run --coverage --coverage.include='**/ImageLightbox.tsx'` → branch coverage 50% (line 5 uncovered). Spec requires ≥90% branch coverage per component. Add test case covering the untested branch on line 5 of ImageLightbox.tsx. Tested at current iter.
-- [x] [qa/P2] vitest.config.ts coverage.include missing new components: `vitest.config.ts` coverage.include now uses `'src/components/**/*.tsx'` glob to include all extracted components. Coverage thresholds enforced for all new files. [reviewed: gates 1-9 pass]
+- [x] [qa/P1] SliderView.tsx branch coverage 70% (lines 19-26,52): add SliderView.test.tsx covering mousedown/mousemove/mouseup and ArrowLeft/ArrowRight keyboard branches — verified 90% branch coverage
+- [ ] [qa/P1] LogEntryRow.tsx branch coverage 89.15% (lines 177-183): measured `npx vitest run --coverage` → branch coverage 89.15% (below 90% spec requirement). Spec requires ≥90% branch coverage per component. Add tests covering branches at lines 177-183 in LogEntryRow.tsx. Tested at iter 23.
 - [ ] [spec-gap/P1] Extract layout shell components from AppView.tsx — batch 1: AppView.tsx is 1299 LOC (spec requires <100). Extract sidebar/session-list logic into `components/layout/Sidebar.tsx` and session detail into `components/session/SessionDetail.tsx`; add .test.tsx and .stories.tsx for each new file. Verify dashboard still renders correctly.
 - [ ] [spec-gap/P1] Extract remaining AppView.tsx logic — batch 2: after batch 1, continue extracting docs/tabs panel into `components/layout/DocsPanel.tsx` and main content area into `components/layout/MainPanel.tsx`; reduce AppView.tsx to layout shell (<100 LOC). Add .test.tsx and .stories.tsx for each new file.
-- [ ] [qa/P1] SliderView.tsx branch coverage 70% (lines 19-26,52): measured `npx vitest run --coverage` → branch coverage 70% (below 90% spec requirement). Spec requires ≥90% branch coverage per component. Add tests covering branches at lines 19-26 and 52 in SliderView.tsx. Tested at iter 23.
-- [ ] [qa/P1] LogEntryRow.tsx branch coverage 89.15% (lines 177-183): measured `npx vitest run --coverage` → branch coverage 89.15% (below 90% spec requirement). Spec requires ≥90% branch coverage per component. Add tests covering branches at lines 177-183 in LogEntryRow.tsx. Tested at iter 23.
 - [ ] [spec-gap/P2] Add .test.tsx for 6 untested components: `ActivityPanel.tsx`, `ArtifactComparisonHeader.tsx`, `DiffOverlayView.tsx`, `LogEntryRow.tsx`, `SideBySideView.tsx`, `SliderView.tsx` — each must cover key props, states, and interactions per SPEC-ADDENDUM.md.
 - [ ] [spec-gap/P2] Add .stories.tsx for 10 components missing stories: `ActivityPanel.tsx`, `ArtifactComparisonDialog.tsx`, `ArtifactComparisonHeader.tsx`, `DiffOverlayView.tsx`, `ImageLightbox.tsx`, `LogEntryExpandedDetails.tsx`, `LogEntryRow.tsx`, `ResponsiveLayout.tsx`, `SideBySideView.tsx`, `SliderView.tsx` — each needs 2-3 stories covering key visual states per SPEC-ADDENDUM.md.
 - [ ] [spec-gap/P3] Reduce LogEntryRow.tsx from 186 LOC to <150 LOC: extract one small concern (e.g., the expanded toggle header or file-change badge row) into a sub-component. Add test/story for the extracted piece.
@@ -24,6 +21,9 @@
 - [x] Extract ImageLightbox and LogEntryExpandedDetails from LogEntryRow
 - [x] Remove dead prop isCurrentIteration from LogEntryRow
 - [x] Add unit tests for ImageLightbox and LogEntryExpandedDetails
+- [x] [review] Gate 3: `LogEntryExpandedDetails.tsx` — reach ≥90% branch coverage (93.47% achieved, gates 1-9 pass)
+- [x] [qa/P1] ImageLightbox.tsx branch coverage 50% (line 5): add test covering untested branch — verified passing
+- [x] [qa/P2] vitest.config.ts coverage.include missing new components: now uses `'src/components/**/*.tsx'` glob — reviewed: gates 1-9 pass
 
 ### Spec-Gap Analysis
 
@@ -47,18 +47,6 @@
 - Code: `aloop/cli/dashboard/src/components/session/LogEntryRow.tsx` — 186 lines (within 200 LOC limit but over ~150 target)
 - Note: already flagged in QA commit (iter 70): "LogEntryRow still 186 LOC (bug filed)"
 - Suggested fix: Extract one more small concern from LogEntryRow to bring it under 150 LOC
-
-### Spec Review — 2026-03-27
-
-**Scope:** Two most recently completed tasks — "Remove dead prop isCurrentIteration from LogEntryRow" and "Add unit tests for ImageLightbox and LogEntryExpandedDetails".
-
-**Findings:**
-
-- [PASS] `isCurrentIteration` prop removed: grep confirms zero occurrences in `dashboard/src/`. Satisfies SPEC-ADDENDUM.md "typed props" (no dead props).
-- [PASS] `ImageLightbox.test.tsx`: 3 tests covering Escape key, overlay click, and img stopPropagation. Satisfies SPEC-ADDENDUM.md "unit tests with Testing Library, covering props, states, interactions".
-- [PASS] `LogEntryExpandedDetails.test.tsx`: 6 tests covering file path list, token/cost display, no-cost state, error event detail, comparison dialog shown, comparison dialog hidden. Satisfies SPEC-ADDENDUM.md same requirement.
-
-Pre-existing spec-gaps (P1–P3 above) remain open and are accurately documented — no new gaps introduced by this iteration.
 
 ### Notes
 - Issue #38 CI workflow (vitest) was previously completed and its tasks remain committed
