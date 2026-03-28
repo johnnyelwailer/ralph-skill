@@ -11,13 +11,12 @@
   - These changes introduced 12 orchestrate.test.ts regressions; reverting will restore the baseline
   - Constitution Rule 12: scope is `adapter.ts` + `adapter-github.ts` + `adapter.test.ts` only
 
-- [ ] Split `adapter-github.ts` (327 LOC) into `adapter-github.ts` + `adapter-github-pr.ts` to get both files under 300 LOC (priority: high)
-  - Extract PR-related methods into `adapter-github-pr.ts`: `createPr`, `mergePr`, `getPrStatus`, `getPrChecks`, `getPrComments`, `getPrReviews`, `closePr`, `getPrDiff`, `queryPrs`
+- [x] Split `adapter-github.ts` (327 LOC) into `adapter-github.ts` (200 LOC) + `adapter-github-pr.ts` (137 LOC) to get both files under 300 LOC (priority: high)
+  - Extracted PR methods via prototype mixin pattern: `createPr`, `mergePr`, `getPrStatus`, `getPrChecks`, `getPrComments`, `getPrReviews`, `closePr`, `getPrDiff`, `queryPrs`
   - `adapter-github.ts` keeps: constructor, issue CRUD, comments, labels, `checkBranchExists`, `fetchBulkIssueState`
-  - Both files should be well under 300 LOC after split
-  - Update `adapter.ts` import to re-export from the new file if needed
-  - Adapter tests must still pass (47/47)
-  - Rebuild dist after split
+  - Both files well under 300 LOC after split
+  - Adapter tests pass (47/47)
+  - Dist rebuilt successfully
 
 ### Completed
 
@@ -90,10 +89,10 @@ QA verified all interface deviations at HEAD (b6e32bf40). All 9 bugs below were 
 
 New bugs found at 58a94fd19 during re-verification pass:
 
-- [ ] [qa/P1] `adapter-github.ts` exceeds 300 LOC threshold: 327 lines at HEAD — TODO.md spec gate requires both adapter files under 300 LOC. Was 252 before adding new methods; adding getPrComments, getPrReviews, ensureLabelsExist array support pushed it over. Tested iter 10. (priority: high)
+- [x] [qa/P1] `adapter-github.ts` exceeds 300 LOC threshold: 327 lines at HEAD — TODO.md spec gate requires both adapter files under 300 LOC. Was 252 before adding new methods; adding getPrComments, getPrReviews, ensureLabelsExist array support pushed it over. Tested iter 10. Fixed iter 10 split. (priority: high)
 - [ ] [qa/P1] `orchestrate.ts` regression — 12 subtest failures introduced by out-of-scope changes: `applyDecompositionPlan label enrichment` (7 subtests fail — wave/N and component/* labels not applied), `applyEstimateResults label enrichment` (4 subtests fail), `applyDecompositionPlan` (1 subtest fail). At b6e32bf40: 319 pass / 27 fail. At HEAD: 307 pass / 39 fail. TASK_SPEC.md marks orchestrate.ts migration as out-of-scope. Tested iter 10. (priority: high)
 
 ## Review Findings — iter 10 (2026-03-28)
 
 - [ ] [review] Gate 5/Constitution Rule 12: Revert out-of-scope changes to `orchestrate.ts`, `process-requests.ts`, `plan.ts`, and templates — builder removed `deriveComponentLabels`/`buildPrBody` calls from `orchestrate.ts` and simplified `createPrForChild`, changed dispatch preemption logic in `runOrchestratorScanPass`, added review artifact cleanup to `processPrLifecycle`/`monitorChildSessions`; removed `formatReviewCommentHistory`/`getDirectorySizeBytes` from `process-requests.ts`; added `WORKING_ARTIFACTS` export to `plan.ts`. TASK_SPEC.md file scope is `adapter.ts` + `adapter.test.ts` only; TODO.md explicitly marks orchestrate.ts migration as out-of-scope. These changes introduced 12 new orchestrate.test.ts failures. Revert all changes to files outside the spec scope. (priority: critical)
-- [ ] [review] Gate 4/Constitution Rule 7: Split `adapter-github.ts` (327 LOC) — Constitution target is <150 LOC; prior reviews used a 300 LOC threshold; file now exceeds it at 327 lines. Extract the PR-related methods (`getPrStatus`, `getPrComments`, `getPrReviews`, `mergePr`, `closePr`, `getPrDiff`, `queryPrs`, `getPrChecks`) into a separate file (e.g., `adapter-github-pr.ts`) to bring both files under 300 LOC. (priority: high)
+- [x] [review] Gate 4/Constitution Rule 7: Split `adapter-github.ts` (327 LOC) — Constitution target is <150 LOC; prior reviews used a 300 LOC threshold; file now exceeds it at 327 lines. Extracted PR methods (`getPrStatus`, `getPrComments`, `getPrReviews`, `mergePr`, `closePr`, `getPrDiff`, `queryPrs`, `getPrChecks`) into `adapter-github-pr.ts` (137 LOC). `adapter-github.ts` is now 200 LOC. Both under 300 LOC. Fixed iter 10. (priority: high)

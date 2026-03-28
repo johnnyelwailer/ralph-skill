@@ -1,6 +1,8 @@
 /**
  * GitHubAdapter — OrchestratorAdapter implementation wrapping the `gh` CLI.
  * Supports GitHub.com and GitHub Enterprise Server via `ghHost` / `GH_HOST`.
+ *
+ * PR-related methods are in adapter-github-pr.ts and attached via prototype.
  */
 
 import type { GhExecFn, BulkFetchResult } from './github-monitor.js';
@@ -9,17 +11,14 @@ import type {
   AdapterConfig,
   OrchestratorAdapter,
   AdapterIssue,
-  AdapterPr,
-  PrStatus,
-  PrChecksResult,
   AdapterComment,
-  AdapterReview,
 } from './adapter.js';
+import { PR_METHODS } from './adapter-github-pr.js';
 
 export class GitHubAdapter implements OrchestratorAdapter {
   readonly repoSlug: string;
   readonly baseUrl: string;
-  private readonly execGh: GhExecFn;
+  readonly execGh: GhExecFn;
 
   constructor(config: AdapterConfig, execGh: GhExecFn) {
     this.repoSlug = config.repo;
@@ -118,70 +117,6 @@ export class GitHubAdapter implements OrchestratorAdapter {
     }));
   }
 
-  async createPr(opts: { base: string; head: string; title: string; body: string }): Promise<AdapterPr> {
-    const result = await this.execGh([
-      'pr', 'create', '--repo', this.repoSlug,
-      '--base', opts.base, '--head', opts.head,
-      '--title', opts.title, '--body', opts.body,
-    ]);
-    const match = result.stdout.match(/\/pull\/(\d+)/);
-    const number = match ? parseInt(match[1], 10) : 0;
-    return { number, url: result.stdout.trim() };
-  }
-
-  async mergePr(prNumber: number, strategy: 'squash' | 'merge' | 'rebase'): Promise<void> {
-    const args = ['pr', 'merge', String(prNumber), '--repo', this.repoSlug, `--${strategy}`, '--delete-branch'];
-    await this.execGh(args);
-  }
-
-  async getPrStatus(prNumber: number): Promise<PrStatus> {
-    const result = await this.execGh([
-      'pr', 'view', String(prNumber), '--repo', this.repoSlug,
-      '--json', 'state,mergeable,statusCheckRollup',
-    ]);
-    const data = JSON.parse(result.stdout) as {
-      state: string;
-      mergeable: string;
-      statusCheckRollup?: Array<{
-        name: string;
-        status: string;
-        conclusion: string | null;
-      }>;
-    };
-    const checks = (data.statusCheckRollup ?? []).map((c) => ({
-      name: c.name,
-      status: c.status,
-      conclusion: c.conclusion ?? '',
-    }));
-    return {
-      state: data.state,
-      mergeable: data.mergeable === 'MERGEABLE',
-      checks,
-    };
-  }
-
-  async getPrChecks(prNumber: number): Promise<PrChecksResult> {
-    const result = await this.execGh([
-      'pr', 'view', String(prNumber), '--repo', this.repoSlug,
-      '--json', 'statusCheckRollup',
-    ]);
-    const data = JSON.parse(result.stdout) as {
-      statusCheckRollup?: Array<{
-        name: string;
-        status: string;
-        conclusion: string | null;
-      }>;
-    };
-    const checks = data.statusCheckRollup ?? [];
-    const pending = checks.some((c) => c.status !== 'COMPLETED');
-    const failed = checks.some((c) => c.status === 'COMPLETED' && c.conclusion !== 'SUCCESS' && c.conclusion !== 'NEUTRAL' && c.conclusion !== 'SKIPPED');
-    return {
-      passed: !pending && !failed && checks.length > 0,
-      pending,
-      checks: checks.map((c) => ({ name: c.name, status: c.status, conclusion: c.conclusion })),
-    };
-  }
-
   async postComment(issueOrPrNumber: number, body: string): Promise<void> {
     await this.execGh(['issue', 'comment', String(issueOrPrNumber), '--repo', this.repoSlug, '--body', body]);
   }
@@ -226,43 +161,6 @@ export class GitHubAdapter implements OrchestratorAdapter {
     }));
   }
 
-  async getPrComments(prNumber: number, since?: string): Promise<AdapterComment[]> {
-    const apiPath = `repos/${this.repoSlug}/issues/${prNumber}/comments`;
-    const args = ['api', apiPath, '--jq', '.'];
-    if (since) args.push('-f', `since=${since}`);
-    const result = await this.execGh(args);
-    const items = JSON.parse(result.stdout) as Array<{
-      id: number;
-      user?: { login: string };
-      body: string;
-      created_at: string;
-    }>;
-    return items.map((c) => ({
-      id: c.id,
-      author: c.user?.login ?? 'unknown',
-      body: c.body,
-      createdAt: c.created_at,
-    }));
-  }
-
-  async getPrReviews(prNumber: number): Promise<AdapterReview[]> {
-    const result = await this.execGh([
-      'api', `repos/${this.repoSlug}/pulls/${prNumber}/reviews`, '--jq', '.',
-    ]);
-    const items = JSON.parse(result.stdout) as Array<{
-      id: number;
-      user?: { login: string };
-      state: string;
-      body: string;
-    }>;
-    return items.map((r) => ({
-      id: r.id,
-      author: r.user?.login ?? 'unknown',
-      state: r.state,
-      body: r.body,
-    }));
-  }
-
   async addLabels(issueNumber: number, labels: string[]): Promise<void> {
     for (const label of labels) {
       await this.execGh(['issue', 'edit', String(issueNumber), '--repo', this.repoSlug, '--add-label', label]);
@@ -279,33 +177,6 @@ export class GitHubAdapter implements OrchestratorAdapter {
     for (const label of labels) {
       await this.execGh(['label', 'create', label, '--repo', this.repoSlug, '--force']);
     }
-  }
-
-  async closePr(prNumber: number, opts?: { comment?: string }): Promise<void> {
-    const args = ['pr', 'close', String(prNumber), '--repo', this.repoSlug];
-    if (opts?.comment) {
-      args.push('--comment', opts.comment);
-    }
-    await this.execGh(args);
-  }
-
-  async getPrDiff(prNumber: number): Promise<string> {
-    const result = await this.execGh(['pr', 'diff', String(prNumber), '--repo', this.repoSlug]);
-    return result.stdout;
-  }
-
-  async queryPrs(opts?: { head?: string; base?: string; state?: string; limit?: number }): Promise<AdapterPr[]> {
-    const args = [
-      'pr', 'list', '--repo', this.repoSlug,
-      '--json', 'number,url',
-      '--limit', String(opts?.limit ?? 100),
-    ];
-    if (opts?.head) args.push('--head', opts.head);
-    if (opts?.base) args.push('--base', opts.base);
-    if (opts?.state) args.push('--state', opts.state);
-    const result = await this.execGh(args);
-    const items = JSON.parse(result.stdout) as Array<{ number: number; url?: string }>;
-    return items.map((item) => ({ number: item.number, url: item.url ?? '' }));
   }
 
   async checkBranchExists(branch: string): Promise<boolean> {
@@ -325,3 +196,5 @@ export class GitHubAdapter implements OrchestratorAdapter {
     });
   }
 }
+
+Object.assign(GitHubAdapter.prototype, PR_METHODS);
