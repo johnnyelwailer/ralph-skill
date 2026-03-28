@@ -1,5 +1,73 @@
 # QA Log
 
+## QA Session — 2026-03-28 iter 14 (issue #176)
+
+### Test Environment
+- Binary under test: /tmp/aloop-test-install-wycKAG/bin/aloop (version 1.0.0) — cleaned up after session
+- Commit under test: 9141b315d (docs: mark TODO.md complete — all issue #176 tasks done)
+- Features tested: 5
+
+### Target Selection
+Re-test of iter 13 FAIL: dist/bin/loop.sh round-robin defaults (fixed at iter 14, commit 3e02707bb). Re-verified adapter suite, TS errors, LOC thresholds, and orchestrate baseline at new HEAD.
+
+### Results
+- PASS: dist/bin/loop.sh round-robin defaults — line 31: "claude,opencode,codex,gemini,copilot"; help text: "(default: claude,opencode,codex,gemini,copilot)" — both correct at 9141b315d
+- PASS: adapter test suite — 47/47 pass at HEAD 9141b315d
+- PASS: TypeScript errors in adapter files — 0 errors in adapter*.ts; 71 pre-existing errors in other files unchanged
+- PASS: LOC thresholds — adapter.ts 132, adapter-github.ts 219, adapter-github-pr.ts 137 (all under 300)
+- PASS: orchestrate.ts baseline — 319 pass / 27 fail (matches expected baseline)
+
+### Bugs Filed
+None — all previously filed bugs verified as fixed.
+
+### Command Transcript
+```
+$ ALOOP_BIN=$(npm --prefix aloop/cli run --silent test-install -- --keep 2>/dev/null | tail -1)
+Binary under test: /tmp/aloop-test-install-wycKAG/bin/aloop
+$ $ALOOP_BIN --version
+1.0.0
+
+# Test 1: dist/bin/loop.sh round-robin defaults (previously FAIL at 847ab1c30)
+$ grep -n "ROUND_ROBIN_PROVIDERS" aloop/cli/dist/bin/loop.sh | head -3
+31:ROUND_ROBIN_PROVIDERS="claude,opencode,codex,gemini,copilot"  ✓
+82:        --round-robin)  ROUND_ROBIN_PROVIDERS="$2"; shift 2 ;;
+281:IFS=',' read -ra RR_PROVIDERS <<< "$ROUND_ROBIN_PROVIDERS"
+
+$ grep -n "round-robin\|default.*claude" aloop/cli/dist/bin/loop.sh | head -3
+13:#   claude, codex, gemini, copilot, round-robin
+64:    echo "  --provider ...  (default: claude)"
+65:    echo "  --round-robin ... (default: claude,opencode,codex,gemini,copilot)"  ✓
+
+# Test 2: adapter tests
+$ ./node_modules/.bin/tsx --test src/lib/adapter.test.ts
+# tests 47
+# pass 47
+# fail 0
+
+# Test 3: LOC thresholds
+$ wc -l aloop/cli/src/lib/adapter.ts aloop/cli/src/lib/adapter-github.ts aloop/cli/src/lib/adapter-github-pr.ts
+132  adapter.ts  ✓
+219  adapter-github.ts  ✓
+137  adapter-github-pr.ts  ✓
+
+# Test 4: TypeScript errors in adapter files
+$ npx tsc --noEmit 2>&1 | grep "adapter" | head
+(no output)  ← 0 adapter errors ✓
+$ npx tsc --noEmit 2>&1 | grep "error TS" | grep -v adapter | wc -l
+71  ← pre-existing, unchanged ✓
+
+# Test 5: orchestrate baseline
+$ ./node_modules/.bin/tsx --test src/commands/orchestrate.test.ts
+# tests 346
+# pass 319
+# fail 27  ← matches expected baseline ✓
+
+# Cleanup
+$ rm -rf /tmp/aloop-test-install-wycKAG
+```
+
+---
+
 ## QA Session — 2026-03-28 iter 13 (issue #176)
 
 ### Test Environment
