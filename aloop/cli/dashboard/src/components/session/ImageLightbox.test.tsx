@@ -18,6 +18,13 @@ describe('ImageLightbox', () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
+  it('does NOT call onClose when a non-Escape key is pressed', () => {
+    const onClose = vi.fn();
+    render(<ImageLightbox src="/img/test.png" alt="test" onClose={onClose} />);
+    fireEvent.keyDown(document, { key: 'Enter' });
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
   it('does NOT call onClose when img itself is clicked (stopPropagation)', () => {
     const onClose = vi.fn();
     render(<ImageLightbox src="/img/test.png" alt="test" onClose={onClose} />);
