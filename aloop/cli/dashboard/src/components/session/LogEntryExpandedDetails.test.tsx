@@ -132,4 +132,78 @@ describe('LogEntryExpandedDetails', () => {
     renderDetails({ showComparison: null });
     expect(screen.queryByTestId('artifact-comparison-dialog')).not.toBeInTheDocument();
   });
+
+  it('renders loading spinner when hasOutput=true and outputLoading=true', () => {
+    renderDetails({ hasOutput: true, outputLoading: true, outputText: null });
+    expect(screen.getByText(/Loading/)).toBeInTheDocument();
+  });
+
+  it('renders output text when hasOutput=true, outputLoading=false, and outputText is non-empty', () => {
+    renderDetails({ hasOutput: true, outputLoading: false, outputText: 'sample output text' });
+    expect(screen.getByText(/sample output text/)).toBeInTheDocument();
+  });
+
+  it('renders "No output available" when hasOutput=true, outputLoading=false, and outputText is empty string', () => {
+    renderDetails({ hasOutput: true, outputLoading: false, outputText: '' });
+    expect(screen.getByText(/No output available/)).toBeInTheDocument();
+  });
+
+  it('renders cache token count when tokens_cache_read > 0', () => {
+    const entry = parseEntry({
+      timestamp: new Date().toISOString(),
+      event: 'iteration_complete',
+      iteration: 1,
+      phase: 'build',
+      provider: 'claude',
+      tokens_input: 1000,
+      tokens_output: 500,
+      tokens_cache_read: 300,
+      cost_usd: 0.0042,
+    });
+    renderDetails({ entry });
+    expect(screen.getByText(/cache:/)).toBeInTheDocument();
+  });
+
+  it('applies red styling for deleted file (type D)', () => {
+    const entry = parseEntry({
+      timestamp: new Date().toISOString(),
+      event: 'iteration_complete',
+      iteration: 1,
+      phase: 'build',
+      provider: 'claude',
+      files: [{ path: 'src/removed.ts', status: 'D', additions: 0, deletions: 5 }],
+    });
+    renderDetails({ entry });
+    expect(screen.getByText('D')).toBeInTheDocument();
+  });
+
+  it('renders commit hash prefix when entry.commitHash is set', () => {
+    const entry = parseEntry({
+      timestamp: new Date().toISOString(),
+      event: 'iteration_complete',
+      iteration: 1,
+      phase: 'build',
+      provider: 'claude',
+      commit: 'abcdef1234567890',
+      files: [{ path: 'src/foo.ts', status: 'M', additions: 1, deletions: 0 }],
+    });
+    renderDetails({ entry });
+    expect(screen.getByText(/abcdef1/)).toBeInTheDocument();
+  });
+
+  it('renders ArtifactViewer when artifacts prop is non-null', () => {
+    const artifact: ArtifactEntry = {
+      type: 'screenshot',
+      path: 'dashboard.png',
+      description: 'Main view',
+    };
+    const artifacts: ManifestPayload = {
+      iteration: 1,
+      phase: 'proof',
+      summary: '',
+      artifacts: [artifact],
+    };
+    renderDetails({ artifacts });
+    expect(screen.getByTestId('artifact-viewer')).toBeInTheDocument();
+  });
 });

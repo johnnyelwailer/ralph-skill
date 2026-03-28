@@ -73,7 +73,7 @@ export function LogEntryExpandedDetails({
             manifest={artifacts}
             allManifests={allManifests}
             onLightbox={onLightbox}
-            onComparison={(artifact, iteration) => onComparison(artifact, iteration)}
+            onComparison={onComparison}
           />
         )}
 
