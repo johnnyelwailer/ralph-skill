@@ -1,5 +1,54 @@
 # QA Log
 
+## QA Session — 2026-03-28 iter 12 (issue #176)
+
+### Test Environment
+- Binary under test: N/A — tested via `tsx` directly (aloop/cli)
+- Commit under test: 593eab560 (fix(adapter): resolve TS errors from prototype mixin via interface merging)
+- Features tested: 4 (TS error fix, adapter tests, LOC thresholds, orchestrate baseline)
+
+### Target Selection
+The iter-11 review filing reported 1 FAIL: prototype mixin introduced 21 new TS errors (TS2420, TS2339, TS2740). Fix claims interface merging via `declare` signatures in `GitHubAdapter` class body.
+
+### Results
+- PASS: No TS errors in adapter files — 0 matches for TS2420/TS2339/TS2740; no errors in adapter.ts/adapter-github.ts/adapter-github-pr.ts
+- PASS: 47/47 adapter tests pass (no regression from interface-merging change)
+- PASS: LOC thresholds — adapter.ts 132 LOC, adapter-github.ts 219 LOC (within 300), adapter-github-pr.ts 137 LOC
+- PASS: orchestrate.ts baseline — 319 pass / 27 fail matches baseline
+- PASS: dist rebuilt — shebang present, timestamp Mar 28
+
+### Bugs Filed
+None — review FAIL item resolved and verified.
+
+### Command Transcript
+```
+$ wc -l src/lib/adapter.ts src/lib/adapter-github.ts src/lib/adapter-github-pr.ts
+  132 src/lib/adapter.ts
+  219 src/lib/adapter-github.ts          ← 19 lines added for declare sigs; under 300 ✓
+  137 src/lib/adapter-github-pr.ts       ← unchanged ✓
+
+$ node_modules/.bin/tsc --noEmit 2>&1 | grep "adapter"
+# (no output) ✓ — 0 TS errors in adapter files
+
+$ node_modules/.bin/tsc --noEmit 2>&1 | grep "TS2420\|TS2339\|TS2740"
+# (no output) ✓ — prototype mixin errors gone
+
+$ node_modules/.bin/tsc --noEmit 2>&1 | grep "error TS" | wc -l
+71  ← all in pre-existing out-of-scope files (gh.test.ts, process-requests.ts, requests.ts)
+
+$ node_modules/.bin/tsx --test src/lib/adapter.test.ts
+# tests 47 | pass 47 | fail 0  ✓
+
+$ node_modules/.bin/tsx --test src/commands/orchestrate.test.ts
+# tests 346 | pass 319 | fail 27  ← matches baseline ✓
+
+$ head -1 dist/index.js && ls -la dist/index.js | awk '{print $6,$7,$8}'
+#!/usr/bin/env node
+Mar 28 10:29  ✓
+```
+
+---
+
 ## QA Session — 2026-03-28 iter 11 (issue #176)
 
 ### Test Environment
