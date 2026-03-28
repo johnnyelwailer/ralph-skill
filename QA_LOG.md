@@ -1,5 +1,57 @@
 # QA Log
 
+## QA Session — 2026-03-27 iter 9 (issue #176)
+
+### Test Environment
+- Binary under test: N/A — test-install failed (vite not found / no dashboard node_modules); tests run directly via tsx
+- Commit under test: b6e32bf40 (chore(review): FAIL — interface shape deviates from TASK_SPEC.md)
+- Features tested: 3 (OrchestratorAdapter interface shape, GitHubAdapter method coverage, test suite health)
+
+### Target Selection
+Two consecutive spec-review FAIL commits (838c85a7f, b6e32bf40) found interface deviations from TASK_SPEC.md. Prior QA sessions (iter 1-8) tested 38/38 adapter tests passing but did NOT verify the interface matches the spec shape. This session verifies which deviations are real.
+
+### Results
+- FAIL: OrchestratorAdapter interface shape — 9 deviations from TASK_SPEC.md (see bugs filed)
+- PASS: GitHubAdapter — GHE URL support tests still pass
+- PASS: createAdapter factory tests pass
+- PASS: Full test suite runs (1020 pass, 82 fail — failures are pre-existing in unrelated modules)
+
+### Bugs Filed
+- [qa/P1] Missing `getPrComments(number, since?)` method
+- [qa/P1] Missing `getPrReviews(number)` method
+- [qa/P1] `queryIssues` should be `listIssues`
+- [qa/P1] `listComments(issueNumber)` should be `getIssueComments(number, since?)`
+- [qa/P1] `ensureLabelExists(label, opts?)` should be `ensureLabelsExist(labels: string[])`
+- [qa/P1] `createIssue` returns bare `number`, spec requires `{ number, url }`
+- [qa/P1] `closeIssue` missing `reason: string` parameter
+- [qa/P1] `getPrStatus` returns `{ mergeable, mergeStateStatus }`, spec requires `{ state, mergeable, checks[] }`
+- [qa/P1] `updateIssue` opts missing `labelsAdd?` and `labelsRemove?` fields
+
+### Command Transcript
+```
+# Full test suite
+$ npm --prefix aloop/cli test
+# tests 1103 | pass 1020 | fail 82
+# (82 failures are pre-existing in compileLoopPlan, orchestrate, process-requests, host-monitor — NOT adapter-related)
+
+# Adapter test names (from test output) — confirm method name deviations:
+# Subtest: queryIssues       ← spec says listIssues
+# Subtest: listComments      ← spec says getIssueComments(number, since?)
+# Subtest: ensureLabelExists ← spec says ensureLabelsExist(labels: string[])
+# No "getPrComments" subtest found ← spec requires this method
+# No "getPrReviews" subtest found  ← spec requires this method
+
+# closeIssue has only 1 subtest "calls gh issue close" — no reason param tested
+# getPrStatus has only 2 subtests: "parses mergeable status", "detects non-mergeable"
+#   → missing state field and checks array
+# updateIssue has 3 subtests: title/body, state→closed, state→open
+#   → no labelsAdd/labelsRemove tested
+# createIssue subtest: "creates an issue and returns the number"
+#   → spec requires { number, url } not bare number
+```
+
+---
+
 ## QA Session — 2026-03-27 iter 8 (issue #176)
 
 ### Test Environment

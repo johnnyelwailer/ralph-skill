@@ -35,8 +35,13 @@ export interface AdapterPr {
 }
 
 export interface PrStatus {
+  state: string;
   mergeable: boolean;
-  mergeStateStatus: string;
+  checks: Array<{
+    name: string;
+    status: string;
+    conclusion: string;
+  }>;
 }
 
 export interface PrChecksResult {
@@ -56,30 +61,39 @@ export interface AdapterComment {
   createdAt: string;
 }
 
+export interface AdapterReview {
+  id: number;
+  author: string;
+  state: string;
+  body: string;
+}
+
 // ----- Interface -----
 
 export interface OrchestratorAdapter {
   // Issue CRUD
-  createIssue(opts: { title: string; body: string; labels?: string[] }): Promise<number>;
-  updateIssue(issueNumber: number, opts: { title?: string; body?: string; state?: string }): Promise<void>;
-  closeIssue(issueNumber: number): Promise<void>;
+  createIssue(title: string, body: string, labels: string[]): Promise<{ number: number; url: string }>;
+  updateIssue(issueNumber: number, opts: { title?: string; body?: string; state?: string; labelsAdd?: string[]; labelsRemove?: string[] }): Promise<void>;
+  closeIssue(issueNumber: number, reason: string): Promise<void>;
   getIssue(issueNumber: number): Promise<AdapterIssue>;
-  queryIssues(opts?: { state?: string; labels?: string[]; limit?: number }): Promise<AdapterIssue[]>;
+  listIssues(opts?: { state?: string; labels?: string[]; limit?: number }): Promise<AdapterIssue[]>;
 
   // PR operations
   createPr(opts: { base: string; head: string; title: string; body: string }): Promise<AdapterPr>;
-  mergePr(prNumber: number, opts?: { method?: 'squash' | 'merge' | 'rebase'; deleteBranch?: boolean }): Promise<void>;
+  mergePr(prNumber: number, strategy: 'squash' | 'merge' | 'rebase'): Promise<void>;
   getPrStatus(prNumber: number): Promise<PrStatus>;
   getPrChecks(prNumber: number): Promise<PrChecksResult>;
+  getPrComments(prNumber: number, since?: string): Promise<AdapterComment[]>;
+  getPrReviews(prNumber: number): Promise<AdapterReview[]>;
 
   // Comments
   postComment(issueOrPrNumber: number, body: string): Promise<void>;
-  listComments(issueNumber: number): Promise<AdapterComment[]>;
+  getIssueComments(issueNumber: number, since?: string): Promise<AdapterComment[]>;
 
   // Labels
   addLabels(issueNumber: number, labels: string[]): Promise<void>;
   removeLabels(issueNumber: number, labels: string[]): Promise<void>;
-  ensureLabelExists(label: string, opts?: { color?: string; description?: string }): Promise<void>;
+  ensureLabelsExist(labels: string[]): Promise<void>;
 
   // PR close
   closePr(prNumber: number, opts?: { comment?: string }): Promise<void>;
@@ -95,6 +109,9 @@ export interface OrchestratorAdapter {
 
   // Bulk fetch
   fetchBulkIssueState(opts?: { states?: string[]; since?: string; issueNumbers?: number[] }): Promise<BulkFetchResult>;
+
+  // Project board (optional — not all backends support this)
+  syncProjectStatus?(issueNumber: number, status: string): Promise<void>;
 
   // Metadata
   readonly repoSlug: string;

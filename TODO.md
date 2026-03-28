@@ -1,6 +1,43 @@
 # Issue #176: OrchestratorAdapter interface and GitHubAdapter implementation
 
-## Current Phase: Complete
+## Current Phase: Fixing spec deviations
+
+### In Progress
+
+- [x] Reconcile `OrchestratorAdapter` interface in `adapter.ts` with TASK_SPEC.md (priority: critical)
+  - Renamed `queryIssues` → `listIssues`
+  - Renamed `listComments` → `getIssueComments`; added `since?` param
+  - Fixed `createIssue`: positional `(title, body, labels[])` → returns `Promise<{ number: number; url: string }>`
+  - Fixed `closeIssue`: added `reason: string` parameter
+  - Fixed `updateIssue` opts: added `labelsAdd?: string[]` and `labelsRemove?: string[]`
+  - Fixed `mergePr`: positional `strategy` param instead of opts object
+  - Fixed `getPrStatus` return type: `{ state: string; mergeable: boolean; checks: Array<{name, status, conclusion}> }`
+  - Renamed `ensureLabelExists` → `ensureLabelsExist(labels: string[])`
+  - Added `getPrComments(number: number, since?: string)` method
+  - Added `getPrReviews(number: number)` method
+  - Added optional `syncProjectStatus?(issueNumber, status)` method
+  - Added `AdapterReview` type
+
+- [x] Update `GitHubAdapter` in `adapter-github.ts` to implement corrected interface (priority: critical)
+  - Updated all method signatures to match the corrected interface
+  - Implemented `getPrComments` using `gh api repos/{repo}/issues/{pr}/comments`
+  - Implemented `getPrReviews` using `gh api repos/{repo}/pulls/{pr}/reviews`
+  - Updated `ensureLabelsExist` to accept `labels: string[]` and iterate
+  - Updated `getPrStatus` to fetch and return `state`, `mergeable`, and `checks[]`
+  - Updated `updateIssue` to handle `labelsAdd`/`labelsRemove` via `addLabels`/`removeLabels`
+
+- [x] Update tests in `adapter.test.ts` to cover corrected interface (priority: critical)
+  - Fixed test names/assertions for renamed/reshaped methods
+  - Added tests for `getPrComments` (with and without `since`)
+  - Added tests for `getPrReviews`
+  - Added tests for `ensureLabelsExist` with array input
+  - Added tests for `updateIssue` with `labelsAdd`/`labelsRemove`
+  - Added tests for corrected `getPrStatus` return shape (state + checks[])
+  - Added test for `closeIssue` with reason → `--comment` flag
+
+### Up Next
+
+- [x] Rebuild dist artifacts after interface fixes (`dist/index.js`, dashboard, templates)
 
 ### Completed
 
@@ -13,7 +50,6 @@
 - [x] Split `adapter.ts` (interface + factory, 115 LOC) from `adapter-github.ts` (implementation, 252 LOC) — both under 300 LOC threshold
 - [x] Remove dead imports (`parseRepoSlug`, unused `existsSync`) from adapter files
 - [x] Remove dead import of `createAdapter`/`OrchestratorAdapter` from `orchestrate.ts` and `process-requests.ts`
-- [x] Rebuild dist artifacts (`dist/index.js` shebang, dashboard, templates)
 
 ### Out of Scope (explicitly excluded — tracked separately)
 
@@ -51,3 +87,17 @@
 - [review] `updateIssue` opts: spec requires `labelsAdd?` and `labelsRemove?` fields; impl has neither
 
 **Required fix:** Reconcile `OrchestratorAdapter` interface in `adapter.ts` with TASK_SPEC.md spec shape, then add missing method implementations to `GitHubAdapter` and corresponding tests.
+
+## QA Bugs — iter 9 (2026-03-27)
+
+QA verified all interface deviations at HEAD (b6e32bf40). The following are filed as high-priority bugs blocking spec compliance:
+
+- [ ] [qa/P1] Missing `getPrComments`: `getPrComments(number, since?)` absent from `OrchestratorAdapter` interface and `GitHubAdapter` — spec AC1 requires it. Tested iter 9. (priority: high)
+- [ ] [qa/P1] Missing `getPrReviews`: `getPrReviews(number)` absent from `OrchestratorAdapter` interface and `GitHubAdapter` — spec AC1 requires it. Tested iter 9. (priority: high)
+- [ ] [qa/P1] Wrong method name `queryIssues` vs `listIssues`: interface exports `queryIssues` but TASK_SPEC.md requires `listIssues`. Confirmed via test name "queryIssues" in adapter.test.ts. Tested iter 9. (priority: high)
+- [ ] [qa/P1] Wrong method name `listComments` vs `getIssueComments`: interface exports `listComments(issueNumber)` but spec requires `getIssueComments(number, since?)` — also drops `since` parameter. Tested iter 9. (priority: high)
+- [ ] [qa/P1] Wrong method name `ensureLabelExists` vs `ensureLabelsExist`: interface exports `ensureLabelExists(label, opts?)` (singular) but spec requires `ensureLabelsExist(labels: string[])` (plural, array). Tested iter 9. (priority: high)
+- [ ] [qa/P1] `createIssue` wrong return type: returns bare `number`, spec requires `Promise<{ number: number; url: string }>`. Test name confirms "returns the number" only. Tested iter 9. (priority: high)
+- [ ] [qa/P1] `closeIssue` missing `reason` parameter: interface drops `reason: string` — spec requires `closeIssue(number, reason: string)`. Tested iter 9. (priority: high)
+- [ ] [qa/P1] `getPrStatus` incomplete return type: returns `{ mergeable, mergeStateStatus }` but spec requires `{ state, mergeable, checks[] }` — `state` field and `checks` array absent. Tested iter 9. (priority: high)
+- [ ] [qa/P1] `updateIssue` opts missing `labelsAdd`/`labelsRemove`: no tests for label mutation via `updateIssue`; spec requires `{ labelsAdd?: string[]; labelsRemove?: string[] }` in opts. Tested iter 9. (priority: high)

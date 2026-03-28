@@ -35,13 +35,14 @@ describe('createAdapter', () => {
 
 describe('GitHubAdapter', () => {
   describe('createIssue', () => {
-    it('creates an issue and returns the number', async () => {
+    it('creates an issue and returns number and url', async () => {
       const execGh = mockGh({
         'issue create': { stdout: 'https://github.com/owner/repo/issues/42\n', stderr: '' },
       });
       const adapter = new GitHubAdapter(config, execGh);
-      const num = await adapter.createIssue({ title: 'Bug', body: 'Details' });
-      assert.equal(num, 42);
+      const result = await adapter.createIssue('Bug', 'Details', []);
+      assert.equal(result.number, 42);
+      assert.ok(result.url.includes('/issues/42'));
     });
 
     it('creates an issue with labels', async () => {
@@ -51,7 +52,7 @@ describe('GitHubAdapter', () => {
         return { stdout: 'https://github.com/owner/repo/issues/1\n', stderr: '' };
       };
       const adapter = new GitHubAdapter(config, execGh);
-      await adapter.createIssue({ title: 'T', body: 'B', labels: ['bug', 'p1'] });
+      await adapter.createIssue('T', 'B', ['bug', 'p1']);
       assert.ok(calledArgs.includes('--label'));
       assert.ok(calledArgs.includes('bug'));
       assert.ok(calledArgs.includes('p1'));
@@ -62,8 +63,8 @@ describe('GitHubAdapter', () => {
         'issue create': { stdout: 'https://git.corp.example.com/owner/repo/issues/99\n', stderr: '' },
       });
       const adapter = new GitHubAdapter(config, execGh);
-      const num = await adapter.createIssue({ title: 'T', body: 'B' });
-      assert.equal(num, 99);
+      const result = await adapter.createIssue('T', 'B', []);
+      assert.equal(result.number, 99);
     });
 
     it('throws if issue number cannot be parsed', async () => {
@@ -71,7 +72,7 @@ describe('GitHubAdapter', () => {
         'issue create': { stdout: 'unexpected output\n', stderr: '' },
       });
       const adapter = new GitHubAdapter(config, execGh);
-      await assert.rejects(adapter.createIssue({ title: 'T', body: 'B' }), /Failed to parse issue number/);
+      await assert.rejects(adapter.createIssue('T', 'B', []), /Failed to parse issue number/);
     });
   });
 
@@ -108,6 +109,27 @@ describe('GitHubAdapter', () => {
       assert.ok(reopenCall, 'expected a reopen call');
       assert.ok(reopenCall.includes('7'));
     });
+
+    it('calls addLabels when labelsAdd provided', async () => {
+      const calls: string[][] = [];
+      const execGh: GhExecFn = async (args) => { calls.push(args); return { stdout: '', stderr: '' }; };
+      const adapter = new GitHubAdapter(config, execGh);
+      await adapter.updateIssue(7, { labelsAdd: ['bug', 'p1'] });
+      const addCalls = calls.filter((a) => a.includes('--add-label'));
+      assert.equal(addCalls.length, 2);
+      assert.ok(addCalls[0].includes('bug'));
+      assert.ok(addCalls[1].includes('p1'));
+    });
+
+    it('calls removeLabels when labelsRemove provided', async () => {
+      const calls: string[][] = [];
+      const execGh: GhExecFn = async (args) => { calls.push(args); return { stdout: '', stderr: '' }; };
+      const adapter = new GitHubAdapter(config, execGh);
+      await adapter.updateIssue(7, { labelsRemove: ['wontfix'] });
+      const removeCalls = calls.filter((a) => a.includes('--remove-label'));
+      assert.equal(removeCalls.length, 1);
+      assert.ok(removeCalls[0].includes('wontfix'));
+    });
   });
 
   describe('closeIssue', () => {
@@ -115,8 +137,17 @@ describe('GitHubAdapter', () => {
       let calledArgs: string[] = [];
       const execGh: GhExecFn = async (args) => { calledArgs = args; return { stdout: '', stderr: '' }; };
       const adapter = new GitHubAdapter(config, execGh);
-      await adapter.closeIssue(5);
+      await adapter.closeIssue(5, '');
       assert.deepEqual(calledArgs, ['issue', 'close', '5', '--repo', 'owner/repo']);
+    });
+
+    it('passes reason as --comment when provided', async () => {
+      let calledArgs: string[] = [];
+      const execGh: GhExecFn = async (args) => { calledArgs = args; return { stdout: '', stderr: '' }; };
+      const adapter = new GitHubAdapter(config, execGh);
+      await adapter.closeIssue(5, 'Closing: duplicate');
+      assert.ok(calledArgs.includes('--comment'));
+      assert.ok(calledArgs.includes('Closing: duplicate'));
     });
   });
 
@@ -146,7 +177,7 @@ describe('GitHubAdapter', () => {
     });
   });
 
-  describe('queryIssues', () => {
+  describe('listIssues', () => {
     it('lists issues with filters', async () => {
       const execGh = mockGh({
         'issue list': {
@@ -158,7 +189,7 @@ describe('GitHubAdapter', () => {
         },
       });
       const adapter = new GitHubAdapter(config, execGh);
-      const issues = await adapter.queryIssues({ state: 'open', labels: ['bug'] });
+      const issues = await adapter.listIssues({ state: 'open', labels: ['bug'] });
       assert.equal(issues.length, 2);
       assert.equal(issues[0].number, 1);
     });
@@ -186,48 +217,66 @@ describe('GitHubAdapter', () => {
   });
 
   describe('mergePr', () => {
-    it('merges with squash by default', async () => {
+    it('merges with squash strategy', async () => {
       let calledArgs: string[] = [];
       const execGh: GhExecFn = async (args) => { calledArgs = args; return { stdout: '', stderr: '' }; };
       const adapter = new GitHubAdapter(config, execGh);
-      await adapter.mergePr(15);
+      await adapter.mergePr(15, 'squash');
       assert.ok(calledArgs.includes('--squash'));
       assert.ok(calledArgs.includes('--delete-branch'));
     });
 
-    it('supports rebase method', async () => {
+    it('supports rebase strategy', async () => {
       let calledArgs: string[] = [];
       const execGh: GhExecFn = async (args) => { calledArgs = args; return { stdout: '', stderr: '' }; };
       const adapter = new GitHubAdapter(config, execGh);
-      await adapter.mergePr(15, { method: 'rebase' });
+      await adapter.mergePr(15, 'rebase');
       assert.ok(calledArgs.includes('--rebase'));
+    });
+
+    it('supports merge strategy', async () => {
+      let calledArgs: string[] = [];
+      const execGh: GhExecFn = async (args) => { calledArgs = args; return { stdout: '', stderr: '' }; };
+      const adapter = new GitHubAdapter(config, execGh);
+      await adapter.mergePr(15, 'merge');
+      assert.ok(calledArgs.includes('--merge'));
     });
   });
 
   describe('getPrStatus', () => {
-    it('parses mergeable status', async () => {
+    it('returns state, mergeable, and checks', async () => {
       const execGh = mockGh({
         'pr view': {
-          stdout: JSON.stringify({ mergeable: 'MERGEABLE', mergeStateStatus: 'CLEAN' }),
+          stdout: JSON.stringify({
+            state: 'OPEN',
+            mergeable: 'MERGEABLE',
+            statusCheckRollup: [
+              { name: 'CI', status: 'COMPLETED', conclusion: 'SUCCESS' },
+            ],
+          }),
           stderr: '',
         },
       });
       const adapter = new GitHubAdapter(config, execGh);
       const status = await adapter.getPrStatus(10);
+      assert.equal(status.state, 'OPEN');
       assert.equal(status.mergeable, true);
-      assert.equal(status.mergeStateStatus, 'CLEAN');
+      assert.equal(status.checks.length, 1);
+      assert.equal(status.checks[0].name, 'CI');
+      assert.equal(status.checks[0].conclusion, 'SUCCESS');
     });
 
     it('detects non-mergeable', async () => {
       const execGh = mockGh({
         'pr view': {
-          stdout: JSON.stringify({ mergeable: 'CONFLICTING', mergeStateStatus: 'DIRTY' }),
+          stdout: JSON.stringify({ state: 'OPEN', mergeable: 'CONFLICTING', statusCheckRollup: [] }),
           stderr: '',
         },
       });
       const adapter = new GitHubAdapter(config, execGh);
       const status = await adapter.getPrStatus(10);
       assert.equal(status.mergeable, false);
+      assert.equal(status.checks.length, 0);
     });
   });
 
@@ -309,7 +358,7 @@ describe('GitHubAdapter', () => {
     });
   });
 
-  describe('listComments', () => {
+  describe('getIssueComments', () => {
     it('returns parsed comments', async () => {
       const execGh = mockGh({
         'issue view': {
@@ -322,10 +371,85 @@ describe('GitHubAdapter', () => {
         },
       });
       const adapter = new GitHubAdapter(config, execGh);
-      const comments = await adapter.listComments(5);
+      const comments = await adapter.getIssueComments(5);
       assert.equal(comments.length, 1);
       assert.equal(comments[0].author, 'alice');
       assert.equal(comments[0].body, 'Hi');
+    });
+
+    it('uses api endpoint when since is provided', async () => {
+      let calledArgs: string[] = [];
+      const execGh: GhExecFn = async (args) => {
+        calledArgs = args;
+        return {
+          stdout: JSON.stringify([
+            { id: 1, user: { login: 'bob' }, body: 'Later', created_at: '2026-02-01T00:00:00Z' },
+          ]),
+          stderr: '',
+        };
+      };
+      const adapter = new GitHubAdapter(config, execGh);
+      const comments = await adapter.getIssueComments(5, '2026-01-01T00:00:00Z');
+      assert.ok(calledArgs.includes('api'));
+      assert.equal(comments.length, 1);
+      assert.equal(comments[0].author, 'bob');
+    });
+  });
+
+  describe('getPrComments', () => {
+    it('returns PR comments via api', async () => {
+      let calledArgs: string[] = [];
+      const execGh: GhExecFn = async (args) => {
+        calledArgs = args;
+        return {
+          stdout: JSON.stringify([
+            { id: 10, user: { login: 'carol' }, body: 'LGTM', created_at: '2026-03-01T00:00:00Z' },
+          ]),
+          stderr: '',
+        };
+      };
+      const adapter = new GitHubAdapter(config, execGh);
+      const comments = await adapter.getPrComments(15);
+      assert.ok(calledArgs.includes('api'));
+      assert.equal(comments.length, 1);
+      assert.equal(comments[0].author, 'carol');
+      assert.equal(comments[0].body, 'LGTM');
+    });
+
+    it('passes since filter when provided', async () => {
+      let calledArgs: string[] = [];
+      const execGh: GhExecFn = async (args) => {
+        calledArgs = args;
+        return { stdout: '[]', stderr: '' };
+      };
+      const adapter = new GitHubAdapter(config, execGh);
+      await adapter.getPrComments(15, '2026-01-01T00:00:00Z');
+      assert.ok(calledArgs.includes('-f'));
+      assert.ok(calledArgs.some((a) => a.includes('since=')));
+    });
+  });
+
+  describe('getPrReviews', () => {
+    it('returns PR reviews via api', async () => {
+      let calledArgs: string[] = [];
+      const execGh: GhExecFn = async (args) => {
+        calledArgs = args;
+        return {
+          stdout: JSON.stringify([
+            { id: 100, user: { login: 'dave' }, state: 'APPROVED', body: 'Looks good' },
+            { id: 101, user: { login: 'eve' }, state: 'CHANGES_REQUESTED', body: 'Fix this' },
+          ]),
+          stderr: '',
+        };
+      };
+      const adapter = new GitHubAdapter(config, execGh);
+      const reviews = await adapter.getPrReviews(15);
+      assert.ok(calledArgs.includes('api'));
+      assert.ok(calledArgs.some((a) => a.includes('pulls/15/reviews')));
+      assert.equal(reviews.length, 2);
+      assert.equal(reviews[0].author, 'dave');
+      assert.equal(reviews[0].state, 'APPROVED');
+      assert.equal(reviews[1].state, 'CHANGES_REQUESTED');
     });
   });
 
@@ -354,17 +478,29 @@ describe('GitHubAdapter', () => {
     });
   });
 
-  describe('ensureLabelExists', () => {
-    it('creates label with --force', async () => {
+  describe('ensureLabelsExist', () => {
+    it('creates each label with --force', async () => {
+      const calls: string[][] = [];
+      const execGh: GhExecFn = async (args) => { calls.push(args); return { stdout: '', stderr: '' }; };
+      const adapter = new GitHubAdapter(config, execGh);
+      await adapter.ensureLabelsExist(['aloop/task', 'aloop/done']);
+      assert.equal(calls.length, 2);
+      assert.ok(calls[0].includes('label'));
+      assert.ok(calls[0].includes('create'));
+      assert.ok(calls[0].includes('--force'));
+      assert.ok(calls[0].includes('aloop/task'));
+      assert.ok(calls[1].includes('aloop/done'));
+    });
+
+    it('handles a single label in array', async () => {
       let calledArgs: string[] = [];
       const execGh: GhExecFn = async (args) => { calledArgs = args; return { stdout: '', stderr: '' }; };
       const adapter = new GitHubAdapter(config, execGh);
-      await adapter.ensureLabelExists('aloop/task', { color: 'FF0000' });
+      await adapter.ensureLabelsExist(['bug']);
       assert.ok(calledArgs.includes('label'));
       assert.ok(calledArgs.includes('create'));
       assert.ok(calledArgs.includes('--force'));
-      assert.ok(calledArgs.includes('--color'));
-      assert.ok(calledArgs.includes('FF0000'));
+      assert.ok(calledArgs.includes('bug'));
     });
   });
 
@@ -502,4 +638,3 @@ describe('GitHubAdapter', () => {
     });
   });
 });
-

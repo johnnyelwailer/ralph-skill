@@ -3988,6 +3988,15 @@ import { createHash as createHash2 } from "node:crypto";
 import * as fs from "node:fs/promises";
 import { existsSync as existsSync2 } from "node:fs";
 import * as path2 from "node:path";
+var WORKING_ARTIFACTS = [
+  "TODO.md",
+  "STEERING.md",
+  "QA_COVERAGE.md",
+  "QA_LOG.md",
+  "REVIEW_LOG.md",
+  "TASK_SPEC.md",
+  "RESEARCH.md"
+];
 async function readLoopPlan(sessionDir) {
   const planPath = path2.join(sessionDir, "loop-plan.json");
   if (!existsSync2(planPath))
@@ -7774,27 +7783,6 @@ function buildAloopMetadataSection(meta) {
   return `## Aloop Metadata
 ${lines.join("\n")}`;
 }
-function ensureMetadataSection(body, meta) {
-  const section = buildAloopMetadataSection(meta);
-  if (!section)
-    return body;
-  const marker = "## Aloop Metadata";
-  const idx = body.indexOf(marker);
-  if (idx !== -1) {
-    const afterMarker = idx + marker.length;
-    const nextHeading = body.indexOf("\n## ", afterMarker);
-    if (nextHeading !== -1) {
-      return `${body.substring(0, idx)}${section}
-
-${body.substring(nextHeading + 1)}`;
-    }
-    return `${body.substring(0, idx)}${section}`;
-  }
-  const trimmed = body.trimEnd();
-  return `${trimmed}
-
-${section}`;
-}
 function buildPrBody(ctx) {
   const parts = [];
   parts.push(`Closes #${ctx.issue_number}`);
@@ -7829,25 +7817,6 @@ function buildPrBody(ctx) {
     parts.push(`Session: \`${ctx.child_session}\``);
   }
   return parts.join("\n");
-}
-function buildIssueLabels(opts) {
-  const labels = ["aloop"];
-  if (opts.wave !== void 0) {
-    labels.push(`aloop/wave-${opts.wave}`, `wave/${opts.wave}`);
-  }
-  if (opts.is_epic)
-    labels.push("aloop/epic");
-  if (opts.is_sub_issue)
-    labels.push("aloop/sub-issue");
-  if (opts.is_spec_question)
-    labels.push("aloop/spec-question");
-  if (opts.is_blocked)
-    labels.push("aloop/blocked-on-human");
-  if (opts.is_auto_resolved)
-    labels.push("aloop/auto-resolved");
-  if (opts.component_labels)
-    labels.push(...opts.component_labels);
-  return [...new Set(labels)];
 }
 
 // src/commands/gh.ts
@@ -10507,8 +10476,8 @@ async function copyTree(src, dest, deps) {
   const written = [];
   if (!deps.existsSync(src))
     return written;
-  const stat3 = fs6.statSync(src);
-  if (!stat3.isDirectory()) {
+  const stat2 = fs6.statSync(src);
+  if (!stat2.isDirectory()) {
     await deps.mkdir(path12.dirname(dest), { recursive: true });
     await deps.copyFile(src, dest);
     written.push(dest);
@@ -11004,26 +10973,6 @@ function detectIssueChanges(current, lastKnown) {
   return { changed: false, reason: "unchanged" };
 }
 
-// src/lib/labels.ts
-var COMPONENT_MAPPINGS = [
-  { test: (p) => p.includes("dashboard"), label: "component/dashboard" },
-  { test: (p) => /(?:^|\/)loop\.(sh|ps1)$/.test(p), label: "component/loop" },
-  { test: (p) => p.includes("orchestrate"), label: "component/orchestrator" },
-  { test: (p) => p.includes("cli/"), label: "component/cli" }
-];
-function deriveComponentLabels(file_hints) {
-  const labels = /* @__PURE__ */ new Set();
-  for (const filePath of file_hints) {
-    for (const mapping of COMPONENT_MAPPINGS) {
-      if (mapping.test(filePath)) {
-        labels.add(mapping.label);
-        break;
-      }
-    }
-  }
-  return Array.from(labels);
-}
-
 // src/commands/orchestrate.ts
 var HOUSEKEEPING_AGENTS = /* @__PURE__ */ new Set(["spec-consistency", "spec-backfill", "guard", "loop-health-supervisor"]);
 var defaultDeps4 = {
@@ -11348,21 +11297,10 @@ async function applyDecompositionPlan(plan, state, sessionDir, repo, deps) {
   const updatedIssues = [];
   for (const planIssue of plan.issues) {
     const wave = waveMap.get(planIssue.id);
-    const labels = ["aloop", `aloop/wave-${wave}`, `wave/${wave}`];
-    const componentLabels = deriveComponentLabels(planIssue.file_hints ?? []);
-    labels.push(...componentLabels);
-    let enrichedBody = planIssue.body;
-    if (planIssue.depends_on.length > 0) {
-      const depRefs = planIssue.depends_on.map((depId) => `#${idToGhNumber.get(depId) ?? depId}`).join(", ");
-      if (!enrichedBody.includes("Depends on")) {
-        enrichedBody = `${enrichedBody}
-
-Depends on ${depRefs}`;
-      }
-    }
+    const labels = ["aloop", `aloop/wave-${wave}`];
     let ghNumber;
     if (deps.execGhIssueCreate && repo) {
-      ghNumber = await deps.execGhIssueCreate(repo, path14.basename(sessionDir), planIssue.title, enrichedBody, labels);
+      ghNumber = await deps.execGhIssueCreate(repo, path14.basename(sessionDir), planIssue.title, planIssue.body, labels);
     } else {
       ghNumber = planIssue.id;
     }
@@ -11370,7 +11308,7 @@ Depends on ${depRefs}`;
     updatedIssues.push({
       number: ghNumber,
       title: planIssue.title,
-      body: enrichedBody,
+      body: planIssue.body,
       file_hints: planIssue.file_hints ?? [],
       sandbox: normalizeTaskSandbox(planIssue.sandbox),
       requires: normalizeTaskRequires(planIssue.requires),
@@ -12781,25 +12719,6 @@ async function applyEstimateResults(state, results, deps) {
         issue.status = "Ready";
       }
       if (deps?.execGh && deps.repo) {
-        const labelsToAdd = [];
-        if (result.complexity_tier) {
-          labelsToAdd.push(`complexity/${result.complexity_tier}`);
-        }
-        if (result.priority) {
-          labelsToAdd.push(result.priority);
-        }
-        if (labelsToAdd.length > 0) {
-          await deps.execGh([
-            "issue",
-            "edit",
-            String(result.issue_number),
-            "--repo",
-            deps.repo,
-            ...labelsToAdd.flatMap((l) => ["--add-label", l])
-          ]);
-        }
-      }
-      if (deps?.execGh && deps.repo) {
         await syncIssueProjectStatus(result.issue_number, deps.repo, "Ready", {
           execGh: deps.execGh,
           appendLog: deps.appendLog,
@@ -13324,7 +13243,7 @@ async function launchChildLoop(issue, orchestratorSessionDir, projectRoot, proje
   if (deps.existsSync(gitignorePath)) {
     gitignoreContent = await deps.readFile(gitignorePath, "utf8");
   }
-  const ignoreEntries = ["TODO.md", "STEERING.md", "QA_COVERAGE.md", "QA_LOG.md", "REVIEW_LOG.md"];
+  const ignoreEntries = WORKING_ARTIFACTS;
   const missing = ignoreEntries.filter((e) => !gitignoreContent.includes(e));
   if (missing.length > 0) {
     gitignoreContent += `
@@ -13724,6 +13643,16 @@ async function processPrLifecycle(issue, state, stateFile, sessionDir, repo, dep
       stateIssue.needs_redispatch = true;
       stateIssue.review_feedback = `PR #${prNumber} has merge conflicts with \`${state.trunk_branch}\`. Rebase your branch onto \`origin/${state.trunk_branch}\`, resolve all conflicts, and force-push. This is rebase attempt ${attempt}. Do NOT create new commits for the rebase \u2014 use \`git rebase\` and \`git push --force-with-lease\`.`;
     }
+    try {
+      const reviewResultFile = path14.join(sessionDir, "requests", `review-result-${prNumber}.json`);
+      const reviewQueueFile = path14.join(sessionDir, "queue", `000-review-${prNumber}.md`);
+      const agentOutputFile = path14.join(sessionDir, "worktree", ".aloop", "output", `review-result-${prNumber}.json`);
+      for (const f of [reviewResultFile, reviewQueueFile, agentOutputFile]) {
+        if (existsSync11(f))
+          await unlink2(f);
+      }
+    } catch {
+    }
     state.updated_at = deps.now().toISOString();
     await deps.writeFile(stateFile, `${JSON.stringify(state, null, 2)}
 `, "utf8");
@@ -13848,6 +13777,16 @@ ${reviewResult.summary}`
     if (stateIssue) {
       stateIssue.needs_redispatch = true;
       stateIssue.review_feedback = reviewResult.summary;
+    }
+    try {
+      const reviewResultFile = path14.join(sessionDir, "requests", `review-result-${prNumber}.json`);
+      const reviewQueueFile = path14.join(sessionDir, "queue", `000-review-${prNumber}.md`);
+      const agentOutputFile = path14.join(sessionDir, "worktree", ".aloop", "output", `review-result-${prNumber}.json`);
+      for (const f of [reviewResultFile, reviewQueueFile, agentOutputFile]) {
+        if (existsSync11(f))
+          await unlink2(f);
+      }
+    } catch {
     }
     return { pr_number: prNumber, action: "rejected", detail: reviewResult.summary, gates: gatesResult, review: reviewResult };
   }
@@ -14018,17 +13957,10 @@ async function createPrForChild(issue, childSession, childDir, state, repo, deps
     effectiveBase = "main";
   }
   const issueTitle = issue.title || `Issue ${issue.number}`;
-  const prTitle = `#${issue.number}: ${issueTitle}`;
-  const componentLabels = deriveComponentLabels(issue.file_hints ?? []);
-  const prBody = buildPrBody({
-    issue_number: issue.number,
-    issue_title: issueTitle,
-    wave: issue.wave,
-    labels: ["aloop", `aloop/wave-${issue.wave}`, ...componentLabels],
-    child_session: childSession,
-    file_hints: issue.file_hints ?? [],
-    scope_summary: (issue.body ?? "").split("\n").slice(0, 3).join(" ").substring(0, 200)
-  });
+  const prTitle = `[aloop] ${issueTitle}`;
+  const prBody = `Automated implementation for issue #${issue.number}.
+
+Closes #${issue.number}`;
   try {
     const result = await deps.execGh([
       "pr",
@@ -14177,6 +14109,19 @@ async function monitorChildSessions(state, sessionDir, repo, deps) {
       if (stateIssue) {
         stateIssue.needs_redispatch = true;
         stateIssue.review_feedback = `Child loop stopped after ${childStatus.iteration ?? "?"} iterations (limit reached). Resume and continue working.`;
+      }
+      try {
+        const prNum = issue.pr_number;
+        if (prNum) {
+          const reviewResultFile = path14.join(sessionDir, "requests", `review-result-${prNum}.json`);
+          const reviewQueueFile = path14.join(sessionDir, "queue", `000-review-${prNum}.md`);
+          const agentOutputFile = path14.join(sessionDir, "worktree", ".aloop", "output", `review-result-${prNum}.json`);
+          for (const f of [reviewResultFile, reviewQueueFile, agentOutputFile]) {
+            if (existsSync11(f))
+              await unlink2(f);
+          }
+        }
+      } catch {
       }
       result.failed++;
       entry.action = "failed";
@@ -14831,22 +14776,37 @@ async function runOrchestratorScanPass(stateFile, sessionDir, projectRoot, proje
     );
   }
   if (deps.dispatchDeps && !state.plan_only) {
-    const pendingRedispatches = state.issues.filter((i) => i.needs_redispatch).length;
+    const pendingRedispatches = state.issues.filter((i) => i.needs_redispatch);
     const slots = availableSlots(state);
     let toDispatch = [];
-    if (pendingRedispatches > 0 && slots <= pendingRedispatches) {
-      deps.appendLog(sessionDir, {
-        timestamp: deps.now().toISOString(),
-        event: "dispatch_deferred_for_redispatch",
-        iteration,
-        pending_redispatches: pendingRedispatches,
-        available_slots: slots
-      });
-    } else {
-      const dispatchable = getDispatchableIssues(state);
-      const capabilityResult = filterByHostCapabilities(dispatchable, deps.dispatchDeps);
-      const eligible = filterByFileOwnership(capabilityResult.eligible, state);
-      toDispatch = eligible.slice(0, Math.max(0, slots - pendingRedispatches));
+    const dispatchable = getDispatchableIssues(state);
+    const capabilityResult = filterByHostCapabilities(dispatchable, deps.dispatchDeps);
+    const eligible = filterByFileOwnership(capabilityResult.eligible, state);
+    if (pendingRedispatches.length > 0 && eligible.length > 0) {
+      const topFreshPriority = eligible[0].priority ?? 0;
+      const lowestRedispatchPriority = Math.min(...pendingRedispatches.map((i) => i.priority ?? 0));
+      if (topFreshPriority > lowestRedispatchPriority) {
+        toDispatch = eligible.slice(0, 1);
+        deps.appendLog(sessionDir, {
+          timestamp: deps.now().toISOString(),
+          event: "dispatch_priority_preempt",
+          iteration,
+          fresh_issue: eligible[0].number,
+          fresh_priority: topFreshPriority,
+          lowest_redispatch_priority: lowestRedispatchPriority,
+          pending_redispatches: pendingRedispatches.length
+        });
+      } else {
+        deps.appendLog(sessionDir, {
+          timestamp: deps.now().toISOString(),
+          event: "dispatch_deferred_for_redispatch",
+          iteration,
+          pending_redispatches: pendingRedispatches.length,
+          available_slots: slots
+        });
+      }
+    } else if (pendingRedispatches.length === 0) {
+      toDispatch = eligible.slice(0, slots);
       for (const blocked of capabilityResult.blocked) {
         deps.appendLog(sessionDir, {
           timestamp: deps.now().toISOString(),
@@ -14958,6 +14918,18 @@ async function runOrchestratorScanPass(stateFile, sessionDir, projectRoot, proje
   }
   if (deps.dispatchDeps && deps.aloopRoot) {
     const needsRedispatch = state.issues.filter((i) => i.needs_redispatch);
+    const complexityOrder = { S: 0, M: 1, L: 2, XL: 3 };
+    needsRedispatch.sort((a, b) => {
+      const priA = a.priority ?? 0;
+      const priB = b.priority ?? 0;
+      if (priA !== priB)
+        return priB - priA;
+      const compA = complexityOrder[a.complexity_tier ?? "M"] ?? 1;
+      const compB = complexityOrder[b.complexity_tier ?? "M"] ?? 1;
+      if (compA !== compB)
+        return compA - compB;
+      return a.number - b.number;
+    });
     if (needsRedispatch.length > 0) {
       const redispatchResult = await launchIssues(
         needsRedispatch.slice(0, availableSlots(state)),
@@ -15149,7 +15121,7 @@ async function steerCommand(instruction, options = {}) {
 
 // src/commands/process-requests.ts
 import { existsSync as existsSync13, readFileSync as readFileSync3 } from "node:fs";
-import { readFile as readFile12, readdir as readdir6, unlink as unlink3, writeFile as writeFile12, mkdir as mkdir8, cp as cp2, stat as stat2, rm } from "node:fs/promises";
+import { readFile as readFile12, readdir as readdir6, unlink as unlink3, writeFile as writeFile12, mkdir as mkdir8, cp as cp2 } from "node:fs/promises";
 import { spawn as spawn3, spawnSync as spawnSync7 } from "node:child_process";
 import path16 from "node:path";
 function loadOrchestratorEvents(pipelineYmlPath) {
@@ -15317,21 +15289,10 @@ async function processRequestsCommand(options) {
         let nextNum = Math.max(0, ...state.issues.map((i) => i.number ?? 0)) + 1;
         for (const sub of subIssues) {
           const subTitle = sub.title;
-          const subBodyBase = `Part of #${parentNum}: ${parent.title}
+          const subBody = `Part of #${parentNum}: ${parent.title}
 
 ${sub.body ?? ""}`;
-          const subBody = ensureMetadataSection(subBodyBase, {
-            wave: parent.wave,
-            type: "sub-issue",
-            files: sub.file_hints ?? [],
-            depends_on: sub.depends_on ?? []
-          });
-          const subLabels = buildIssueLabels({
-            wave: parent.wave,
-            is_sub_issue: true,
-            component_labels: deriveComponentLabels(sub.file_hints ?? [])
-          });
-          const ghNumber = repo ? await createGhIssue(repo, subTitle, subBody, subLabels, requestsDir) : nextNum++;
+          const ghNumber = repo ? await createGhIssue(repo, subTitle, subBody, ["aloop/auto"], requestsDir) : nextNum++;
           state.issues.push({
             number: ghNumber || nextNum++,
             title: subTitle,
@@ -15449,19 +15410,8 @@ ${sub.body ?? ""}`;
   }
   if (repo) {
     for (const issue of state.issues.filter((i) => i.number === 0)) {
-      const isEpic = !issue.parent_issue;
-      const labels = buildIssueLabels({
-        wave: issue.wave,
-        is_epic: isEpic,
-        is_sub_issue: !isEpic,
-        component_labels: deriveComponentLabels(issue.file_hints ?? [])
-      });
-      const bodyWithMeta = ensureMetadataSection(issue.body ?? "", {
-        wave: issue.wave,
-        type: isEpic ? "epic" : "sub-issue",
-        files: issue.file_hints ?? []
-      });
-      const ghNum = await createGhIssue(repo, issue.title, bodyWithMeta, labels, requestsDir);
+      const labels = issue.parent_issue ? ["aloop/auto"] : ["aloop/epic", "aloop/auto"];
+      const ghNum = await createGhIssue(repo, issue.title, issue.body ?? "", labels, requestsDir);
       if (ghNum > 0) {
         issue.number = ghNum;
         issue.gh_number = ghNum;
@@ -15521,10 +15471,10 @@ ${sub.body ?? ""}`;
       continue;
     const statusResult = spawnSync7("git", ["-C", childWorktree, "status", "--porcelain"], { encoding: "utf8" });
     if (statusResult.stdout?.trim()) {
-      for (const art of ["TODO.md", "STEERING.md", "QA_COVERAGE.md", "QA_LOG.md", "REVIEW_LOG.md"]) {
-        spawnSync7("git", ["-C", childWorktree, "rm", "-f", "--cached", art], { encoding: "utf8" });
-      }
       spawnSync7("git", ["-C", childWorktree, "add", "-A"], { encoding: "utf8" });
+      for (const art of WORKING_ARTIFACTS) {
+        spawnSync7("git", ["-C", childWorktree, "rm", "-f", "--cached", "--ignore-unmatch", art], { encoding: "utf8" });
+      }
       spawnSync7("git", ["-C", childWorktree, "commit", "--allow-empty", "-m", "chore: save work-in-progress before rebase"], { encoding: "utf8" });
     }
     const rebaseResult = spawnSync7("git", ["-C", childWorktree, "rebase", `origin/${trunkBranch}`], { encoding: "utf8" });
@@ -15570,8 +15520,7 @@ Run \`git fetch origin ${trunkBranch} && git rebase origin/${trunkBranch}\`, res
               const branch = `aloop/issue-${issue.number}`;
               const trunkBranch2 = state.trunk_branch ?? "agent/trunk";
               const childWorktree = path16.join(childDir, "worktree");
-              const artifacts = ["TODO.md", "STEERING.md", "QA_COVERAGE.md", "QA_LOG.md", "REVIEW_LOG.md"];
-              for (const art of artifacts) {
+              for (const art of WORKING_ARTIFACTS) {
                 spawnSync7("git", ["-C", childWorktree, "rm", "--cached", "--ignore-unmatch", art], { encoding: "utf8" });
               }
               const rmStatus = spawnSync7("git", ["-C", childWorktree, "status", "--porcelain"], { encoding: "utf8" });
@@ -15579,30 +15528,7 @@ Run \`git fetch origin ${trunkBranch} && git rebase origin/${trunkBranch}\`, res
                 spawnSync7("git", ["-C", childWorktree, "commit", "-m", "chore: remove working artifacts from PR"], { encoding: "utf8" });
                 spawnSync7("git", ["-C", childWorktree, "push", "origin", "HEAD"], { encoding: "utf8" });
               }
-              const prDescriptionFile = path16.join(childWorktree, "PR_DESCRIPTION.md");
-              const wave = issue.wave ?? 1;
-              const componentLabels = deriveComponentLabels(issue.file_hints ?? []);
-              const prLabels = buildIssueLabels({ wave, component_labels: componentLabels });
-              const richPrBody = buildPrBody({
-                issue_number: issue.number,
-                issue_title: issue.title,
-                wave,
-                labels: prLabels,
-                child_session: issue.child_session,
-                file_hints: issue.file_hints ?? [],
-                scope_summary: (issue.body ?? "").split("\n").slice(0, 3).join(" ").substring(0, 200)
-              });
-              let prBody = richPrBody;
-              if (existsSync13(prDescriptionFile)) {
-                try {
-                  const agentBody = await readFile12(prDescriptionFile, "utf8");
-                  prBody = agentBody.includes(`Closes #${issue.number}`) ? agentBody : `${agentBody}
-
-Closes #${issue.number}`;
-                } catch {
-                }
-              }
-              const prArgs = [
+              const prResult = spawnSync7("gh", [
                 "pr",
                 "create",
                 "--repo",
@@ -15610,16 +15536,14 @@ Closes #${issue.number}`;
                 "--title",
                 `#${issue.number}: ${issue.title}`,
                 "--body",
-                prBody,
+                `Closes #${issue.number}
+
+Automated PR from child loop session \`${issue.child_session}\`.`,
                 "--head",
                 branch,
                 "--base",
                 trunkBranch2
-              ];
-              for (const label of prLabels) {
-                prArgs.push("--label", label);
-              }
-              const prResult = spawnSync7("gh", prArgs, { encoding: "utf8" });
+              ], { encoding: "utf8" });
               if (prResult.status === 0 && prResult.stdout) {
                 const urlMatch = prResult.stdout.match(/\/pull\/(\d+)/);
                 const prNum = urlMatch ? parseInt(urlMatch[1], 10) : 0;
@@ -15754,18 +15678,42 @@ Closes #${issue.number}`;
     }
   } catch {
   }
-  if (Math.random() < 0.1) {
-    try {
-      const findResult = spawnSync7("find", ["/tmp", "-maxdepth", "2", "-name", ".da*.so", "-mmin", "+60", "-delete"], {
+  try {
+    const dfResult = spawnSync7("df", ["--output=pcent", "/tmp"], {
+      encoding: "utf8",
+      stdio: ["pipe", "pipe", "pipe"],
+      timeout: 5e3
+    });
+    const usageMatch = dfResult.stdout?.match(/(\d+)%/);
+    const usagePct = usageMatch ? parseInt(usageMatch[1], 10) : 0;
+    if (usagePct > 70) {
+      const listResult = spawnSync7("find", ["/tmp", "-maxdepth", "2", "-name", ".da*.so", "-printf", "%T@ %p\\n"], {
         encoding: "utf8",
         stdio: ["pipe", "pipe", "pipe"],
         timeout: 1e4
       });
-      if (findResult.status === 0) {
-        console.log("[process-requests] Cleaned stale V8 cache files from /tmp (HACK \u2014 see #164)");
+      if (listResult.status === 0 && listResult.stdout) {
+        const files = listResult.stdout.trim().split("\n").filter(Boolean).map((line) => {
+          const [ts, ...rest] = line.split(" ");
+          return { ts: parseFloat(ts), path: rest.join(" ") };
+        }).sort((a, b) => a.ts - b.ts);
+        let deleted = 0;
+        for (const f of files) {
+          spawnSync7("rm", ["-f", f.path], { encoding: "utf8", timeout: 2e3 });
+          deleted++;
+          if (deleted % 200 === 0) {
+            const recheck = spawnSync7("df", ["--output=pcent", "/tmp"], { encoding: "utf8", stdio: ["pipe", "pipe", "pipe"], timeout: 5e3 });
+            const pct = parseInt(recheck.stdout?.match(/(\d+)%/)?.[1] ?? "0", 10);
+            if (pct < 50)
+              break;
+          }
+        }
+        if (deleted > 0) {
+          console.log(`[process-requests] /tmp was ${usagePct}% full \u2014 cleaned ${deleted} V8 cache .so files (HACK \u2014 see #164)`);
+        }
       }
-    } catch {
     }
+  } catch {
   }
   if (repo && stateChanged && ghProjectNumber) {
     try {

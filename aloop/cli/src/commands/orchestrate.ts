@@ -4,7 +4,7 @@ import path from 'node:path';
 import { resolveHomeDir } from './session.js';
 import { getProjectHash, resolveProjectRoot } from './project.js';
 import type { OutputMode } from './status.js';
-import { writeQueueOverride } from '../lib/plan.js';
+import { writeQueueOverride, WORKING_ARTIFACTS } from '../lib/plan.js';
 import { compileLoopPlan } from './compile-loop-plan.js';
 import { writeSpecBackfill } from '../lib/specBackfill.js';
 import { normalizeCiDetailForSignature } from '../lib/ci-utils.js';
@@ -14,8 +14,6 @@ import {
   detectIssueChanges,
   type BulkIssueState,
 } from '../lib/github-monitor.js';
-import { deriveComponentLabels } from '../lib/labels.js';
-import { buildPrBody } from '../lib/issue-metadata.js';
 
 export interface OrchestrateCommandOptions {
   spec?: string;
@@ -658,24 +656,11 @@ export async function applyDecompositionPlan(
 
   for (const planIssue of plan.issues) {
     const wave = waveMap.get(planIssue.id)!;
-    const labels = ['aloop', `aloop/wave-${wave}`, `wave/${wave}`];
-    const componentLabels = deriveComponentLabels(planIssue.file_hints ?? []);
-    labels.push(...componentLabels);
-
-    // Enrich body with dependency references (AC #6)
-    let enrichedBody = planIssue.body;
-    if (planIssue.depends_on.length > 0) {
-      const depRefs = planIssue.depends_on
-        .map((depId) => `#${idToGhNumber.get(depId) ?? depId}`)
-        .join(', ');
-      if (!enrichedBody.includes('Depends on')) {
-        enrichedBody = `${enrichedBody}\n\nDepends on ${depRefs}`;
-      }
-    }
+    const labels = ['aloop', `aloop/wave-${wave}`];
 
     let ghNumber: number;
     if (deps.execGhIssueCreate && repo) {
-      ghNumber = await deps.execGhIssueCreate(repo, path.basename(sessionDir), planIssue.title, enrichedBody, labels);
+      ghNumber = await deps.execGhIssueCreate(repo, path.basename(sessionDir), planIssue.title, planIssue.body, labels);
     } else {
       // When no GH executor is available (plan-only without repo, or no executor),
       // use the plan ID as a placeholder number
@@ -687,7 +672,7 @@ export async function applyDecompositionPlan(
     updatedIssues.push({
       number: ghNumber,
       title: planIssue.title,
-      body: enrichedBody,
+      body: planIssue.body,
       file_hints: planIssue.file_hints ?? [],
       sandbox: normalizeTaskSandbox(planIssue.sandbox),
       requires: normalizeTaskRequires(planIssue.requires),
@@ -2336,7 +2321,6 @@ export interface EstimateResult {
   risk_flags?: string[];
   confidence?: 'high' | 'medium' | 'low';
   gaps?: string[];
-  priority?: 'P0' | 'P1' | 'P2';
 }
 
 export const REFINEMENT_BUDGET_CAP = 5;
@@ -2411,22 +2395,6 @@ export async function applyEstimateResults(
       issue.dor_validated = true;
       if (issue.status === 'Needs refinement') {
         issue.status = 'Ready';
-      }
-      // Apply complexity and priority labels via GH
-      if (deps?.execGh && deps.repo) {
-        const labelsToAdd: string[] = [];
-        if (result.complexity_tier) {
-          labelsToAdd.push(`complexity/${result.complexity_tier}`);
-        }
-        if (result.priority) {
-          labelsToAdd.push(result.priority);
-        }
-        if (labelsToAdd.length > 0) {
-          await deps.execGh([
-            'issue', 'edit', String(result.issue_number), '--repo', deps.repo,
-            ...labelsToAdd.flatMap(l => ['--add-label', l]),
-          ]);
-        }
       }
       if (deps?.execGh && deps.repo) {
         await syncIssueProjectStatus(result.issue_number, deps.repo, 'Ready', {
@@ -3119,7 +3087,7 @@ export async function launchChildLoop(
   if (deps.existsSync(gitignorePath)) {
     gitignoreContent = await deps.readFile(gitignorePath, 'utf8');
   }
-  const ignoreEntries = ['TODO.md', 'STEERING.md', 'QA_COVERAGE.md', 'QA_LOG.md', 'REVIEW_LOG.md'];
+  const ignoreEntries = WORKING_ARTIFACTS;
   const missing = ignoreEntries.filter(e => !gitignoreContent.includes(e));
   if (missing.length > 0) {
     gitignoreContent += `\n# Aloop working artifacts (not for PR)\n${missing.join('\n')}\n`;
@@ -3753,6 +3721,15 @@ export async function processPrLifecycle(
         `Rebase your branch onto \`origin/${state.trunk_branch}\`, resolve all conflicts, and force-push. ` +
         `This is rebase attempt ${attempt}. Do NOT create new commits for the rebase — use \`git rebase\` and \`git push --force-with-lease\`.`;
     }
+    // Clean up stale review artifacts so re-review can be queued after redispatch
+    try {
+      const reviewResultFile = path.join(sessionDir, 'requests', `review-result-${prNumber}.json`);
+      const reviewQueueFile = path.join(sessionDir, 'queue', `000-review-${prNumber}.md`);
+      const agentOutputFile = path.join(sessionDir, 'worktree', '.aloop', 'output', `review-result-${prNumber}.json`);
+      for (const f of [reviewResultFile, reviewQueueFile, agentOutputFile]) {
+        if (existsSync(f)) await unlink(f);
+      }
+    } catch { /* best-effort cleanup */ }
     state.updated_at = deps.now().toISOString();
     await deps.writeFile(stateFile, `${JSON.stringify(state, null, 2)}\n`, 'utf8');
 
@@ -3877,6 +3854,16 @@ export async function processPrLifecycle(
       (stateIssue as any).needs_redispatch = true;
       (stateIssue as any).review_feedback = reviewResult.summary;
     }
+
+    // Clean up stale review artifacts so re-review can be queued after redispatch
+    try {
+      const reviewResultFile = path.join(sessionDir, 'requests', `review-result-${prNumber}.json`);
+      const reviewQueueFile = path.join(sessionDir, 'queue', `000-review-${prNumber}.md`);
+      const agentOutputFile = path.join(sessionDir, 'worktree', '.aloop', 'output', `review-result-${prNumber}.json`);
+      for (const f of [reviewResultFile, reviewQueueFile, agentOutputFile]) {
+        if (existsSync(f)) await unlink(f);
+      }
+    } catch { /* best-effort cleanup */ }
 
     return { pr_number: prNumber, action: 'rejected', detail: reviewResult.summary, gates: gatesResult, review: reviewResult };
   }
@@ -4329,17 +4316,8 @@ async function createPrForChild(
   }
 
   const issueTitle = issue.title || `Issue ${issue.number}`;
-  const prTitle = `#${issue.number}: ${issueTitle}`;
-  const componentLabels = deriveComponentLabels(issue.file_hints ?? []);
-  const prBody = buildPrBody({
-    issue_number: issue.number,
-    issue_title: issueTitle,
-    wave: issue.wave,
-    labels: ['aloop', `aloop/wave-${issue.wave}`, ...componentLabels],
-    child_session: childSession,
-    file_hints: issue.file_hints ?? [],
-    scope_summary: (issue.body ?? '').split('\n').slice(0, 3).join(' ').substring(0, 200),
-  });
+  const prTitle = `[aloop] ${issueTitle}`;
+  const prBody = `Automated implementation for issue #${issue.number}.\n\nCloses #${issue.number}`;
 
   try {
     const result = await deps.execGh([
@@ -4509,6 +4487,18 @@ export async function monitorChildSessions(
         (stateIssue as any).needs_redispatch = true;
         (stateIssue as any).review_feedback = `Child loop stopped after ${childStatus.iteration ?? '?'} iterations (limit reached). Resume and continue working.`;
       }
+      // Clean up stale review artifacts so re-review can be queued after redispatch
+      try {
+        const prNum = issue.pr_number;
+        if (prNum) {
+          const reviewResultFile = path.join(sessionDir, 'requests', `review-result-${prNum}.json`);
+          const reviewQueueFile = path.join(sessionDir, 'queue', `000-review-${prNum}.md`);
+          const agentOutputFile = path.join(sessionDir, 'worktree', '.aloop', 'output', `review-result-${prNum}.json`);
+          for (const f of [reviewResultFile, reviewQueueFile, agentOutputFile]) {
+            if (existsSync(f)) await unlink(f);
+          }
+        }
+      } catch { /* best-effort cleanup */ }
       result.failed++;
       entry.action = 'failed';
 
@@ -5418,26 +5408,44 @@ export async function runOrchestratorScanPass(
 
   // 2. Dispatch child loops for ready issues
   if (deps.dispatchDeps && !state.plan_only) {
-    // Focus mode: prefer redispatch over fresh work.
-    // Don't start new issues while there are pending redispatches waiting for slots.
-    const pendingRedispatches = state.issues.filter((i) => (i as any).needs_redispatch).length;
+    // Priority-aware dispatch: high-priority fresh issues can preempt low-priority redispatches.
+    // Redispatches still get preference at equal priority.
+    const pendingRedispatches = state.issues.filter((i) => (i as any).needs_redispatch);
     const slots = availableSlots(state);
 
     let toDispatch: OrchestratorIssue[] = [];
-    if (pendingRedispatches > 0 && slots <= pendingRedispatches) {
-      // All slots will be used for redispatch — skip fresh dispatch
-      deps.appendLog(sessionDir, {
-        timestamp: deps.now().toISOString(),
-        event: 'dispatch_deferred_for_redispatch',
-        iteration,
-        pending_redispatches: pendingRedispatches,
-        available_slots: slots,
-      });
-    } else {
-      const dispatchable = getDispatchableIssues(state);
-      const capabilityResult = filterByHostCapabilities(dispatchable, deps.dispatchDeps);
-      const eligible = filterByFileOwnership(capabilityResult.eligible, state);
-      toDispatch = eligible.slice(0, Math.max(0, slots - pendingRedispatches));
+    const dispatchable = getDispatchableIssues(state);
+    const capabilityResult = filterByHostCapabilities(dispatchable, deps.dispatchDeps);
+    const eligible = filterByFileOwnership(capabilityResult.eligible, state);
+
+    if (pendingRedispatches.length > 0 && eligible.length > 0) {
+      // Compare: highest-priority fresh issue vs lowest-priority redispatch
+      const topFreshPriority = (eligible[0] as any).priority ?? 0;
+      const lowestRedispatchPriority = Math.min(...pendingRedispatches.map((i) => (i as any).priority ?? 0));
+      if (topFreshPriority > lowestRedispatchPriority) {
+        // High-priority fresh work gets at least 1 slot; rest go to redispatches
+        toDispatch = eligible.slice(0, 1);
+        deps.appendLog(sessionDir, {
+          timestamp: deps.now().toISOString(),
+          event: 'dispatch_priority_preempt',
+          iteration,
+          fresh_issue: eligible[0].number,
+          fresh_priority: topFreshPriority,
+          lowest_redispatch_priority: lowestRedispatchPriority,
+          pending_redispatches: pendingRedispatches.length,
+        });
+      } else {
+        // Redispatches take all slots
+        deps.appendLog(sessionDir, {
+          timestamp: deps.now().toISOString(),
+          event: 'dispatch_deferred_for_redispatch',
+          iteration,
+          pending_redispatches: pendingRedispatches.length,
+          available_slots: slots,
+        });
+      }
+    } else if (pendingRedispatches.length === 0) {
+      toDispatch = eligible.slice(0, slots);
 
       for (const blocked of capabilityResult.blocked) {
         deps.appendLog(sessionDir, {
@@ -5562,6 +5570,17 @@ export async function runOrchestratorScanPass(
   // capability filters, and state updates.
   if (deps.dispatchDeps && deps.aloopRoot) {
     const needsRedispatch = state.issues.filter((i) => (i as any).needs_redispatch);
+    // Sort by priority (higher first), same as fresh dispatch
+    const complexityOrder: Record<string, number> = { S: 0, M: 1, L: 2, XL: 3 };
+    needsRedispatch.sort((a, b) => {
+      const priA = (a as any).priority ?? 0;
+      const priB = (b as any).priority ?? 0;
+      if (priA !== priB) return priB - priA;
+      const compA = complexityOrder[(a as any).complexity_tier ?? 'M'] ?? 1;
+      const compB = complexityOrder[(b as any).complexity_tier ?? 'M'] ?? 1;
+      if (compA !== compB) return compA - compB;
+      return a.number - b.number;
+    });
     if (needsRedispatch.length > 0) {
       const redispatchResult = await launchIssues(
         needsRedispatch.slice(0, availableSlots(state)),

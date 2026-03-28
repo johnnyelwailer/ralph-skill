@@ -97,6 +97,7 @@ RESEARCH.md
   assert(docs.x + docs.width <= activity.x + 5, 'docs must be left of activity');
   ```
 - **Common failure mode:** a wrapper div (e.g. context provider, layout component) inserts between the CSS Grid container and its items, breaking all `grid-area` assignments. Always verify grid items are **direct children** of the grid container in the rendered DOM.
+- **Always close browsers after checking.** Call `await browser.close()` in every Playwright script. If you launch any server process (e.g., `npx serve`, `npm run dev`) to test against, record its PID and kill it when done — never leave background processes running.
 - If you cannot launch a browser for any reason, this gate is a **mandatory FAIL** — do not pass it on code inspection alone.
 
 ### Gate 8: Version Compliance
@@ -154,24 +155,7 @@ When ALL gates pass:
 2. Good observations: "Gate 2: test X line 47-52 tests malformed input with 3 variants — thorough"
 3. Add a brief note to the most recent TODO.md completed task: `[reviewed: gates 1-9 pass]`
 4. Append your review entry to REVIEW_LOG.md.
-5. **Write `PR_DESCRIPTION.md`** to the worktree root before exiting. This file is read by the orchestrator when creating the PR. Format:
-   ```markdown
-   ## Summary
-   <what changed and why>
-
-   ## Files Changed
-   - `path/to/file` — reason
-
-   ## Verification
-   - [x] Acceptance criterion 1 — verified by ...
-   - [ ] Acceptance criterion 2 — NOT verified: reason
-
-   ## Proof Artifacts
-   - Screenshot: `proof-artifacts/screenshot.png`
-   - Test output: see CI
-   ```
-   List every acceptance criterion from the sub-spec. Check `- [x]` if verified, `- [ ]` with `NOT verified:` if not.
-6. Commit both files with message: `chore(review): PASS — gates 1-9 pass`
+5. Commit both files with message: `chore(review): PASS — gates 1-9 pass`
 
 ## Review Log — REVIEW_LOG.md
 
