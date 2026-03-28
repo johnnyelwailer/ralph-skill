@@ -298,3 +298,51 @@
 **Gate 9 — Documentation: PASS** (no user-facing behavior changes)
 
 ---
+
+## Review — 2026-03-28 — commit 9f517fdd7..93618b1e9
+
+**Verdict: PASS** (0 findings)
+**Scope:** `aloop/cli/dashboard/src/components/session/LogEntryExpandedDetails.test.tsx`, `LogEntryExpandedDetails.tsx`, `aloop/cli/dashboard/vitest.config.ts`
+
+**Commits reviewed:**
+- `11c792992` test(dashboard): reach ≥90% branch coverage for LogEntryExpandedDetails
+- `274636ea8` chore: add all dashboard components to vitest coverage.include
+- `93618b1e9` chore(qa): iter 23 — metadata only
+
+**Prior findings resolution:**
+- [review] Gate 3 (LogEntryExpandedDetails ≥90% coverage): RESOLVED ✓ — coverage confirmed 93.47% (was 86.95%). All 5 required actions completed: (1) staged tests committed, (2) non-null `artifacts` test added (line 194-208 in test file, covers `{artifacts && <ArtifactViewer />}` branch at line 71-78 of component), (3) deleted file type D (red styling), (4) commit hash prefix, (5) loading spinner, outputText non-empty/empty, tokens_cache_read > 0.
+- [qa/P2] vitest.config.ts coverage.include gap: RESOLVED ✓ — `src/components/**/*.tsx` glob replaces individual file list.
+
+### Gate-by-gate summary
+
+**Gate 1 — Spec Compliance: PASS**
+- Both prior tasks resolved exactly to their stated criteria. LogEntryExpandedDetails [review] task required ≥90% branch coverage — now 93.47%. vitest [qa/P2] task required glob covering all new components — done.
+
+**Gate 2 — Test Depth: PASS**
+- `LogEntryExpandedDetails.test.tsx` line 136-139: `getByText(/Loading/)` — concrete text match; broken loading branch would fail.
+- Line 141-144: `getByText(/sample output text/)` — exact string; would fail if outputText not rendered.
+- Line 146-149: `getByText(/No output available/)` — exact string match.
+- Line 151-165: `getByText(/cache:/)` — concrete; would fail if cache branch is never taken.
+- Line 194-208: `getByTestId('artifact-viewer')` — mocked component; tests the `{artifacts && ...}` conditional branch. Standard pattern for complex child component isolation.
+- Line 180-192: commit hash prefix test asserts `getByText(/abcdef1/)` — exact 7-char slice, concrete.
+
+**Gate 3 — Coverage: PASS**
+- `LogEntryExpandedDetails.tsx`: 93.47% branch coverage (verified by running `npx vitest run --coverage`). Above ≥90% threshold for new modules.
+- Remaining uncovered: line 52 (`f.type === 'R'` blue styling branch), lines 120-122 (`typeof v === 'object'` in tooltip). Both are minor and 93.47% is above threshold.
+
+**Gate 4 — Code Quality: PASS**
+- `LogEntryExpandedDetails.tsx`: one-line simplification removing redundant arrow wrapper `(artifact, iteration) => onComparison(artifact, iteration)` → `onComparison`. No dead code introduced.
+- `vitest.config.ts`: glob replaces 3-item list; cleaner and future-proof. No dead config.
+
+**Gate 5 — Integration Sanity: PASS**
+- Dashboard: 350/350 tests pass (3 new tests added from baseline of 347). tsc clean.
+- CLI suite: 1063 pass, 50 fail — same 50 pre-existing failures as prior review (traced to in-progress uncommitted work in orchestrate.ts, process-requests.ts, plan.ts; unrelated to this build iteration).
+
+**Gate 6 — Proof: PASS**
+- Purely internal changes (test additions, config change). Empty proof is the expected correct outcome per Gate 6 rules.
+
+**Gates 7, 8: SKIP** (no UI/layout or dependency changes)
+
+**Gate 9 — Documentation: PASS** (no user-facing behavior changes)
+
+---
