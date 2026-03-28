@@ -114,3 +114,54 @@ $ npx tsx --test src/commands/orchestrate.test.ts 2>&1 | grep "not ok" | wc -l
 - 39 orchestrate.test.ts failures (pre-existing at merge base c805d8db1)
 - 5 dashboard.test.ts failures (pre-existing)
 - 1 EtagCache (github-monitor.test.ts) failure (pre-existing)
+
+## QA Session — 2026-03-28 (iteration 3)
+
+### Test Environment
+- Binary under test: /tmp/aloop-test-install-Ae0RER/bin/aloop (v1.0.0)
+- Working dir: /home/pj/.aloop/sessions/orchestrator-20260321-172932-issue-177-20260327-171514/worktree/aloop/cli
+- Features tested: 5
+
+### Results
+- PASS: TypeScript build (npm run build) — clean exit 0
+- PASS: process-requests.ts exports restored — 14/14 tests pass
+- PASS: orchestrate.ts wave/N + component label fix — suite 60 subtests 1-4 pass
+- PASS: OrchestratorIssueState 'review' member — TS2367 gone, tsc --noEmit clean on non-test files
+- FAIL: applyDecompositionPlan dependency body injection — suite 60 subtests 5-6 fail
+- FAIL: applyEstimateResults complexity/priority labels — suite 61 all 4 subtests fail
+
+### Bugs Filed
+- [qa/P1] applyDecompositionPlan missing dependency body injection (suite 60 subtests 5-6)
+- [qa/P1] applyEstimateResults not applying complexity/priority labels (suite 61, TS2353 on EstimateResult)
+
+### Regression Analysis
+- Pre-regression baseline (298ac3309): 27 orchestrate failures (12 suites)
+- After d49686908 adapter changes: 39 failures (+12)
+- After wave/N fix (8a2efa43b): 34 failures (5 fixed, 7 still regressed vs baseline)
+- Regressed suites not yet fixed: 60 (subtests 5-6), 61 (all 4 subtests)
+
+### Command Transcript
+
+```
+# Install
+ALOOP_BIN=$(npm run --silent test-install -- --keep 2>/dev/null | tail -1)
+echo "Binary under test: $ALOOP_BIN"  → /tmp/aloop-test-install-Ae0RER/bin/aloop
+aloop --version  → 1.0.0
+
+# TypeScript build
+npm run build  → EXIT: 0
+
+# process-requests tests
+npx tsx --test src/commands/process-requests.test.ts  → 14/14 pass, EXIT: 0
+
+# orchestrate tests (current HEAD)
+npx tsx --test src/commands/orchestrate.test.ts  → 312 pass, 34 fail
+
+# Type check (non-test files only)
+npx tsc --noEmit 2>&1 | grep -v "orchestrate.test.ts"  → (empty, no errors)
+
+# Regression baseline check
+git checkout 298ac3309 -- src/commands/orchestrate.ts
+npx tsx --test src/commands/orchestrate.test.ts  → 319 pass, 27 fail (suites 60,61 not in fail list)
+git checkout HEAD -- src/commands/orchestrate.ts
+```
