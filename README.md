@@ -30,6 +30,12 @@ aloop start --provider round-robin
 
 # Resume a stopped session
 aloop start --launch resume <session-id>
+
+# Run in project root instead of a git worktree
+aloop start --provider claude --in-place
+
+# Run only the plan phase
+aloop start --provider claude --plan
 ```
 
 ### Orchestrator Mode (`aloop orchestrate`)
@@ -50,6 +56,12 @@ aloop orchestrate --spec "SPEC.md specs/*.md" --plan-only
 
 # Dispatch specific issues
 aloop orchestrate --issues 42,43,44 --concurrency 2
+
+# Resume a previously stopped orchestrator session
+aloop orchestrate --resume <session-id>
+
+# Auto-merge trunk to main when all issues complete
+aloop orchestrate --spec "SPEC.md" --auto-merge
 ```
 
 The orchestrator enforces role-based GitHub policies — child loops can create PRs and comment, but only the orchestrator can merge PRs and close issues.
@@ -152,13 +164,15 @@ The installer deploys skill files to each harness directory and the Aloop runtim
 | `aloop start` | Launch a single-session loop |
 | `aloop orchestrate` | Multi-issue decomposition and parallel dispatch |
 | `aloop dashboard` | Real-time monitoring UI |
-| `aloop status` | List active sessions and provider health |
+| `aloop status` | List active sessions and provider health (`--watch` for live refresh) |
 | `aloop active` | List active sessions (machine-readable) |
 | `aloop stop <id>` | Stop a running session |
 | `aloop setup` | Interactive project configuration |
+| `aloop scaffold` | Scaffold project workdir and prompt files (called by setup) |
 | `aloop steer` | Send live instruction to a running loop |
 | `aloop gh <op>` | Policy-enforced GitHub operations |
 | `aloop discover` | Auto-detect project specs and validation |
+| `aloop resolve` | Resolve project workspace and configuration |
 | `aloop update` | Refresh runtime from repo |
 | `aloop devcontainer` | Generate .devcontainer config |
 | `aloop devcontainer-verify` | Verify devcontainer builds and passes all checks |
@@ -238,7 +252,7 @@ The orchestrator uses a pluggable `OrchestratorAdapter` interface (`aloop/cli/sr
 **Implemented adapters:**
 - **`GitHubAdapter`** — wraps `gh` CLI calls; supports GitHub.com and GitHub Enterprise via `GH_HOST`
 
-**Interface methods (19 total):** issue CRUD (`createIssue`, `updateIssue`, `closeIssue`, `getIssue`, `queryIssues`), PR operations (`createPr`, `mergePr`, `getPrStatus`, `getPrChecks`, `closePr`, `getPrDiff`, `queryPrs`), comments (`postComment`, `listComments`), labels (`addLabels`, `removeLabels`, `ensureLabelExists`), branches (`checkBranchExists`), and bulk state fetching (`fetchBulkIssueState`).
+**Interface methods (21 required + 1 optional):** issue CRUD (`createIssue`, `updateIssue`, `closeIssue`, `getIssue`, `listIssues`), PR operations (`createPr`, `mergePr`, `getPrStatus`, `getPrChecks`, `getPrComments`, `getPrReviews`, `closePr`, `getPrDiff`, `queryPrs`), comments (`postComment`, `getIssueComments`), labels (`addLabels`, `removeLabels`, `ensureLabelsExist`), branches (`checkBranchExists`), bulk state fetching (`fetchBulkIssueState`), and optional project board sync (`syncProjectStatus`).
 
 The `createAdapter(config, execGh)` factory function instantiates the correct adapter from a config with `{ type: "github", repo: "owner/name", ghHost?: "..." }`.
 
