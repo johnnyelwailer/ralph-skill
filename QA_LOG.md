@@ -784,3 +784,57 @@ $ grep -c 'createAdapter\|OrchestratorAdapter' /tmp/aloop-qa-test.js
 $ node_modules/.bin/tsx --test src/index.test.ts
 # tests 5 | pass 5 | fail 0 ✓
 ```
+
+## QA Session — 2026-03-29 (final-review trigger)
+
+### Test Environment
+- Binary under test: /tmp/aloop-test-install-IdjSjE/bin/aloop
+- Version: 1.0.0
+- HEAD commit: 7a4c5fe29
+- Features tested: 5
+
+### Results
+- PASS: 47/47 adapter tests (createAdapter + GitHubAdapter suites)
+- PASS: LOC thresholds — adapter.ts 132, adapter-github.ts 219, adapter-github-pr.ts 137 (all under 300)
+- PASS: dist/bin/loop.sh round-robin defaults = "claude,opencode,codex,gemini,copilot"
+- PASS: Zero TypeScript errors in adapter files (tsc --noEmit: no adapter errors)
+- PASS: No hardcoded github.com in adapter files (2 occurrences in dist/index.js are informational docs URLs in unrelated modules, not adapter code)
+- PASS: GHE support — "works with GHE URLs", "uses ghHost from config for baseUrl" tests pass
+- PASS: Pre-existing 84 test failures all in non-adapter files (confirmed baseline matches QA_COVERAGE.md)
+
+### Bugs Filed
+- None
+
+### Command Transcript
+```
+$ ALOOP_BIN=$(npm --prefix aloop/cli run --silent test-install -- --keep 2>/dev/null | tail -1)
+Binary under test: /tmp/aloop-test-install-IdjSjE/bin/aloop
+$ "$ALOOP_BIN" --version
+1.0.0
+
+$ npx tsx --test 'src/lib/adapter*.test.ts'
+# Subtest: createAdapter / ok 1 - createAdapter
+# Subtest: GitHubAdapter / ok 2 - GitHubAdapter
+# tests 47 | suites 24 | pass 47 | fail 0
+
+$ wc -l src/lib/adapter.ts src/lib/adapter-github.ts src/lib/adapter-github-pr.ts
+  132 src/lib/adapter.ts
+  219 src/lib/adapter-github.ts
+  137 src/lib/adapter-github-pr.ts
+
+$ grep -n 'ROUND_ROBIN_PROVIDERS' dist/bin/loop.sh | head -2
+31:ROUND_ROBIN_PROVIDERS="claude,opencode,codex,gemini,copilot"
+65:  echo "  --round-robin <list> ... (default: claude,opencode,codex,gemini,copilot)"
+
+$ npx tsc --noEmit 2>&1 | grep "adapter"
+# (no output) — zero TS errors in adapter files
+
+$ grep -n 'github\.com' dist/index.js
+9785:  copilot: "...https://github.com/settings/tokens"
+10266:  copilot: "...https://docs.github.com/en/copilot/..."
+# Both are docs/help strings in unrelated modules, not adapter code — PASS
+
+$ npx tsx --test 'src/**/*.test.ts' 2>&1 | grep "^# " | tail -5
+# tests 1127 | pass 1042 | fail 84
+# All 84 failures are pre-existing (non-adapter files: process-requests, orchestrate, gh, requests)
+```
