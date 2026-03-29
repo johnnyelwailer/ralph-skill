@@ -1,6 +1,6 @@
 # Issue #176: OrchestratorAdapter interface and GitHubAdapter implementation
 
-## Current Phase: Complete — All gates pass [reviewed: gates 1-10 pass]
+## Current Phase: Complete — All gates pass [reviewed: gates 1-10 pass, spec-review 2026-03-29 PASS]
 
 ### Completed (iter 14)
 
@@ -130,3 +130,17 @@ Re-verified at HEAD (branch: aloop/issue-176, commits through e0ee0c771):
 - `aloop/cli/dist/bin/loop.sh:31` — same defaults, dist artifact in sync with source ✓
 - All previous `[spec-gap]` items resolved (marked `[x]`)
 - No new P1 or P2 gaps found in issue #176 scope or pre-existing items
+
+## Spec-Review — 2026-03-29 (final)
+
+All TASK_SPEC.md acceptance criteria re-verified at HEAD:
+
+- AC1: OrchestratorAdapter interface matches spec shape exactly — all 15 methods/properties present (createIssue, updateIssue, closeIssue, listIssues, getIssueComments, postComment, createPr, mergePr, getPrStatus, getPrComments, getPrReviews, ensureLabelsExist, syncProjectStatus?, repoSlug, baseUrl) — PASS
+- AC2: GitHubAdapter wraps `gh` CLI via mixin pattern (adapter-github.ts + adapter-github-pr.ts) — PASS
+- AC3: No hardcoded github.com — `config.ghHost ?? GH_HOST ?? 'github.com'` — PASS
+- AC4: createAdapter factory reads `config.type`, throws for unknown types — PASS
+- AC5: 47/47 unit tests pass with mocked gh calls — PASS
+- AC6: GHE URLs via ghHost constructor param and GH_HOST env tested — PASS
+- LOC: adapter.ts 132, adapter-github.ts 219, adapter-github-pr.ts 137 — all under 300 LOC threshold — PASS
+
+No open findings. Issue #176 spec fully satisfied.
