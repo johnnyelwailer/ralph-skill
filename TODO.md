@@ -120,3 +120,13 @@ No P1 or P2 gaps in issue #176 scope.
 ### Pre-existing gap found outside issue #176 scope
 
 - [x] [spec-gap/P2] `loop.sh` default round-robin provider list mismatches `config.yml` and `loop.ps1`: `loop.sh:31` defaults `ROUND_ROBIN_PROVIDERS="claude,gemini,opencode"` (3 providers — missing codex, copilot); `loop.ps1:31` defaults to all 5 `@('claude','opencode','codex','gemini','copilot')`; `config.yml:43-49` round_robin_order lists all 5. Additionally, `loop.sh:65` help text documents the default as `"claude,codex,gemini,copilot"` — a third inconsistent value (missing opencode). SPEC.md states config.yml is the single source of truth for defaults. **Files:** `aloop/bin/loop.sh:31,65`, `aloop/config.yml:43-49`, `aloop/bin/loop.ps1:31`. **Suggested fix:** Update `ROUND_ROBIN_PROVIDERS` in loop.sh to `"claude,opencode,codex,gemini,copilot"` (matching config.yml order) and update help text to match. **Note:** Pre-existing gap, unrelated to issue #176 scope; meta.json hot-reload mitigates at runtime but bare invocation without meta.json gets wrong default. Fixed at iter 12.
+
+## Spec-Gap Analysis — 2026-03-29 (re-run)
+
+spec-gap analysis: no discrepancies found — spec fully fulfilled
+
+Re-verified at HEAD (branch: aloop/issue-176, commits through e0ee0c771):
+- `aloop/bin/loop.sh:31` — `ROUND_ROBIN_PROVIDERS="claude,opencode,codex,gemini,copilot"` matches `config.yml` round_robin_order ✓
+- `aloop/cli/dist/bin/loop.sh:31` — same defaults, dist artifact in sync with source ✓
+- All previous `[spec-gap]` items resolved (marked `[x]`)
+- No new P1 or P2 gaps found in issue #176 scope or pre-existing items
