@@ -3,7 +3,7 @@
 ## Current Phase: Implementation
 
 ### In Progress
-- [ ] [spec-gap/P1] Extract layout shell components — batch 2: DocsPanel.tsx (99 LOC), MainPanel.tsx (148 LOC), and SessionDetail.tsx thin re-export (103 LOC) have been extracted and are staged in the working tree (uncommitted). Commit this batch as a feature commit before proceeding with other tasks.
+- [x] [spec-gap/P1] Extract layout shell components — batch 2: DocsPanel.tsx (99 LOC), MainPanel.tsx (148 LOC), and SessionDetail.tsx thin re-export (104 LOC) extracted and committed. SessionDetail.tsx is now a thin re-export of MainPanel retaining DocContent/slugify utilities.
 
 ### Up Next
 - [x] [review] Gate 2: Fix weak assertions in SessionDetail.test.tsx — line 45: rewrite `expect(screen.getAllByText('Documents').length).toBeGreaterThanOrEqual(1)` to `expect(screen.getAllByRole('button', { name: /Documents/i }).length).toBeGreaterThanOrEqual(1)`; line 95: rewrite `expect(screen.getAllByText('Activity').length).toBeGreaterThanOrEqual(1)` to assert the collapsed activity icon-button specifically (e.g. `expect(screen.getByLabelText('Show activity panel')).toBeInTheDocument()` or similar). These are shallow checks that pass even when the wrong element renders. (priority: high)
@@ -33,6 +33,7 @@
 - [x] [review] Gate 2: `LogEntryRow.test.tsx:167-186` — add `expect(screen.queryByTestId('close-comparison')).not.toBeInTheDocument()` after close button click to verify state was cleared — gates 1-9 pass
 - [x] [qa/P1] ResponsiveLayout.tsx branch coverage: add tests for `setSidebarOpen(value)` on non-desktop and `useResponsiveLayout()` outside provider — ≥90% branch coverage achieved, gates 1-9 pass
 - [x] [spec-gap/P1] Extract layout shell components from AppView.tsx — batch 1: extracted Sidebar.tsx (255 LOC) and SessionDetail.tsx into `components/layout/Sidebar.tsx` and `components/session/SessionDetail.tsx`; added .test.tsx and .stories.tsx for each. AppView.tsx reduced from 1299 → 823 LOC.
+- [x] [spec-gap/P1] Extract layout shell components — batch 2: DocsPanel.tsx (99 LOC) and MainPanel.tsx (148 LOC) extracted; SessionDetail.tsx is now a thin re-export (104 LOC). All have .test.tsx and .stories.tsx.
 
 ### Spec-Gap Analysis
 
@@ -60,5 +61,5 @@
 
 ### Notes
 - Issue #38 CI workflow (vitest) was previously completed and its tasks remain committed
-- The refactor is incremental — AppView.tsx still needs significant extraction work
-- Batch-2 uncommitted work: DocsPanel.tsx + MainPanel.tsx extracted from SessionDetail.tsx; SessionDetail.tsx is now a thin re-export (103 LOC); all have .test.tsx and .stories.tsx
+- The refactor is incremental — AppView.tsx still needs significant extraction work (batch 3+)
+- Batch-2 committed: DocsPanel.tsx + MainPanel.tsx extracted from SessionDetail.tsx; SessionDetail.tsx is now a thin re-export (104 LOC); all have .test.tsx and .stories.tsx
