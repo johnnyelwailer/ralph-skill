@@ -475,3 +475,63 @@ Purely internal changes (test additions, QA metadata). Empty proof is the expect
 **Gate 9 — Documentation: PASS** (no user-facing behavior changes)
 
 ---
+
+## Review — 2026-03-29 — commit b2034912f..88e963b16
+
+**Verdict: FAIL** (3 new findings → written to TODO.md as [review] tasks)
+**Scope:** `aloop/cli/dashboard/src/components/layout/DocsPanel.tsx`, `DocsPanel.test.tsx`, `DocsPanel.stories.tsx`, `MainPanel.tsx`, `MainPanel.test.tsx`, `MainPanel.stories.tsx`, `aloop/cli/dashboard/src/components/session/SessionDetail.tsx`, `SessionDetail.test.tsx`
+
+**Commits reviewed:**
+- `c779ea42b` fix(tests): replace weak text assertions with role-based queries in SessionDetail and MainPanel tests
+- `f500d986f` feat(dashboard): extract DocsPanel from SessionDetail.tsx — batch 2
+- `41861991d` chore: mark batch-2 extraction task complete in TODO.md
+- `88e963b16` chore(qa): iter 57 — metadata only
+
+### Prior findings status
+
+- Gate 2 (SessionDetail.test.tsx weak assertions): **RESOLVED** — `c779ea42b` uses `getAllByRole('button', { name: /Documents/i })` (line 45) and `getByLabelText('Show activity panel')` (line 83). Both specific and role-based. ✓
+- Gate 2 (MainPanel.test.tsx lines 49/72/96): **PARTIALLY RESOLVED** — `getAllByRole('button', { name: /Documents/i })` used in test 1, 4, 5, 8. But `it('calls setActivityCollapsed...')` is still broken (see Gate 2 new finding #1 below).
+- Gate 4 (SessionDetail.tsx 297 LOC): **RESOLVED** — SessionDetail.tsx is now 104 LOC (thin re-export). ✓
+- Gate 3 (Sidebar.tsx 78.46%): **still open** — not changed in this batch, tracked in TODO.md.
+- Gate 6 (no proof screenshots for stories): **still open** — tracked in TODO.md.
+
+### Gate-by-gate summary
+
+**Gate 1 — Spec Compliance: PASS**
+- DocsPanel.tsx (99 LOC) + DocsPanel.test.tsx + DocsPanel.stories.tsx committed ✓
+- MainPanel.tsx (148 LOC) + MainPanel.test.tsx + MainPanel.stories.tsx committed ✓
+- SessionDetail.tsx is now a 104-LOC thin re-export of MainPanel ✓
+- All three new files meet the ≤200 LOC rule; DocsPanel and MainPanel are at or under ~150 LOC target ✓
+
+**Gate 2 — Test Depth: FAIL** (3 new findings)
+
+1. `MainPanel.test.tsx:79` — `it('calls setActivityCollapsed when collapse button clicked')`: creates `setActivityCollapsed = vi.fn()`, renders, then queries `getAllByText('Documents')` and asserts count > 0 — never clicks the collapse button, never asserts the mock was called. A broken handler would still pass. Missing: `fireEvent.click(screen.getByLabelText('Collapse activity panel'))` + `expect(setActivityCollapsed).toHaveBeenCalledWith(true)`.
+
+2. `DocsPanel.test.tsx:47` — `it('switches tab when tab trigger is clicked')`: clicks `getAllByRole('tab')[1]` then asserts `getAllByRole('tab')).toHaveLength(4)` — the count was already 4 before the click. This proves the click didn't crash the component, not that the tab switched. A click handler that no-ops would still pass. Missing: assert `data-state="active"` on the clicked tab or assert tab content changed.
+
+3. `DocsPanel.test.tsx:63` — `it('switches to health tab')`: fires `fireEvent.click(healthTab)` inside `waitFor` but makes no assertion afterward. A broken health tab handler passes. Missing: post-click assertion e.g. `expect(screen.getByRole('tab', { name: /Health/i })).toHaveAttribute('data-state', 'active')` or that HealthPanel content renders.
+
+Positive: `DocsPanel.test.tsx:75` — `it('renders external link when repoUrl is provided')` correctly uses `getByLabelText` + `toBeInTheDocument()` ✓. `DocsPanel.test.tsx:81` — `it('displays documents content')` asserts `getByText('Task one')` — concrete value, good ✓. `MainPanel.test.tsx:55-67` — callback assertion tests correctly use `toHaveBeenCalledWith('activity')` / `toHaveBeenCalledWith('docs')` ✓.
+
+**Gate 3 — Coverage: FAIL (pre-existing, tracked)**
+- DocsPanel.tsx: 85.71% branch coverage — line 37 useEffect reset path (when `activeTab` becomes invalid) uncovered. Already in TODO.md as `[qa/P1]`.
+- MainPanel.tsx: 92.85% — PASS ✓
+- Sidebar.tsx: 78.46% — pre-existing FAIL, not changed in this batch.
+
+**Gate 4 — Code Quality: PASS** (except what is already flagged under Gate 2)
+- No dead code, unused imports, or unreachable branches in DocsPanel.tsx or MainPanel.tsx.
+- `MainPanel.test.tsx:79`: `setActivityCollapsed` mock created but never invoked or asserted is a dead variable — same as Gate 2 finding.
+
+**Gate 5 — Integration Sanity: PASS**
+- QA iter 57: 406/406 tests pass; `tsc --noEmit` clean ✓
+
+**Gate 6 — Proof: FAIL (pre-existing, tracked)**
+- DocsPanel.stories.tsx (6 stories) and MainPanel.stories.tsx (6 stories) added in this batch — no screenshots captured in `proof-artifacts/`. Sidebar (6) and SessionDetail (5) stories from batch 1 also still without screenshots. All tracked in TODO.md as the existing `[review] Gate 6` task.
+
+**Gate 7 — Layout: SKIP** (refactor extracts JSX verbatim, no new CSS or layout logic)
+
+**Gate 8 — Versions: SKIP** (no dependency changes)
+
+**Gate 9 — Documentation: PASS** (no user-facing behavior changes)
+
+---
