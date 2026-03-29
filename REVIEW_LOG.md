@@ -393,6 +393,48 @@
 
 ---
 
+## Review — 2026-03-29 — commit dc785d0e1..e633ad00c
+
+**Verdict: FAIL** (4 findings → written to TODO.md as [review] tasks)
+**Scope:** `aloop/cli/dashboard/src/components/layout/Sidebar.tsx`, `Sidebar.test.tsx`, `Sidebar.stories.tsx`, `aloop/cli/dashboard/src/components/session/SessionDetail.tsx`, `SessionDetail.test.tsx`, `SessionDetail.stories.tsx`, `AppView.tsx`
+
+**Commits reviewed:**
+- `b8fc74a93` feat(dashboard): extract Sidebar and SessionDetail components from AppView.tsx — batch 1
+- `e633ad00c` chore(qa): iter 56 — metadata only
+
+### Gate-by-gate summary
+
+**Gate 1 — Spec Compliance: PASS**
+- Batch 1 TODO task fully satisfied: Sidebar extracted to `components/layout/Sidebar.tsx`, SessionDetail to `components/session/SessionDetail.tsx`; both have .test.tsx and .stories.tsx; AppView.tsx reduced from 1299 → 823 LOC. Re-exports of `Sidebar`, `slugify`, `DocContent` from AppView preserve import paths used by `App.tsx` and `ArtifactViewer.tsx`. Batch 1 scope is complete.
+
+**Gate 2 — Test Depth: FAIL**
+- `Sidebar.test.tsx`: Zero tests for context menu interactions. The `contextMenuSessionId` state (set by right-click in `SessionCard`), the context menu div with 3 buttons (Stop/Kill/Copy), Escape key closing the menu, and `onStopSession`/`onCopySessionId` callbacks are all untested. These are testable branches with concrete expected outputs that a broken handler would fail.
+- `SessionDetail.test.tsx:45`: `expect(screen.getAllByText('Documents').length).toBeGreaterThanOrEqual(1)` — shallow existence check; passes even if Documents text appears in an unexpected element or with wrong count.
+- `SessionDetail.test.tsx:95`: `expect(screen.getAllByText('Activity').length).toBeGreaterThanOrEqual(1)` — same anti-pattern; passes whether `activityCollapsed=true` renders the collapsed button or the non-collapsed panel header, proving nothing about the state change.
+
+**Gate 3 — Coverage: FAIL**
+- `Sidebar.tsx`: 78.46% branch coverage (lines 83, 100, 159, 215 uncovered). Uncovered: `opencode_unavailable` error path (line 83), cancelled guard in cost fetch (line 100), context menu render branches (line 159), Escape key handler (line 215). Pre-existing [qa/P1] task tracks this; confirmed still failing at live run.
+- `SessionDetail.tsx`: 93.75% branch coverage per QA iter 56 — PASS.
+
+**Gate 4 — Code Quality: FAIL**
+- `SessionDetail.tsx` is 297 LOC — violates Constitution Rule 7 (< 150 LOC for new modules). It contains three separable units: `DocContent` (Markdown renderer, ~65 LOC), `DocsPanel` (tabs + TOC + health, ~80 LOC), and `SessionDetail` itself (~100 LOC). Not currently tracked in TODO.md.
+- `Sidebar.tsx` 255 LOC — already tracked as [qa/P2]; no new finding.
+- No dead code, no unused imports in changed files.
+
+**Gate 5 — Integration Sanity: PASS**
+- 406/406 tests pass (live run). `tsc --noEmit` clean (dashboard).
+
+**Gate 6 — Proof: FAIL**
+- 6 new Sidebar stories and 5 new SessionDetail stories — zero screenshots captured in `proof-artifacts/`. All prior extracted components with stories in this PR have screenshots (StatusDot: 7, ElapsedTimer: 3, PhaseBadge: 6, etc.). Observable Storybook UI work requires screenshots per project pattern.
+
+**Gate 7 — Layout: SKIP** (pure extraction refactor, JSX moved verbatim — no new CSS or layout logic)
+
+**Gate 8 — Versions: SKIP** (no dependency changes)
+
+**Gate 9 — Documentation: PASS** (no user-facing behavior changes)
+
+---
+
 ## Review — 2026-03-28 — commit 59a665aad..849817f10
 
 **Verdict: FAIL** (2 findings → written to TODO.md as [review] tasks)
