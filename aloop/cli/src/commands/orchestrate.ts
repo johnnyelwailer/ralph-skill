@@ -659,9 +659,18 @@ export async function applyDecompositionPlan(
     const wave = waveMap.get(planIssue.id)!;
     const labels = ['aloop', `aloop/wave-${wave}`, `wave/${wave}`, ...deriveComponentLabels(planIssue.file_hints ?? [])];
 
+    // Compute GH numbers for dependencies (already mapped from prior iterations)
+    const ghDeps = planIssue.depends_on.map((depId) => idToGhNumber.get(depId) ?? depId);
+
+    // Inject dependency references into body if not already present
+    let enrichedBody = planIssue.body;
+    if (ghDeps.length > 0 && !enrichedBody.includes('Depends on')) {
+      enrichedBody = `${enrichedBody}\n\nDepends on ${ghDeps.map((n) => `#${n}`).join(', ')}`;
+    }
+
     let ghNumber: number;
     if (deps.execGhIssueCreate && repo) {
-      ghNumber = await deps.execGhIssueCreate(repo, path.basename(sessionDir), planIssue.title, planIssue.body, labels);
+      ghNumber = await deps.execGhIssueCreate(repo, path.basename(sessionDir), planIssue.title, enrichedBody, labels);
     } else {
       // When no GH executor is available (plan-only without repo, or no executor),
       // use the plan ID as a placeholder number
@@ -673,7 +682,7 @@ export async function applyDecompositionPlan(
     updatedIssues.push({
       number: ghNumber,
       title: planIssue.title,
-      body: planIssue.body,
+      body: enrichedBody,
       file_hints: planIssue.file_hints ?? [],
       sandbox: normalizeTaskSandbox(planIssue.sandbox),
       requires: normalizeTaskRequires(planIssue.requires),
@@ -2318,6 +2327,7 @@ export interface EstimateResult {
   issue_number: number;
   dor_passed: boolean;
   complexity_tier?: ComplexityTier;
+  priority?: string;
   iteration_estimate?: number;
   risk_flags?: string[];
   confidence?: 'high' | 'medium' | 'low';
@@ -2404,6 +2414,16 @@ export async function applyEstimateResults(
           now: deps.now,
           sessionDir: deps.sessionDir,
         });
+        const labelsToAdd: string[] = [];
+        if (result.complexity_tier) labelsToAdd.push(`complexity/${result.complexity_tier}`);
+        if (result.priority) labelsToAdd.push(result.priority);
+        if (labelsToAdd.length > 0) {
+          await deps.execGh([
+            'issue', 'edit', String(result.issue_number),
+            '--repo', deps.repo,
+            ...labelsToAdd.flatMap((l) => ['--add-label', l]),
+          ]);
+        }
       }
       outcome.updated.push(result.issue_number);
     } else {

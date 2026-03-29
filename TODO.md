@@ -16,13 +16,9 @@ Acceptance criteria:
 
 ### In Progress
 
-- [ ] [qa/P1] orchestrate.ts applyDecompositionPlan missing dependency body injection: `applyDecompositionPlan` does not inject "Depends on #X, #Y" references into sub-issue bodies when `depends_on` is set → orchestrate.test.ts suite 60 subtests 5-6 fail ("Second issue should reference Depends on #1", "Third issue should reference both dependencies") → tests passed at pre-regression baseline (298ac3309) but regressed via d49686908 adapter changes. Tested at 2026-03-28. (priority: high)
+- [x] [qa/P1] orchestrate.ts applyDecompositionPlan missing dependency body injection: fixed — enriched body with "Depends on #X, #Y" injected and stored in state. RESOLVED: 2026-03-29.
 
-- [ ] [qa/P1] orchestrate.ts applyEstimateResults not applying complexity/priority labels via execGh: `applyEstimateResults` does not call execGh to add `complexity/M`, `complexity/L`, `complexity/S`, or `P1` labels after DoR passes → orchestrate.test.ts suite 61 subtests 1-4 fail; additionally TypeScript reports TS2353 in test file (`'priority' does not exist in type 'EstimateResult'`) suggesting EstimateResult type is also missing the `priority` field → tests passed at pre-regression baseline (298ac3309) but regressed via d49686908 adapter changes. Tested at 2026-03-28. (priority: high)
-
-- [x] [qa/P1] orchestrate.ts missing label enrichment code: `applyDecompositionPlan` at line 659 only adds `['aloop', 'aloop/wave-${wave}']` — missing `wave/${wave}` label that tests at orchestrate.test.ts:652 and 6035-6123 assert — add `wave/${wave}` to the labels array alongside `aloop/wave-${wave}`; also restore the `deriveComponentLabels` import and usage if it was previously used to add component labels (priority: high)
-
-- [x] [review] Gate 5: `process-requests.ts:551` — `issue.state !== 'review'` is a dead comparison because `OrchestratorIssueState` is `'pending' | 'in_progress' | 'pr_open' | 'merged' | 'failed'` with no `'review'` member — TypeScript error TS2367; add `'review'` to `OrchestratorIssueState` in orchestrate.ts (the check is used to sync child branches for issues in review state, so 'review' is a real state that should exist); this was part of the qa/P1 for process-requests.ts but was not fixed when exports were restored at commit 82ffc2a71 (priority: high) [reviewed: gates 1-10 pass]
+- [x] [qa/P1] orchestrate.ts applyEstimateResults not applying complexity/priority labels via execGh: fixed — added `priority?: string` to `EstimateResult` and execGh label calls in `dor_passed` branch. RESOLVED: 2026-03-29.
 
 ### Up Next
 
@@ -64,3 +60,5 @@ Acceptance criteria:
 - [x] [review] Gate 1: `OrchestratorAdapter` interface aligned with spec method names and return types
 - [x] [review] Gate 2: adapter instantiation branches — gate no longer applicable (instantiation code removed pending re-implementation)
 - [x] [review] Gate 4: execGh fallback breaks DI — gate no longer applicable (instantiation code removed pending re-implementation)
+- [x] [review] Gate 5: `process-requests.ts:551` — `issue.state !== 'review'` dead comparison fixed by adding `'review'` to `OrchestratorIssueState` union type
+- [x] `applyDecompositionPlan` adds `wave/N` label alongside `aloop/wave-N` and derives component labels from `file_hints`
