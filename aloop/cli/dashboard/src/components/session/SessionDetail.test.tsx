@@ -42,8 +42,8 @@ function renderDetail(overrides: Partial<typeof defaultProps> = {}) {
 describe('SessionDetail', () => {
   it('renders mobile panel toggle buttons', () => {
     renderDetail();
-    expect(screen.getAllByText('Documents').length).toBeGreaterThanOrEqual(1);
-    expect(screen.getAllByText('Activity').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByRole('button', { name: /Documents/i }).length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByRole('button', { name: /Activity/i }).length).toBeGreaterThanOrEqual(1);
   });
 
   it('calls setActivePanel with "activity" when Activity button is clicked', () => {
@@ -92,7 +92,7 @@ describe('SessionDetail', () => {
 
   it('shows collapsed activity button when activityCollapsed is true', () => {
     renderDetail({ activityCollapsed: true });
-    expect(screen.getAllByText('Activity').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByLabelText('Show activity panel')).toBeInTheDocument();
   });
 
   it('shows repo link when repoUrl is provided', () => {
