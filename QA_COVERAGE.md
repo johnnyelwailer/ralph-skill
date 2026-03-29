@@ -2,7 +2,14 @@
 
 | Feature | Last Tested | Commit | Result | Notes |
 |---------|-------------|--------|--------|-------|
-| All dashboard tests pass (npm run test) | 2026-03-28 | b8fc74a | PASS | 406/406 tests pass, 38 test files (36 new tests since last session — Sidebar, SessionDetail, DocsPanel, MainPanel) |
+| All dashboard tests pass (npm run test) | 2026-03-29 | 4186199 | PASS | 406/406 tests pass, 38 test files |
+| Role-based assertions in SessionDetail.test.tsx | 2026-03-29 | 4186199 | PASS | Lines 45-46 use getAllByRole('button', {name:/Documents/i}) and getAllByRole('button', {name:/Activity/i}); lines 83-95 use getByLabelText for collapsed state |
+| Role-based assertions in MainPanel.test.tsx | 2026-03-29 | 4186199 | PASS | Lines 49-50, 71, 76, 96 use getAllByRole('button', {name:/Documents|Activity/i}) instead of getAllByText |
+| DocsPanel.tsx extraction (size, test, stories) | 2026-03-29 | 4186199 | PASS | 98 LOC (≤200 spec), DocsPanel.test.tsx + DocsPanel.stories.tsx both present |
+| MainPanel.tsx extraction (size, test, stories) | 2026-03-29 | 4186199 | PASS | 147 LOC (≤200 spec), MainPanel.test.tsx + MainPanel.stories.tsx both present |
+| DocsPanel.tsx branch coverage ≥90% | 2026-03-29 | 4186199 | FAIL | 85.71% branch coverage (below 90% spec requirement) — line 37 (useEffect activeTab reset path) uncovered, bug filed |
+| MainPanel.tsx branch coverage ≥90% | 2026-03-29 | 4186199 | PASS | 92.85% branch coverage |
+| TypeScript type-check (tsc --noEmit) | 2026-03-29 | 4186199 | PASS | No type errors after batch-2 extraction |
 | isCurrentIteration prop removed from LogEntryRow | 2026-03-27 | a681c80 | PASS | grep confirms zero occurrences in dashboard/src/ |
 | ImageLightbox branch coverage ≥90% | 2026-03-28 | 780e0a4 | PASS | 100% branch coverage |
 | LogEntryExpandedDetails branch coverage ≥90% | 2026-03-28 | 274636e | PASS | 93.47% branch coverage (was 86.95%, fixed by commit 11c792992) |
@@ -12,7 +19,7 @@
 | SliderView.tsx branch coverage ≥90% | 2026-03-28 | 67d41e2 | PASS | 90% branch coverage (was 70%, fixed by commit dcef1ee65) — re-test PASS |
 | LogEntryRow.tsx branch coverage ≥90% | 2026-03-28 | 9eacb87 | PASS | 92.77% branch coverage — re-test PASS; callback assertions strengthened (commits 53b4003, 9eacb87) |
 | ResponsiveLayout.tsx branch coverage ≥90% | 2026-03-28 | 9eacb87 | PASS | 91.66% branch coverage (was 75% FAIL, fixed by commit 9eacb87) — re-test PASS |
-| Sidebar.tsx branch coverage ≥90% | 2026-03-28 | b8fc74a | FAIL | 78.46% branch coverage (below 90% spec requirement) — lines 83,100,159,215 uncovered, bug filed |
+| Sidebar.tsx branch coverage ≥90% | 2026-03-29 | 4186199 | FAIL | 78.46% branch coverage (below 90% spec requirement) — lines 83,100,159,215 uncovered, bug filed. Re-test: still failing at iter 57 |
 | SessionDetail.tsx branch coverage ≥90% | 2026-03-28 | b8fc74a | PASS | 93.75% branch coverage |
 | TypeScript type-check (tsc --noEmit) | 2026-03-28 | b8fc74a | PASS | No type errors (re-test after batch 1 extraction) |
 | AppView.tsx LOC reduction (batch 1) | 2026-03-28 | b8fc74a | PASS | Reduced from 1299 → 823 LOC (progress toward <100 LOC target, extraction ongoing) |

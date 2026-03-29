@@ -363,3 +363,78 @@ Exit: 0
 # Cleanup
 $ rm -rf /tmp/aloop-test-install-bjEqot
 ```
+
+## QA Session — 2026-03-29 (iteration 57)
+
+### Test Environment
+- Binary under test: /tmp/aloop-test-install-y7skdS/bin/aloop
+- Version: 1.0.0
+- Dashboard dir: aloop/cli/dashboard
+- Commit: 41861991d (chore: mark batch-2 extraction task complete in TODO.md)
+- Features tested: 4
+
+### Results
+- PASS: Role-based assertions in SessionDetail.test.tsx and MainPanel.test.tsx
+- PASS: DocsPanel.tsx extraction (98 LOC, test + stories present)
+- PASS: MainPanel.tsx extraction (147 LOC, test + stories present, 92.85% branch coverage)
+- PASS: TypeScript type-check (tsc --noEmit — no errors)
+- PASS: Full test suite — 406/406 tests, 38 test files
+- FAIL: DocsPanel.tsx branch coverage 85.71% (below 90% spec requirement) — bug filed
+- FAIL: Sidebar.tsx branch coverage 78.46% — re-test confirms still failing
+
+### Bugs Filed
+- [qa/P1] DocsPanel.tsx branch coverage 85.71% (line 37): useEffect activeTab reset path uncovered
+
+### Command Transcript
+
+```
+# Install CLI
+$ ALOOP_BIN=$(npm --prefix aloop/cli run --silent test-install -- --keep 2>/dev/null | tail -1)
+Binary under test: /tmp/aloop-test-install-y7skdS/bin/aloop
+$ aloop --version
+1.0.0
+
+# Check extraction sizes
+$ wc -l aloop/cli/dashboard/src/components/layout/DocsPanel.tsx \
+        aloop/cli/dashboard/src/components/layout/MainPanel.tsx \
+        aloop/cli/dashboard/src/components/layout/Sidebar.tsx
+ 98 src/components/layout/DocsPanel.tsx
+147 src/components/layout/MainPanel.tsx
+255 src/components/layout/Sidebar.tsx
+
+# Verify test/story files for layout components
+$ ls aloop/cli/dashboard/src/components/layout/
+DocsPanel.stories.tsx  DocsPanel.test.tsx  DocsPanel.tsx
+MainPanel.stories.tsx  MainPanel.test.tsx  MainPanel.tsx
+ResponsiveLayout.test.tsx  ResponsiveLayout.tsx
+Sidebar.stories.tsx  Sidebar.test.tsx  Sidebar.tsx
+
+# Role-based assertions check — SessionDetail.test.tsx
+$ grep -n "getAllByText\|getByRole\|getAllByRole\|getByLabelText" src/components/session/SessionDetail.test.tsx
+45:  expect(screen.getAllByRole('button', { name: /Documents/i }).length).toBeGreaterThanOrEqual(1);
+46:  expect(screen.getAllByRole('button', { name: /Activity/i }).length).toBeGreaterThanOrEqual(1);
+83:  expect(screen.getByLabelText('Collapse activity panel')).toBeInTheDocument();
+89:  fireEvent.click(screen.getByLabelText('Collapse activity panel'));
+95:  expect(screen.getByLabelText('Show activity panel')).toBeInTheDocument();
+100: expect(screen.getByLabelText('Open repo on GitHub')).toBeInTheDocument();
+
+# Full test suite
+$ npx vitest run --coverage
+Test Files  38 passed (38)
+      Tests  406 passed (406)
+
+# Coverage breakdown (relevant components)
+DocsPanel.tsx    |  95.23 |  85.71 |  100 |  94.73 | 37   ← FAIL
+MainPanel.tsx    |  85.71 |  92.85 |   80 |  85.71 | 75   ← PASS
+Sidebar.tsx      |  90.32 |  78.46 | 84.61|  92.85 | 83,100,159,215 ← FAIL (re-test)
+
+# TypeScript
+$ npx tsc --noEmit
+(no output — no errors)
+Exit: 0
+```
+
+### Cleanup
+```
+$ rm -rf /tmp/aloop-test-install-y7skdS
+```
