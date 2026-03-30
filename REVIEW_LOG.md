@@ -35,6 +35,33 @@
 
 ---
 
+## Review — 2026-03-30 — commits fefeb1740..8e6c7e160 (issue #94 loop.ps1 fix + docs cleanup)
+
+**Verdict: FAIL** (1 finding → written to TODO.md as [review] task)
+**Scope:** `aloop/bin/loop.ps1`, `README.md`, `SPEC.md`
+
+### What the build implemented
+
+- **loop.ps1 fix** (`457116bc6`): Added `provider_timeout → ProviderTimeoutSec` to both `Load-LoopSettings` and `Refresh-LoopSettingsFromMeta`, completing the full chain for Windows. Resolves prior FAIL finding.
+- **SPEC.md** (`4ddcaf2f6`): Added `loopSettings` object with all 14 fields to the `loop-plan.json` format example. Values match `DEFAULT_LOOP_SETTINGS` exactly.
+- **README.md** (`98a7adb68`): Fixed 4 inaccuracies: `aloop start` command syntax, removed `concurrency_cap` from YAML example, added `provider_timeout: 10800`, corrected auth failure description (degraded, no auto-recovery).
+
+### Findings
+
+- **Gate 9**: `README.md:109` — "Changes to `loop-plan.json` take effect on the next iteration without restarting" is inaccurate. `loop.sh` line 337 explicitly states hot-reload reads from `meta.json` ("Hot-reload loop settings from meta.json"), not `loop-plan.json`. `loop-plan.json` is only read at startup. Line 113 also implies loop-plan.json is re-read each iteration. The old README was more accurate: "hot-reloaded each iteration from `meta.json`". Fix: update both lines to reference `meta.json` as the hot-reload source.
+
+### Gates that passed
+
+- **Gate 1**: `provider_timeout` chain complete for both platforms. SPEC.md loopSettings example now accurate. ✅
+- **Gate 2**: No new code logic — N/A for loop.ps1 pattern (mirrors existing fields). Docs-only changes need no tests.
+- **Gate 3**: No new branches. N/A.
+- **Gate 4**: No dead code. Loop.ps1 addition follows existing pattern. ✅
+- **Gate 5**: 32 pre-existing failures unchanged. Type-check passes. ✅
+- **Gate 6**: Internal plumbing + docs — no proof artifacts expected. ✅
+- **Gates 7–8**: N/A.
+- **Gate 9 (partial)**: 3 of 4 README fixes are correct (command syntax, YAML example, auth failure description). SPEC.md values all verified against interface + defaults. One new inaccuracy introduced (see finding above).
+
+---
 ## Review — 2026-03-30 — commits c84f2094c..485e1a11e (issue #94 provider_timeout + concurrency_cap cleanup)
 
 **Verdict: FAIL** (1 finding → written to TODO.md as [review] task)
