@@ -572,3 +572,38 @@ Test count: 36 fail vs 34-failure pre-existing baseline. The 2 new failures are 
 - Gate 9: No user-facing behavior changed
 
 ---
+## Review — 2026-03-30 — commits e3780bf89..f87f9ee0b (fixes: createMockAdapter tracking + execGhForTriage removal)
+
+**Verdict: FAIL** (1 finding → written to TODO.md as [review] task)
+**Scope:** `aloop/cli/src/commands/orchestrate.ts`, `aloop/cli/src/commands/orchestrate.test.ts`
+**Commits reviewed:** `7b8ba4bfd` (createMockAdapter override tracking), `644b2663c` (remove execGhForTriage bypass), `f87f9ee0b` (qa documentation)
+
+### Gate 1 — PASS
+
+- `7b8ba4bfd`: test-infrastructure fix only — `trackedOverrides` wrapper ensures `calls.push` fires before delegating to override. Correct and aligned with adapter DI design.
+- `644b2663c`: removes inline `spawnSync('gh', ...)` fallback at `runTriageMonitorCycle`. `TriageDeps.execGh` is now optional. `execGh!` assertions in `applyTriageResultsToIssue` appear only in `else` branches guarded by `!deps.adapter`, which is structurally safe for the current caller. Aligns with CONSTITUTION rule #4. ✓
+
+### Gate 2 — PARTIAL (prior finding resolved; one carry-forward open)
+
+- Prior finding **"Gate 2/Gate 5: broken runTriageMonitorCycle adapter tests"** resolved: `runTriageMonitorCycle` suite now reports both adapter tests passing (`ok 3 - uses adapter.listComments when adapter is present`, `ok 4 - adapter path fetches PR comments via listComments`). Confirmed `listCalls.length` assertions work correctly after override wrapping fix.
+- Prior finding **"Gate 2/Gate 3: Add adapter-path tests for process-requests.ts"** is still **open** (`[ ]` in TODO.md). Neither commit touches `process-requests.ts`. The four adapter paths (`adapter.createIssue()` at lines 419 and 544, `adapter.createPR()` at line 663, `adapter.getIssue()` + `adapter.updateIssue()` at lines 1156-1160) remain at 0% test coverage.
+
+### Gate 3 — FAIL (carry-forward)
+
+`process-requests.ts` adapter branches from `ecad85f99` are still uncovered. The `[review]` task was not actioned in this build iteration.
+
+### Gate 4 — PASS
+
+`644b2663c` removes the `execGhForTriage` inline cleanly. No new dead code. `execGh` optional field with non-null assertion is acceptable given the existing dual-path invariant, though a future caller must know to supply at least one of `adapter` or `execGh`. No CONSTITUTION violations.
+
+### Gate 5 — PASS
+
+- `npm test`: 1128 pass, 34 fail — back to pre-existing baseline; the 2 regressions from prior FAIL are resolved ✓
+- `tsc --noEmit`: 0 errors ✓
+- `npm run build`: clean ✓
+
+### Gates 6–9 — Pass / N/A
+
+No UI changes, no new dependencies, no user-facing behavior changed, no docs required.
+
+---
