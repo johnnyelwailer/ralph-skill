@@ -142,3 +142,30 @@
 `orchestrate.ts:5856–5876` — backoff arithmetic unit test still missing. Tracked as `[ ]` in TODO.md. Medium priority. Existing functionality is integration-verified but the per-strategy math has no unit-level coverage. Next build iteration should add a test to `runOrchestratorScanLoop` that sets `consecutiveRateLimits` via a rate-limited scan pass and asserts the sleep arg matches the expected formula for each of the three strategies.
 
 ---
+
+## Review — 2026-03-30 — commits ab2d68409..18fe7a808 (issue #94 final doc fixes)
+
+**Verdict: FAIL** (1 finding → written to TODO.md as [review] task)
+**Scope:** `README.md`, `.aloop/pipeline.yml`
+
+### What the build implemented
+
+- **ab2d68409**: Fixed `README.md:130` — `concurrency_cap` now shown under `loop:` section with value `3`, matching canonical `.aloop/pipeline.yml:56`. Prior FAIL finding (Gate 9, entry 2) resolved.
+- **51a3cfc24**: Fixed `README.md:99` — changed `max_iterations` comment from `(0 = unlimited)` to `(must be a positive integer)`, matching `start.ts:304-312` (`toPositiveInt` requires `value > 0`; 0 is rejected with an error).
+- **ae1446e48**: spec-gap re-analysis (TODO.md only) — no code changes.
+- **18fe7a808**: spec-review verified `ab2d68409` Gate 9 fix (TODO.md only) — correct.
+
+### Findings
+
+- **Gate 9**: `.aloop/pipeline.yml:31` — comment `(set 0 for unlimited)` is factually wrong. `toPositiveInt` at `start.ts:304-312` returns null for 0 (requires `value > 0`). If a user sets `max_iterations: 0` based on this comment, `start.ts:743-744` throws: "Invalid --max-iterations value: 0 (must be a positive integer)". Commit `51a3cfc24` correctly fixed `README.md:99` but left the identical stale comment in `.aloop/pipeline.yml:31` unchanged. Fix: update the comment to `(must be a positive integer)`.
+
+### Gates that passed
+
+- **Gate 1**: Spec compliance — documentation-only changes. All prior FAIL findings resolved (concurrency_cap nesting/value, hot-reload references, config location). ✅
+- **Gates 2–4**: Documentation-only — N/A. ✅
+- **Gate 5**: Type-check passes (confirmed). Documentation-only changes; no regression risk. ✅
+- **Gate 6**: Documentation changes — no proof artifacts expected. ✅
+- **Gates 7–8**: N/A — no UI or dependency changes. ✅
+- **Gate 9 (partial)**: `README.md` fixes are accurate and verified. One stale comment remains in `.aloop/pipeline.yml` (see finding above).
+
+---
