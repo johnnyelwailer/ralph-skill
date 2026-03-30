@@ -92,3 +92,22 @@ Layout screenshots verified visually:
 Header.stories.tsx adds 7 stories; none are in `e2e/story-screenshots.spec.ts` and no proof screenshots were committed. Already tracked as `[qa/P1]` in TODO.md. QA confirmed 6/7 stories render correctly.
 
 ---
+
+## Review — 2026-03-30 — commits 58ce14427..e57f2e15d
+
+**Verdict: FAIL** (0 new tasks — Gate 3 task already in TODO.md)
+**Scope:** `Header.test.tsx`, `Header.tsx`
+
+### Prior findings resolved
+
+- ✓ Gate 2: `Header.test.tsx:92` — `renders connection indicator` now asserts `getByText('Live')`; `ConnectionIndicator` renders the literal text "Live" for 'connected' status (confirmed `StatusDot.tsx:44`) — concrete behavioral check
+- ✓ Gate 2: `Header.test.tsx:134` — `renders elapsed timer` now filters `getAllByText(/\d+s/)` for elements matching `/^\d+[smh](\s\d+s)?$/`; a broken/absent ElapsedTimer would not produce this pattern — meaningful improvement (minor flakiness risk if elapsed lands exactly on a minute boundary, but not a false-positive risk)
+- ✓ Gate 2: `Header.test.tsx:145` — `renders session cost in hover card` now asserts `getByText('$2.5000')` — verifies `toFixed(4)` formatting concretely
+- ✓ Gate 4: `Header.tsx` — dead `str` import removed; `isRecord` is the only import from `activityLogHelpers` and is used in `parseQACoveragePayload`
+- ✓ Gate 4: `Header.test.tsx` — dead `vi.mock('@/hooks/useCost', ...)` removed; Header.tsx takes cost as props, never imported this hook
+
+### Findings
+
+**Gate 3: `Header.tsx` branch coverage 87.61% (persists)** — No new branch coverage tests were added in this iteration. The test-strengthening commits improved assertion depth on existing tests only. Coverage report from QA (commit 55caec1a1) confirms unchanged at 87.61%. Uncovered branches remain: line 43 (`f.status` non-string → `'UNTESTED'`), line 211 (`stuckCount > 0` red class), line 227 (`avgDuration && sessionCost > 0` separator), line 275 (empty `updatedAt` while not loading). Task already in TODO.md as `[ ] [review] Gate 3`.
+
+---
