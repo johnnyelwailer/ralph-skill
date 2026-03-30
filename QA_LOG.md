@@ -313,3 +313,57 @@ npx tsx --test src/commands/orchestrate.test.ts
 
 npx tsc --noEmit | grep -v "test.ts"  → (empty, no errors)
 ```
+
+---
+
+## QA Session — 2026-03-30 (iteration 7 — final review)
+
+### Test Environment
+- Binary under test: /tmp/aloop-test-install-Qixa7Q/bin/aloop (v1.0.0) — cleaned up after session
+- Working dir: /home/pj/.aloop/sessions/orchestrator-20260321-172932-issue-177-20260330-080439/worktree/aloop/cli
+- Commits under test: 51c5eb860 (chore(review): PASS — gates 1-9 pass)
+- Features tested: 5 (full suite re-run + spec acceptance criteria verification)
+
+### Results
+- PASS: TypeScript build (`npm run build`) — clean exit 0
+- PASS: `adapter.test.ts` — 35/35 pass (stable)
+- PASS: `process-requests.test.ts` — 23/23 pass (stable)
+- PASS: `orchestrate.test.ts` — 335/362 pass, 27 fail — identical to iter 6; no regressions
+- PASS: `tsc --noEmit` — zero errors on non-test files
+- PASS: No hardcoded github.com URLs in orchestrate.ts, process-requests.ts, adapter.ts (non-comment lines only)
+- PASS: meta.json adapter config — `meta.adapter` read at process-requests.ts:354, forwarded to `makeAdapterForRepo`, defaults to 'github'
+- PASS: `updateIssueBodyViaAdapter` dual-path — adapter.updateIssue called when adapter present, fallback execGh when absent
+- PASS: `fetchAndApplyBulkIssueState` adapter path — adapter.fetchBulkIssueState used at orchestrate.ts:5317-5319
+
+### Bugs Filed
+None — all acceptance criteria pass; no regressions introduced by review commit.
+
+### Regression Analysis
+- Pre-regression baseline (298ac3309): 27 orchestrate failures, 319 pass, 346 total
+- Iter 6 (097fc63ba): 27 failures, 335 pass, 362 total
+- Iter 7 (51c5eb860): 27 failures, 335 pass, 362 total — IDENTICAL, stable
+
+### Command Transcript
+```
+ALOOP_BIN=$(npm run --silent test-install -- --keep 2>/dev/null | tail -1)
+echo "Binary under test: $ALOOP_BIN"  → /tmp/aloop-test-install-Qixa7Q/bin/aloop
+$ALOOP_BIN --version  → 1.0.0
+
+npm run build  → EXIT: 0
+
+npx tsx --test src/lib/adapter.test.ts
+# tests 35 / pass 35 / fail 0
+
+npx tsx --test src/commands/process-requests.test.ts
+# tests 23 / suites 7 / pass 23 / fail 0
+
+npx tsx --test src/commands/orchestrate.test.ts
+# tests 362 / suites 71 / pass 335 / fail 27
+
+npx tsc --noEmit | grep -v "test.ts"  → (empty, no errors)
+
+grep -rn "github\.com" src/commands/orchestrate.ts src/commands/process-requests.ts src/lib/adapter.ts | grep -v "//.*github\.com"
+→ (no output — PASS)
+
+rm -rf /tmp/aloop-test-install-Qixa7Q
+```

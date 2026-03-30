@@ -29,3 +29,12 @@
 | meta.json adapter config (makeAdapterForRepo adapterType) | 2026-03-30 | 097fc63b | PASS | adapterType forwarded to createAdapter; defaults to "github"; unknown type throws; 3 new subtests all pass |
 | refine-result execGh→adapter migration | 2026-03-30 | 097fc63b | PASS | updateIssueBodyViaAdapter dual-path: adapter.updateIssue when adapter present, fallback execGh when absent; both branches tested |
 | orchestrate.ts fetchAndApplyBulkIssueState adapter path | 2026-03-30 | 097fc63b | PASS | 335/362 pass (+6 new tests all pass); adapter.fetchBulkIssueState used when adapter available, skips bulk fetch when neither execGh nor adapter present |
+| TypeScript build (npm run build) | 2026-03-30 | 51c5eb860 | PASS | Build clean exit 0 (iter 7 — review commit) |
+| adapter.test.ts unit tests | 2026-03-30 | 51c5eb860 | PASS | 35/35 pass (stable from iter 6) |
+| process-requests.ts full suite | 2026-03-30 | 51c5eb860 | PASS | 23/23 pass (stable from iter 6) |
+| orchestrate.test.ts full suite | 2026-03-30 | 51c5eb860 | PASS | 335/362 pass, 27 fail — identical to iter 6 baseline; no regressions |
+| tsc --noEmit (non-test files) | 2026-03-30 | 51c5eb860 | PASS | Zero type errors on non-test files |
+| No hardcoded github.com URLs (adapter paths) | 2026-03-30 | 51c5eb860 | PASS | grep of orchestrate.ts, process-requests.ts, adapter.ts — zero non-comment github.com occurrences |
+| meta.json adapter config wiring (live code) | 2026-03-30 | 51c5eb860 | PASS | meta.adapter read at process-requests.ts:354, forwarded to makeAdapterForRepo:149, defaults to 'github' |
+| updateIssueBodyViaAdapter dual-path (live code) | 2026-03-30 | 51c5eb860 | PASS | adapter.updateIssue at line 135, fallback execGh at line 453 |
+| fetchAndApplyBulkIssueState adapter path (live code) | 2026-03-30 | 51c5eb860 | PASS | adapter.fetchBulkIssueState used at orchestrate.ts:5317-5319 when adapter present |
