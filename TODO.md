@@ -61,3 +61,12 @@ Verified against SPEC.md `loopSettings` format example (lines 3654–3669):
 - Orchestrator settings (`triage_interval`, `scan_pass_throttle_ms`, `rate_limit_backoff`, `concurrency_cap`) — ✅ `resolveOrchestratorSettingsFromConfig` reads from pipeline.yml with CLI override; hot-reloaded from state.json each scan pass.
 - `loop.ps1` `provider_timeout` in both Load-LoopSettings and Refresh-LoopSettingsFromMeta — ✅ lines 127 and 154.
 - `health_lock_retry_delays_ms` handled in both loop.sh (lines 316/370) and loop.ps1 (lines 131–132/158–159) — ✅.
+
+---
+
+spec-review: PASS — Gate 9 build fix verified
+
+Verified README.md lines 109 and 113 against SPEC.md and loop.sh implementation:
+- Line 109: ✅ Correctly states `loop-plan.json` is written at session start and read at startup; `meta.json` is hot-reloaded each iteration — matches SPEC.md §Loop Plan Compilation and loop.sh `load_loop_settings` (startup) + `refresh_loop_settings_from_meta` (each iteration).
+- Line 113: ✅ Consistent: `loop-plan.json` at startup; `meta.json` hot-reload each iteration.
+- No other in-scope requirements unmet.
