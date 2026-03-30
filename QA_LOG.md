@@ -131,3 +131,85 @@ grep "loopSettings\|loop_settings\|provider_timeout" SPEC.md
 - No new bugs found beyond already-tracked SPEC.md gap.
 - provider_timeout fix verified complete: pipeline.yml → compile-loop-plan.ts → loopSettings in loop-plan.json → loop.sh PROVIDER_TIMEOUT ✓
 - concurrency_cap cleanly removed from LoopSettings interface ✓
+
+## QA Session — 2026-03-30 (issue-94, iteration 3)
+
+### Test Environment
+- Binary under test: `/tmp/aloop-test-install-5Be3pl/bin/aloop`
+- Version: 1.0.0
+- Commit: 906818071 (HEAD)
+- Disk space: OK (/tmp: 2.5G free, /: 328G free — disk full issue from session 2 is resolved)
+- Temp dirs: /tmp/qa-test-FUOtx5, /tmp/qa-test-UeJF1g, /tmp/qa-test-Ixfr51
+- Features tested: 4
+
+### Results
+- PASS: SPEC.md loop-plan.json example now includes loopSettings (previously FAIL — fixed by commit 4ddcaf2f6)
+- PASS: loopSettings emitted in loop-plan.json when .aloop/pipeline.yml has loop: section
+- PASS: loopSettings absent from loop-plan.json when no .aloop/pipeline.yml (conditional emission)
+- FAIL: README.md hot-reload documentation (Gate 9) — still incorrect at lines 109 and 113
+
+### Bugs Filed
+- None new. README.md Gate 9 bug already tracked in TODO.md as open `[review]` item.
+
+### Command Transcript
+
+```
+# Install
+ALOOP_BIN=$(npm --prefix aloop/cli run --silent test-install -- --keep 2>/dev/null | tail -1)
+# → /tmp/aloop-test-install-5Be3pl/bin/aloop
+aloop --version  # → 1.0.0
+
+# Feature 1 (re-test): SPEC.md loopSettings example
+grep -n "loopSettings\|provider_timeout\|triage_interval" SPEC.md
+# → line 3654: "loopSettings": {
+# → line 3664:     "provider_timeout": 10800,
+# → line 3666:     "triage_interval": 5,
+# All 13 fields present; note about conditional presence at line 3673
+# RESULT: PASS (was FAIL in session 2)
+
+# Feature 2: loopSettings in loop-plan.json with .aloop/pipeline.yml
+# Attempt 1: pipeline.yml at project root (wrong location)
+aloop start --project-root /tmp/qa-test-FUOtx5 --in-place --output json
+# loop-plan.json: no loopSettings (pipeline.yml at root, not .aloop/, so ignored)
+# Correct behavior per README: "Create .aloop/pipeline.yml in your project root"
+
+# Attempt 2: pipeline.yml at .aloop/pipeline.yml (correct location)
+# .aloop/pipeline.yml content:
+#   loop:
+#     max_iterations: 10
+#     triage_interval: 12
+#     scan_pass_throttle_ms: 55000
+#     rate_limit_backoff: exponential
+#     provider_timeout: 7200
+#     max_stuck: 5
+aloop start --project-root /tmp/qa-test-UeJF1g --in-place --output json
+# loop-plan.json loopSettings: {max_iterations:10,max_stuck:5,provider_timeout:7200,
+#   triage_interval:12,scan_pass_throttle_ms:55000,rate_limit_backoff:"exponential"}
+# EXIT: 0 ✓
+# RESULT: PASS
+
+# Feature 3: loopSettings absent when no pipeline.yml
+aloop start --project-root /tmp/qa-test-Ixfr51 --in-place --output json
+# loop-plan.json: no loopSettings field ✓
+# EXIT: 0 ✓
+# RESULT: PASS
+
+# Feature 4: README.md documentation accuracy (Gate 9)
+# Read README.md lines 109-113:
+# Line 109: "...hot-reloaded each iteration. Changes to `loop-plan.json` take effect
+#   on the next iteration without restarting."
+# Line 113: "...read and applied by loop scripts each iteration"
+# EXPECTED (per spec): meta.json is hot-reloaded, loop-plan.json is startup-only
+# ACTUAL: README says loop-plan.json is hot-reloaded → INCORRECT
+# Additional finding: commit 98a7adb68 actually REGRESSED line 109:
+#   Before: "hot-reloaded each iteration from `meta.json`" (correct)
+#   After:  "hot-reloaded each iteration. Changes to `loop-plan.json`..." (wrong)
+# Latest review commit 906818071 confirms this finding.
+# RESULT: FAIL (open TODO.md item)
+```
+
+### Notes
+- SPEC.md FAIL from session 2 is now resolved: loopSettings added at lines 3654-3669 ✓
+- The README.md "fix" in commit 98a7adb68 introduced a regression at line 109 — the original text correctly referenced meta.json for hot-reload but the fix removed that reference
+- No new bugs; the README.md issue was already tracked in TODO.md as the open `[review] Gate 9` item
+- Important: pipeline.yml must be at `.aloop/pipeline.yml`, NOT project root; this distinction is correct in README.md line 93
