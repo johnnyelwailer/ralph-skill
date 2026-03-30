@@ -23,7 +23,7 @@ Acceptance criteria:
 
 - [x] [review] Gate 2/3: `process-requests.ts:941-943` — `repo ? createAdapter(...) : undefined` conditional has zero test coverage. Add tests for: (a) `repo` present → adapter created and passed into `scanDeps.adapter`, `prLifecycleDeps.adapter`, and `dispatchDeps.adapter`; (b) no `repo` → all three adapter slots are `undefined`. (Same finding as 2026-03-27 review Gate 2, re-opened after code was re-added.) (priority: high)
 
-- [ ] [review] Add adapter-branch tests for orchestrate.ts dual-path functions: `applyTriageResultsToIssue`, `resolveSpecQuestionIssues`, `mergePr`, `flagForHuman`, and `processPrLifecycle` each have `if (deps.adapter) ... else { execGh }` paths with zero test coverage for the adapter branch. Add tests covering adapter path for each. (priority: high)
+- [x] [review] Add adapter-branch tests for orchestrate.ts dual-path functions: `applyTriageResultsToIssue`, `resolveSpecQuestionIssues`, `mergePr`, `flagForHuman`, and `processPrLifecycle` each have `if (deps.adapter) ... else { execGh }` paths with zero test coverage for the adapter branch. Add tests covering adapter path for each. (priority: high)
 
 - [x] Fix: `resolveSpecQuestionIssues` call at orchestrate.ts:5496 does not pass `adapter` from `deps` — the function accepts `adapter` in its deps type but the call site omits it, so the adapter branch is never reached in production. Add `adapter: deps.adapter` to the call. (priority: high)
 

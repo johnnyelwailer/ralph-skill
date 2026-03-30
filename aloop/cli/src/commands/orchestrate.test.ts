@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import path from 'node:path';
 import os from 'node:os';
 import { mkdtemp, mkdir } from 'node:fs/promises';
+import type { OrchestratorAdapter } from '../lib/adapter.js';
 import {
   orchestrateCommand,
   orchestrateCommandWithDeps,
@@ -2667,6 +2668,55 @@ function makeOrchestratorState(issueOverrides: Partial<OrchestratorIssue>[] = []
     created_at: '2026-03-09T10:00:00.000Z',
     updated_at: '2026-03-09T10:00:00.000Z',
   };
+}
+
+interface MockAdapterCall {
+  method: string;
+  args: unknown[];
+}
+
+function createMockAdapter(overrides: Partial<OrchestratorAdapter> = {}): OrchestratorAdapter & { calls: MockAdapterCall[] } {
+  const calls: MockAdapterCall[] = [];
+  const base: OrchestratorAdapter = {
+    createIssue: async (title: string, body: string, labels: string[]) => {
+      calls.push({ method: 'createIssue', args: [title, body, labels] });
+      return { number: 1, url: 'https://github.com/owner/repo/issues/1' };
+    },
+    updateIssue: async (number: number, update: Record<string, unknown>) => {
+      calls.push({ method: 'updateIssue', args: [number, update] });
+    },
+    closeIssue: async (number: number) => {
+      calls.push({ method: 'closeIssue', args: [number] });
+    },
+    getIssue: async (number: number) => {
+      calls.push({ method: 'getIssue', args: [number] });
+      return { number, title: 'Test', body: '', state: 'open', labels: [] };
+    },
+    listIssues: async (filters: Record<string, unknown>) => {
+      calls.push({ method: 'listIssues', args: [filters] });
+      return [];
+    },
+    postComment: async (issueNumber: number, body: string) => {
+      calls.push({ method: 'postComment', args: [issueNumber, body] });
+    },
+    listComments: async (issueNumber: number, since?: string) => {
+      calls.push({ method: 'listComments', args: [issueNumber, since] });
+      return [];
+    },
+    createPR: async (title: string, body: string, head: string, base: string) => {
+      calls.push({ method: 'createPR', args: [title, body, head, base] });
+      return { number: 1, url: 'https://github.com/owner/repo/pull/1' };
+    },
+    mergePR: async (number: number, method: string) => {
+      calls.push({ method: 'mergePR', args: [number, method] });
+    },
+    getPRStatus: async (number: number) => {
+      calls.push({ method: 'getPRStatus', args: [number] });
+      return { mergeable: true, ci_status: 'success' as const, reviews: [] };
+    },
+    ...overrides,
+  };
+  return { ...base, calls };
 }
 
 describe('checkPrGates', () => {
@@ -6364,5 +6414,306 @@ describe('prompt content verification', () => {
       reviewInstructions.includes('## Verification'),
       'PR_DESCRIPTION.md format must include Verification section',
     );
+  });
+});
+
+describe('adapter-branch tests', () => {
+  describe('applyTriageResultsToIssue adapter path', () => {
+    it('uses adapter.postComment and adapter.updateIssue for needs_clarification', async () => {
+      const adapter = createMockAdapter();
+      const issue = makeIssue({
+        number: 42,
+        processed_comment_ids: [],
+        blocked_on_human: false,
+        triage_log: [],
+      });
+      const comments: TriageComment[] = [
+        { id: 10, author: 'alice', body: 'hmm maybe we should switch to polling?', context: 'issue', author_association: 'COLLABORATOR' },
+      ];
+      const deps: TriageDeps = {
+        execGh: async () => { throw new Error('execGh should not be called'); },
+        now: () => new Date('2026-03-14T12:00:00.000Z'),
+        adapter,
+      };
+
+      const entries = await applyTriageResultsToIssue(issue, comments, 'owner/repo', deps);
+      assert.equal(entries.length, 1);
+      assert.equal(entries[0].classification, 'needs_clarification');
+      assert.equal(entries[0].action_taken, 'post_reply_and_block');
+      assert.equal(issue.blocked_on_human, true);
+
+      const postCalls = adapter.calls.filter((c) => c.method === 'postComment');
+      assert.equal(postCalls.length, 1);
+      assert.equal(postCalls[0].args[0], 42);
+
+      const updateCalls = adapter.calls.filter((c) => c.method === 'updateIssue');
+      assert.equal(updateCalls.length, 1);
+      assert.equal(updateCalls[0].args[0], 42);
+      assert.deepStrictEqual(updateCalls[0].args[1], { labels_add: ['aloop/blocked-on-human'] });
+    });
+
+    it('uses adapter.updateIssue to unblock on actionable response', async () => {
+      const adapter = createMockAdapter();
+      const issue = makeIssue({
+        number: 43,
+        blocked_on_human: true,
+        processed_comment_ids: [],
+        triage_log: [],
+        child_session: 'proj-issue-43-20260314-120000',
+      });
+      const comments: TriageComment[] = [
+        { id: 20, author: 'bob', body: 'Please switch to WebSockets for updates.', context: 'issue', author_association: 'COLLABORATOR' },
+      ];
+      const writtenFiles: Record<string, string> = {};
+      const tempDir = await mkdtemp(path.join(os.tmpdir(), 'aloop-triage-adapter-'));
+      const aloopRoot = path.join(tempDir, '.aloop');
+      const deps: TriageDeps = {
+        execGh: async () => { throw new Error('execGh should not be called'); },
+        now: () => new Date('2026-03-14T12:05:00.000Z'),
+        writeFile: async (p, data) => {
+          await mkdir(path.dirname(p), { recursive: true });
+          writtenFiles[p] = data;
+        },
+        aloopRoot,
+        adapter,
+      };
+
+      const entries = await applyTriageResultsToIssue(issue, comments, 'owner/repo', deps);
+      assert.equal(entries.length, 1);
+      assert.equal(entries[0].action_taken, 'unblock_and_steering');
+      assert.equal(issue.blocked_on_human, false);
+
+      const updateCalls = adapter.calls.filter((c) => c.method === 'updateIssue');
+      assert.equal(updateCalls.length, 1);
+      assert.deepStrictEqual(updateCalls[0].args[1], { labels_remove: ['aloop/blocked-on-human'] });
+    });
+
+    it('uses adapter.postComment for question classification', async () => {
+      const adapter = createMockAdapter();
+      const issue = makeIssue({
+        number: 44,
+        blocked_on_human: false,
+        processed_comment_ids: [],
+        triage_log: [],
+      });
+      const comments: TriageComment[] = [
+        { id: 21, author: 'alice', body: 'What is the expected response shape?', context: 'issue', author_association: 'COLLABORATOR' },
+      ];
+      const deps: TriageDeps = {
+        execGh: async () => { throw new Error('execGh should not be called'); },
+        now: () => new Date('2026-03-14T12:06:00.000Z'),
+        adapter,
+      };
+
+      const entries = await applyTriageResultsToIssue(issue, comments, 'owner/repo', deps);
+      assert.equal(entries.length, 1);
+      assert.equal(entries[0].action_taken, 'question_answered');
+
+      const postCalls = adapter.calls.filter((c) => c.method === 'postComment');
+      assert.equal(postCalls.length, 1);
+      assert.equal(postCalls[0].args[0], 44);
+    });
+  });
+
+  describe('resolveSpecQuestionIssues adapter path', () => {
+    it('auto-resolves low-risk spec-question using adapter', async () => {
+      const adapter = createMockAdapter({
+        listIssues: async () => [{ number: 12, title: 'Naming convention for status enum', state: 'open' }],
+        getIssue: async (number: number) => ({
+          number,
+          title: 'Naming convention for status enum',
+          body: 'Minor naming only',
+          state: 'open',
+          labels: ['aloop/spec-question'],
+        }),
+      });
+      const stats = await resolveSpecQuestionIssues(
+        { autonomy_level: 'balanced' } as OrchestratorState,
+        'owner/repo',
+        '/session',
+        {
+          execGh: async () => { throw new Error('execGh should not be called'); },
+          appendLog: () => undefined,
+          now: () => new Date('2026-03-15T12:00:00.000Z'),
+          adapter,
+        },
+      );
+      assert.equal(stats.processed, 1);
+      assert.equal(stats.autoResolved, 1);
+
+      const postCalls = adapter.calls.filter((c) => c.method === 'postComment');
+      assert.equal(postCalls.length, 1);
+      assert.equal(postCalls[0].args[0], 12);
+
+      const updateCalls = adapter.calls.filter((c) => c.method === 'updateIssue');
+      assert.equal(updateCalls.length, 1);
+      assert.equal(updateCalls[0].args[0], 12);
+      const updateArg = updateCalls[0].args[1] as { labels_add?: string[]; labels_remove?: string[] };
+      assert.ok(updateArg.labels_add?.includes('aloop/auto-resolved'));
+      assert.ok(updateArg.labels_remove?.includes('aloop/blocked-on-human'));
+
+      const closeCalls = adapter.calls.filter((c) => c.method === 'closeIssue');
+      assert.equal(closeCalls.length, 1);
+      assert.equal(closeCalls[0].args[0], 12);
+    });
+
+    it('blocks on human override using adapter', async () => {
+      const adapter = createMockAdapter({
+        listIssues: async () => [{ number: 99, title: 'Reopened question', state: 'open' }],
+        getIssue: async (number: number) => ({
+          number,
+          title: 'Reopened question',
+          body: 'User reopened this issue',
+          state: 'open',
+          labels: ['aloop/spec-question', 'aloop/auto-resolved'],
+        }),
+      });
+      const stats = await resolveSpecQuestionIssues(
+        { autonomy_level: 'autonomous' } as OrchestratorState,
+        'owner/repo',
+        '/session',
+        {
+          execGh: async () => { throw new Error('execGh should not be called'); },
+          appendLog: () => undefined,
+          now: () => new Date('2026-03-15T12:00:00.000Z'),
+          adapter,
+        },
+      );
+      assert.equal(stats.processed, 1);
+      assert.equal(stats.userOverrides, 1);
+
+      const updateCalls = adapter.calls.filter((c) => c.method === 'updateIssue');
+      assert.ok(updateCalls.length >= 1);
+      const addLabelCall = updateCalls.find((c) => {
+        const arg = c.args[1] as { labels_add?: string[] };
+        return arg.labels_add?.includes('aloop/blocked-on-human');
+      });
+      assert.ok(addLabelCall, 'should add aloop/blocked-on-human label');
+    });
+  });
+
+  describe('mergePr adapter path', () => {
+    it('uses adapter.mergePR on success', async () => {
+      const adapter = createMockAdapter();
+      const deps = createMockPrDeps({
+        execGh: async () => { throw new Error('execGh should not be called'); },
+        adapter,
+      });
+      const result = await mergePr(100, 'owner/repo', deps);
+      assert.equal(result.merged, true);
+      assert.equal(result.pr_number, 100);
+
+      const mergeCalls = adapter.calls.filter((c) => c.method === 'mergePR');
+      assert.equal(mergeCalls.length, 1);
+      assert.equal(mergeCalls[0].args[0], 100);
+      assert.equal(mergeCalls[0].args[1], 'squash');
+    });
+
+    it('returns merged false with error when adapter.mergePR throws', async () => {
+      const adapter = createMockAdapter({
+        mergePR: async () => { throw new Error('Merge conflict'); },
+      });
+      const deps = createMockPrDeps({
+        execGh: async () => { throw new Error('execGh should not be called'); },
+        adapter,
+      });
+      const result = await mergePr(100, 'owner/repo', deps);
+      assert.equal(result.merged, false);
+      assert.ok(result.error?.includes('Merge conflict'));
+    });
+  });
+
+  describe('flagForHuman adapter path', () => {
+    it('uses adapter.postComment and adapter.updateIssue', async () => {
+      const adapter = createMockAdapter();
+      const deps = createMockPrDeps({
+        execGh: async () => { throw new Error('execGh should not be called'); },
+        adapter,
+      });
+      const issue: OrchestratorIssue = { number: 42, title: 'Test', wave: 1, state: 'pr_open', child_session: 's1', pr_number: 100, depends_on: [] };
+      await flagForHuman(issue, 'owner/repo', 'test reason', deps);
+
+      const postCalls = adapter.calls.filter((c) => c.method === 'postComment');
+      assert.equal(postCalls.length, 1);
+      assert.equal(postCalls[0].args[0], 42);
+      assert.ok(String(postCalls[0].args[1]).includes('test reason'));
+
+      const updateCalls = adapter.calls.filter((c) => c.method === 'updateIssue');
+      assert.equal(updateCalls.length, 1);
+      assert.deepStrictEqual(updateCalls[0].args[1], { labels_add: ['aloop/blocked-on-human'] });
+    });
+  });
+
+  describe('processPrLifecycle adapter path', () => {
+    it('uses adapter.postComment for flag-for-human when no agent reviewer configured', async () => {
+      const adapter = createMockAdapter();
+      const state = makeOrchestratorState([{ number: 42, pr_number: 100, state: 'pr_open' }]);
+      const deps = createMockPrDeps({
+        execGh: async (args) => {
+          if (args.includes('mergeable,mergeStateStatus')) {
+            return { stdout: JSON.stringify({ mergeable: 'MERGEABLE' }), stderr: '' };
+          }
+          if (args.includes('checks')) {
+            return { stdout: JSON.stringify([
+              { name: 'build', state: 'COMPLETED', conclusion: 'SUCCESS' },
+            ]), stderr: '' };
+          }
+          if (args.includes('diff')) {
+            return { stdout: 'diff content', stderr: '' };
+          }
+          return { stdout: '', stderr: '' };
+        },
+        adapter,
+      });
+
+      const result = await processPrLifecycle(state.issues[0], state, '/state.json', '/session', 'owner/repo', deps);
+      assert.equal(result.action, 'flagged_for_human');
+
+      const postCalls = adapter.calls.filter((c) => c.method === 'postComment');
+      assert.ok(postCalls.length >= 1, 'adapter.postComment should be called when flagging for human');
+      const humanFlagComment = postCalls.find((c) => String(c.args[1]).includes('human'));
+      assert.ok(humanFlagComment, 'should post comment about human review');
+
+      const updateCalls = adapter.calls.filter((c) => c.method === 'updateIssue');
+      assert.ok(updateCalls.length >= 1, 'adapter.updateIssue should add blocked-on-human label');
+      const labelCall = updateCalls.find((c) => {
+        const arg = c.args[1] as { labels_add?: string[] };
+        return arg.labels_add?.includes('aloop/blocked-on-human');
+      });
+      assert.ok(labelCall, 'should add aloop/blocked-on-human label via adapter');
+    });
+
+    it('uses adapter.postComment when review requests changes', async () => {
+      const adapter = createMockAdapter();
+      const state = makeOrchestratorState([{ number: 42, pr_number: 100, state: 'pr_open' }]);
+      const deps = createMockPrDeps({
+        execGh: async (args) => {
+          if (args.includes('mergeable,mergeStateStatus')) {
+            return { stdout: JSON.stringify({ mergeable: 'MERGEABLE' }), stderr: '' };
+          }
+          if (args.includes('checks')) {
+            return { stdout: JSON.stringify([{ name: 'ci', state: 'COMPLETED', conclusion: 'SUCCESS' }]), stderr: '' };
+          }
+          if (args.includes('diff')) {
+            return { stdout: 'diff', stderr: '' };
+          }
+          return { stdout: '', stderr: '' };
+        },
+        invokeAgentReview: async (prNum) => ({
+          pr_number: prNum,
+          verdict: 'request-changes' as const,
+          summary: 'Missing test coverage',
+        }),
+        adapter,
+      });
+
+      const result = await processPrLifecycle(state.issues[0], state, '/state.json', '/session', 'owner/repo', deps);
+      assert.equal(result.action, 'rejected');
+
+      const postCalls = adapter.calls.filter((c) => c.method === 'postComment');
+      assert.ok(postCalls.length >= 1, 'adapter.postComment should be called for review feedback');
+      const reviewComment = postCalls.find((c) => String(c.args[1]).includes('Missing test coverage'));
+      assert.ok(reviewComment, 'review feedback should be posted via adapter');
+    });
   });
 });
