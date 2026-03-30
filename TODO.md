@@ -5,7 +5,7 @@
 ### In Progress
 
 - [x] [qa/P1] Fix Header.tsx branch coverage (currently 87.61%, now 90.26%, need ≥90%): added tests for 4 uncovered branches — (1) `f.status` non-string → `'UNTESTED'` fallback, (2) `stuckCount > 0` red styling in hover card, (3) `avgDuration && sessionCost > 0` separator in stats span, (4) `updatedAt` empty while not loading → empty string. (priority: high)
-- [ ] [qa/P1] Header stories missing from story-screenshots.spec.ts: `Header.stories.tsx` has 7 stories (`Default`, `Loading`, `Disconnected`, `Stopped`, `NoProvider`, `HighBudgetUsage`, `QABadgeDefault`) but `e2e/story-screenshots.spec.ts` only covers 23 stories (Sidebar/SessionDetail/DocsPanel/MainPanel). Add Header story IDs and proof-artifact filenames. (priority: high)
+- [x] [qa/P1] Header stories missing from story-screenshots.spec.ts: `Header.stories.tsx` has 7 stories (`Default`, `Loading`, `Disconnected`, `Stopped`, `NoProvider`, `HighBudgetUsage`, `QABadgeDefault`) but `e2e/story-screenshots.spec.ts` only covered 23 stories (Sidebar/SessionDetail/DocsPanel/MainPanel). Added Header story IDs and proof-artifact filenames. (priority: high)
 - [ ] [qa/P2] `layout-header--qa-badge-default` story renders "No Preview" in static Storybook build: story appears in index.json (type=story, exportName=QABadgeDefault) but #storybook-root is empty when loaded in iframe. Other 6 Header stories render correctly. Investigate and fix. (priority: medium)
 
 - [x] Extract Header component from AppView.tsx (priority: critical)

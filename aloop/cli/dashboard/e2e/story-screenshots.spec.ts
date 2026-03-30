@@ -42,6 +42,15 @@ const stories: StoryDef[] = [
   { id: 'layout-mainpanel--not-running', file: 'mainpanel-notrunning.png' },
   { id: 'layout-mainpanel--multiple-iterations', file: 'mainpanel-multipleiterations.png' },
   { id: 'layout-mainpanel--empty-session', file: 'mainpanel-emptysession.png' },
+
+  // Header stories (7)
+  { id: 'layout-header--default', file: 'header-default.png' },
+  { id: 'layout-header--loading', file: 'header-loading.png' },
+  { id: 'layout-header--disconnected', file: 'header-disconnected.png' },
+  { id: 'layout-header--stopped', file: 'header-stopped.png' },
+  { id: 'layout-header--no-provider', file: 'header-noprovider.png' },
+  { id: 'layout-header--high-budget-usage', file: 'header-highbudgetusage.png' },
+  { id: 'layout-header--qa-badge-default', file: 'header-qabadgedefault.png' },
 ];
 
 test.beforeAll(async () => {
