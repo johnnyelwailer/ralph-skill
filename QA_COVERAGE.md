@@ -18,3 +18,9 @@
 | OrchestratorIssueState 'review' member | 2026-03-28 | 8a2efa4 | PASS | TS2367 gone; `tsc --noEmit` reports zero errors in non-test files; process-requests.ts:551 comparison valid |
 | applyDecompositionPlan dependency body injection | 2026-03-28 | 8a2efa4 | FAIL | Suite 60 subtests 5-6 fail: "Depends on #X, #Y" not added to issue bodies; regression from d49686908; bug filed |
 | applyEstimateResults complexity/priority labels | 2026-03-28 | 8a2efa4 | FAIL | Suite 61 all 4 subtests fail: complexity/M,L,S and P1 labels not applied via execGh; EstimateResult type missing 'priority' field (TS2353); regression from d49686908; bug filed |
+| TypeScript build (npm run build) | 2026-03-30 | e016e1a | PASS | Build clean exit 0 (iter 5) |
+| adapter.test.ts unit tests | 2026-03-30 | e016e1a | PASS | 35/35 pass (unchanged from iter 4) |
+| process-requests.ts makeAdapterForRepo conditional | 2026-03-30 | e016e1a | PASS | 18/18 tests pass (+4 new: repo present→adapter created+threaded; repo null→all slots undefined) |
+| orchestrate.ts adapter-branch coverage | 2026-03-30 | e016e1a | PASS | 329/356, 27 fail (+10 new adapter-branch tests all pass: applyTriageResultsToIssue, resolveSpecQuestionIssues, mergePr, flagForHuman, processPrLifecycle) |
+| resolveSpecQuestionIssues adapter fix | 2026-03-30 | 77bc077 | PASS | adapter path reachable in production (adapter: deps.adapter now passed at call site); confirmed by adapter-path test passing |
+| tsc --noEmit (non-test files) | 2026-03-30 | e016e1a | PASS | Zero type errors on non-test files |

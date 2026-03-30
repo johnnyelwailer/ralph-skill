@@ -14,10 +14,12 @@ Acceptance criteria:
 
 ## Current Phase: Migration
 
-### QA — 2026-03-30 (iter 4): PASS
-- Build clean, adapter.test 35/35, process-requests 14/14
-- orchestrate.test 319/346 — exactly matches pre-regression baseline (27 failures)
-- No new bugs; all d49686908 regressions resolved
+### QA — 2026-03-30 (iter 5): PASS
+- Build clean, adapter.test 35/35, process-requests 18/18 (+4 new makeAdapterForRepo tests), orchestrate 329/356
+- 10 new adapter-branch tests in orchestrate.test.ts (applyTriageResultsToIssue, resolveSpecQuestionIssues, mergePr, flagForHuman, processPrLifecycle) — all pass
+- resolveSpecQuestionIssues adapter fix confirmed: adapter path now reachable in production
+- Failure count stable at 27 (pre-regression baseline)
+- No new bugs
 
 ### In Progress
 

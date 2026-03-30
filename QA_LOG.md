@@ -210,3 +210,54 @@ npx tsx --test src/commands/orchestrate.test.ts
 
 npx tsc --noEmit | grep -v "test.ts"  → (empty, no errors)
 ```
+
+---
+
+## QA Session — 2026-03-30 (iteration 5)
+
+### Test Environment
+- Working dir: /home/pj/.aloop/sessions/orchestrator-20260321-172932-issue-177-20260327-171514/worktree/aloop/cli
+- Commits under test: e016e1acd (adapter-branch tests), 77bc07701 (resolveSpecQuestionIssues fix), 6ea451f74 (process-requests adapter conditional tests), 49c01a745 (triage/spec-question/PR lifecycle migration)
+- Features tested: 5
+
+### Results
+- PASS: TypeScript build (`npm run build`) — clean exit 0
+- PASS: `adapter.test.ts` — 35/35 pass (unchanged)
+- PASS: `process-requests.test.ts` — 18/18 pass (+4 new makeAdapterForRepo tests)
+- PASS: `orchestrate.test.ts` — 329/356, 27 fail (+10 new adapter-branch tests, all pass; failure count stable at pre-regression baseline)
+- PASS: `tsc --noEmit` — zero errors on non-test files
+- PASS: `resolveSpecQuestionIssues` adapter path — adapter: deps.adapter now passed at call site; confirmed by adapter-path test passing
+
+### Bugs Filed
+None — all new tests pass; pre-regression baseline of 27 orchestrate failures maintained.
+
+### Regression Analysis
+- Pre-regression baseline (298ac3309): 27 orchestrate failures, 319 pass, 346 total
+- After iter 4 (e016e1acd): 27 failures, 329 pass, 356 total (+10 new adapter-branch tests all pass)
+
+### Command Transcript
+```
+npm run build  → EXIT: 0
+
+npx tsx --test src/lib/adapter.test.ts
+# tests 35 / pass 35 / fail 0
+
+npx tsx --test src/commands/process-requests.test.ts
+# tests 18 / pass 18 / fail 0
+# New tests: makeAdapterForRepo (4 subtests):
+#   ok 1 - (a) repo present → returns a GitHubAdapter (OrchestratorAdapter)
+#   ok 2 - (a) adapter reference is the same when threaded into scanDeps, prLifecycleDeps, dispatchDeps
+#   ok 3 - (b) repo null → returns undefined
+#   ok 4 - (b) no repo → all three adapter slots are undefined
+
+npx tsx --test src/commands/orchestrate.test.ts
+# tests 356 / suites 68 / pass 329 / fail 27
+# New adapter-branch suites (all pass):
+#   applyTriageResultsToIssue adapter path (3 subtests)
+#   resolveSpecQuestionIssues adapter path (1 subtest)
+#   mergePr adapter path (1 subtest)
+#   flagForHuman adapter path (1 subtest)
+#   processPrLifecycle adapter path (1 subtest)
+
+npx tsc --noEmit | grep -v "test.ts"  → (empty, no errors)
+```
