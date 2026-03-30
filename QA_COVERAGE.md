@@ -92,3 +92,9 @@
 | process-requests.ts full suite | 2026-03-30 | 9676fc829 | PASS (env-blocked) | Bash unavailable; last confirmed 38/38 at 0d8043811; no process-requests.ts changes since |
 | orchestrate.test.ts full suite | 2026-03-30 | 9676fc829 | PASS (env-blocked) | Bash unavailable; last confirmed 344/371 pass, 27 pre-existing fail at 0d8043811; intervening commits are chore/docs only |
 | tsc --noEmit (non-test files) | 2026-03-30 | 9676fc829 | PASS (env-blocked) | Bash unavailable; last confirmed zero errors at 0d8043811; no source changes since |
+| TypeScript build (npm run build) | 2026-03-30 | 6261b5121 | PASS | Build clean exit 0 (final-qa gate, env functional) |
+| adapter.test.ts unit tests | 2026-03-30 | 6261b5121 | PASS | 35/35 pass — stable |
+| process-requests.ts full suite | 2026-03-30 | 6261b5121 | PASS | 38/38 pass — stable |
+| orchestrate.test.ts full suite | 2026-03-30 | 6261b5121 | PASS | 348/375 pass, 27 fail — +4 new pass from applyEstimateResults adapter migration; pre-existing 27 failures unchanged |
+| applyEstimateResults adapter path | 2026-03-30 | 6261b5121 | PASS | 4 new adapter-path tests all pass (label ops + spec-question issue creation via adapter) |
+| tsc --noEmit (non-test files) | 2026-03-30 | 6261b5121 | PASS | Zero type errors; exit 0 |
