@@ -5,10 +5,6 @@ import { TooltipProvider } from '@/components/ui/tooltip';
 import { Header, QACoverageBadge } from './Header';
 import type { ConnectionStatus } from '@/lib/types';
 
-vi.mock('@/hooks/useCost', () => ({
-  useCost: () => ({ sessionCost: 0, totalCost: null, budgetCap: null, budgetUsedPercent: null, isLoading: false, error: null }),
-}));
-
 const defaultHeaderProps: React.ComponentProps<typeof Header> = {
   sessionName: 'test-session',
   isRunning: true,
@@ -134,8 +130,9 @@ describe('Header', () => {
 
   it('renders elapsed timer when startedAt is provided', () => {
     renderHeader({ startedAt: '2026-01-01T00:00:00Z' });
-    const elapsedElements = screen.getAllByText(/\d/);
-    expect(elapsedElements.length).toBeGreaterThan(0);
+    // ElapsedTimer renders formatted time like "0s", "1m 30s", etc.
+    const timerEl = screen.getAllByText(/\d+s/).find(el => /^\d+[smh](\s\d+s)?$/.test(el.textContent ?? ''));
+    expect(timerEl).toBeTruthy();
   });
 
   it('renders session cost in hover card', async () => {
@@ -145,6 +142,7 @@ describe('Header', () => {
     await user.hover(iterSpan);
     await waitFor(() => {
       expect(screen.getByText(/Session cost:/)).toBeInTheDocument();
+      expect(screen.getByText('$2.5000')).toBeInTheDocument();
     });
   });
 });

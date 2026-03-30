@@ -11,7 +11,7 @@ import { CostDisplay } from '@/components/progress/CostDisplay';
 import { ElapsedTimer } from '@/components/shared/ElapsedTimer';
 import { PhaseBadge } from '@/components/shared/PhaseBadge';
 import { StatusDot, ConnectionIndicator } from '@/components/shared/StatusDot';
-import { isRecord, str } from '@/lib/activityLogHelpers';
+import { isRecord } from '@/lib/activityLogHelpers';
 import type { QACoverageFeature, QACoverageViewData, ConnectionStatus } from '@/lib/types';
 import { formatTime } from '@/lib/format';
 

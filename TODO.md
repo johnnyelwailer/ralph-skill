@@ -7,11 +7,11 @@
 - [x] [review] Gate 2: `Sidebar.test.tsx` — 4 cost API branch tests now assert rendered output via tooltip (touch-mode): `opencode_unavailable` → `Cost: unavailable` in tooltip; `string '2.50'` → `$2.5000` in card; `null` and `rejection` → no `Cost:` in tooltip. (priority: high)
 
 - [x] [review] Gate 2: `Header.test.tsx:94-97` — `renders connection indicator` only asserts `data-testid="session-header-grid"` exists; this is the outer wrapper div, not the ConnectionIndicator component. A broken ConnectionIndicator wouldn't fail this test. Rewrite to assert ConnectionIndicator renders — e.g. locate the indicator element by its `data-testid` or accessible label and check its content/class matches `connectionStatus`. (priority: high)
-- [ ] [review] Gate 2: `Header.test.tsx:135-139` — `renders elapsed timer when startedAt is provided` asserts `expect(screen.getAllByText(/\d/).length).toBeGreaterThan(0)` — matches any digit anywhere on the page (iteration counter, progress %, etc.). ElapsedTimer could be completely absent and this test still passes. Rewrite to assert the elapsed time element specifically — e.g. locate by the timer's test id or the clock icon's parent span and check it contains a formatted time string like `/\d+[hms]/` or similar. (priority: high)
-- [ ] [review] Gate 2: `Header.test.tsx:141-149` — `renders session cost in hover card` hovers and asserts `'Session cost:'` label exists but never checks the value. `sessionCost: 2.5` should render `$2.5000` in the hover card but this is never verified. Add assertion: `expect(screen.getByText(/Session cost:/)).toBeInTheDocument()` AND `expect(screen.getByText(/\$2\.5000/)).toBeInTheDocument()`. (priority: high)
+- [x] [review] Gate 2: `Header.test.tsx:135-139` — rewrote elapsed timer test to match formatted time pattern `/\d+s/` instead of any digit. (priority: high)
+- [x] [review] Gate 2: `Header.test.tsx:141-149` — added assertion for `$2.5000` cost value in hover card alongside existing `Session cost:` label check. (priority: high)
 - [ ] [review] Gate 3: `Header.tsx` branch coverage 87.61% — below the ≥90% threshold required for new modules. Uncovered branches: line 43 (`f.status` non-string → `'UNTESTED'` fallback in `parseQACoveragePayload`), line 211 (`stuckCount > 0` red styling in hover card), line 227 (`avgDuration && sessionCost > 0` separator rendering), line 275 (`updatedAt` empty while not loading → empty string). Add tests for each branch. (priority: high)
-- [ ] [review] Gate 4: `Header.tsx:14` — `str` is imported from `@/lib/activityLogHelpers` but never referenced anywhere in Header.tsx. Dead import — delete it (Constitution rule 13). (priority: medium)
-- [ ] [review] Gate 4: `Header.test.tsx:8-10` — `vi.mock('@/hooks/useCost', ...)` mocks a hook that Header.tsx does not import or call (all cost values are passed as props). Dead mock — remove it. (priority: low)
+- [x] [review] Gate 4: `Header.tsx:14` — deleted dead import `str` from `@/lib/activityLogHelpers`. (priority: medium)
+- [x] [review] Gate 4: `Header.test.tsx:8-10` — removed dead `vi.mock('@/hooks/useCost', ...)` mock that Header.tsx does not import. (priority: low)
 
 ### Up Next
 
