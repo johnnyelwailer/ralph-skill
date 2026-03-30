@@ -19,6 +19,7 @@ finalizer:
   - PROMPT_final-review.md
   - PROMPT_final-qa.md
   - PROMPT_proof.md
+  - PROMPT_cleanup.md
 
 # Orchestrator event→prompt mapping.
 # process-requests scans issue state, matches filters, queues the prompt.
@@ -41,11 +42,3 @@ orchestrator_events:
       refined: true
       dor_validated: false
     result_pattern: "estimate-result-{issue_number}.json"
-
-  cr_analysis:
-    prompt: PROMPT_orch_cr_analysis.md
-    batch: 2
-    filter:
-      is_change_request: true
-      cr_spec_updated: false
-    result_pattern: "cr-analysis-result-{issue_number}.json"
