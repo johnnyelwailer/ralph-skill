@@ -1317,6 +1317,7 @@ export async function orchestrateCommandWithDeps(
         repo: filterRepo ?? undefined,
         sessionId,
         sessionDir,
+        adapter: deps.adapter,
       });
     } catch {
       // Malformed response — skip; scan agent will retry
@@ -2467,6 +2468,7 @@ export async function applyEstimateResults(
     repo?: string;
     sessionId?: string;
     sessionDir?: string;
+    adapter?: OrchestratorAdapter;
   },
 ): Promise<ApplyEstimateResultsOutcome> {
   const outcome: ApplyEstimateResultsOutcome = { updated: [], blocked: [], budgetExceeded: [] };
@@ -2486,22 +2488,28 @@ export async function applyEstimateResults(
       if (issue.status === 'Needs refinement') {
         issue.status = 'Ready';
       }
-      if (deps?.execGh && deps.repo) {
-        await syncIssueProjectStatus(result.issue_number, deps.repo, 'Ready', {
-          execGh: deps.execGh,
-          appendLog: deps.appendLog,
-          now: deps.now,
-          sessionDir: deps.sessionDir,
-        });
+      if ((deps?.adapter || deps?.execGh) && deps.repo) {
+        if (deps.execGh) {
+          await syncIssueProjectStatus(result.issue_number, deps.repo, 'Ready', {
+            execGh: deps.execGh,
+            appendLog: deps.appendLog,
+            now: deps.now,
+            sessionDir: deps.sessionDir,
+          });
+        }
         const labelsToAdd: string[] = [];
         if (result.complexity_tier) labelsToAdd.push(`complexity/${result.complexity_tier}`);
         if (result.priority) labelsToAdd.push(result.priority);
         if (labelsToAdd.length > 0) {
-          await deps.execGh([
-            'issue', 'edit', String(result.issue_number),
-            '--repo', deps.repo,
-            ...labelsToAdd.flatMap((l) => ['--add-label', l]),
-          ]);
+          if (deps.adapter) {
+            await deps.adapter.updateIssue(result.issue_number, { labels_add: labelsToAdd });
+          } else {
+            await deps.execGh!([
+              'issue', 'edit', String(result.issue_number),
+              '--repo', deps.repo,
+              ...labelsToAdd.flatMap((l) => ['--add-label', l]),
+            ]);
+          }
         }
       }
       outcome.updated.push(result.issue_number);
@@ -2546,15 +2554,23 @@ export async function applyEstimateResults(
       outcome.blocked.push(result.issue_number);
 
       // Create aloop/spec-question issues for each gap
-      if (result.gaps && result.gaps.length > 0 && deps?.execGhIssueCreate && deps.repo && deps.sessionId) {
+      if (result.gaps && result.gaps.length > 0 && (deps?.adapter || deps?.execGhIssueCreate) && deps.repo && deps.sessionId) {
         for (const gap of result.gaps) {
-          await deps.execGhIssueCreate(
-            deps.repo,
-            deps.sessionId,
-            `[spec-question] #${result.issue_number}: ${gap}`,
-            `Blocking issue #${result.issue_number} (${issue.title}).\n\n**DoR gap:** ${gap}\n\nThis spec-question must be resolved before the parent issue can be dispatched.`,
-            ['aloop/spec-question'],
-          );
+          if (deps.adapter) {
+            await deps.adapter.createIssue(
+              `[spec-question] #${result.issue_number}: ${gap}`,
+              `Blocking issue #${result.issue_number} (${issue.title}).\n\n**DoR gap:** ${gap}\n\nThis spec-question must be resolved before the parent issue can be dispatched.`,
+              ['aloop/spec-question'],
+            );
+          } else {
+            await deps.execGhIssueCreate!(
+              deps.repo,
+              deps.sessionId,
+              `[spec-question] #${result.issue_number}: ${gap}`,
+              `Blocking issue #${result.issue_number} (${issue.title}).\n\n**DoR gap:** ${gap}\n\nThis spec-question must be resolved before the parent issue can be dispatched.`,
+              ['aloop/spec-question'],
+            );
+          }
         }
       }
     }

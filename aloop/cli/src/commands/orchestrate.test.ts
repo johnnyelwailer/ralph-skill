@@ -6611,6 +6611,92 @@ describe('applyEstimateResults label enrichment', () => {
   });
 });
 
+describe('applyEstimateResults adapter path', () => {
+  it('uses adapter.updateIssue for label ops when DoR passes', async () => {
+    const adapter = createMockAdapter();
+    const state = makeState({
+      issues: [
+        makeIssue({ number: 10, wave: 1, status: 'Needs refinement', dor_validated: false }),
+      ],
+    });
+    const results: EstimateResult[] = [
+      { issue_number: 10, dor_passed: true, complexity_tier: 'M', priority: 'P1' },
+    ];
+    await applyEstimateResults(state, results, {
+      adapter,
+      repo: 'owner/repo',
+      execGh: async () => { throw new Error('execGh should not be called'); },
+    });
+    const updateCalls = adapter.calls.filter((c) => c.method === 'updateIssue');
+    assert.equal(updateCalls.length, 1);
+    assert.equal(updateCalls[0].args[0], 10);
+    assert.deepStrictEqual((updateCalls[0].args[1] as Record<string, unknown>).labels_add, ['complexity/M', 'P1']);
+  });
+
+  it('uses adapter.createIssue for spec-question when DoR fails with gaps', async () => {
+    const adapter = createMockAdapter();
+    const state = makeState({
+      issues: [
+        makeIssue({ number: 20, wave: 1, status: 'Needs refinement', dor_validated: false }),
+      ],
+    });
+    const results: EstimateResult[] = [
+      { issue_number: 20, dor_passed: false, gaps: ['Missing acceptance criteria', 'No approach defined'] },
+    ];
+    await applyEstimateResults(state, results, {
+      adapter,
+      repo: 'owner/repo',
+      sessionId: 'orch-session-1',
+      execGhIssueCreate: async () => { throw new Error('execGhIssueCreate should not be called'); },
+    });
+    const createCalls = adapter.calls.filter((c) => c.method === 'createIssue');
+    assert.equal(createCalls.length, 2);
+    assert.ok((createCalls[0].args[0] as string).includes('[spec-question] #20'));
+    assert.ok((createCalls[0].args[0] as string).includes('Missing acceptance criteria'));
+    assert.deepStrictEqual(createCalls[0].args[2], ['aloop/spec-question']);
+    assert.ok((createCalls[1].args[0] as string).includes('No approach defined'));
+  });
+
+  it('falls back to execGh for label ops when no adapter', async () => {
+    const ghCalls: string[][] = [];
+    const state = makeState({
+      issues: [
+        makeIssue({ number: 30, wave: 1, status: 'Needs refinement', dor_validated: false }),
+      ],
+    });
+    const results: EstimateResult[] = [
+      { issue_number: 30, dor_passed: true, complexity_tier: 'S' },
+    ];
+    await applyEstimateResults(state, results, {
+      execGh: async (args) => { ghCalls.push(args); return { stdout: '', stderr: '' }; },
+      repo: 'owner/repo',
+    });
+    const labelCall = ghCalls.find((c) => c.includes('--add-label'));
+    assert.ok(labelCall, 'Should call execGh for label ops');
+    assert.ok(labelCall.includes('complexity/S'));
+  });
+
+  it('falls back to execGhIssueCreate for spec-question when no adapter', async () => {
+    const created: string[] = [];
+    const state = makeState({
+      issues: [
+        makeIssue({ number: 40, wave: 1, status: 'Needs refinement', dor_validated: false }),
+      ],
+    });
+    const results: EstimateResult[] = [
+      { issue_number: 40, dor_passed: false, gaps: ['Unclear scope'] },
+    ];
+    await applyEstimateResults(state, results, {
+      execGhIssueCreate: async (_repo, _sessionId, title) => { created.push(title); return 999; },
+      repo: 'owner/repo',
+      sessionId: 'orch-fallback',
+    });
+    assert.equal(created.length, 1);
+    assert.ok(created[0].includes('[spec-question] #40'));
+    assert.ok(created[0].includes('Unclear scope'));
+  });
+});
+
 // --- Prompt content verification tests (ACs 9-10) ---
 
 describe('prompt content verification', () => {
