@@ -19,11 +19,6 @@
   - Uncovered branches at lines 83,100,159,215 — primarily context menu and olderOpen collapse
   - Add context menu tests: (a) right-click renders menu with `role="menu"` at correct position, (b) "Stop after iteration" calls `onStopSession(id, false)` and closes menu, (c) "Kill immediately" calls `onStopSession(id, true)` and closes menu, (d) "Copy session ID" calls `onCopySessionId(id)` and closes menu, (e) Escape key fires `setContextMenuSessionId(null)`.
 
-- [ ] [review] Gate 6: Capture Playwright screenshots for all story variants and commit to `proof-artifacts/`
-  - 6 Sidebar stories (Default, WithSelectedSession, WithOlderSessions, Collapsed, Desktop, Empty)
-  - 5 SessionDetail stories (Default, WithProviderHealth, ActivityPanelActive, ActivityCollapsed, WithRepoLink)
-  - 6 DocsPanel stories + 6 MainPanel stories (added batch 2)
-
 - [ ] Extract Header component from AppView.tsx (priority: critical)
   - `Header` (lines 233–362, ~130 LOC): session header with phase badge, iteration counter, elapsed timer, stop/resume buttons, steer input
   - Create `src/components/layout/Header.tsx`, `Header.test.tsx`, `Header.stories.tsx`
@@ -61,3 +56,7 @@
 - [x] Extract DocsPanel.tsx from SessionDetail.tsx (batch 2)
 - [x] Extract MainPanel.tsx (batch 2)
 - [x] Add DocsPanel.stories.tsx (6 stories) and MainPanel.stories.tsx (6 stories)
+- [x] [review] Gate 6: Capture Playwright screenshots for all story variants and commit to `proof-artifacts/`
+  - 6 Sidebar stories (Default, WithSelectedSession, WithOlderSessions, Collapsed, Desktop, Empty)
+  - 5 SessionDetail stories (Default, WithProviderHealth, ActivityPanelActive, ActivityCollapsed, WithRepoLink)
+  - 6 DocsPanel stories + 6 MainPanel stories (added batch 2)
