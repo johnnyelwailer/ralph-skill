@@ -408,33 +408,7 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
     const filePath = path.join(requestsDir, file);
     try {
       const result = JSON.parse(await readFile(filePath, 'utf8'));
-      const parentNum = result.issue_number ?? result.parent_issue_number;
-      const parent = state.issues.find((i: any) => i.number === parentNum);
-      const subIssues = result.sub_issues ?? [];
-      if (parent && subIssues.length > 0) {
-        let nextNum = Math.max(0, ...state.issues.map((i: any) => i.number ?? 0)) + 1;
-        for (const sub of subIssues) {
-          const subTitle = sub.title;
-          const subBody = `Part of #${parentNum}: ${parent.title}\n\n${sub.body ?? ''}`;
-          const ghNumber = adapter ? (await adapter.createIssue(subTitle, subBody, ['aloop/auto'])).number : nextNum++;
-          state.issues.push({
-            number: ghNumber || nextNum++,
-            title: subTitle, body: subBody, file_hints: sub.file_hints ?? [],
-            wave: parent.wave, state: 'pending', status: 'Needs refinement',
-            child_session: null, pr_number: null,
-            depends_on: sub.depends_on ?? [], blocked_on_human: false,
-            processed_comment_ids: [], dor_validated: false,
-          } as any);
-          console.log(`[process-requests] Created sub-issue #${ghNumber || nextNum - 1}: ${sub.title.substring(0, 50)}`);
-        }
-        parent.status = 'Needs refinement';
-        (parent as any).decomposed = true;
-        stateChanged = true;
-        // Update parent with tasklist on GH
-        if (adapter && parentNum > 0) {
-          await updateParentTasklist(parentNum, state.issues, adapter);
-        }
-      }
+      if (await applySubDecompositionResult(result, state, adapter)) stateChanged = true;
       await archiveRequestFile(requestsDir, filePath);
     } catch (e) {
       console.error(`[process-requests] Failed to apply sub-decomposition: ${e}`);
@@ -539,16 +513,7 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
 
   // ── Phase 2: Create GH issues for state entries with number=0 ──
   if (adapter) {
-    for (const issue of state.issues.filter((i: any) => i.number === 0)) {
-      const labels = (issue as any).parent_issue ? ['aloop/auto'] : ['aloop/epic', 'aloop/auto'];
-      const ghNum = (await adapter.createIssue(issue.title, issue.body ?? '', labels)).number;
-      if (ghNum > 0) {
-        issue.number = ghNum;
-        (issue as any).gh_number = ghNum;
-        stateChanged = true;
-        console.log(`[process-requests] Created GH issue #${ghNum}: ${issue.title.substring(0, 50)}`);
-      }
-    }
+    if (await createGhIssuesForNewEntries(state.issues, adapter)) stateChanged = true;
   }
 
   // ── Phase 2b: Forward-merge master → agent/trunk (pick up human changes) ──
@@ -659,27 +624,7 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
               }
 
               // Create PR
-              try {
-                const prResult = await adapter.createPR(
-                  `#${issue.number}: ${issue.title}`,
-                  `Closes #${issue.number}\n\nAutomated PR from child loop session \`${issue.child_session}\`.`,
-                  branch,
-                  trunkBranch,
-                );
-                if (prResult.number > 0) {
-                  issue.pr_number = prResult.number;
-                  issue.state = 'pr_open';
-                  issue.status = 'In review';
-                  stateChanged = true;
-                  console.log(`[process-requests] Created PR #${issue.pr_number} for issue #${issue.number}`);
-                }
-              } catch (e) {
-                const err = String(e);
-                // Don't spam — only log if it's not "no commits" or "already exists"
-                if (!err.includes('already exists') && !err.includes('No commits')) {
-                  console.error(`[process-requests] PR create failed for #${issue.number}: ${err.substring(0, 100)}`);
-                }
-              }
+              if (await createPRViaAdapter(issue, adapter, trunkBranch)) stateChanged = true;
             }
           } catch { /* skip */ }
         }
@@ -1149,7 +1094,12 @@ function makeGhIssueCreator(requestsDir: string) {
   };
 }
 
-async function updateParentTasklist(parentNum: number, issues: any[], adapter: OrchestratorAdapter): Promise<void> {
+/**
+ * Update the parent epic issue on GH with a tasklist of sub-issue numbers.
+ * Skips if no sub-issues found or if a tasklist already exists.
+ * @internal exported for testing
+ */
+export async function updateParentTasklist(parentNum: number, issues: any[], adapter: OrchestratorAdapter): Promise<void> {
   const subNums = issues.filter((i: any) => i.parent_issue === parentNum && i.number > 0).map((i: any) => i.number);
   if (subNums.length === 0) return;
   try {
@@ -1160,4 +1110,97 @@ async function updateParentTasklist(parentNum: number, issues: any[], adapter: O
     await adapter.updateIssue(parentNum, { body: currentBody + tasklist });
     console.log(`[process-requests] Updated epic #${parentNum} with ${subNums.length} sub-issue tasklist`);
   } catch { /* non-critical */ }
+}
+
+/**
+ * Apply a sub-decomposition result: create sub-issues via adapter (or local counter fallback),
+ * push them onto state, mark parent as decomposed, and update parent tasklist on GH.
+ * @internal exported for testing
+ */
+export async function applySubDecompositionResult(
+  result: { issue_number?: number; parent_issue_number?: number; sub_issues?: any[] },
+  state: { issues: any[] },
+  adapter: OrchestratorAdapter | undefined,
+): Promise<boolean> {
+  const parentNum = result.issue_number ?? result.parent_issue_number;
+  const parent = state.issues.find((i: any) => i.number === parentNum);
+  const subIssues = result.sub_issues ?? [];
+  if (!parent || subIssues.length === 0) return false;
+
+  let nextNum = Math.max(0, ...state.issues.map((i: any) => i.number ?? 0)) + 1;
+  for (const sub of subIssues) {
+    const subTitle = sub.title;
+    const subBody = `Part of #${parentNum}: ${parent.title}\n\n${sub.body ?? ''}`;
+    const ghNumber = adapter ? (await adapter.createIssue(subTitle, subBody, ['aloop/auto'])).number : nextNum++;
+    state.issues.push({
+      number: ghNumber || nextNum++,
+      title: subTitle, body: subBody, file_hints: sub.file_hints ?? [],
+      wave: parent.wave, state: 'pending', status: 'Needs refinement',
+      child_session: null, pr_number: null,
+      depends_on: sub.depends_on ?? [], blocked_on_human: false,
+      processed_comment_ids: [], dor_validated: false,
+    } as any);
+    console.log(`[process-requests] Created sub-issue #${ghNumber || nextNum - 1}: ${sub.title.substring(0, 50)}`);
+  }
+  parent.status = 'Needs refinement';
+  (parent as any).decomposed = true;
+  if (adapter && parentNum != null && parentNum > 0) {
+    await updateParentTasklist(parentNum, state.issues, adapter);
+  }
+  return true;
+}
+
+/**
+ * Phase 2: Create GH issues for any state entries with issue number === 0.
+ * @internal exported for testing
+ */
+export async function createGhIssuesForNewEntries(
+  issues: any[],
+  adapter: OrchestratorAdapter,
+): Promise<boolean> {
+  let changed = false;
+  for (const issue of issues.filter((i: any) => i.number === 0)) {
+    const labels = (issue as any).parent_issue ? ['aloop/auto'] : ['aloop/epic', 'aloop/auto'];
+    const ghNum = (await adapter.createIssue(issue.title, issue.body ?? '', labels)).number;
+    if (ghNum > 0) {
+      issue.number = ghNum;
+      (issue as any).gh_number = ghNum;
+      changed = true;
+      console.log(`[process-requests] Created GH issue #${ghNum}: ${issue.title.substring(0, 50)}`);
+    }
+  }
+  return changed;
+}
+
+/**
+ * Phase 2c: Create a PR for a single completed child session via adapter.
+ * @internal exported for testing
+ */
+export async function createPRViaAdapter(
+  issue: any,
+  adapter: OrchestratorAdapter,
+  trunkBranch: string,
+): Promise<boolean> {
+  const branch = `aloop/issue-${issue.number}`;
+  try {
+    const prResult = await adapter.createPR(
+      `#${issue.number}: ${issue.title}`,
+      `Closes #${issue.number}\n\nAutomated PR from child loop session \`${issue.child_session}\`.`,
+      branch,
+      trunkBranch,
+    );
+    if (prResult.number > 0) {
+      issue.pr_number = prResult.number;
+      issue.state = 'pr_open';
+      issue.status = 'In review';
+      console.log(`[process-requests] Created PR #${issue.pr_number} for issue #${issue.number}`);
+      return true;
+    }
+  } catch (e) {
+    const err = String(e);
+    if (!err.includes('already exists') && !err.includes('No commits')) {
+      console.error(`[process-requests] PR create failed for #${issue.number}: ${err.substring(0, 100)}`);
+    }
+  }
+  return false;
 }

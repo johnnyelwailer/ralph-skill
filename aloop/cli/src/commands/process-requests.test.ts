@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { existsSync } from 'node:fs';
 import { mkdtemp, mkdir, rm, writeFile, readFile } from 'node:fs/promises';
-import { formatReviewCommentHistory, getDirectorySizeBytes, pruneLargeV8CacheDir, syncMasterToTrunk, syncChildBranches, makeAdapterForRepo, updateIssueBodyViaAdapter, type ChildBranchSyncDeps } from './process-requests.js';
+import { formatReviewCommentHistory, getDirectorySizeBytes, pruneLargeV8CacheDir, syncMasterToTrunk, syncChildBranches, makeAdapterForRepo, updateIssueBodyViaAdapter, updateParentTasklist, applySubDecompositionResult, createGhIssuesForNewEntries, createPRViaAdapter, type ChildBranchSyncDeps } from './process-requests.js';
 import { GitHubAdapter } from '../lib/adapter.js';
 import { processCrResultFiles, type CrResultDeps } from './cr-pipeline.js';
 import type { OrchestratorIssue } from './orchestrate.js';
@@ -507,5 +507,278 @@ describe('updateIssueBodyViaAdapter', () => {
     });
 
     assert.equal(fallbackCalled, true, 'fallback must be called when adapter is absent');
+  });
+});
+
+
+// ── updateParentTasklist adapter-path tests ──
+
+describe('updateParentTasklist adapter path', () => {
+  it('calls adapter.getIssue then adapter.updateIssue with tasklist when sub-issues exist', async () => {
+    const calls: { method: string; args: unknown[] }[] = [];
+    const mockAdapter = {
+      getIssue: async (num: number) => {
+        calls.push({ method: 'getIssue', args: [num] });
+        return { number: num, title: 'Parent', body: 'Parent body', state: 'open', labels: [] };
+      },
+      updateIssue: async (num: number, update: unknown) => {
+        calls.push({ method: 'updateIssue', args: [num, update] });
+      },
+    } as any;
+
+    const issues = [
+      { number: 11, title: 'Sub 1', parent_issue: 10 },
+      { number: 12, title: 'Sub 2', parent_issue: 10 },
+      { number: 20, title: 'Other', parent_issue: 99 },
+    ];
+
+    await updateParentTasklist(10, issues, mockAdapter);
+
+    assert.equal(calls[0].method, 'getIssue');
+    assert.deepEqual(calls[0].args, [10]);
+    assert.equal(calls[1].method, 'updateIssue');
+    assert.equal((calls[1].args as any[])[0], 10);
+    const updatedBody = ((calls[1].args as any[])[1] as any).body as string;
+    assert.ok(updatedBody.includes('[tasklist]'), 'body should contain tasklist fence');
+    assert.ok(updatedBody.includes('- [ ] #11'), 'body should list sub-issue 11');
+    assert.ok(updatedBody.includes('- [ ] #12'), 'body should list sub-issue 12');
+    assert.ok(!updatedBody.includes('#20'), 'should not include issues from other parents');
+  });
+
+  it('skips updateIssue when body already contains [tasklist]', async () => {
+    const calls: string[] = [];
+    const mockAdapter = {
+      getIssue: async (_num: number) => {
+        calls.push('getIssue');
+        return { number: 10, title: 'Parent', body: 'existing\n```[tasklist]\n- [ ] #5\n```', state: 'open', labels: [] };
+      },
+      updateIssue: async () => { calls.push('updateIssue'); },
+    } as any;
+
+    await updateParentTasklist(10, [{ number: 11, parent_issue: 10 }], mockAdapter);
+
+    assert.ok(calls.includes('getIssue'), 'should still call getIssue');
+    assert.equal(calls.filter(c => c === 'updateIssue').length, 0, 'should not call updateIssue when tasklist already present');
+  });
+
+  it('returns without any adapter calls when no sub-issues exist for the parent', async () => {
+    const calls: string[] = [];
+    const mockAdapter = {
+      getIssue: async () => { calls.push('getIssue'); return { body: '' }; },
+      updateIssue: async () => { calls.push('updateIssue'); },
+    } as any;
+
+    await updateParentTasklist(10, [{ number: 11, parent_issue: 99 }], mockAdapter);
+
+    assert.equal(calls.length, 0, 'no adapter calls when parent has no sub-issues');
+  });
+});
+
+
+// ── applySubDecompositionResult adapter-path tests ──
+
+describe('applySubDecompositionResult adapter path', () => {
+  it('calls adapter.createIssue for each sub-issue with correct args and adds to state', async () => {
+    const createCalls: { title: string; body: string; labels: string[] }[] = [];
+    let nextNum = 100;
+    const mockAdapter = {
+      createIssue: async (title: string, body: string, labels: string[]) => {
+        createCalls.push({ title, body, labels });
+        return { number: nextNum++, url: '' };
+      },
+      getIssue: async (_n: number) => ({ number: _n, title: 'Parent', body: 'Parent body', state: 'open', labels: [] }),
+      updateIssue: async () => {},
+    } as any;
+
+    const result = {
+      issue_number: 10,
+      sub_issues: [
+        { title: 'Sub 1', body: 'Sub 1 body', depends_on: [] },
+        { title: 'Sub 2', body: 'Sub 2 body', depends_on: [] },
+      ],
+    };
+    const state = { issues: [{ number: 10, title: 'Parent', wave: 1, body: 'Parent body' }] as any[] };
+
+    const changed = await applySubDecompositionResult(result, state, mockAdapter);
+
+    assert.equal(changed, true);
+    assert.equal(createCalls.length, 2, 'createIssue called once per sub-issue');
+    const call1 = createCalls.find(c => c.title === 'Sub 1')!;
+    assert.ok(call1, 'createIssue called for Sub 1');
+    assert.deepEqual(call1.labels, ['aloop/auto']);
+    assert.ok(call1.body.includes('Part of #10'), 'body should reference parent issue');
+    assert.ok(call1.body.includes('Sub 1 body'), 'body should include sub-issue body');
+    assert.equal(state.issues.length, 3, 'sub-issues pushed to state');
+    assert.equal(state.issues[1].number, 100);
+    assert.equal(state.issues[2].number, 101);
+  });
+
+  it('uses local counter (not adapter) when adapter is absent', async () => {
+    const result = {
+      issue_number: 10,
+      sub_issues: [{ title: 'Sub A', body: 'body' }],
+    };
+    const state = { issues: [{ number: 10, title: 'Parent', wave: 1 }] as any[] };
+
+    const changed = await applySubDecompositionResult(result, state, undefined);
+
+    assert.equal(changed, true);
+    assert.equal(state.issues.length, 2);
+    assert.equal(state.issues[1].number, 11, 'sub-issue gets next local number (10+1)');
+  });
+
+  it('returns false when parent not found', async () => {
+    const result = { issue_number: 99, sub_issues: [{ title: 'Sub', body: 'b' }] };
+    const state = { issues: [{ number: 10 }] as any[] };
+
+    const changed = await applySubDecompositionResult(result, state, undefined);
+
+    assert.equal(changed, false);
+    assert.equal(state.issues.length, 1, 'state unchanged when parent not found');
+  });
+
+  it('returns false when sub_issues is empty', async () => {
+    const result = { issue_number: 10, sub_issues: [] };
+    const state = { issues: [{ number: 10, title: 'Parent', wave: 1 }] as any[] };
+
+    const changed = await applySubDecompositionResult(result, state, undefined);
+
+    assert.equal(changed, false);
+  });
+});
+
+
+// ── createGhIssuesForNewEntries adapter-path tests ──
+
+describe('createGhIssuesForNewEntries adapter path', () => {
+  it('calls adapter.createIssue for issues with number=0 and updates number in-place', async () => {
+    const createCalls: { title: string; body: string; labels: string[] }[] = [];
+    let issueNum = 50;
+    const mockAdapter = {
+      createIssue: async (title: string, body: string, labels: string[]) => {
+        createCalls.push({ title, body, labels });
+        return { number: issueNum++, url: '' };
+      },
+    } as any;
+
+    const issues: any[] = [
+      { number: 0, title: 'New Epic', body: 'epic body', wave: 1 },
+      { number: 5, title: 'Existing', body: 'existing body', wave: 1 },
+    ];
+
+    const changed = await createGhIssuesForNewEntries(issues, mockAdapter);
+
+    assert.equal(changed, true);
+    assert.equal(createCalls.length, 1, 'only the issue with number=0 gets created');
+    assert.equal(createCalls[0].title, 'New Epic');
+    assert.deepEqual(createCalls[0].labels, ['aloop/epic', 'aloop/auto'], 'epic label added when no parent_issue');
+    assert.equal(issues[0].number, 50, 'issue number updated to GH number');
+    assert.equal(issues[1].number, 5, 'existing issue unchanged');
+  });
+
+  it('uses aloop/auto only (no epic label) when issue has parent_issue', async () => {
+    const createCalls: { labels: string[] }[] = [];
+    const mockAdapter = {
+      createIssue: async (_t: string, _b: string, labels: string[]) => {
+        createCalls.push({ labels });
+        return { number: 51, url: '' };
+      },
+    } as any;
+
+    const issues: any[] = [{ number: 0, title: 'Sub Issue', body: 'body', parent_issue: 10 }];
+
+    await createGhIssuesForNewEntries(issues, mockAdapter);
+
+    assert.deepEqual(createCalls[0].labels, ['aloop/auto'], 'no epic label for sub-issues');
+  });
+
+  it('returns false when no issues have number=0', async () => {
+    const mockAdapter = { createIssue: async () => ({ number: 99, url: '' }) } as any;
+    const issues: any[] = [{ number: 5 }, { number: 6 }];
+
+    const changed = await createGhIssuesForNewEntries(issues, mockAdapter);
+
+    assert.equal(changed, false);
+  });
+
+  it('does not update issue number when adapter returns 0', async () => {
+    const mockAdapter = {
+      createIssue: async () => ({ number: 0, url: '' }),
+    } as any;
+
+    const issues: any[] = [{ number: 0, title: 'Issue', body: '' }];
+    const changed = await createGhIssuesForNewEntries(issues, mockAdapter);
+
+    assert.equal(changed, false);
+    assert.equal(issues[0].number, 0, 'number should remain 0 when adapter returns 0');
+  });
+});
+
+
+// ── createPRViaAdapter adapter-path tests ──
+
+describe('createPRViaAdapter adapter path', () => {
+  it('calls adapter.createPR with correct args and updates issue state', async () => {
+    const prCalls: { title: string; body: string; head: string; base: string }[] = [];
+    const mockAdapter = {
+      createPR: async (title: string, body: string, head: string, base: string) => {
+        prCalls.push({ title, body, head, base });
+        return { number: 99, url: '' };
+      },
+    } as any;
+
+    const issue: any = {
+      number: 10, title: 'My Issue', child_session: 'child-session-10',
+      pr_number: null, state: 'in_progress', status: 'In progress',
+    };
+
+    const changed = await createPRViaAdapter(issue, mockAdapter, 'agent/trunk');
+
+    assert.equal(changed, true);
+    assert.equal(prCalls.length, 1);
+    assert.equal(prCalls[0].title, '#10: My Issue');
+    assert.ok(prCalls[0].body.includes('Closes #10'), 'body should close the issue');
+    assert.ok(prCalls[0].body.includes('child-session-10'), 'body should reference child session');
+    assert.equal(prCalls[0].head, 'aloop/issue-10');
+    assert.equal(prCalls[0].base, 'agent/trunk');
+    assert.equal(issue.pr_number, 99);
+    assert.equal(issue.state, 'pr_open');
+    assert.equal(issue.status, 'In review');
+  });
+
+  it('returns false and leaves issue unchanged when adapter.createPR returns number 0', async () => {
+    const mockAdapter = {
+      createPR: async () => ({ number: 0, url: '' }),
+    } as any;
+
+    const issue: any = { number: 10, title: 'Issue', child_session: 'child-10', pr_number: null };
+    const changed = await createPRViaAdapter(issue, mockAdapter, 'agent/trunk');
+
+    assert.equal(changed, false);
+    assert.equal(issue.pr_number, null);
+    assert.equal(issue.state, undefined);
+  });
+
+  it('swallows already-exists errors and returns false', async () => {
+    const mockAdapter = {
+      createPR: async () => { throw new Error('already exists'); },
+    } as any;
+
+    const issue: any = { number: 10, title: 'Issue', child_session: 'child-10', pr_number: null };
+    const changed = await createPRViaAdapter(issue, mockAdapter, 'agent/trunk');
+
+    assert.equal(changed, false);
+    assert.equal(issue.pr_number, null);
+  });
+
+  it('swallows No-commits errors and returns false', async () => {
+    const mockAdapter = {
+      createPR: async () => { throw new Error('No commits between agent/trunk and aloop/issue-10'); },
+    } as any;
+
+    const issue: any = { number: 10, title: 'Issue', child_session: 'child-10', pr_number: null };
+    const changed = await createPRViaAdapter(issue, mockAdapter, 'agent/trunk');
+
+    assert.equal(changed, false);
   });
 });
