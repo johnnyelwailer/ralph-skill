@@ -4,7 +4,6 @@ import { Square, Zap } from 'lucide-react';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { Toaster } from '@/components/ui/sonner';
-import type { ProviderHealth } from '@/components/health/ProviderHealth';
 import { StatusDot } from '@/components/shared/StatusDot';
 import { PhaseBadge } from '@/components/shared/PhaseBadge';
 import { Sidebar } from '@/components/layout/Sidebar';
@@ -30,13 +29,19 @@ import { ResponsiveLayout, useResponsiveLayout } from '@/components/layout/Respo
 
 export { stripAnsi, rgbStr, parseAnsiSegments, renderAnsiToHtml } from './lib/ansi';
 
-import {
-  formatSecs, parseDurationSeconds,
-} from './lib/format';
 export {
   formatTime, formatTimeShort, formatSecs, formatDuration, formatDateKey,
   relativeTime, formatTokenCount, parseDurationSeconds,
 } from './lib/format';
+
+import { deriveProviderHealth } from './lib/deriveProviderHealth';
+export { deriveProviderHealth } from './lib/deriveProviderHealth';
+
+import { toSession } from './lib/sessionHelpers';
+export { toSession } from './lib/sessionHelpers';
+
+import { computeAvgDuration, latestQaCoverageRefreshSignal } from './lib/logHelpers';
+export { computeAvgDuration } from './lib/logHelpers';
 
 // ── Types ──
 
@@ -50,134 +55,6 @@ export type {
   QACoverageFeature, QACoverageViewData, CostSessionResponse,
   ConnectionStatus, IterationUsage,
 } from './lib/types';
-
-// ── Helpers ──
-
-export function toSession(source: Record<string, unknown>, fallback: string, isActive: boolean): SessionSummary {
-  return {
-    id: str(source, ['session_id', 'id'], fallback),
-    name: str(source, ['session_id', 'name', 'session_name'], fallback),
-    projectName: str(source, ['project_name'], '') || (() => {
-      const root = str(source, ['project_root'], '');
-      if (root) { const parts = root.replace(/[\\/]+$/, '').split(/[\\/]/); return parts[parts.length - 1] || root; }
-      return fallback.split('-').slice(0, -1).join('-') || fallback;
-    })(),
-    status: str(source, ['state', 'status'], 'unknown'),
-    phase: str(source, ['phase', 'mode'], ''),
-    elapsed: str(source, ['elapsed', 'elapsed_time', 'duration'], '--'),
-    iterations: numStr(source, ['iteration', 'iterations']),
-    isActive,
-    branch: str(source, ['branch'], ''),
-    startedAt: str(source, ['started_at'], ''),
-    endedAt: str(source, ['ended_at'], ''),
-    pid: numStr(source, ['pid'], ''),
-    provider: str(source, ['provider'], ''),
-    workDir: str(source, ['work_dir'], ''),
-    stuckCount: typeof source.stuck_count === 'number' ? source.stuck_count : 0,
-  };
-}
-
-
-
-// ── Average iteration duration from log ──
-
-export function computeAvgDuration(log: string): string {
-  if (!log) return '';
-  let totalSec = 0;
-  let count = 0;
-  for (const line of log.split('\n')) {
-    const trimmed = line.trim();
-    if (!trimmed) continue;
-    try {
-      const obj = JSON.parse(trimmed);
-      if (!isRecord(obj)) continue;
-      const event = str(obj, ['event']);
-      if (event !== 'iteration_complete') continue;
-      const dur = str(obj, ['duration', 'elapsed', 'took']);
-      const secs = parseDurationSeconds(dur);
-      if (secs !== null && secs > 0) {
-        totalSec += secs;
-        count++;
-      }
-    } catch { /* skip */ }
-  }
-  if (count === 0) return '';
-  return formatSecs(totalSec / count);
-}
-
-function latestQaCoverageRefreshSignal(log: string): string | null {
-  if (!log) return null;
-  const lines = log.split('\n');
-  for (let i = lines.length - 1; i >= 0; i--) {
-    const line = lines[i]?.trim();
-    if (!line) continue;
-    try {
-      const entry = JSON.parse(line);
-      if (!isRecord(entry)) continue;
-      const event = str(entry, ['event', 'type']);
-      const phase = str(entry, ['phase', 'mode']).toLowerCase();
-      if (event !== 'iteration_complete' || phase !== 'qa') continue;
-      const timestamp = str(entry, ['timestamp', 'ts', 'time', 'created_at']);
-      const iterationRaw = entry.iteration;
-      const iteration = typeof iterationRaw === 'number' ? String(iterationRaw)
-        : typeof iterationRaw === 'string' ? iterationRaw : '';
-      return `${timestamp}|${iteration}|${line}`;
-    } catch {
-      // Skip non-JSON lines in log stream.
-    }
-  }
-  return null;
-}
-
-// ── Provider health derived from log ──
-
-export function deriveProviderHealth(log: string, configuredProviders?: string[]): ProviderHealth[] {
-  const providers = new Map<string, ProviderHealth>();
-
-  // Seed configured providers as baseline with 'unknown' status
-  if (configuredProviders) {
-    for (const name of configuredProviders) {
-      if (name) providers.set(name, { name, status: 'unknown', lastEvent: '' });
-    }
-  }
-
-  for (const line of log.split('\n')) {
-    const trimmed = line.trim();
-    if (!trimmed) continue;
-    try {
-      const obj = JSON.parse(trimmed);
-      if (!isRecord(obj)) continue;
-      const event = str(obj, ['event']);
-      const provider = str(obj, ['provider']);
-      const ts = str(obj, ['timestamp']);
-      if (!provider) continue;
-
-      if (event === 'provider_cooldown') {
-        providers.set(provider, {
-          name: provider,
-          status: 'cooldown',
-          lastEvent: ts,
-          reason: str(obj, ['reason']),
-          consecutiveFailures: typeof obj.consecutive_failures === 'number' ? obj.consecutive_failures : undefined,
-          cooldownUntil: str(obj, ['cooldown_until']),
-        });
-      } else if (event === 'provider_recovered') {
-        providers.set(provider, { name: provider, status: 'healthy', lastEvent: ts });
-      } else if (event === 'iteration_complete' || event === 'iteration_error') {
-        if (!providers.has(provider) || providers.get(provider)!.status === 'unknown') {
-          providers.set(provider, { name: provider, status: 'healthy', lastEvent: ts });
-        } else {
-          const existing = providers.get(provider)!;
-          if (event === 'iteration_complete' && existing.status !== 'cooldown') {
-            existing.status = 'healthy';
-          }
-          existing.lastEvent = ts;
-        }
-      }
-    } catch { /* skip */ }
-  }
-  return Array.from(providers.values()).sort((a, b) => a.name.localeCompare(b.name));
-}
 
 // ── Command Palette ──
 
