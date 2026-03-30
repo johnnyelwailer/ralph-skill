@@ -213,3 +213,82 @@ aloop start --project-root /tmp/qa-test-Ixfr51 --in-place --output json
 - The README.md "fix" in commit 98a7adb68 introduced a regression at line 109 — the original text correctly referenced meta.json for hot-reload but the fix removed that reference
 - No new bugs; the README.md issue was already tracked in TODO.md as the open `[review] Gate 9` item
 - Important: pipeline.yml must be at `.aloop/pipeline.yml`, NOT project root; this distinction is correct in README.md line 93
+
+## QA Session — 2026-03-30 (issue-94, iteration 4)
+
+### Test Environment
+- Binary under test: `/tmp/aloop-test-install-O5fDjL/bin/aloop`
+- Version: 1.0.0
+- Commit: 64d93fd43 (HEAD)
+- Temp dir: /tmp/qa-test-16vp (two sessions created and stopped)
+- Sessions: qa-test-16vp-20260330-140030 (with loop: section), qa-test-16vp-20260330-140118 (no loop: section)
+- Features tested: 4
+
+### Results
+- PASS: README.md hot-reload documentation (Gate 9, lines 109/113) — re-test of previous FAIL; fixed in commit 9d4c7bbe0
+- FAIL: README.md concurrency_cap placement (Gate 9, line 130) — says "root level" but canonical .aloop/pipeline.yml has it under loop:
+- PASS: compile-loop-plan loopSettings integration (6 custom values all correctly emitted)
+- PASS: loopSettings absent when no loop: section (re-test, still passing)
+
+### Bugs Filed
+- None new. The concurrency_cap placement mismatch at README.md:130 is already tracked in TODO.md as the open `[ ] [review] Gate 9: README.md:130` item.
+
+### Command Transcript
+
+```
+# Install
+ALOOP_BIN=$(npm --prefix aloop/cli run --silent test-install -- --keep 2>/dev/null | tail -1)
+# → /tmp/aloop-test-install-O5fDjL/bin/aloop
+aloop --version  # → 1.0.0
+
+# Feature 1 (re-test): README.md hot-reload docs (Gate 9, lines 109/113)
+# Read README.md lines 109, 113:
+# Line 109: "These settings are written to `loop-plan.json` at session start and read by
+#   loop scripts on startup. Each iteration, loop scripts hot-reload settings from
+#   `meta.json`; changes to `meta.json` take effect on the next iteration without restarting."
+#   → CORRECT: startup=loop-plan.json, hot-reload=meta.json ✓
+# Line 113: "...read by loop scripts at startup; hot-reloaded from `meta.json` each iteration"
+#   → CORRECT: consistent with line 109 ✓
+# RESULT: PASS (previously FAIL — fixed in commit 9d4c7bbe0)
+
+# Feature 2: README.md concurrency_cap placement (Gate 9, line 130)
+# Read README.md line 130:
+# "The orchestrator reads `concurrency_cap` from `pipeline.yml` (at root level, not under `loop:`):"
+# YAML example shows: "concurrency_cap: 5  # Max parallel child loops" (at root)
+# Read .aloop/pipeline.yml line 56: "  concurrency_cap: 3  # Max concurrent child loops"
+#   (indented — under loop: section)
+# MISMATCH: README says root-level, canonical config has it under loop:
+# Already tracked in TODO.md as open [ ] [review] Gate 9: README.md:130
+# RESULT: FAIL
+
+# Feature 3: loopSettings integration (6 custom values)
+# .aloop/pipeline.yml with loop: section containing 6 custom values
+aloop start --output json  # (from /tmp/qa-test-16vp with loop: section)
+# → session qa-test-16vp-20260330-140030 started
+aloop stop qa-test-16vp-20260330-140030
+# Read /home/pj/.aloop/sessions/qa-test-16vp-20260330-140030/loop-plan.json:
+# loopSettings: {max_iterations:10, max_stuck:5, provider_timeout:7200,
+#   triage_interval:12, scan_pass_throttle_ms:55000, rate_limit_backoff:"exponential"}
+# concurrency_cap:8 is absent — correct (orchestrator-only) ✓
+# EXIT: 0 ✓
+# RESULT: PASS
+
+# Feature 4: loopSettings absent when no loop: section
+# .aloop/pipeline.yml replaced with minimal version (no loop: section)
+aloop start --output json  # (from /tmp/qa-test-16vp, no loop: section)
+# → session qa-test-16vp-20260330-140118 started
+aloop stop qa-test-16vp-20260330-140118
+# Read /home/pj/.aloop/sessions/qa-test-16vp-20260330-140118/loop-plan.json:
+# {"cycle":["PROMPT_build.md"],"cyclePosition":0,"iteration":1,"version":1,
+#   "finalizer":[],"finalizerPosition":0}
+# loopSettings field ABSENT ✓
+# EXIT: 0 ✓
+# RESULT: PASS
+```
+
+### Notes
+- README.md Gate 9 hot-reload FAIL from session 3 is now resolved: fixed in commit 9d4c7bbe0 ✓
+- README.md line 130 concurrency_cap placement bug is real and confirmed: canonical pipeline.yml puts it under loop:, not root level
+- No new bugs filed; all findings already tracked in TODO.md
+- Test binary install path /tmp/aloop-test-install-O5fDjL cleaned up after session
+- Test temp dir /tmp/qa-test-16vp and associated sessions cleaned up
