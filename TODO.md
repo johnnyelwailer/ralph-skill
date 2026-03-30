@@ -12,7 +12,7 @@ Acceptance criteria:
 
 ---
 
-## Current Phase: Complete [reviewed: gates 1-10 pass]
+## Current Phase: Complete [reviewed: gates 1-9 pass]
 
 ### Up Next
 
