@@ -607,3 +607,43 @@ Test count: 36 fail vs 34-failure pre-existing baseline. The 2 new failures are 
 No UI changes, no new dependencies, no user-facing behavior changed, no docs required.
 
 ---
+
+## Review — 2026-03-30 — commits 2fd11b958..0d8043811 (build: process-requests helpers + checkPrGates adapter path)
+
+**Verdict: PASS** (1 observation)
+**Scope:** `aloop/cli/src/commands/process-requests.ts`, `aloop/cli/src/commands/process-requests.test.ts`, `aloop/cli/src/commands/orchestrate.ts`, `aloop/cli/src/commands/orchestrate.test.ts`, `aloop/cli/src/lib/adapter.ts`
+**Commits reviewed:** `dedbba6cd` (adapter-path tests for process-requests.ts), `0d8043811` (checkPrGates adapter migration)
+
+### Gate 1 — PASS
+
+- `dedbba6cd`: Extracts `applySubDecompositionResult`, `createGhIssuesForNewEntries`, `createPRViaAdapter` as `@internal` tested helpers. Inline `spawnSync`/`createGhIssue` call-sites replaced by adapter calls — exactly the four branches flagged in prior review. ✓
+- `0d8043811`: `checkPrGates` Gate 1 now uses `adapter.getPRStatus()`, Gate 2 now uses `adapter.getPrChecks()` when adapter present, with execGh fallback. `getPrChecks` added to `OrchestratorAdapter` interface — additive extension serving per-check detail reporting; not in spec's baseline interface but aligns with spec intent. ✓
+
+### Gate 2 — PASS (prior finding resolved)
+
+Prior finding "Gate 2/Gate 3: Add adapter-path tests for process-requests.ts changes" fully resolved. 19 new concrete tests:
+- `updateParentTasklist` test 2: explicit negative assertion that `updateIssue` is NOT called when body already contains `[tasklist]` — idempotency invariant enforced ✓
+- `createPRViaAdapter` test 1: exact title format `'#10: My Issue'`, body substrings `'Closes #10'`/`'child-session-10'`, exact branch name `'aloop/issue-10'`, exact state transitions (`pr_number: 99`, `state: 'pr_open'`, `status: 'In review'`) ✓
+- `checkPrGates` adapter tests: `execGh: async () => { throw new Error('execGh should not be called') }` pattern — any fallthrough fails the test ✓
+
+**Observation**: `createPRViaAdapter` test 2 (line ~3090) asserts `issue.pr_number === null` after adapter returns 0 — verifies the "no update on invalid PR number" invariant with an exact null check, not just a truthy check.
+
+### Gate 3 — PASS
+
+All four extracted helpers have dedicated suites covering >90% branch coverage. One minor untested edge in `applySubDecompositionResult` (adapter returns `ghNumber=0`, falls to `nextNum++`) — non-blocking at overall >90% coverage for new modules. All `checkPrGates` adapter branches covered by 5 tests.
+
+### Gate 4 — PASS
+
+`@internal exported for testing` JSDoc on all helpers is appropriate. No dead code. No duplication — extracted logic replaces inline code exactly. No leftover TODOs. Pre-existing `HACK` comment references issue #164.
+
+### Gate 5 — PASS
+
+- `tsc --noEmit`: 0 errors ✓
+- `npm run build`: clean ✓
+- Tests: 1148 pass, 34 fail — 34 is confirmed pre-existing baseline (unchanged, 19 additional passing tests vs prior 1128/34 baseline) ✓
+
+### Gates 6–9 — Pass / N/A
+
+Gate 6: Purely internal TypeScript plumbing — no observable output; skip correct. Gates 7–9: No UI, no new dependencies, no user-facing behavior changed.
+
+---
