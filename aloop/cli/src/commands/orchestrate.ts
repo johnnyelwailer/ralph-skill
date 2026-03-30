@@ -15,6 +15,7 @@ import {
   detectIssueChanges,
   type BulkIssueState,
 } from '../lib/github-monitor.js';
+import type { OrchestratorAdapter } from '../lib/adapter.js';
 
 export interface OrchestrateCommandOptions {
   spec?: string;
@@ -192,6 +193,7 @@ export interface TriageDeps {
   now: () => Date;
   writeFile?: (path: string, data: string, encoding: BufferEncoding) => Promise<void>;
   aloopRoot?: string;
+  adapter?: OrchestratorAdapter;
 }
 
 export interface OrchestrateDeps {
@@ -204,6 +206,7 @@ export interface OrchestrateDeps {
   now: () => Date;
   execGhIssueCreate?: (repo: string, sessionId: string, title: string, body: string, labels: string[]) => Promise<number>;
   execGh?: (args: string[]) => Promise<{ stdout: string; stderr: string }>;
+  adapter?: OrchestratorAdapter;
 }
 
 export interface SpawnSyncResult {
@@ -228,6 +231,7 @@ export interface DispatchDeps {
   spawn: (command: string, args: string[], options?: Record<string, unknown>) => ChildProcess;
   platform: string;
   env: Record<string, string | undefined>;
+  adapter?: OrchestratorAdapter;
 }
 
 export interface ChildLaunchResult {
@@ -2029,7 +2033,7 @@ export async function runTriageMonitorCycle(
   state: OrchestratorState,
   sessionId: string,
   repo: string,
-  deps: Pick<OrchestrateDeps, 'execGh' | 'now'> & { writeFile?: OrchestrateDeps['writeFile'] },
+  deps: Pick<OrchestrateDeps, 'execGh' | 'now'> & { writeFile?: OrchestrateDeps['writeFile']; adapter?: OrchestratorAdapter },
   aloopRoot?: string,
 ): Promise<TriageMonitorCycleResult> {
   if (!deps.execGh) {
@@ -2068,7 +2072,7 @@ export async function runTriageMonitorCycle(
       issue,
       [...normalizedIssueComments, ...normalizedPrComments],
       repo,
-      { execGh: deps.execGh, now: deps.now, writeFile: deps.writeFile, aloopRoot },
+      { execGh: deps.execGh, now: deps.now, writeFile: deps.writeFile, aloopRoot, adapter: deps.adapter },
     );
     triagedEntries += entries.length;
 
@@ -3415,6 +3419,7 @@ export interface PrLifecycleDeps {
   appendLog: (sessionDir: string, entry: Record<string, unknown>) => void;
   /** Run an agent review against a PR diff. Returns the verdict and summary. */
   invokeAgentReview?: (prNumber: number, repo: string, diff: string) => Promise<AgentReviewResult>;
+  adapter?: OrchestratorAdapter;
 }
 
 const ORCHESTRATOR_CI_PERSISTENCE_LIMIT = 3;
@@ -4573,6 +4578,7 @@ export interface ScanLoopDeps {
   sleep?: (ms: number) => Promise<void>;
   signalStop?: () => boolean;
   etagCache?: EtagCache;
+  adapter?: OrchestratorAdapter;
 }
 
 export interface SpecChangeReplanResult {
@@ -5416,7 +5422,7 @@ export async function runOrchestratorScanPass(
       state,
       path.basename(sessionDir),
       repo,
-      { execGh: deps.execGh, now: deps.now, writeFile: deps.writeFile },
+      { execGh: deps.execGh, now: deps.now, writeFile: deps.writeFile, adapter: deps.adapter },
       aloopRoot,
     );
     result.specQuestions = await resolveSpecQuestionIssues(

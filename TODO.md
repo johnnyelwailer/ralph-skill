@@ -22,9 +22,9 @@ Acceptance criteria:
 
 ### Up Next
 
-- [ ] Re-add adapter field to deps interfaces (`TriageDeps`, `OrchestrateDeps`, `DispatchDeps`, `PrLifecycleDeps`, `ScanLoopDeps`) and thread `deps.adapter` through child deps in `orchestrateCommandWithDeps`
+- [x] Re-add adapter field to deps interfaces (`TriageDeps`, `OrchestrateDeps`, `DispatchDeps`, `PrLifecycleDeps`, `ScanLoopDeps`) and thread `deps.adapter` through child deps in `orchestrateCommandWithDeps`
 
-- [ ] Re-add adapter instantiation in `orchestrateCommandWithDeps` — create adapter when `filterRepo` is provided, using static import of `node:child_process` and requiring `deps.execGh` (no silent fallback)
+- [x] Re-add adapter instantiation in `process-requests.ts` — create adapter when `repo` is provided, using static import of `node:child_process` and requiring `execGh` (no silent fallback). Threaded through `scanDeps`, `prLifecycleDeps`, and `dispatchDeps`. 2026-03-30.
 
 - [ ] Migrate issue lifecycle calls in orchestrate.ts (TriageDeps / triage functions) — replace `deps.execGh(['issue', ...])` with `adapter.closeIssue()`, `adapter.addLabels()`, `adapter.removeLabels()`, `adapter.postComment()`, `adapter.listIssues()`, and `adapter.updateIssue()` in triage functions; replace `deps.execGhIssueCreate` with `adapter.createIssue()` in dispatch
 
