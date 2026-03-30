@@ -6,20 +6,15 @@
 
 - [x] [review] Gate 3: DocsPanel.tsx branch coverage still 85.71% after test fixes — add test to cover `useEffect` reset branch at line 37; render with `docs` containing `TODO.md`, then re-render with `docs` omitting `TODO.md` entirely (so `activeTab === 'TODO.md'` is no longer valid), assert the active tab falls back to the new default (priority: critical)
 - [x] [review] Gate 4: `playwright.stories.config.ts:6` — `const artifactDir = path.resolve(...)` is defined but never referenced in `defineConfig`; delete it (priority: low)
-- [ ] [review] Gate 2: `DocsPanel.test.tsx:145-160` — `switches to overflow tab via dropdown menu` clicks the EXTRA dropdown menuitem at line 159 but has no post-click assertion; the tab switch is completely unverified. Add `expect(screen.getByRole('tab', { name: 'EXTRA' })).toHaveAttribute('data-state', 'active')` after the final `await user.click(...)` call. (priority: high)
-- [ ] [review] Gate 4: `playwright.stories.config.ts:1-2,5` — Gate 4 fix was incomplete; deleting `artifactDir` renamed it to `currentDir` but left it unused. Lines 1 (`import path from 'node:path'`), 2 (`import { fileURLToPath } from 'node:url'`), and 5 (`const currentDir = path.dirname(...)`) are all dead code — none referenced in `defineConfig`. Delete all three lines. (priority: low)
+- [x] [review] Gate 2: `DocsPanel.test.tsx:145-160` — `switches to overflow tab via dropdown menu` clicks the EXTRA dropdown menuitem at line 159 but has no post-click assertion; the tab switch is completely unverified. Add `expect(screen.getByRole('tab', { name: 'EXTRA' })).toHaveAttribute('data-state', 'active')` after the final `await user.click(...)` call. (priority: high)
+- [x] [review] Gate 4 (follow-up): `playwright.stories.config.ts:1-2,5` — Gate 4 fix was incomplete; deleting `artifactDir` renamed it to `currentDir` but left it unused. Lines 1 (`import path from 'node:path'`), 2 (`import { fileURLToPath } from 'node:url'`), and 5 (`const currentDir = path.dirname(...)`) are all dead code — none referenced in `defineConfig`. Delete all three lines. (priority: low)
 
 ### Up Next
 
-- [x] [qa/P1] Fix DocsPanel.tsx branch coverage (was 61.9%, now 95.23%, need ≥90%)
-  - Added overflow dropdown tests (5+ docs), empty docs fallback, extra docs not in docOrder, empty string value skipping
-
 - [ ] [qa/P1] Fix Sidebar.tsx branch coverage (currently 78.46%, need ≥90%)
   - Uncovered branches at lines 83,100,159,215 — primarily context menu and olderOpen collapse
-  - Add context menu tests: (a) right-click renders menu with `role="menu"` at correct position, (b) "Stop after iteration" calls `onStopSession(id, false)` and closes menu, (c) "Kill immediately" calls `onStopSession(id, true)` and closes menu, (d) "Copy session ID" calls `onCopySessionId(id)` and closes menu, (e) Escape key fires `setContextMenuSessionId(null)`.
+  - Add context menu tests: (a) right-click renders menu with `role="menu"` at correct position, (b) "Stop after iteration" calls `onStopSession(id, false)` and closes menu, (c) "Kill immediately" calls `onStopSession(id, true)` and closes menu, (d) "Copy session ID" calls `onCopySessionId(id)` and closes menu, (e) Escape key fires `setContextMenuSessionId(null)`
   - Still failing at iter 59 (2026-03-30): branch coverage 78.46% at commit 83b9b9468
-
-- [ ] [qa/P1] playwright.stories.config.ts still has unused variable after Gate 4 fix: `const currentDir = path.dirname(fileURLToPath(import.meta.url))` at line 5 is never referenced in `defineConfig`; the `path` and `fileURLToPath` imports are also dead code. Gate 4 renamed `artifactDir` → `currentDir` instead of deleting it. Fix: delete lines 1-2 (`import path` and `import { fileURLToPath }`) and line 5 (`const currentDir = ...`). Tested at iter 59. (priority: low)
 
 - [ ] Extract Header component from AppView.tsx (priority: critical)
   - `Header` (lines 233–362, ~130 LOC): session header with phase badge, iteration counter, elapsed timer, stop/resume buttons, steer input
@@ -66,3 +61,5 @@
   - 6 Sidebar stories (Default, WithSelectedSession, WithOlderSessions, Collapsed, Desktop, Empty)
   - 5 SessionDetail stories (Default, WithProviderHealth, ActivityPanelActive, ActivityCollapsed, WithRepoLink)
   - 6 DocsPanel stories + 6 MainPanel stories (added batch 2)
+- [x] [qa/P1] Fix DocsPanel.tsx branch coverage (was 61.9%, now 95.23%, need ≥90%)
+  - Added overflow dropdown tests (5+ docs), empty docs fallback, extra docs not in docOrder, empty string value skipping

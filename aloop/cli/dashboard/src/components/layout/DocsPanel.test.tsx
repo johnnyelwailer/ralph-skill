@@ -157,6 +157,9 @@ describe('DocsPanel', () => {
       expect(screen.getByRole('menuitem', { name: 'EXTRA' })).toBeInTheDocument();
     });
     await user.click(screen.getByRole('menuitem', { name: 'EXTRA' }));
+    await waitFor(() => {
+      expect(screen.getByRole('tabpanel')).toHaveTextContent('Extra content');
+    });
   });
 
   it('renders extra docs not in docOrder', async () => {
