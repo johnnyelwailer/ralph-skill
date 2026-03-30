@@ -10,19 +10,15 @@
 
 ## Remaining gaps
 
-### Spec-Gap Findings (2026-03-30)
-
-- [ ] [spec-gap] **P2: `provider_timeout` compile→load chain is broken** — `provider_timeout: 10800` exists in `.aloop/pipeline.yml` `loop:` section (line 47) and in the `LoopSettings` interface (`compile-loop-plan.ts:19`), but `readLoopSettingsFromPipeline` never reads it into `loopSettings` (not in `numFields` array at lines 302-313), and `loop.sh` `load_loop_settings()` / `refresh_loop_settings_from_meta()` never map it to `PROVIDER_TIMEOUT` (loop.sh lines 297-306 / 350-358). Setting in pipeline.yml is silently ignored — user cannot configure provider timeout via YAML. Fix: add `{ key: 'provider_timeout', ... }` to numFields in `compile-loop-plan.ts` and add `("provider_timeout", "PROVIDER_TIMEOUT", int)` to both mapping lists in loop.sh.
-
-- [ ] [spec-gap] **P3: `concurrency_cap` in `LoopSettings` interface is dead code** — `concurrency_cap?: number` is declared in the `LoopSettings` interface (`compile-loop-plan.ts:24`) but never populated by `readLoopSettingsFromPipeline` (not in numFields) and `loop.sh` has no `CONCURRENCY_CAP` mapping. The orchestrator reads `concurrency_cap` directly from pipeline.yml via `resolveOrchestratorSettingsFromConfig` — so the field in `LoopSettings` serves no purpose. Fix: remove `concurrency_cap` from the `LoopSettings` interface in compile-loop-plan.ts, or document that it is intentionally orchestrator-only and excluded from the loop-script path.
-
-- [ ] [spec-gap] **P3: SPEC.md loop-plan.json format example missing `loopSettings`** — SPEC.md lines 3638-3653 show the `loop-plan.json` format with only `cycle`, `cyclePosition`, `iteration`, `version` — no `loopSettings`. The actual compiled artifact includes `loopSettings` whenever `pipeline.yml` has a `loop:` section. Fix: update SPEC.md example to include `loopSettings` object, or add a note that it is conditionally present.
-
 ### In Progress
 
 ### Up Next
 
-- [x] **Tests: orchestrate command reads settings from pipeline.yml** — VERIFIED: all 6 `resolveOrchestratorSettingsFromConfig` tests pass (defaults, yml-read, CLI override, partial merge, no-loop-section, unreadable file).
+- [x] [spec-gap] **P2: `provider_timeout` compile→load chain is broken** — `provider_timeout: 10800` exists in `.aloop/pipeline.yml` `loop:` section and in the `LoopSettings` interface (`compile-loop-plan.ts:19`), but `readLoopSettingsFromPipeline` never reads it into `loopSettings` (not in `numFields` array at lines 302-313), and `loop.sh` `load_loop_settings()` / `refresh_loop_settings_from_meta()` never map it to `PROVIDER_TIMEOUT` (mappings lists at lines 297-306 / 350-358). Setting in pipeline.yml is silently ignored — user cannot configure provider timeout via YAML. Fix: add `{ key: 'provider_timeout', ... }` to `numFields` in `compile-loop-plan.ts` and add `("provider_timeout", "PROVIDER_TIMEOUT", int)` to both mapping lists in `loop.sh`. Add a test to `compile-loop-plan.test.ts` asserting `provider_timeout` is emitted in `loopSettings`.
+
+- [ ] [spec-gap] **P3: `concurrency_cap` in `LoopSettings` interface is dead code** — `concurrency_cap?: number` is declared in the `LoopSettings` interface (`compile-loop-plan.ts:24`) but never populated by `readLoopSettingsFromPipeline` (not in numFields) and `loop.sh` has no `CONCURRENCY_CAP` mapping. The orchestrator reads `concurrency_cap` directly from pipeline.yml via `resolveOrchestratorSettingsFromConfig` — so the field in `LoopSettings` serves no purpose. Fix: remove `concurrency_cap` from the `LoopSettings` interface in `compile-loop-plan.ts` (dead code per CONSTITUTION rule 13).
+
+- [ ] [spec-gap] **P3: SPEC.md loop-plan.json format example missing `loopSettings`** — SPEC.md lines 3638-3653 show the `loop-plan.json` format with only `cycle`, `cyclePosition`, `iteration`, `version` — no `loopSettings`. The actual compiled artifact includes `loopSettings` whenever `pipeline.yml` has a `loop:` section. Fix: update SPEC.md example to include a `loopSettings` object with representative fields, or add a note that it is conditionally present.
 
 ### Completed
 

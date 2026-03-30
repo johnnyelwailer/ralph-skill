@@ -303,6 +303,7 @@ mappings = [
     ("request_timeout", "REQUEST_TIMEOUT", int),
     ("request_poll_interval", "REQUEST_POLL_INTERVAL", int),
     ("unavailable_sleep", "UNAVAILABLE_SLEEP", int),
+    ("provider_timeout", "PROVIDER_TIMEOUT", int),
 ]
 for key, var, cast in mappings:
     if key in s and s[key] is not None:
@@ -356,6 +357,7 @@ mappings = [
     ("request_timeout", "REQUEST_TIMEOUT", int),
     ("request_poll_interval", "REQUEST_POLL_INTERVAL", int),
     ("unavailable_sleep", "UNAVAILABLE_SLEEP", int),
+    ("provider_timeout", "PROVIDER_TIMEOUT", int),
 ]
 for key, var, cast in mappings:
     if key in s and s[key] is not None:

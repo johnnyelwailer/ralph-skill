@@ -308,6 +308,7 @@ async function readLoopSettingsFromPipeline(
       { key: 'request_timeout', set: (s, v) => { s.request_timeout = v; } },
       { key: 'request_poll_interval', set: (s, v) => { s.request_poll_interval = v; } },
       { key: 'unavailable_sleep', set: (s, v) => { s.unavailable_sleep = v; } },
+      { key: 'provider_timeout', set: (s, v) => { s.provider_timeout = v; } },
       { key: 'triage_interval', set: (s, v) => { s.triage_interval = v; } },
       { key: 'scan_pass_throttle_ms', set: (s, v) => { s.scan_pass_throttle_ms = v; } },
     ];
