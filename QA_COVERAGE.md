@@ -59,3 +59,9 @@
 | tsc --noEmit (non-test files) | 2026-03-30 | 2ec73cf61 | PASS | Zero type errors; exit 0 |
 | No hardcoded github.com URLs (adapter paths) | 2026-03-30 | 2ec73cf61 | PASS | Only 2 comment-line references; adapter.ts, orchestrate.ts, process-requests.ts all clean |
 | 27 pre-existing orchestrate failures investigation | 2026-03-30 | 2ec73cf61 | PASS | Confirmed unrelated to adapter work: spec injection, DoR checks, CI/PR mocking — stable baseline |
+| TypeScript build (npm run build) | 2026-03-30 | 07e21731f | PASS | Build clean exit 0 (iter 11) |
+| adapter.test.ts unit tests | 2026-03-30 | 07e21731f | PASS | 35/35 pass — stable |
+| process-requests.ts full suite | 2026-03-30 | 07e21731f | PASS | 23/23 pass — stable |
+| orchestrate.test.ts full suite | 2026-03-30 | 07e21731f | PASS | 335/362 pass, 27 fail — identical pre-existing baseline; no regressions |
+| tsc --noEmit (non-test files) | 2026-03-30 | 07e21731f | PASS | Zero type errors; exit 0 |
+| No hardcoded github.com URLs (adapter paths) | 2026-03-30 | 07e21731f | PASS | Zero non-comment github.com refs in adapter.ts, orchestrate.ts, process-requests.ts |

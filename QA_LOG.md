@@ -1,5 +1,41 @@
 # QA Log
 
+## QA Session — 2026-03-30 (iteration 11)
+
+### Test Environment
+- Commit under test: 07e21731f (review commit — no production code changes since iter 10)
+- Features tested: 5 (regression suite)
+
+### Results
+- PASS: TypeScript build, adapter.test.ts, process-requests.test.ts, orchestrate.test.ts, tsc --noEmit
+
+### Bugs Filed
+- None
+
+### Command Transcript
+
+```
+$ npm run build --prefix aloop/cli
+→ EXIT:0
+
+$ npx tsx --test aloop/cli/src/lib/adapter.test.ts
+# tests 35 / pass 35 / fail 0
+
+$ npx tsx --test aloop/cli/src/commands/process-requests.test.ts
+# tests 23 / pass 23 / fail 0
+
+$ npx tsx --test aloop/cli/src/commands/orchestrate.test.ts
+# tests 362 / pass 335 / fail 27 (identical pre-existing baseline)
+
+$ aloop/cli/node_modules/.bin/tsc --noEmit --project aloop/cli/tsconfig.json
+→ EXIT:0 (zero errors)
+
+$ grep 'github\.com' orchestrate.ts process-requests.ts adapter.ts (non-comment)
+→ zero matches
+```
+
+---
+
 ## QA Session — 2026-03-30 (iteration 10)
 
 ### Test Environment
