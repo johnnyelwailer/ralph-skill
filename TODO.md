@@ -43,11 +43,15 @@ Acceptance criteria:
 
 - [x] Migrate PR lifecycle calls in orchestrate.ts (PrLifecycleDeps) — replaced `deps.execGh` calls in `mergePr()` with `adapter.mergePR()` and in `processPrLifecycle()` review feedback with `adapter.postComment()`. Remaining calls (`pr view`, `pr diff`, `pr close`, `gh api`) have no direct adapter equivalents.
 
-- [ ] Migrate scanLoop / bulk fetch execGh calls in orchestrate.ts — replace `deps.execGh` calls in bulk fetch, issue close, and auto-merge with adapter calls
+- [x] Migrate scanLoop / bulk fetch execGh calls in orchestrate.ts — three specific changes:
+  1. `fetchAndApplyBulkIssueState` (line ~5270): add `adapter?` to its `deps` Pick type; when `deps.adapter` is present call `deps.adapter.fetchBulkIssueState(...)` instead of `fetchBulkIssueState(repo, deps.execGh, ...)`. Update the call-site guard at line ~5429 to also trigger when `deps.adapter` is defined (currently only `deps.execGh`).
+  2. `createTrunkToMainPr` (line ~3631): add `adapter?` to its `deps` Pick type; when `deps.adapter` is present call `deps.adapter.createPR(title, body, trunkBranch, 'main')` instead of raw `execGh` PR create / list calls. Update the call-site guard at line ~5836 similarly.
+  3. `createPrForChild` (line ~4374): add `adapter?` to `MonitorChildDeps`; when present call `deps.adapter.createPR(...)` for PR creation (keep the `gh api` branch-existence check as raw execGh — no adapter equivalent). Update the call-site guard at line ~5602 similarly.
+  Add tests for each adapter branch.
 
-- [ ] Migrate process-requests.ts execGh calls — replace `execGh` usage with adapter calls (currently one raw `execGh` call at line 421 for refine-result body update; migrate to `adapter.updateIssue`)
+- [ ] Migrate process-requests.ts execGh calls — one raw `execGh` call at line ~433 for refine-result body update: `execGh(['issue', 'edit', ..., '--body-file', bodyFile])`. Move adapter creation earlier (before the refine-result handler closure), then use `adapter.updateIssue(issue.number, { body: result.updated_body })` when adapter is available, falling back to raw `execGh` when not. Add test for the adapter path.
 
-- [ ] Meta.json adapter config — read `adapter` field from `meta.json` (default: `"github"`) and pass the type to `createAdapter()` instead of hardcoding `"github"`
+- [ ] Meta.json adapter config — update `makeAdapterForRepo` in `process-requests.ts` to accept an optional `adapterType?: string` parameter (default `'github'`); read `meta.adapter` from the parsed meta object at line ~318 and pass it to `makeAdapterForRepo`; pass it through to `createAdapter({ type: adapterType, repo }, execGh)`. Add test asserting the type is forwarded.
 
 ### Deferred
 

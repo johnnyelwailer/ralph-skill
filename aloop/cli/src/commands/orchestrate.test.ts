@@ -6716,4 +6716,219 @@ describe('adapter-branch tests', () => {
       assert.ok(reviewComment, 'review feedback should be posted via adapter');
     });
   });
+
+  describe('fetchAndApplyBulkIssueState adapter path', () => {
+    it('uses adapter.fetchBulkIssueState instead of execGh when adapter is available', async () => {
+      const bulkFetchCalls: Array<Record<string, unknown>> = [];
+      const adapter = createMockAdapter({
+        fetchBulkIssueState: async (opts) => {
+          bulkFetchCalls.push(opts ?? {});
+          return { issues: [], fetchedAt: new Date().toISOString(), fromCache: false };
+        },
+      });
+
+      const state = makeScanState({
+        issues: [makeIssue({ number: 10, state: 'in_progress', child_session: null })],
+      });
+      const deps = createMockScanDeps({
+        adapter,
+        execGh: async () => { throw new Error('execGh should not be called'); },
+      });
+      deps.files['/state.json'] = JSON.stringify(state);
+
+      const result = await runOrchestratorScanPass(
+        '/state.json', '/session', '/project', 'myapp', '/prompts', '/home/.aloop',
+        'owner/repo', 1, deps,
+      );
+
+      assert.equal(bulkFetchCalls.length, 1, 'adapter.fetchBulkIssueState should be called once');
+      assert.ok(result.bulkFetch !== null, 'bulkFetch result should be populated');
+    });
+
+    it('skips bulk fetch when neither execGh nor adapter is present', async () => {
+      const state = makeScanState({
+        issues: [makeIssue({ number: 11, state: 'in_progress', child_session: null })],
+      });
+      const deps = createMockScanDeps();
+      deps.files['/state.json'] = JSON.stringify(state);
+      // No execGh, no adapter
+
+      const result = await runOrchestratorScanPass(
+        '/state.json', '/session', '/project', 'myapp', '/prompts', '/home/.aloop',
+        'owner/repo', 1, deps,
+      );
+
+      assert.equal(result.bulkFetch, null, 'bulkFetch should be null when no execGh or adapter');
+    });
+  });
+
+  describe('createTrunkToMainPr adapter path', () => {
+    it('uses adapter.createPR instead of execGh when adapter is available', async () => {
+      const adapter = createMockAdapter();
+      const logEntries: Record<string, unknown>[] = [];
+      const state = makeScanState({
+        auto_merge_to_main: true,
+        issues: [makeIssue({ number: 1, state: 'merged' })],
+      });
+
+      const result = await createTrunkToMainPr(
+        state,
+        'owner/repo',
+        {
+          adapter,
+          execGh: async () => { throw new Error('execGh should not be called'); },
+          appendLog: (_dir, entry) => { logEntries.push(entry); },
+        },
+        '/session',
+      );
+
+      // default mock createPR returns { number: 1, url: '...' }
+      assert.equal(result, 1, 'should return PR number from adapter');
+      const createCalls = adapter.calls.filter((c) => c.method === 'createPR');
+      assert.equal(createCalls.length, 1, 'adapter.createPR should be called once');
+      assert.equal(createCalls[0].args[2], 'agent/trunk', 'head branch should be agent/trunk');
+      assert.equal(createCalls[0].args[3], 'main', 'base branch should be main');
+      const logEvent = logEntries.find((e) => e.event === 'trunk_to_main_pr_created');
+      assert.ok(logEvent, 'should log trunk_to_main_pr_created');
+      assert.equal(logEvent?.pr_number, 1);
+    });
+
+    it('returns null and logs failure when adapter.createPR throws', async () => {
+      const adapter = createMockAdapter({
+        createPR: async () => { throw new Error('PR creation failed'); },
+      });
+      const logEntries: Record<string, unknown>[] = [];
+      const state = makeScanState({
+        issues: [makeIssue({ number: 1, state: 'merged' })],
+      });
+
+      const result = await createTrunkToMainPr(
+        state,
+        'owner/repo',
+        { adapter, appendLog: (_dir, entry) => { logEntries.push(entry); } },
+        '/session',
+      );
+
+      assert.equal(result, null);
+      const failEvent = logEntries.find((e) => e.event === 'trunk_to_main_pr_failed');
+      assert.ok(failEvent, 'should log trunk_to_main_pr_failed');
+    });
+  });
+
+  describe('createPrForChild / monitorChildSessions adapter path', () => {
+    it('uses adapter.createPR for PR creation when adapter is present', async () => {
+      // default mock createPR returns { number: 1, url: '...' }
+      const adapter = createMockAdapter();
+
+      const state = makeState({
+        issues: [
+          makeIssue({
+            number: 5,
+            state: 'in_progress',
+            child_session: 'session-xyz',
+            title: 'Add feature Y',
+          }),
+        ],
+      });
+
+      const files: Record<string, string> = {
+        '/home/.aloop/sessions/session-xyz/status.json': JSON.stringify({
+          iteration: 3,
+          phase: 'build',
+          provider: 'claude',
+          stuck_count: 0,
+          state: 'exited',
+          updated_at: '2026-03-15T12:00:00Z',
+        }),
+        '/home/.aloop/sessions/session-xyz/meta.json': JSON.stringify({
+          branch: 'aloop/issue-5',
+          project_root: '/project',
+        }),
+      };
+
+      const ghCalls: string[][] = [];
+      const deps = {
+        existsSync: (p: string) => p in files,
+        readFile: async (p: string) => {
+          if (p in files) return files[p];
+          throw new Error(`ENOENT: ${p}`);
+        },
+        writeFile: async () => {},
+        execGh: async (args: string[]) => {
+          ghCalls.push(args);
+          // Branch existence check — return success
+          if (args.includes('api')) return { stdout: 'agent/trunk', stderr: '' };
+          throw new Error(`gh not mocked for: ${args.join(' ')}`);
+        },
+        now: () => new Date('2026-03-15T12:00:00Z'),
+        appendLog: () => {},
+        aloopRoot: '/home/.aloop',
+        adapter,
+      };
+
+      const result = await monitorChildSessions(state, '/session', 'owner/repo', deps);
+
+      assert.equal(result.prs_created, 1, 'PR should be created');
+      assert.equal(state.issues[0].pr_number, 1, 'issue should have PR number from adapter');
+
+      const createPrCalls = adapter.calls.filter((c) => c.method === 'createPR');
+      assert.equal(createPrCalls.length, 1, 'adapter.createPR should be called once');
+      assert.equal(createPrCalls[0].args[2], 'aloop/issue-5', 'head branch should be issue branch');
+
+      // execGh should only be called for branch existence check, not PR creation
+      const prCreateGhCalls = ghCalls.filter((a) => a.includes('pr') && a.includes('create'));
+      assert.equal(prCreateGhCalls.length, 0, 'execGh should NOT be used for PR creation when adapter present');
+    });
+
+    it('skips execGh branch check and defaults to main when no execGh but adapter present', async () => {
+      // default mock createPR returns { number: 1, url: '...' }
+      const adapter = createMockAdapter();
+
+      const state = makeState({
+        issues: [
+          makeIssue({
+            number: 6,
+            state: 'in_progress',
+            child_session: 'session-no-gh',
+            title: 'Add feature Z',
+          }),
+        ],
+      });
+
+      const files: Record<string, string> = {
+        '/home/.aloop/sessions/session-no-gh/status.json': JSON.stringify({
+          state: 'exited',
+          iteration: 1,
+          phase: 'build',
+          provider: 'claude',
+          stuck_count: 0,
+          updated_at: '2026-03-15T12:00:00Z',
+        }),
+      };
+
+      const deps = {
+        existsSync: (p: string) => p in files,
+        readFile: async (p: string) => {
+          if (p in files) return files[p];
+          throw new Error(`ENOENT: ${p}`);
+        },
+        writeFile: async () => {},
+        // No execGh
+        now: () => new Date('2026-03-15T12:00:00Z'),
+        appendLog: () => {},
+        aloopRoot: '/home/.aloop',
+        adapter,
+      };
+
+      const result = await monitorChildSessions(state, '/session', 'owner/repo', deps);
+
+      assert.equal(result.prs_created, 1, 'PR should be created via adapter without execGh');
+      assert.equal(state.issues[0].pr_number, 1);
+
+      const createPrCalls = adapter.calls.filter((c) => c.method === 'createPR');
+      assert.equal(createPrCalls.length, 1);
+      // Without execGh, base defaults to 'main'
+      assert.equal(createPrCalls[0].args[3], 'main', 'base should default to main when no execGh');
+    });
+  });
 });

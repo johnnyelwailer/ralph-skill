@@ -49,6 +49,9 @@ export interface OrchestratorAdapter {
 
   // Project status (optional)
   setIssueStatus?(number: number, status: string): Promise<void>;
+
+  // Bulk fetch (optional — not all adapters support GraphQL-based bulk fetching)
+  fetchBulkIssueState?(opts?: { states?: string[]; since?: string; issueNumbers?: number[] }): Promise<BulkFetchResult>;
 }
 
 // ----- GitHubAdapter -----
