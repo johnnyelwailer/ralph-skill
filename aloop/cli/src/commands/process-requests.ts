@@ -416,7 +416,7 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
         for (const sub of subIssues) {
           const subTitle = sub.title;
           const subBody = `Part of #${parentNum}: ${parent.title}\n\n${sub.body ?? ''}`;
-          const ghNumber = repo ? await createGhIssue(repo, subTitle, subBody, ['aloop/auto'], requestsDir) : nextNum++;
+          const ghNumber = adapter ? (await adapter.createIssue(subTitle, subBody, ['aloop/auto'])).number : nextNum++;
           state.issues.push({
             number: ghNumber || nextNum++,
             title: subTitle, body: subBody, file_hints: sub.file_hints ?? [],
@@ -431,8 +431,8 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
         (parent as any).decomposed = true;
         stateChanged = true;
         // Update parent with tasklist on GH
-        if (repo && parentNum > 0) {
-          await updateParentTasklist(repo, parentNum, state.issues, requestsDir);
+        if (adapter && parentNum > 0) {
+          await updateParentTasklist(parentNum, state.issues, adapter);
         }
       }
       await archiveRequestFile(requestsDir, filePath);
@@ -538,10 +538,10 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
   }
 
   // ── Phase 2: Create GH issues for state entries with number=0 ──
-  if (repo) {
+  if (adapter) {
     for (const issue of state.issues.filter((i: any) => i.number === 0)) {
       const labels = (issue as any).parent_issue ? ['aloop/auto'] : ['aloop/epic', 'aloop/auto'];
-      const ghNum = await createGhIssue(repo, issue.title, issue.body ?? '', labels, requestsDir);
+      const ghNum = (await adapter.createIssue(issue.title, issue.body ?? '', labels)).number;
       if (ghNum > 0) {
         issue.number = ghNum;
         (issue as any).gh_number = ghNum;
@@ -632,7 +632,7 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
   }
 
   // ── Phase 2c: Create PRs for completed children ──
-  if (repo) {
+  if (adapter) {
     for (const issue of state.issues) {
       if (!issue.child_session) continue;
       if (issue.pr_number) continue; // PR already exists
@@ -659,27 +659,22 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
               }
 
               // Create PR
-              const prResult = spawnSync('gh', [
-                'pr', 'create',
-                '--repo', repo,
-                '--title', `#${issue.number}: ${issue.title}`,
-                '--body', `Closes #${issue.number}\n\nAutomated PR from child loop session \`${issue.child_session}\`.`,
-                '--head', branch,
-                '--base', trunkBranch,
-              ], { encoding: 'utf8' });
-
-              if (prResult.status === 0 && prResult.stdout) {
-                const urlMatch = prResult.stdout.match(/\/pull\/(\d+)/);
-                const prNum = urlMatch ? parseInt(urlMatch[1], 10) : 0;
-                if (prNum > 0) {
-                  issue.pr_number = prNum;
+              try {
+                const prResult = await adapter.createPR(
+                  `#${issue.number}: ${issue.title}`,
+                  `Closes #${issue.number}\n\nAutomated PR from child loop session \`${issue.child_session}\`.`,
+                  branch,
+                  trunkBranch,
+                );
+                if (prResult.number > 0) {
+                  issue.pr_number = prResult.number;
                   issue.state = 'pr_open';
                   issue.status = 'In review';
                   stateChanged = true;
                   console.log(`[process-requests] Created PR #${issue.pr_number} for issue #${issue.number}`);
                 }
-              } else {
-                const err = prResult.stderr?.trim() ?? '';
+              } catch (e) {
+                const err = String(e);
                 // Don't spam — only log if it's not "no commits" or "already exists"
                 if (!err.includes('already exists') && !err.includes('No commits')) {
                   console.error(`[process-requests] PR create failed for #${issue.number}: ${err.substring(0, 100)}`);
@@ -1154,19 +1149,15 @@ function makeGhIssueCreator(requestsDir: string) {
   };
 }
 
-async function updateParentTasklist(repo: string, parentNum: number, issues: any[], requestsDir: string): Promise<void> {
+async function updateParentTasklist(parentNum: number, issues: any[], adapter: OrchestratorAdapter): Promise<void> {
   const subNums = issues.filter((i: any) => i.parent_issue === parentNum && i.number > 0).map((i: any) => i.number);
   if (subNums.length === 0) return;
   try {
-    const viewResult = spawnSync('gh', ['issue', 'view', String(parentNum), '--repo', repo, '--json', 'body'], { encoding: 'utf8' });
-    if (viewResult.status !== 0) return;
-    const currentBody = JSON.parse(viewResult.stdout).body ?? '';
+    const issueData = await adapter.getIssue(parentNum);
+    const currentBody = issueData.body;
     if (currentBody.includes('[tasklist]')) return;
     const tasklist = `\n\`\`\`[tasklist]\n### Sub-issues\n${subNums.map((n: number) => `- [ ] #${n}`).join('\n')}\n\`\`\``;
-    const bodyFile = path.join(requestsDir, `gh-parent-body-${Date.now()}.md`);
-    await writeFile(bodyFile, currentBody + tasklist, 'utf8');
-    spawnSync('gh', ['issue', 'edit', String(parentNum), '--repo', repo, '--body-file', bodyFile], { encoding: 'utf8' });
-    try { await unlink(bodyFile); } catch {}
+    await adapter.updateIssue(parentNum, { body: currentBody + tasklist });
     console.log(`[process-requests] Updated epic #${parentNum} with ${subNums.length} sub-issue tasklist`);
   } catch { /* non-critical */ }
 }

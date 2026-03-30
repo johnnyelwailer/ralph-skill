@@ -1,50 +1,39 @@
 # Issue #177: Refactor orchestrate.ts and process-requests.ts to use OrchestratorAdapter
 
-## Spec: SPEC-ADDENDUM.md §"Orchestrator Adapter Pattern"
+## Tasks
 
-Acceptance criteria:
-- [x] `OrchestratorAdapter` interface defined in `src/lib/adapter.ts`
-- [x] `GitHubAdapter` wraps all existing `gh` CLI calls
-- [x] `orchestrate.ts` uses adapter interface (dual-path: adapter when available, execGh fallback)
-- [x] Adapter selection configurable in `meta.json` (`adapter: "github" | "local"`)
-- [~] `LocalAdapter` stores issues as JSON files in `.aloop/issues/`, PRs as branches (deferred per spec "Approach" — implement when there's demand)
-- [x] All GitHub URL construction derives from adapter, never hardcoded (no hardcoded github.com URLs found — only comment references)
-
----
-
-## Current Phase: Complete [reviewed: gates 1-9 pass] [reviewed: gates 1-9 pass — iter 10 QA-only] [reviewed: gates 1-9 pass — iter 11 QA-only]
+### In Progress
 
 ### Up Next
 
-_(no remaining tasks — all non-deferred items complete)_
+- [x] **Migrate process-requests.ts GH calls to adapter** — Replace all `spawnSync('gh', ...)` for issue/PR CRUD with adapter calls:
+  - `createGhIssue()` helper → `adapter.createIssue()`
+  - `updateParentTasklist()`: `spawnSync gh issue view` + `gh issue edit` → `adapter.getIssue()` + `adapter.updateIssue()`
+  - Phase 2c PR creation: `spawnSync gh pr create` → `adapter.createPr()`
+  - Phase 1c refine result body update: `spawnSync gh issue edit --body-file` → `adapter.updateIssue()`
+  - Verify adapter is created once at `processRequests()` entry point and passed through deps (already partially done at line 354)
+  - Leave all `spawnSync('gh', ['api', 'graphql', ...])` project board calls unchanged (out of scope)
 
-### Completed (migration phase)
+- [ ] **Migrate orchestrate.ts — applyDecompositionPlan and triageMonitoringCycle** — Replace two targeted call-sites:
+  - `applyDecompositionPlan`: `deps.execGhIssueCreate` → `deps.adapter.createIssue()` when adapter present; fall back to `execGhIssueCreate` otherwise
+  - `triageMonitoringCycle` comment fetching: `execGh(['issue', 'view', ..., '--json', 'comments'])` → `adapter.listComments()`
+  - Verify adapter is created once at `orchestrateCommandWithDeps()` entry and passed through deps
 
-- [x] Migrate process-requests.ts execGh calls — one raw `execGh` call at line ~433 for refine-result body update: `execGh(['issue', 'edit', ..., '--body-file', bodyFile])`. Move adapter creation earlier (before the refine-result handler closure), then use `adapter.updateIssue(issue.number, { body: result.updated_body })` when adapter is available, falling back to raw `execGh` when not. Add test for the adapter path.
+- [ ] **Migrate orchestrate.ts — checkPrGates and prLifecycle** — Replace PR lifecycle call-sites:
+  - `checkPrGates`: `execGh(['pr', 'view', ..., '--json', 'mergeable,mergeStateStatus'])` → `adapter.getPrStatus()`; CI check queries → `adapter.getPrChecks()`
+  - `prLifecycle` merge: `execGh(['pr', 'merge', ...])` → `adapter.mergePr()`
 
-- [x] Meta.json adapter config — update `makeAdapterForRepo` in `process-requests.ts` to accept an optional `adapterType?: string` parameter (default `'github'`); read `meta.adapter` from the parsed meta object at line ~318 and pass it to `makeAdapterForRepo`; pass it through to `createAdapter({ type: adapterType, repo }, execGh)`. Add test asserting the type is forwarded. [reviewed: gates 1-9 pass]
+- [ ] **Migrate orchestrate.ts — label operations** — Replace label management call-sites in triage/dispatch:
+  - `execGh(['issue', 'edit', '--add-label'])` → `adapter.addLabels()`
+  - `execGh(['label', 'create', ...])` → `adapter.ensureLabelExists()`
+  - `execGh(['issue', 'edit', '--remove-label'])` → `adapter.removeLabels()` (where applicable)
 
-### Deferred
+- [ ] **Update orchestrate.test.ts with mock adapter** — Inject mock `OrchestratorAdapter` into test fixtures that exercise migrated functions; ensure all existing tests pass
 
-- [ ] LocalAdapter implementation — file-based adapter storing issues as JSON in `.aloop/issues/`, PRs as branches; deferred per spec: "implement local adapter when there's demand"
+- [ ] **Cleanup: remove dead code** — After all call-sites migrated:
+  - Remove `execGhIssueCreate` from `OrchestrateDeps` interface (dead code per rule #13)
+  - Remove any other deprecated fallback fields that are now unused
+  - Verify `npm run build` compiles and `npm test` passes
 
 ### Completed
 
-- [x] `OrchestratorAdapter` interface aligned with spec (positional params, correct return types)
-- [x] `GitHubAdapter` implementation wrapping `gh` CLI calls
-- [x] `adapter.test.ts` with unit tests for `GitHubAdapter`
-- [x] Interface method names match spec: `listIssues`, `createPR`, `mergePR`, `getPRStatus`
-- [x] `createIssue` returns `{ number, url }` per spec
-- [x] `updateIssue` accepts `labels_add` / `labels_remove` per spec
-- [x] `getPRStatus` returns `{ mergeable, ci_status, reviews }` per spec
-- [x] adapter? field in all deps interfaces (TriageDeps, OrchestrateDeps, DispatchDeps, PrLifecycleDeps, ScanLoopDeps)
-- [x] adapter instantiation in `process-requests.ts` — threaded through `scanDeps`, `prLifecycleDeps`, and `dispatchDeps`
-- [x] Migrate issue lifecycle calls in orchestrate.ts (triage/spec-question functions) — dual-path adapter branches
-- [x] Migrate PR lifecycle calls in orchestrate.ts — `mergePr()`, `processPrLifecycle()` review feedback, `flagForHuman()`, `createTrunkToMainPr()`, `createPrForChild()`
-- [x] Migrate scanLoop / bulk-fetch execGh calls — `fetchAndApplyBulkIssueState` uses adapter when available
-- [x] [review] Gate 2/3: `makeAdapterForRepo` extracted and tested; branch coverage for repo present/absent
-- [x] [review] Adapter-branch tests for orchestrate.ts dual-path functions: `applyTriageResultsToIssue`, `resolveSpecQuestionIssues`, `mergePr`, `flagForHuman`, `processPrLifecycle`
-- [x] Fix: `resolveSpecQuestionIssues` call passed `adapter: deps.adapter` so adapter branch is reachable in production
-- [x] [qa/P1] applyDecompositionPlan dependency body injection fix
-- [x] [qa/P1] applyEstimateResults complexity/priority labels fix
-- [x] [qa/P1] process-requests.ts missing exported functions restored
