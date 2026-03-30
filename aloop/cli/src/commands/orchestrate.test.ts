@@ -4577,6 +4577,88 @@ describe('runOrchestratorScanLoop', () => {
   });
 });
 
+function makeRateLimitedPassResult(iteration: number, rateLimited: boolean): ScanPassResult {
+  return {
+    iteration,
+    triage: { processed_issues: 0, triaged_entries: 0 },
+    specQuestions: { processed: 0, waiting: 0, autoResolved: 0, userOverrides: 0 },
+    dispatched: 0,
+    queueProcessed: 0,
+    specConsistencyProcessed: false,
+    childMonitoring: null,
+    prLifecycles: [],
+    waveAdvanced: false,
+    budgetExceeded: false,
+    allDone: false,
+    shouldStop: false,
+    rateLimited,
+    replan: null,
+    bulkFetch: null,
+  };
+}
+
+describe('runOrchestratorScanLoop backoff strategies', () => {
+  it('exponential: sleep doubles each consecutive rate limit hit', async () => {
+    const state = makeScanState({ scan_pass_throttle_ms: 1000, rate_limit_backoff: 'exponential' });
+    const sleepCalls: number[] = [];
+    // 4 iterations all rate-limited; sleep called after iterations 1, 2, 3 (not 4, last)
+    const deps = createMockScanDeps({
+      sleep: async (ms: number) => { sleepCalls.push(ms); },
+      runScanPass: async (_sf, _sd, _pp, _pn, _pr, _ar, _repo, iteration) =>
+        makeRateLimitedPassResult(iteration, true),
+    });
+    deps.files['/state.json'] = JSON.stringify(state);
+
+    await runOrchestratorScanLoop(
+      '/state.json', '/session', '/project', 'myapp', '/prompts', '/home/.aloop',
+      null, 1000, 4, deps,
+    );
+
+    // n=1: 1000 * 2^0 = 1000; n=2: 1000 * 2^1 = 2000; n=3: 1000 * 2^2 = 4000
+    assert.deepStrictEqual(sleepCalls, [1000, 2000, 4000]);
+  });
+
+  it('linear: sleep grows proportionally to consecutive rate limit hits', async () => {
+    const state = makeScanState({ scan_pass_throttle_ms: 1000, rate_limit_backoff: 'linear' });
+    const sleepCalls: number[] = [];
+    // 3 iterations all rate-limited; sleep called after iterations 1, 2 (not 3, last)
+    const deps = createMockScanDeps({
+      sleep: async (ms: number) => { sleepCalls.push(ms); },
+      runScanPass: async (_sf, _sd, _pp, _pn, _pr, _ar, _repo, iteration) =>
+        makeRateLimitedPassResult(iteration, true),
+    });
+    deps.files['/state.json'] = JSON.stringify(state);
+
+    await runOrchestratorScanLoop(
+      '/state.json', '/session', '/project', 'myapp', '/prompts', '/home/.aloop',
+      null, 1000, 3, deps,
+    );
+
+    // n=1: 1000 * 1 = 1000; n=2: 1000 * 2 = 2000
+    assert.deepStrictEqual(sleepCalls, [1000, 2000]);
+  });
+
+  it('fixed: sleep stays constant regardless of consecutive rate limit hits', async () => {
+    const state = makeScanState({ scan_pass_throttle_ms: 1000, rate_limit_backoff: 'fixed' });
+    const sleepCalls: number[] = [];
+    // 3 iterations all rate-limited; sleep called after iterations 1, 2 (not 3, last)
+    const deps = createMockScanDeps({
+      sleep: async (ms: number) => { sleepCalls.push(ms); },
+      runScanPass: async (_sf, _sd, _pp, _pn, _pr, _ar, _repo, iteration) =>
+        makeRateLimitedPassResult(iteration, true),
+    });
+    deps.files['/state.json'] = JSON.stringify(state);
+
+    await runOrchestratorScanLoop(
+      '/state.json', '/session', '/project', 'myapp', '/prompts', '/home/.aloop',
+      null, 1000, 3, deps,
+    );
+
+    // n=1: 1000; n=2: 1000 (no change)
+    assert.deepStrictEqual(sleepCalls, [1000, 1000]);
+  });
+});
+
 describe('resolveAutoMerge', () => {
   it('returns false by default', async () => {
     const deps = { existsSync: () => false, readFile: async () => '' };

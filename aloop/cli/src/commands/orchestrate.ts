@@ -4630,6 +4630,17 @@ export interface ScanLoopDeps {
   sleep?: (ms: number) => Promise<void>;
   signalStop?: () => boolean;
   etagCache?: EtagCache;
+  runScanPass?: (
+    stateFile: string,
+    sessionDir: string,
+    projectRoot: string,
+    projectName: string,
+    promptsSourceDir: string,
+    aloopRoot: string,
+    repo: string | null,
+    iteration: number,
+    deps: ScanLoopDeps,
+  ) => Promise<ScanPassResult>;
 }
 
 export interface SpecChangeReplanResult {
@@ -5779,9 +5790,10 @@ export async function runOrchestratorScanLoop(
   }
 
   let consecutiveRateLimits = 0;
+  const scanPass = deps.runScanPass ?? runOrchestratorScanPass;
 
   for (let iter = 1; iter <= maxIterations; iter++) {
-    const passResult = await runOrchestratorScanPass(
+    const passResult = await scanPass(
       stateFile,
       sessionDir,
       projectRoot,
