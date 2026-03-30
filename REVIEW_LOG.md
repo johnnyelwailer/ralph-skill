@@ -107,3 +107,41 @@ Gate 10: PASS — QA_COVERAGE.md: 7 PASS / 15 features = 46.7% > 30%. No stale [
 Prior Gate 2/3/4 finding: RESOLVED. Prior Gate 6 finding: PARTIALLY addressed — behavioral re-test done for 3 of 5 features; proof_manifest events remain BLOCKED (environmental, not a code shortcut).
 
 ---
+
+## Review — 2026-03-30 — commit 1ad64c7fe..636c8e9a9
+
+**Verdict: PASS** (0 findings)
+**Scope:** aloop/bin/loop.sh, aloop/bin/loop.ps1, aloop/bin/loop.tests.ps1, aloop/bin/loop_branch_coverage.tests.sh, aloop/cli/src/lib/monitor.ts, aloop/cli/src/lib/monitor.test.ts, CONSTITUTION.md, QA_COVERAGE.md, QA_LOG.md, TASK_SPEC.md, TODO.md
+
+Summary of what changed since last review (1ad64c7fe):
+- `11700aae2`: Remove dead `proof-invalid-manifest` branches from fake providers; harden CONSTITUTION rule #1; align TASK_SPEC.md
+- `f58478938`: Add placeholder substitution + mkdir + proof_manifest events to queue_override path in loop.sh and loop.ps1; 2 Pester regression tests
+- `18be430cc`: Fix monitor chain-completion guard — `finalizerPosition >= finalizer.length` required before SIGTERM; 2 new unit tests
+- `b70caeaec`: Fix branch-coverage harness: extract `substitute_prompt_placeholders`, declare `ARTIFACTS_DIR`/`LAST_PROOF_ITERATION` stubs
+- `8d28a58eb`: QA Gate 6 behavioral re-test (Pester) — proof_manifest_found/missing both PASS
+- `71cea7d88`: Docs: Gate 7 review PASS in TODO.md
+- `636c8e9a9`: QA iter-16 final acceptance QA — 5 ACs verified behaviorally
+
+Gate 1: PASS — All 9 TASK_SPEC ACs satisfied. `artifacts/iter-N/` pre-created in both main and queue_override paths (loop.sh, loop.ps1). `artifacts/baselines/` at session init. Existence-only manifest check + log events (proof_manifest_found/missing) on both paths. Placeholder substitution in queue_override path. subagent-hints-proof.md has vision-model delegation examples with {{ARTIFACTS_DIR}}/{{ITERATION}} usage. No JSON parsing added. `bash -n` PASS. PowerShell parser 0 errors. Note: CONSTITUTION rule #1 was hardened in 11700aae2 to say "nothing may be added" — f58478938's loop script additions are authorized by TASK_SPEC's explicit carve-out (AC #3: "after a proof iteration completes, loop writes log entry"), so this issue is within scope. Future issues must not add to loop scripts.
+
+Gate 2: PASS — `monitor.test.ts:302-324`: chain-not-fired test asserts exact `state === 'running'` when `finalizerPosition:0, finalizer.length:6`; would catch off-by-one. `monitor.test.ts:326-345`: chain-fired test asserts exact `state === 'completed'` when `finalizerPosition:6, finalizer.length:6`. Pester queue_override tests check specific event names and confirm absence of the wrong event and `iteration_error`. Minor: queue_override tests verify event name presence but not event field values (iteration, path) — acceptable given main-path tests already cover field verification.
+
+Gate 3: PASS — Both `proof_manifest_found` and `proof_manifest_missing` branches in queue_override path have Pester test coverage. Both new `finalizerComplete` guard branches (defer and complete) covered in monitor.test.ts. Branch-coverage harness: 52/52 branches (100%) per QA_LOG.md iter-16.
+
+Gate 4: PASS — Prior finding resolved: dead `proof-invalid-manifest` elif/elseif branches removed from both fake providers in loop.tests.ps1 (11700aae2). No dead code, no leftover TODO/FIXME, no duplication in any of the changed files.
+
+Gate 5: PASS — `tsc --noEmit` clean. `npm test`: 1092 pass / 33 fail. 33 failures are all pre-existing (same modules as prior reviews: orchestrate, EtagCache, monitorChildSessions — none in modified files). New chain-completion tests: ok 12 and ok 13 both PASS.
+
+Gate 6: PASS — No proof manifest in this session (proof phase has not run). All TASK_SPEC ACs have behavioral evidence in QA_LOG.md: (a) Pester queue_override tests verified proof_manifest_found/missing events (iter-15 QA session, 2/2 PASS); (b) real session evidence in issue-176 iter-94 log.jsonl confirmed proof_manifest_found on main path; (c) timestamp evidence (dir at 17:13:54, output.txt at 17:14:30) confirms pre-creation. Internal plumbing work; behavioral QA provides complete coverage.
+
+Gate 7: SKIP — no UI/layout changes.
+
+Gate 8: SKIP — no dependency changes.
+
+Gate 9: PASS — No user-facing behavioral changes, no CLI command changes. README unchanged. CONSTITUTION.md updated to harden rule #1 — this is documentation of existing intent, not a behavioral change.
+
+Gate 10: PASS — QA_COVERAGE.md: 19/19 features PASS (100% > 30% threshold). No stale [qa/P1] bugs in TODO.md (all P1s resolved in this iteration).
+
+Prior Gate 4 finding: RESOLVED (dead proof-invalid-manifest branches removed in 11700aae2). Prior Gate 6 BLOCKED finding: RESOLVED (behavioral verification via Pester tests in 8d28a58eb and real-session evidence in 636c8e9a9).
+
+---

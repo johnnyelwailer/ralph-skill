@@ -31,3 +31,4 @@
   - (b) f58478938: placeholder substitution + mkdir added to queue_override path in both loop.sh and loop.ps1. proof_manifest_found/missing emitted. 2 regression tests added. ✓
   - (c) 18be430cc: monitor chain-completion now checks finalizerPosition >= finalizer.length. 2 tests added (chain-deferred + chain-fired). ✓
   - (d) All 30 monitor tests PASS. `bash -n loop.sh` PASS. `tsc --noEmit` PASS.
+  [reviewed: gates 1-10 pass]
