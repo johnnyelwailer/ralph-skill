@@ -122,4 +122,75 @@ describe('DocsPanel', () => {
       expect(screen.getByRole('tab', { name: 'SPEC' })).toHaveAttribute('data-state', 'active');
     });
   });
+
+  it('renders overflow dropdown when more than 4 docs exist', async () => {
+    const user = userEvent.setup();
+    const manyDocs = {
+      'TODO.md': '# TODO',
+      'SPEC.md': '# Spec',
+      'RESEARCH.md': '# Research',
+      'REVIEW_LOG.md': '# Review',
+      'EXTRA.md': '# Extra',
+    };
+    renderDocsPanel({ docs: manyDocs });
+    await waitFor(() => {
+      expect(screen.getByLabelText('Open overflow document tabs')).toBeInTheDocument();
+    });
+    await user.click(screen.getByLabelText('Open overflow document tabs'));
+    await waitFor(() => {
+      expect(screen.getByRole('menuitem', { name: 'EXTRA' })).toBeInTheDocument();
+    });
+  });
+
+  it('switches to overflow tab via dropdown menu', async () => {
+    const user = userEvent.setup();
+    const manyDocs = {
+      'TODO.md': '# TODO',
+      'SPEC.md': '# Spec',
+      'RESEARCH.md': '# Research',
+      'REVIEW_LOG.md': '# Review',
+      'EXTRA.md': '# Extra content',
+    };
+    renderDocsPanel({ docs: manyDocs });
+    await user.click(screen.getByLabelText('Open overflow document tabs'));
+    await waitFor(() => {
+      expect(screen.getByRole('menuitem', { name: 'EXTRA' })).toBeInTheDocument();
+    });
+    await user.click(screen.getByRole('menuitem', { name: 'EXTRA' }));
+  });
+
+  it('renders extra docs not in docOrder', async () => {
+    renderDocsPanel({ docs: { 'TODO.md': '# TODO', 'EXTRA.md': '# Extra content' } });
+    await waitFor(() => {
+      expect(screen.getByRole('tab', { name: 'EXTRA' })).toBeInTheDocument();
+    });
+  });
+
+  it('skips docs with empty string values', async () => {
+    renderDocsPanel({ docs: { 'TODO.md': '# TODO', 'SPEC.md': '' } });
+    await waitFor(() => {
+      expect(screen.getAllByRole('tab')).toHaveLength(2);
+    });
+  });
+
+  it('falls back to health tab when no docs are provided', async () => {
+    renderDocsPanel({ docs: {} });
+    await waitFor(() => {
+      expect(screen.getByRole('tab', { name: /Health/ })).toHaveAttribute('data-state', 'active');
+    });
+  });
+
+  it('falls back to first doc when all docs have empty values', async () => {
+    renderDocsPanel({ docs: { 'TODO.md': '', 'SPEC.md': '' } });
+    await waitFor(() => {
+      expect(screen.getByRole('tab', { name: /Health/ })).toHaveAttribute('data-state', 'active');
+    });
+  });
+
+  it('uses health as default when TODO is missing and no other docs exist', async () => {
+    renderDocsPanel({ docs: { 'CUSTOM.md': '# Custom' } });
+    await waitFor(() => {
+      expect(screen.getByRole('tab', { name: 'CUSTOM' })).toHaveAttribute('data-state', 'active');
+    });
+  });
 });

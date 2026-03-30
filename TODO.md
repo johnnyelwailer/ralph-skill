@@ -9,10 +9,8 @@
 
 ### Up Next
 
-- [ ] [qa/P1] Fix DocsPanel.tsx branch coverage (currently 85.71%, need ≥90%)
-  - Uncovered: `useEffect` reset path at line 37 (`setActiveTab(defaultTab)` when `activeTab` becomes invalid)
-  - Fix: add a test that renders with `docs` prop containing only one doc, then triggers a state where `activeTab` is no longer in the valid list (e.g., by re-rendering with fewer docs)
-  - Still failing at iter 58 (2026-03-30): branch coverage 85.71% at commit 538bfeb42
+- [x] [qa/P1] Fix DocsPanel.tsx branch coverage (was 61.9%, now 95.23%, need ≥90%)
+  - Added overflow dropdown tests (5+ docs), empty docs fallback, extra docs not in docOrder, empty string value skipping
 
 - [ ] [qa/P1] Fix Sidebar.tsx branch coverage (currently 78.46%, need ≥90%)
   - Uncovered branches at lines 83,100,159,215 — primarily context menu and olderOpen collapse
