@@ -35,6 +35,31 @@
 
 ---
 
+## Review — 2026-03-30 — commits 9d4c7bbe0..ba0e871b4 (issue #94 README docs fixes)
+
+**Verdict: FAIL** (1 finding → written to TODO.md as [review] task)
+**Scope:** `README.md`
+
+### What the build implemented
+
+- **9d4c7bbe0**: Fixed hot-reload inaccuracy — README line 109/113 now correctly states `loop-plan.json` is read at startup and `meta.json` is hot-reloaded each iteration.
+- **ba0e871b4**: Fixed pipeline config section — removed incorrect claim that orchestrator settings live in `~/.aloop/projects/<hash>/config.yml`; correctly documents them in `.aloop/pipeline.yml`.
+
+### Findings
+
+- **Gate 9**: `README.md:130` — "The orchestrator reads `concurrency_cap` from `pipeline.yml` (at root level, not under `loop:`):" is factually wrong. The canonical `.aloop/pipeline.yml` has `concurrency_cap: 3` under the `loop:` section. The README's YAML example (showing root-level `concurrency_cap: 5`) directly contradicts the actual config file. `parseConfigScalar` uses a multiline regex that matches regardless of YAML nesting, so both placements work in practice — but users who look at their own pipeline.yml see `concurrency_cap` under `loop:`, which conflicts with what the README instructs. Fix: update line 130 and the YAML example to show `concurrency_cap` under the `loop:` section.
+
+### Gates that passed
+
+- **Gate 1**: Spec compliance — all required settings are config-driven. No regression. ✅
+- **Gates 2–4**: Documentation-only changes — N/A. ✅
+- **Gate 5**: 32 pre-existing test failures, unchanged. Type-check passes. ✅
+- **Gate 6**: Documentation changes — no proof artifacts expected. ✅
+- **Gates 7–8**: N/A — no UI or dependency changes. ✅
+- **Gate 9 (partial)**: hot-reload and config location fixes are accurate. One new inaccuracy introduced regarding `concurrency_cap` nesting level (see finding above).
+
+---
+
 ## Review — 2026-03-30 — commits fefeb1740..8e6c7e160 (issue #94 loop.ps1 fix + docs cleanup)
 
 **Verdict: FAIL** (1 finding → written to TODO.md as [review] task)

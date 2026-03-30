@@ -15,6 +15,8 @@
 
 - [x] [review] Gate 9 + loop.ps1 gap: added `provider_timeout` → `ProviderTimeoutSec` mapping to both `Load-LoopSettings` and `Refresh-LoopSettingsFromMeta` in `loop.ps1`; updated README.md to mark `provider_timeout` as fully implemented and added it to the YAML example.
 
+- [ ] [review] Gate 9: `README.md:130` — "The orchestrator reads `concurrency_cap` from `pipeline.yml` (at root level, not under `loop:`)" is inaccurate. The canonical `.aloop/pipeline.yml` has `concurrency_cap: 3` under the `loop:` section, directly contradicting the README's instruction and YAML example (which shows root-level `concurrency_cap: 5`). `parseConfigScalar` reads via regex regardless of YAML nesting so both locations work, but users reading their own pipeline.yml will see it under `loop:` — conflicting with README guidance. Fix: change the description to "under the `loop:` section" and move the example YAML into the existing `loop:` block. (priority: high)
+
 - [x] [build] Gate 9: `README.md:109,113` — fix inaccurate hot-reload references.
   - Line 109: "written to `loop-plan.json` at session start and hot-reloaded each iteration. Changes to `loop-plan.json` take effect on the next iteration without restarting" — incorrect. `loop.sh` hot-reloads from `meta.json`, not `loop-plan.json`. `loop-plan.json` is read only at startup.
   - Line 113: "read and applied by loop scripts each iteration" — incorrect for the same reason; only `meta.json` is re-read each iteration.
