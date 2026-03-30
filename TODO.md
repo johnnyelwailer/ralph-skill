@@ -15,7 +15,10 @@
 
 - [x] [review] Gate 9 + loop.ps1 gap: added `provider_timeout` → `ProviderTimeoutSec` mapping to both `Load-LoopSettings` and `Refresh-LoopSettingsFromMeta` in `loop.ps1`; updated README.md to mark `provider_timeout` as fully implemented and added it to the YAML example.
 
-- [ ] [review] Gate 9: `README.md:109` — "Changes to `loop-plan.json` take effect on the next iteration without restarting" is inaccurate. `loop.sh` hot-reloads from `meta.json` (line 337: "Hot-reload loop settings from meta.json"), NOT `loop-plan.json`. Also line 113 says "read and applied by loop scripts each iteration" implying loop-plan.json is re-read each iteration — incorrect; only `meta.json` is re-read. Fix: change both lines to reference `meta.json` for hot-reload, clarify that `loop-plan.json` is only read at startup. (priority: high)
+- [x] [build] Gate 9: `README.md:109,113` — fix inaccurate hot-reload references.
+  - Line 109: "written to `loop-plan.json` at session start and hot-reloaded each iteration. Changes to `loop-plan.json` take effect on the next iteration without restarting" — incorrect. `loop.sh` hot-reloads from `meta.json`, not `loop-plan.json`. `loop-plan.json` is read only at startup.
+  - Line 113: "read and applied by loop scripts each iteration" — incorrect for the same reason; only `meta.json` is re-read each iteration.
+  - Fix: update both lines to state that `loop-plan.json` is read at startup, and `meta.json` is hot-reloaded each iteration. (priority: high)
 
 ### Up Next
 

@@ -106,11 +106,11 @@ loop:
   provider_timeout: 10800       # Max seconds to wait for a provider response
 ```
 
-These settings are written to `loop-plan.json` at session start and hot-reloaded each iteration. Changes to `loop-plan.json` take effect on the next iteration without restarting.
+These settings are written to `loop-plan.json` at session start and read by loop scripts on startup. Each iteration, loop scripts hot-reload settings from `meta.json`; changes to `meta.json` take effect on the next iteration without restarting.
 
 **Implementation status:**
 - `triage_interval`, `scan_pass_throttle_ms`, `rate_limit_backoff` — **Implemented** (stored in `loopSettings`; orchestrator reads them from session state)
-- `max_iterations`, `max_stuck`, `inter_iteration_sleep`, `cooldown_ladder`, `provider_timeout` — **Implemented** (written to `loop-plan.json`, read and applied by loop scripts each iteration)
+- `max_iterations`, `max_stuck`, `inter_iteration_sleep`, `cooldown_ladder`, `provider_timeout` — **Implemented** (written to `loop-plan.json`, read at startup; hot-reloaded from `meta.json` each iteration)
 
 ### Per-agent config (`.aloop/agents/<name>.yml`)
 
