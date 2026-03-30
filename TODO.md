@@ -21,7 +21,7 @@
 
 - [x] [spec-gap] **P3: `concurrency_cap` in `LoopSettings` interface is dead code** — removed from `LoopSettings` interface in `compile-loop-plan.ts`.
 
-- [ ] [spec-gap] **P3: SPEC.md loop-plan.json format example missing `loopSettings`** — SPEC.md lines 3638-3653 show the `loop-plan.json` format with only `cycle`, `cyclePosition`, `iteration`, `version` — no `loopSettings`. The actual compiled artifact includes `loopSettings` whenever `pipeline.yml` has a `loop:` section. Fix: update SPEC.md example to include a `loopSettings` object with representative fields, or add a note that it is conditionally present.
+- [x] [spec-gap] **P3: SPEC.md loop-plan.json format example missing `loopSettings`** — updated SPEC.md example to include `loopSettings` with all fields from the `LoopSettings` interface, plus `finalizer`/`finalizerPosition`. Added note that `loopSettings` is conditionally present.
 
 ### Completed
 

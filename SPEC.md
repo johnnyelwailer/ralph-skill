@@ -3648,9 +3648,29 @@ The pipeline YAML config is **not parsed by the shell script**. Instead, the alo
   ],
   "cyclePosition": 0,
   "iteration": 1,
-  "version": 1
+  "version": 1,
+  "finalizer": [],
+  "finalizerPosition": 0,
+  "loopSettings": {
+    "max_iterations": 50,
+    "max_stuck": 3,
+    "inter_iteration_sleep": 3,
+    "phase_retries_multiplier": 2,
+    "cooldown_ladder": [0, 120, 300, 900, 1800, 3600],
+    "concurrent_cap_cooldown": 120,
+    "request_timeout": 300,
+    "request_poll_interval": 2,
+    "unavailable_sleep": 60,
+    "provider_timeout": 10800,
+    "health_lock_retry_delays_ms": [50, 100, 150, 200, 250],
+    "triage_interval": 5,
+    "scan_pass_throttle_ms": 30000,
+    "rate_limit_backoff": "fixed"
+  }
 }
 ```
+
+The `loopSettings` field is conditionally present — it is only emitted when `pipeline.yml` contains a `loop:` section. All fields are optional; any omitted field falls back to the hardcoded defaults in the runtime.
 
 The cycle is just a list of **prompt filenames**. All agent configuration lives in the prompt file's frontmatter — not in the JSON. This means cycle prompts and queue overrides use the exact same format and the loop parses them identically.
 
