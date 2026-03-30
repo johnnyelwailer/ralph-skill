@@ -6,15 +6,19 @@ Acceptance criteria:
 - [x] `OrchestratorAdapter` interface defined in `src/lib/adapter.ts`
 - [x] `GitHubAdapter` wraps all existing `gh` CLI calls
 - [x] `orchestrate.ts` uses adapter interface (dual-path: adapter when available, execGh fallback)
-- [ ] Adapter selection configurable in `meta.json` (`adapter: "github" | "local"`)
-- [ ] `LocalAdapter` stores issues as JSON files in `.aloop/issues/`, PRs as branches (deferred per spec "Approach")
-- [ ] All GitHub URL construction derives from adapter, never hardcoded (satisfied when meta.json config is done)
+- [x] Adapter selection configurable in `meta.json` (`adapter: "github" | "local"`)
+- [~] `LocalAdapter` stores issues as JSON files in `.aloop/issues/`, PRs as branches (deferred per spec "Approach" — implement when there's demand)
+- [x] All GitHub URL construction derives from adapter, never hardcoded (no hardcoded github.com URLs found — only comment references)
 
 ---
 
-## Current Phase: Migration (final 2 tasks)
+## Current Phase: Complete [reviewed: gates 1-9 pass]
 
 ### Up Next
+
+_(no remaining tasks — all non-deferred items complete)_
+
+### Completed (migration phase)
 
 - [x] Migrate process-requests.ts execGh calls — one raw `execGh` call at line ~433 for refine-result body update: `execGh(['issue', 'edit', ..., '--body-file', bodyFile])`. Move adapter creation earlier (before the refine-result handler closure), then use `adapter.updateIssue(issue.number, { body: result.updated_body })` when adapter is available, falling back to raw `execGh` when not. Add test for the adapter path.
 
