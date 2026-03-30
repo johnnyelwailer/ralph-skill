@@ -306,3 +306,70 @@ cat ~/.aloop/sessions/qa-proof-events-1774628537-20260327-162338/log.jsonl
 #   spec-gap, docs, spec-review, final-review, final-qa, proof — all completed
 # → Finalizer ran to completion. Fix confirmed.
 ```
+
+---
+
+## QA Session — 2026-03-30 (final review gate, issue #101) — Post-Gate-10 Regression Check
+
+### Test Environment
+- Binary under test: `/home/pj/.aloop/bin/aloop` (1.0.0, system-installed)
+- `aloop update` applied → runtime updated to `1e00f2d3e` (2026-03-30T06:23:08Z, 58 files updated)
+- Head commit: `1e00f2d3e chore(review): PASS — gates 1-10 pass` (review gate only, no code changes)
+- /tmp: 5.6GB free
+- Features tested: 5 (bash syntax, ps1 syntax, branch-coverage harness, queue_override proof events, proof_manifest existence-only check)
+
+### Results
+
+- PASS: `loop.sh` bash syntax (`bash -n`) — installed + worktree copies both exit 0
+- PASS: `loop.ps1` PowerShell syntax — 0 parse errors
+- PASS: `loop_branch_coverage.tests.sh` — 52/52 branches (100%)
+- PASS: queue_override proof Pester tests — 2/2 pass (proof_manifest_found + proof_manifest_missing)
+- PASS: existence-only check in loop.sh confirmed (no JSON parsing, only `[ -f $proof_manifest_path ]`)
+- PASS: `artifacts/baselines/` mkdir at session init (line 1946 of installed loop.sh)
+- PASS: `mkdir -p iter-N` before `invoke_provider` (queue path line 2077→2079; main path line 2246→2256)
+- PASS: `proof_manifest_found` event confirmed in real session log (issue-176 iter-94)
+- PASS: `subagent-hints-proof.md` has vision-reviewer delegation example with Gemini Flash Lite model reference
+
+### Bugs Filed
+None — all acceptance criteria verified. No regressions found in gate-10 commit.
+
+### Command Transcript
+
+```
+# Update runtime to latest
+aloop update
+# Output: Updated ~/.aloop from worktree — Version: 1e00f2d3e (2026-03-30T06:23:08Z) — Files updated: 58
+
+echo "Binary under test: $(which aloop)" && aloop --version
+# Output: Binary under test: /home/pj/.aloop/bin/aloop
+# Output: 1.0.0
+
+# Syntax checks
+bash -n /home/pj/.aloop/bin/loop.sh && echo "loop.sh: SYNTAX OK"
+# Output: loop.sh: SYNTAX OK
+bash -n aloop/bin/loop.sh && echo "loop.sh (worktree): SYNTAX OK"
+# Output: loop.sh (worktree): SYNTAX OK
+
+pwsh -NoProfile -NonInteractive -Command "[Parser]::ParseFile('loop.ps1'...)"
+# Output: loop.ps1: SYNTAX OK (0 parse errors)
+
+# Branch coverage harness
+bash aloop/bin/loop_branch_coverage.tests.sh 2>&1 | tail -3
+# Output: Branch coverage summary: 52/52 (100%)
+# Output: Shell branch-coverage harness passed.
+
+# queue_override proof events
+pwsh -NonInteractive -Command "...Pester filter *queue_override proof*..."
+# Output: Tests Passed: 2, Failed: 0
+
+# Existence-only check confirmation (no JSON parsing)
+grep -n "json\|jq\|python\|perl" loop.sh | grep -i "proof"
+# Output: lines 2083,2094,2262,2273 — only file path references, no parsers
+sed -n '2080,2100p' loop.sh
+# Output: [ -f "$proof_manifest_path" ] — existence check only, confirmed
+
+# subagent-hints-proof.md model reference
+grep -i "gemini\|Flash" aloop/templates/subagent-hints-proof.md
+# Output: "The vision-reviewer runs on a vision-capable model (Gemini Flash Lite)"
+# vision-reviewer.md frontmatter: model: openrouter/google/gemini-3.1-flash-lite-preview — MATCHES
+```

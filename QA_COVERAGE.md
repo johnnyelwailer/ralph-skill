@@ -21,3 +21,4 @@
 | branch-coverage harness for substitute_prompt_placeholders | 2026-03-30 | b70caeaec | PASS | Behavioral: `loop_branch_coverage.tests.sh` ran 52/52 branches — 100% coverage, all queue tests pass |
 | proof_manifest_found (main path, real aloop session) | 2026-03-30 | f58478938 | PASS | Behavioral: issue-176 session log.jsonl contains `proof_manifest_found` event at iter-94 with correct path — not just queue_override path |
 | artifacts/iter-N/ created before invoke_provider (timestamp) | 2026-03-30 | f58478938 | PASS | Behavioral: issue-176 iter-94 dir created at 17:13:54, output.txt written at 17:14:30 (+36s) — dir pre-dated provider invocation |
+| Full acceptance criteria re-verify (post-gate-10) | 2026-03-30 | 1e00f2d3e | PASS | All 9 acceptance criteria verified: baselines init, iter-N pre-creation, proof_manifest_found/missing events, placeholder substitution, vision hints, no JSON parsing, no baseline promotion, bash -n PASS, ps1 syntax PASS |
