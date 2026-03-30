@@ -8,6 +8,8 @@
 
 ### Completed
 
+<!-- spec-review: PASS — all in-scope requirements for issue #177 verified 2026-03-30. OrchestratorAdapter interface defined (adapter.ts); GitHubAdapter implements all methods; all core GH CRUD call-sites in orchestrate.ts and process-requests.ts migrated to adapter-with-fallback pattern; adapter-path tests cover all migrated call-sites in both files (process-requests.test.ts 11/11 pass; orchestrate.test.ts adapter-path suites all pass). Remaining spawnSync('gh',...) calls (Project V2 GraphQL sync, PR comment context fetch) are out of scope — not in the adapter interface contract and not targeted by issue #177. No spec violations found. -->
+
 <!-- spec-gap analysis: no P1/P2 gaps found — spec fully fulfilled for issue #177 (OrchestratorAdapter migration). One P3 cosmetic gap noted below (pre-existing, does not block completion). -->
 
 - [x] [spec-gap] **P3 — Stale pipeline description in SPEC.md summary and Proof AC** — `SPEC.md:5` still says "default pipeline is `plan → build × 5 → proof → qa → review`" (predates finalizer architecture). `SPEC.md:716-717` and `SPEC.md:775` acceptance criteria say "Default pipeline becomes: plan → build × 5 → proof → qa → review (9-step)" — also predates finalizer. Authoritative source is `SPEC.md:400-409` which correctly states: continuous cycle is `plan → build × 5 → qa → review` (8-step); proof runs only in finalizer. Code is correct per lines 400-409. Fix: update SPEC.md:5 and the Proof/QA AC sections to match lines 400-409. P3 (cosmetic — no runtime impact, code is correct). Does NOT block completion.
