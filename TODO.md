@@ -4,7 +4,7 @@
 
 ### In Progress
 
-- [x] Fix Gates 1(b)+4: Restore `cr_analysis` event block in `.aloop/pipeline.yml` (removed without authorization in 45e927b6e). Restoring it also resolves Gate 4 (PROMPT_orch_cr_analysis.md becomes referenced again). Restore the full block: `cr_analysis: prompt: PROMPT_orch_cr_analysis.md, batch: 2, filter: {is_change_request: true, cr_spec_updated: false}, result_pattern: cr-analysis-result-{issue_number}.json`. (priority: high)
+- [x] Fix Gates 1(b)+4: Restore `cr_analysis` event block in `.aloop/pipeline.yml` (removed without authorization in 45e927b6e). Restoring it also resolves Gate 4 (PROMPT_orch_cr_analysis.md becomes referenced again). Restore the full block: `cr_analysis: prompt: PROMPT_orch_cr_analysis.md, batch: 2, filter: {is_change_request: true, cr_spec_updated: false}, result_pattern: cr-analysis-result-{issue_number}.json`. (priority: high) [reviewed: gates 1-10 pass]
 - [x] Fix Gate 1(a): Remove `PROMPT_cleanup.md` from the finalizer list in `.aloop/pipeline.yml` and delete `aloop/templates/PROMPT_cleanup.md`. The file was added out of scope with no orchestrator authorization; removing it from the finalizer reverts the unauthorized scope expansion. CONSTITUTION rule #12 violation — spec rewrite + feature bundled in one commit. (priority: high) [reviewed: gates 1-10 pass]
 
 - [x] [review] Gate 6: Behavioral QA re-test for `proof_manifest_found`/`proof_manifest_missing` events. PASS (2026-03-29):
