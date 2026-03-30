@@ -647,3 +647,53 @@ All four extracted helpers have dedicated suites covering >90% branch coverage. 
 Gate 6: Purely internal TypeScript plumbing — no observable output; skip correct. Gates 7–9: No UI, no new dependencies, no user-facing behavior changed.
 
 ---
+
+---
+
+## Review — 2026-03-30 — commits b531b889a..bcf06191d (build: applyEstimateResults adapter + README fix)
+
+**Verdict: PASS** (1 observation)
+**Scope:** `aloop/cli/src/commands/orchestrate.ts`, `aloop/cli/src/commands/orchestrate.test.ts`, `README.md`
+
+### Gate 1 — PASS
+
+`applyEstimateResults` migration aligns with SPEC-ADDENDUM §"Orchestrator Adapter Pattern": adapter is used with fallback to execGh/execGhIssueCreate for both label ops and spec-question issue creation. The `adapter: deps.adapter` threading at the `runOrchestrateCycle` call site correctly wires the adapter through. Matches the incremental migration intent.
+
+### Gate 2 — PASS
+
+4 concrete adversarial tests (`applyEstimateResults adapter path`):
+1. Test 1 (`uses adapter.updateIssue for label ops when DoR passes`): checks exact issue number (10), exact `labels_add: ['complexity/M', 'P1']`, and `execGh: async () => { throw ... }` guards against fallthrough ✓
+2. Test 2 (`uses adapter.createIssue for spec-question when DoR fails with gaps`): verifies 2 createIssue calls for 2 gaps, exact title content per gap, exact labels arg `['aloop/spec-question']` ✓
+3. Test 3 (`falls back to execGh for label ops when no adapter`): verifies `--add-label` and `complexity/S` appear in actual ghCalls ✓
+4. Test 4 (`falls back to execGhIssueCreate for spec-question when no adapter`): verifies exact count (1) and title content including `[spec-question] #40` ✓
+
+### Gate 3 — PASS
+
+All 4 new conditional branches covered: adapter path for labels_add, execGh fallback, adapter path for createIssue, execGhIssueCreate fallback.
+
+### Gate 4 — PASS
+
+Non-null assertions (`deps.execGh!`, `deps.execGhIssueCreate!`) are sound — both inside `else` branches reachable only when adapter is absent AND their respective execGh/execGhIssueCreate are present (guarded by outer `||`). No dead code. No leftover TODOs.
+
+### Gate 5 — PASS
+
+- `tsc --noEmit`: 0 errors ✓
+- Tests: 1152/1187 pass; 34 fail — confirmed pre-existing baseline (unchanged from prior review) ✓
+- `npm run build`: clean ✓
+- 4 new tests (applyEstimateResults adapter path, ok 398): all pass ✓
+
+### Gate 6 — PASS (N/A)
+
+Purely internal TypeScript migration; no observable output — skip correct.
+
+### Gate 7 — N/A
+
+No UI changes.
+
+### Gate 8 — N/A
+
+No new dependencies.
+
+### Gate 9 — PASS
+
+README.md fix (`--launch-mode resume --session-dir` → `aloop start <session-id> --launch resume`) verified against `src/index.ts:76,81` — argument is `[session-id]` positional, flag is `--launch <mode>`. Fix is accurate. Dashboard decomposition note is informational and consistent with SPEC-ADDENDUM state.
