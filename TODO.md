@@ -18,7 +18,7 @@ Acceptance criteria:
 
 - [x] Migrate process-requests.ts execGh calls — one raw `execGh` call at line ~433 for refine-result body update: `execGh(['issue', 'edit', ..., '--body-file', bodyFile])`. Move adapter creation earlier (before the refine-result handler closure), then use `adapter.updateIssue(issue.number, { body: result.updated_body })` when adapter is available, falling back to raw `execGh` when not. Add test for the adapter path.
 
-- [ ] Meta.json adapter config — update `makeAdapterForRepo` in `process-requests.ts` to accept an optional `adapterType?: string` parameter (default `'github'`); read `meta.adapter` from the parsed meta object at line ~318 and pass it to `makeAdapterForRepo`; pass it through to `createAdapter({ type: adapterType, repo }, execGh)`. Add test asserting the type is forwarded.
+- [x] Meta.json adapter config — update `makeAdapterForRepo` in `process-requests.ts` to accept an optional `adapterType?: string` parameter (default `'github'`); read `meta.adapter` from the parsed meta object at line ~318 and pass it to `makeAdapterForRepo`; pass it through to `createAdapter({ type: adapterType, repo }, execGh)`. Add test asserting the type is forwarded.
 
 ### Deferred
 

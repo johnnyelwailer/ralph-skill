@@ -146,8 +146,9 @@ export async function updateIssueBodyViaAdapter(
 export function makeAdapterForRepo(
   repo: string | null,
   execGh: Parameters<typeof createAdapter>[1],
+  adapterType?: string,
 ): OrchestratorAdapter | undefined {
-  return repo ? createAdapter({ type: 'github', repo }, execGh) : undefined;
+  return repo ? createAdapter({ type: adapterType ?? 'github', repo }, execGh) : undefined;
 }
 
 interface ReviewCommentLike {
@@ -350,7 +351,7 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
   };
 
   // adapter must be defined early — used by refine-result handler (Phase 1c)
-  const adapter = makeAdapterForRepo(repo, execGh);
+  const adapter = makeAdapterForRepo(repo, execGh, meta.adapter);
 
   // ── Phase 0: Bridge agent output → requests ──
   // Agents write to worktree/.aloop/output/ (inside their sandbox).
