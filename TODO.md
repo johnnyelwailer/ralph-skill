@@ -6,6 +6,8 @@
 
 ### Up Next
 
+- [ ] [qa/P1] **runTriageMonitorCycle adapter.listComments not called**: New adapter-path tests added at commit a33ba1099 fail — "uses adapter.listComments when adapter is present" (expected 1 call, got 0) and "adapter path fetches PR comments via listComments" (expected 2 calls, got 0). The adapter path for `runTriageMonitorCycle` is not routing to `adapter.listComments` despite adapter being present in deps. orchestrate.test.ts:1615 and 1652. Regression introduced in a33ba1099. Tested at iter 12. (priority: high)
+
 - [x] **Migrate process-requests.ts GH calls to adapter** — Replace all `spawnSync('gh', ...)` for issue/PR CRUD with adapter calls:
   - `createGhIssue()` helper → `adapter.createIssue()`
   - `updateParentTasklist()`: `spawnSync gh issue view` + `gh issue edit` → `adapter.getIssue()` + `adapter.updateIssue()`

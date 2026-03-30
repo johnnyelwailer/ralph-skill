@@ -65,3 +65,10 @@
 | orchestrate.test.ts full suite | 2026-03-30 | 07e21731f | PASS | 335/362 pass, 27 fail — identical pre-existing baseline; no regressions |
 | tsc --noEmit (non-test files) | 2026-03-30 | 07e21731f | PASS | Zero type errors; exit 0 |
 | No hardcoded github.com URLs (adapter paths) | 2026-03-30 | 07e21731f | PASS | Zero non-comment github.com refs in adapter.ts, orchestrate.ts, process-requests.ts |
+| TypeScript build (npm run build) | 2026-03-30 | a33ba1099 | PASS | Build clean exit 0 (iter 12) |
+| adapter.test.ts unit tests | 2026-03-30 | a33ba1099 | PASS | 35/35 pass — stable |
+| process-requests.ts full suite | 2026-03-30 | a33ba1099 | PASS | 23/23 pass — stable |
+| orchestrate.test.ts full suite | 2026-03-30 | a33ba1099 | FAIL | 337/366 pass, 29 fail — 2 new regressions: runTriageMonitorCycle adapter.listComments not called (subtests 3-4); bug filed |
+| tsc --noEmit (non-test files) | 2026-03-30 | a33ba1099 | PASS | Zero type errors; exit 0 |
+| No hardcoded github.com URLs (adapter paths) | 2026-03-30 | a33ba1099 | PASS | Zero non-comment github.com refs in orchestrate.ts, process-requests.ts, adapter.ts |
+| runTriageMonitorCycle adapter path (listComments) | 2026-03-30 | a33ba1099 | FAIL | orchestrate.test.ts:1615,1652 — adapter.listComments called 0 times; expected 1 and 2; regression from a33ba1099; bug filed |

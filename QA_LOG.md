@@ -1,5 +1,63 @@
 # QA Log
 
+## QA Session — 2026-03-30 (iteration 12)
+
+### Test Environment
+- Working dir: aloop/cli
+- Commit under test: a33ba1099
+- New commits since iter 11: ecad85f99 (process-requests GH→adapter migration), a33ba1099 (applyDecompositionPlan + runTriageMonitorCycle adapter migration)
+- Features tested: 6
+
+### Results
+- PASS: TypeScript build (npm run build) — exit 0
+- PASS: adapter.test.ts — 35/35 pass
+- PASS: process-requests.test.ts — 23/23 pass
+- PASS: tsc --noEmit (non-test files) — zero type errors
+- PASS: No hardcoded github.com URLs in orchestrate.ts, process-requests.ts, adapter.ts
+- FAIL: orchestrate.test.ts — 337/366 pass, 29 fail — 2 new regressions vs baseline
+
+### Bugs Filed
+- [qa/P1] runTriageMonitorCycle adapter.listComments not called (regression in a33ba1099)
+
+### Regression Analysis
+- Pre-regression baseline (iter 11, 07e21731f): 27 failures, 335 pass, 362 total
+- Iter 12 (a33ba1099): 29 failures, 337 pass, 366 total
+- Net: +4 tests added, +2 new passes, +2 new failures (regressions)
+- New failures: suite "runTriageMonitorCycle" subtests 3-4
+  - "uses adapter.listComments when adapter is present" (AssertionError: 0 !== 1, line 1615)
+  - "adapter path fetches PR comments via listComments" (AssertionError: 0 !== 2, line 1652)
+- Root cause: adapter.listComments not being called when adapter present in runTriageMonitorCycle
+
+### Command Transcript
+```
+$ npm run build
+→ EXIT: 0 (full build: dashboard vite, esbuild server, shebang, templates, bin, agents)
+
+$ npx tsx --test src/lib/adapter.test.ts
+# tests 35 / pass 35 / fail 0
+
+$ npx tsx --test src/commands/process-requests.test.ts
+# tests 23 / pass 23 / fail 0
+
+$ npx tsx --test src/commands/orchestrate.test.ts 2>&1 | tail -10
+# tests 366 / suites 71 / pass 337 / fail 29
+
+New failures vs baseline:
+  Suite "runTriageMonitorCycle":
+    not ok 3 - uses adapter.listComments when adapter is present
+      AssertionError: 0 !== 1 (orchestrate.test.ts:1615)
+    not ok 4 - adapter path fetches PR comments via listComments
+      AssertionError: 0 !== 2 (orchestrate.test.ts:1652)
+
+$ npx tsc --noEmit --project tsconfig.json 2>&1 | grep -v "\.test\.ts"
+→ (no output — exit 0)
+
+$ grep -rn "github\.com" src/commands/orchestrate.ts src/commands/process-requests.ts src/lib/adapter.ts | grep -v "//"
+→ (no output — PASS)
+```
+
+---
+
 ## QA Session — 2026-03-30 (iteration 11)
 
 ### Test Environment
