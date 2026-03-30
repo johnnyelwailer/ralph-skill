@@ -50,6 +50,12 @@ aloop orchestrate --spec "SPEC.md specs/*.md" --plan-only
 
 # Dispatch specific issues
 aloop orchestrate --issues 42,43,44 --concurrency 2
+
+# Resume a stopped orchestrator session
+aloop orchestrate --resume <session-id>
+
+# Merge trunk to main when all issues complete
+aloop orchestrate --spec SPEC.md --auto-merge --trunk agent/trunk
 ```
 
 The orchestrator enforces role-based GitHub policies — child loops can create PRs and comment, but only the orchestrator can merge PRs and close issues.
@@ -96,21 +102,35 @@ All pipeline intervals, thresholds, and caps are config-driven — no hardcoded 
 
 ```yaml
 loop:
+  # Iteration control
   max_iterations: 50            # Max iterations before auto-stopping (must be a positive integer)
-  max_stuck: 3                  # Skip a task after N consecutive failures
+  max_stuck: 3                  # Skip task after N consecutive failures
   inter_iteration_sleep: 3      # Seconds between iterations
-  triage_interval: 5            # Run orchestrator triage every N scan iterations
+  phase_retries_multiplier: 2   # MAX_PHASE_RETRIES = provider_count * this
+
+  # Provider cooldown ladder (seconds per consecutive failure count)
+  cooldown_ladder: [0, 120, 300, 900, 1800, 3600]
+  concurrent_cap_cooldown: 120  # Cooldown for "cannot launch inside another session" errors
+
+  # Request processing
+  request_timeout: 300          # Seconds to wait for pending requests
+  request_poll_interval: 2      # Seconds between request polls
+
+  # Provider availability
+  unavailable_sleep: 60         # Seconds to sleep when all providers are unavailable
+  provider_timeout: 10800       # Max seconds to wait for a single provider invocation
+
+  # Health file locking
+  health_lock_retry_delays_ms: [50, 100, 150, 200, 250]
+
+  # Orchestrator-specific
+  triage_interval: 5            # Run triage monitor every N iterations
   scan_pass_throttle_ms: 30000  # Min milliseconds between orchestrator scan passes
   rate_limit_backoff: fixed     # Backoff strategy: exponential, linear, or fixed
-  cooldown_ladder: [0, 120, 300, 900, 1800, 3600]  # Provider cooldown seconds per failure count
-  provider_timeout: 10800       # Max seconds to wait for a provider response
+  concurrency_cap: 3            # Max concurrent child loops
 ```
 
 These settings are written to `loop-plan.json` at session start and read by loop scripts on startup. Each iteration, loop scripts hot-reload settings from `meta.json`; changes to `meta.json` take effect on the next iteration without restarting.
-
-**Implementation status:**
-- `triage_interval`, `scan_pass_throttle_ms`, `rate_limit_backoff` — **Implemented** (also stored in child `loopSettings`; orchestrator reads them directly from `pipeline.yml` at startup and caches them in orchestrator state)
-- `max_iterations`, `max_stuck`, `inter_iteration_sleep`, `cooldown_ladder`, `provider_timeout` — **Implemented** (written to `loop-plan.json`, read by loop scripts at startup; hot-reloaded from `meta.json` each iteration)
 
 ### Per-agent config (`.aloop/agents/<name>.yml`)
 
@@ -125,16 +145,54 @@ max_retries: 2
 retry_backoff: exponential
 ```
 
-### Orchestrator settings (`.aloop/pipeline.yml`)
+### Pipeline cycle and finalizer (`.aloop/pipeline.yml`)
 
-The orchestrator reads `concurrency_cap` from `pipeline.yml` under the `loop:` section:
+Define which agents run in the main cycle and in the completion finalizer:
 
 ```yaml
-loop:
-  concurrency_cap: 3            # Max parallel child loops
+# Continuous cycle — repeats until all tasks done at cycle boundary
+pipeline:
+  - agent: plan
+  - agent: build
+    repeat: 5
+    onFailure: retry
+  - agent: qa
+  - agent: review
+    onFailure: goto build
+
+# Completion finalizer — runs once when cycle completes with no TODOs remaining.
+# If any finalizer agent adds TODOs, finalizer resets and cycle resumes.
+finalizer:
+  - PROMPT_spec-gap.md
+  - PROMPT_docs.md
+  - PROMPT_final-review.md
+  - PROMPT_proof.md
 ```
 
-`triage_interval`, `scan_pass_throttle_ms`, and `rate_limit_backoff` are also set under `loop:` (shown above).
+### Orchestrator event routing (`.aloop/pipeline.yml`)
+
+Define which prompt to queue when the orchestrator detects specific issue state changes. The `process-requests` command scans issue state, matches filters, and queues the prompt:
+
+```yaml
+orchestrator_events:
+  refine:
+    prompt: PROMPT_orch_refine.md
+    batch: 3
+    filter:
+      status: "Needs refinement"
+      refined: false
+    result_pattern: "refine-result-{issue_number}.json"
+
+  estimate:
+    prompt: PROMPT_orch_estimate.md
+    batch: 5
+    filter:
+      status: "Needs refinement"
+      refined: true
+    result_pattern: "estimate-result-{issue_number}.json"
+```
+
+This removes all hardcoded agent knowledge from the orchestrator runtime — all event-to-prompt routing is config-driven.
 
 CLI flags always take precedence over config file values.
 
@@ -230,14 +288,18 @@ The installer deploys skill files to each harness directory and the Aloop runtim
 | `aloop start` | Launch a single-session loop |
 | `aloop orchestrate` | Multi-issue decomposition and parallel dispatch |
 | `aloop dashboard` | Real-time monitoring UI |
-| `aloop status` | List active sessions and provider health |
+| `aloop status` | Show all active sessions and provider health |
+| `aloop active` | List active session IDs |
 | `aloop stop <id>` | Stop a running session |
 | `aloop setup` | Interactive project configuration |
 | `aloop steer` | Send live instruction to a running loop |
 | `aloop gh <op>` | Policy-enforced GitHub operations |
 | `aloop discover` | Auto-detect project specs and validation |
+| `aloop resolve` | Resolve project workspace and configuration |
+| `aloop scaffold` | Scaffold project workdir and prompt files |
 | `aloop update` | Refresh runtime from repo |
 | `aloop devcontainer` | Generate .devcontainer config |
+| `aloop devcontainer-verify` | Verify devcontainer builds and passes checks |
 
 ### Slash commands (Claude Code / Codex / Copilot)
 
