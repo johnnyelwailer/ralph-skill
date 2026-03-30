@@ -63,3 +63,32 @@ Layout screenshots verified visually:
 **Gate 2: `Sidebar.test.tsx` — 4 cost API branch tests are shallow** — `handles cost API returning opencode_unavailable error`, `handles cost API returning string total_usd`, `handles cost API returning non-number non-string total_usd`, and `handles cost API fetch rejection` all terminate with `expect(mockFetch).toHaveBeenCalled()`. This assertion is identical regardless of which branch runs — a broken `setCostUnavailable(true)` call or a removed `parseFloat` would not cause any of these tests to fail. SessionCard renders "Cost: unavailable" (line 91) and `$X.XXXX` (lines 78/92) based on these state values. After expanding the "Older" collapsible, these rendered values are assertable. 1 `[review]` task written to TODO.md.
 
 ---
+
+## Review — 2026-03-30 — commits 13d5ec377..43467a137
+
+**Verdict: FAIL** (6 findings → written to TODO.md as [review] tasks)
+**Scope:** `Sidebar.test.tsx`, `Header.tsx`, `Header.test.tsx`, `Header.stories.tsx`, `AppView.tsx`
+
+### Prior findings resolved
+
+- ✓ Gate 2: `Sidebar.test.tsx` cost API branch tests now assert rendered output — `opencode_unavailable` → tooltip `'Cost: unavailable'`; string `'2.50'` → `$2.5000` in card; `null` and rejection → tooltip without `'Cost:'`. All 4 tests open "Older" section and click session cards; assertions are concrete and behavioral.
+
+### Findings
+
+**Gate 2: `Header.test.tsx:94-97`** — `renders connection indicator` only asserts that `data-testid="session-header-grid"` (outer container div) is in the document. A broken `<ConnectionIndicator />` would not fail this test. Existence check anti-pattern.
+
+**Gate 2: `Header.test.tsx:135-139`** — `renders elapsed timer when startedAt is provided` asserts `expect(screen.getAllByText(/\d/).length).toBeGreaterThan(0)`. This matches any digit anywhere on the page (iteration counter, progress %, timestamps). ElapsedTimer could be completely absent and this test still passes. Truthy/existence anti-pattern.
+
+**Gate 2: `Header.test.tsx:141-149`** — `renders session cost in hover card` hovers over the iter span and asserts `'Session cost:'` label exists but never checks the rendered dollar value. `sessionCost: 2.5` should produce `$2.5000` in the hover card — the `toFixed(4)` formatting is completely unverified.
+
+**Gate 3: `Header.tsx` branch coverage 87.61%** — below the ≥90% threshold for new modules. Uncovered branches: line 130 (non-string `f.status` → `'UNTESTED'` fallback in `parseQACoveragePayload`), line 211 (`stuckCount > 0` conditional class), line 227 (`avgDuration && sessionCost > 0` separator), line 275 (empty `updatedAt` while not loading).
+
+**Gate 4: `Header.tsx:14`** — `str` imported from `@/lib/activityLogHelpers` but never referenced in the file. Dead import (Constitution rule 13).
+
+**Gate 4: `Header.test.tsx:8-10`** — `vi.mock('@/hooks/useCost', ...)` mocks a hook that Header.tsx does not use (all cost values arrive as props). Dead mock.
+
+### Gate 6 note
+
+Header.stories.tsx adds 7 stories; none are in `e2e/story-screenshots.spec.ts` and no proof screenshots were committed. Already tracked as `[qa/P1]` in TODO.md. QA confirmed 6/7 stories render correctly.
+
+---
