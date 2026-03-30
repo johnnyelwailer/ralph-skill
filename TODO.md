@@ -12,7 +12,7 @@
 
 ### Up Next
 
-- [ ] Review latest commits (11700aae2, f58478938, 18be430cc) — these remove dead code from fake providers, fix queue_override proof path, and fix monitor chain-completion. No review has been run since b99c24992. (priority: high)
+- [ ] (no tasks remaining — all items completed or in gate review)
 
 ### Completed
 
@@ -26,3 +26,8 @@
 - [x] [qa/P1] Fix queue_override: add placeholder substitution + proof_manifest events to queue_override proof iterations in loop.sh and loop.ps1 (f58478938)
 - [x] [qa/P2] Fix monitor: prevent chain-completion before finalizer finishes (18be430cc)
 - [x] Fix spec: correct 9 stale references placing proof in continuous cycle (94604040f)
+- [x] [review] Gate 7: Review commits 11700aae2, f58478938, 18be430cc. PASS (2026-03-30):
+  - (a) 11700aae2: dead `proof-invalid-manifest` branches cleanly removed (4 lines). CONSTITUTION.md rule #1 hardened. TASK_SPEC.md aligned. ✓
+  - (b) f58478938: placeholder substitution + mkdir added to queue_override path in both loop.sh and loop.ps1. proof_manifest_found/missing emitted. 2 regression tests added. ✓
+  - (c) 18be430cc: monitor chain-completion now checks finalizerPosition >= finalizer.length. 2 tests added (chain-deferred + chain-fired). ✓
+  - (d) All 30 monitor tests PASS. `bash -n loop.sh` PASS. `tsc --noEmit` PASS.
