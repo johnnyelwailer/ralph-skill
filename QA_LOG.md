@@ -246,3 +246,63 @@ pwsh -NonInteractive -Command "
 #   PASS: queue_override proof iteration emits proof_manifest_found when manifest is present
 #   PASS: queue_override proof iteration emits proof_manifest_missing when manifest is absent
 ```
+
+---
+
+## QA Session — 2026-03-30 (iteration 16, issue #101) — Final Acceptance QA
+
+### Test Environment
+- Binary under test: `/home/pj/.aloop/bin/aloop` (1.0.0, system-installed)
+- `aloop update` applied → runtime updated to `71cea7d88` (2026-03-30, 58 files updated)
+- Note: `npm run test-install` blocked by missing `vite` (dashboard build dependency); used system-installed binary
+- Features tested: 5 (branch-coverage harness, loop.ps1 syntax, proof_manifest_found main path, iter-N timestamp, allTasksMarkedDone re-test)
+
+### Results
+
+- PASS: `loop_branch_coverage.tests.sh` — 52/52 branches covered (b70caeaec fix verified)
+- PASS: `loop.ps1` syntax check — 0 parse errors via PowerShell parser
+- PASS: `proof_manifest_found` event in real aloop session (issue-176, iter-94) — main path confirmed, not just queue_override
+- PASS: `artifacts/iter-N/` created before `invoke_provider` — timestamp evidence: dir at 17:13:54, output.txt at 17:14:30 (+36s)
+- PASS: `allTasksMarkedDone` FAIL re-test — fixed by 18be430cc; qa-proof-events session ran full finalizer (6 steps incl. proof) post-fix
+
+### Bugs Filed
+None — all acceptance criteria verified. No new bugs.
+
+### Command Transcript
+
+```
+# Update runtime
+aloop update
+# Output: Updated ~/.aloop from worktree — Version: 71cea7d88 (2026-03-30T05:52:05Z) — Files updated: 58
+
+echo "Binary under test: $(which aloop)" && aloop --version
+# Output: Binary under test: /home/pj/.aloop/bin/aloop
+# Output: 1.0.0
+
+# Syntax checks
+bash -n /home/pj/.aloop/bin/loop.sh && echo "loop.sh: syntax OK"
+# Output: loop.sh: syntax OK
+
+pwsh -NoProfile -Command "[void][...Parser]::ParseFile('loop.ps1', ...); Write-Output 'loop.ps1: syntax OK (0 parse errors)'"
+# Output: loop.ps1: syntax OK (0 parse errors)
+
+# Branch-coverage harness (b70caeaec fix)
+bash aloop/bin/loop_branch_coverage.tests.sh 2>&1 | tail -5
+# Output: Branch coverage summary: 52/52 (100%)
+# Output: Shell branch-coverage harness passed.
+
+# proof_manifest_found — real session evidence
+grep "proof_manifest" ~/.aloop/sessions/orchestrator-20260321-172932-issue-176-20260327-174859/log.jsonl
+# Output: {"event":"proof_manifest_found","iteration":"94","path":"...iter-94/proof-manifest.json","last_proof_iteration":"94"}
+
+# artifacts/iter-N/ timestamp evidence (issue-176 iter-94)
+stat .../artifacts/iter-94/          → Birth: 2026-03-29 17:13:54
+stat .../artifacts/iter-94/output.txt → Access: 2026-03-29 17:14:30 (+36s)
+# → dir existed 36s before provider completed output.txt
+
+# allTasksMarkedDone re-test — qa-proof-events session (post-fix runtime 18be430cc)
+cat ~/.aloop/sessions/qa-proof-events-1774628537-20260327-162338/log.jsonl
+# Shows: tasks_marked_complete@iter2, then queue_override iters 3-8:
+#   spec-gap, docs, spec-review, final-review, final-qa, proof — all completed
+# → Finalizer ran to completion. Fix confirmed.
+```
