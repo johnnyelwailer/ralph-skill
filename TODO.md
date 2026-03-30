@@ -11,10 +11,14 @@
 
 ### Up Next
 
-- [ ] [qa/P1] Fix Sidebar.tsx branch coverage (currently 78.46%, need ≥90%)
-  - Uncovered branches at lines 83,100,159,215 — primarily context menu and olderOpen collapse
-  - Add context menu tests: (a) right-click renders menu with `role="menu"` at correct position, (b) "Stop after iteration" calls `onStopSession(id, false)` and closes menu, (c) "Kill immediately" calls `onStopSession(id, true)` and closes menu, (d) "Copy session ID" calls `onCopySessionId(id)` and closes menu, (e) Escape key fires `setContextMenuSessionId(null)`
-  - Still failing at iter 59 (2026-03-30): branch coverage 78.46% at commit 83b9b9468
+- [x] [qa/P1] Fix Sidebar.tsx branch coverage (was 78.46%, now 92.3%, need ≥90%)
+  - Added context menu tests: right-click renders menu at correct position, "Stop after iteration"/"Kill immediately"/"Copy session ID" actions + close, Escape key dismisses menu
+  - Added older sessions collapse toggle test
+  - Added cost API response branch tests (string, null, rejection, opencode_unavailable)
+  - Added collapsed state tests (current id → null, non-current id)
+  - Added selectedSessionId matching tests
+  - Added "current" expanded session click → null branch
+  - Added suppress-click-after-context-menu test
 
 - [ ] Extract Header component from AppView.tsx (priority: critical)
   - `Header` (lines 233–362, ~130 LOC): session header with phase badge, iteration counter, elapsed timer, stop/resume buttons, steer input
