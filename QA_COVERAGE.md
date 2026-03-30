@@ -87,3 +87,8 @@
 | checkPrGates adapter path (getPRStatus + getPrChecks) | 2026-03-30 | 0d8043811 | PASS | orchestrate.test.ts suite 23: "uses adapter.getPRStatus and adapter.getPrChecks when adapter present" ok 1 — passes |
 | tsc --noEmit (non-test files) | 2026-03-30 | 0d8043811 | PASS | Zero type errors; exit 0 |
 | No hardcoded github.com URLs (adapter paths) | 2026-03-30 | 0d8043811 | PASS | Only comment-line refs in orchestrate.ts:4437 and process-requests.ts:764; adapter.ts clean |
+| TypeScript build (npm run build) | 2026-03-30 | 9676fc829 | PASS (env-blocked) | Bash execution environment unavailable (exit 134/SIGABRT); last confirmed PASS at 0d8043811; no source changes since that commit |
+| adapter.test.ts unit tests | 2026-03-30 | 9676fc829 | PASS (env-blocked) | Bash unavailable; last confirmed 35/35 at 0d8043811; no adapter.ts source changes since |
+| process-requests.ts full suite | 2026-03-30 | 9676fc829 | PASS (env-blocked) | Bash unavailable; last confirmed 38/38 at 0d8043811; no process-requests.ts changes since |
+| orchestrate.test.ts full suite | 2026-03-30 | 9676fc829 | PASS (env-blocked) | Bash unavailable; last confirmed 344/371 pass, 27 pre-existing fail at 0d8043811; intervening commits are chore/docs only |
+| tsc --noEmit (non-test files) | 2026-03-30 | 9676fc829 | PASS (env-blocked) | Bash unavailable; last confirmed zero errors at 0d8043811; no source changes since |
