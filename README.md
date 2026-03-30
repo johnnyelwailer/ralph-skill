@@ -50,9 +50,14 @@ aloop orchestrate --spec "SPEC.md specs/*.md" --plan-only
 
 # Dispatch specific issues
 aloop orchestrate --issues 42,43,44 --concurrency 2
+
+# Resume a stopped orchestrator session
+aloop orchestrate --resume <session-id>
 ```
 
 The orchestrator enforces role-based GitHub policies — child loops can create PRs and comment, but only the orchestrator can merge PRs and close issues.
+
+> **Known issue (P2):** Label-only `updateIssue` calls (adding/removing labels without a body update) currently fail at runtime — `gh issue edit` requires at least one edit flag. Affected call-sites: `orchestrate.ts:1888`, `1901`, `2266`, `2286`, `2306`, `2505`, `3814`. A fix is tracked in TODO.md. Body updates and all other issue/PR operations are unaffected.
 
 ## Dashboard
 
@@ -179,6 +184,7 @@ The installer deploys skill files to each harness directory and the Aloop runtim
 | `aloop steer` | Send live instruction to a running loop |
 | `aloop gh <op>` | Policy-enforced GitHub operations |
 | `aloop discover` | Auto-detect project specs and validation |
+| `aloop resolve` | Resolve project workspace and configuration |
 | `aloop update` | Refresh runtime from repo |
 | `aloop devcontainer` | Generate .devcontainer config |
 | `aloop devcontainer-verify` | Verify devcontainer builds and passes checks |
