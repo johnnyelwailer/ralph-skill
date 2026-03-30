@@ -267,3 +267,45 @@ All new tests are concrete:
 - Gate 9: No user-facing behavior changed
 
 ---
+
+## Review — 2026-03-30 12:00 — commit 2de5aeefc..097fc63ba
+
+**Verdict: PASS** (0 findings)
+**Scope:** `orchestrate.ts`, `process-requests.ts`, `adapter.ts`, `orchestrate.test.ts`, `process-requests.test.ts`
+**Commits reviewed:** `45c344642` (scanLoop/bulk-fetch adapter), `364b994e3` (refine-result adapter), `097fc63ba` (meta.json adapter config)
+
+### Gate 1 — PASS
+
+Spec §"Orchestrator Adapter Pattern" acceptance criteria satisfied:
+- `fetchAndApplyBulkIssueState` uses `adapter.fetchBulkIssueState` when available, falls back to raw execGh ✓
+- `createTrunkToMainPr` uses `adapter.createPR`; PR-already-exists recovery guarded to execGh-only (no `listPRs` on adapter — documented in comment) ✓
+- `createPrForChild` / `monitorChildSessions` use `adapter.createPR`; branch-existence check guarded to execGh-only (documented) ✓
+- `updateIssueBodyViaAdapter` extracted and used in the refine-result handler ✓
+- `meta.adapter` read from meta.json and forwarded to `makeAdapterForRepo` as `adapterType` ✓
+
+### Gate 2 — PASS
+
+Tests are concrete and adversarial:
+- `updateIssueBodyViaAdapter` test (a): exact `adapterCalls[0].number === 42`, `deepEqual(update, { body: 'new body text' })`, `fallbackCalled === false` — would catch any body routing bug ✓
+- `createTrunkToMainPr` adapter test: `execGh: async () => { throw new Error('execGh should not be called') }` pattern — any fallthrough fails the test ✓
+- `monitorChildSessions` test (b): verifies base defaults to `'main'` when no execGh (exact value check on `createPrCalls[0].args[3]`) ✓
+- `makeAdapterForRepo` adapterType tests: `instanceof GitHubAdapter`, throws `/Unknown adapter type: "gitlab"/` — covers type-routing branches ✓
+- `fetchAndApplyBulkIssueState` adapter test: `bulkFetchCalls.length === 1` with execGh set to throw — any fallthrough would fail ✓
+
+### Gate 3 — PASS
+
+All new branches covered. Non-blocking note: the branch where adapter is present but `fetchBulkIssueState?` is absent (optional method, falls back to execGh) has no dedicated test — covered by pre-existing execGh path tests.
+
+### Gate 4 — PASS
+
+`fetchBulkIssueState?` correctly takes `opts?` without `repo` (repo bound in constructor). All execGh-only fallbacks documented inline. No dead code, no leftover TODOs.
+
+### Gate 5 — PASS
+
+`tsc --noEmit`: 0 errors; `npm run build`: clean. 1124 pass, 34 fail (confirmed pre-existing baseline). 8 new tests all pass.
+
+### Gates 6–9 — Pass / N/A
+
+Gate 6: Purely internal migration — QA confirmed 27 pre-existing orchestrate failures unchanged. Gates 7–9: No UI, no new deps, no user-facing behavior changed.
+
+---
