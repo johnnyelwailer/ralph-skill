@@ -697,3 +697,58 @@ No new dependencies.
 ### Gate 9 — PASS
 
 README.md fix (`--launch-mode resume --session-dir` → `aloop start <session-id> --launch resume`) verified against `src/index.ts:76,81` — argument is `[session-id]` positional, flag is `--launch <mode>`. Fix is accurate. Dashboard decomposition note is informational and consistent with SPEC-ADDENDUM state.
+
+---
+
+## Review — 2026-03-30 — commits 9676fc829..48148a5af (final-review: QA docs + README pipeline fix + spec-review re-verify)
+
+**Verdict: PASS** (1 observation)
+**Scope:** `README.md`, `QA_LOG.md`, `QA_COVERAGE.md`, `TODO.md`
+**Commits reviewed:** `eba906054` (QA final-qa docs), `39600c28a` (README pipeline description fix), `48148a5af` (spec-review re-verify TODO.md note)
+
+### Gate 1 — PASS
+
+No production code changed since prior review (`9676fc829`). All issue #177 acceptance criteria confirmed satisfied by spec-review (`48148a5af`): OrchestratorAdapter interface defined, GitHubAdapter wraps all gh CLI calls, all core call-sites in orchestrate.ts and process-requests.ts migrated to adapter-with-fallback, adapter-path tests cover all migrated call-sites.
+
+README pipeline description fix aligns with SPEC.md:400-425: continuous cycle `plan → build × 5 → qa → review` (4 phases, 8-step), finalizer `spec-gap → docs → spec-review → final-review → final-qa → proof` — exact match. ✓
+
+### Gate 2 — PASS
+
+No new tests added or changed. Existing test suite unchanged.
+
+### Gate 3 — PASS
+
+No new production code branches introduced.
+
+### Gate 4 — PASS
+
+Documentation-only changes. No dead code, no leftover TODOs, no duplication issues.
+
+### Gate 5 — PASS
+
+- `tsc --noEmit`: 0 errors ✓
+- `npm run build`: clean ✓
+- Tests: 1151/1187 pass, 35 fail. 35 = 34 previously documented pre-existing + 1 EtagCache (explicitly listed as pre-existing in QA_LOG.md iteration 3). No new regressions vs no production code changes. ✓
+
+**Observation**: Gate 9 — Three new commands (`devcontainer-verify`, `scaffold`, `active`) added to README command table verified against `src/index.ts` — all three confirmed registered. Steer correctly repositioned as ad-hoc injection tool (not a regular cycle agent). Documentation is now accurate.
+
+### Gate 6 — PASS (N/A)
+
+Documentation-only changes (README fix, QA logging). No observable output to prove. Skip correct.
+
+### Gate 7 — N/A
+
+No UI changes.
+
+### Gate 8 — N/A
+
+No new dependencies installed.
+
+### Gate 9 — PASS
+
+- Pipeline description: `plan → build × 5 → qa → review` (4 phases) — matches SPEC.md:404 ✓
+- Finalizer: `spec-gap → docs → spec-review → final-review → final-qa → proof` — matches SPEC.md:422 ✓
+- New commands (`devcontainer-verify`, `scaffold`, `active`) confirmed present in `src/index.ts` ✓
+- Steer repositioned as ad-hoc steering tool — correct (it's not a cycle agent) ✓
+
+**Issue #177 is complete.** All non-deferred acceptance criteria satisfied. LocalAdapter deferred per spec.
