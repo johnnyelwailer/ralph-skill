@@ -1,5 +1,57 @@
 # QA Log
 
+## QA Session — 2026-03-30 (iteration 10)
+
+### Test Environment
+- Working dir: aloop/cli
+- Commit: 2ec73cf61
+- Features tested: 4 (build, adapter unit tests, process-requests suite, orchestrate suite + 27-failure investigation)
+
+### Results
+- PASS: TypeScript build (npm run build)
+- PASS: adapter.test.ts — 35/35
+- PASS: process-requests.test.ts — 23/23 (incl. adapterType forwarded, defaults to "github", unknown type throws)
+- PASS: tsc --noEmit — zero type errors
+- PASS: No hardcoded github.com URLs in adapter paths (only comment lines)
+- PASS: orchestrate.test.ts — 335/362 (27 fail — confirmed pre-existing baseline, unrelated to adapter work)
+
+### Bugs Filed
+None — all acceptance criteria confirmed passing; 27 orchestrate failures are pre-existing and not regressions from adapter work.
+
+### Command Transcript
+
+```
+$ npm run build
+→ exit 0 (dashboard + esbuild + copy steps all clean)
+
+$ npx tsx --test src/lib/adapter.test.ts
+→ # tests 35 / # pass 35 / # fail 0
+
+$ npx tsx --test src/commands/process-requests.test.ts
+→ # tests 23 / # pass 23 / # fail 0
+  ok - adapterType is forwarded to createAdapter as config.type
+  ok - adapterType defaults to "github" when omitted
+  ok - unknown adapterType throws
+
+$ npx tsc --noEmit --project tsconfig.json
+→ exit 0 (zero type errors)
+
+$ grep -n "github.com" src/lib/adapter.ts src/commands/orchestrate.ts src/commands/process-requests.ts
+→ 2 results, both comment lines (not functional code)
+
+$ npx tsx --test src/commands/orchestrate.test.ts
+→ # tests 362 / # pass 335 / # fail 27
+  (identical to iters 6-9 baseline; pre-existing failures)
+
+27 failing suite names: orchestrateCommandWithDeps with --plan, validateDoR, launchChildLoop,
+  checkPrGates, reviewPrDiff, processPrLifecycle, queueGapAnalysisForIssues,
+  epic and sub-issue decomposition helpers, runOrchestratorScanPass
+Investigation: failures are about spec injection, DoR checks, CI/PR status mocking — all
+unrelated to OrchestratorAdapter. Adapter-specific tests within these suites pass.
+```
+
+---
+
 ## QA Session — 2026-03-27 (Issue #177 — OrchestratorAdapter threading)
 
 ### Test Environment
