@@ -79,8 +79,9 @@ describe('MainPanel', () => {
   it('calls setActivityCollapsed when collapse button clicked', () => {
     const setActivityCollapsed = vi.fn();
     renderMainPanel({ setActivityCollapsed, activityCollapsed: false });
-    const cards = screen.getAllByText('Documents');
-    expect(cards.length).toBeGreaterThan(0);
+    const collapseBtn = screen.getByLabelText('Collapse activity panel');
+    fireEvent.click(collapseBtn);
+    expect(setActivityCollapsed).toHaveBeenCalledWith(true);
   });
 
   it('passes props to DocsPanel', () => {

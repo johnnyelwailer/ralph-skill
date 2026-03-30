@@ -1,4 +1,5 @@
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { DocsPanel, type DocsPanelProps } from './DocsPanel';
@@ -45,14 +46,15 @@ describe('DocsPanel', () => {
   });
 
   it('switches tab when tab trigger is clicked', async () => {
+    const user = userEvent.setup();
     renderDocsPanel();
     await waitFor(() => {
       expect(screen.getAllByRole('tab')).toHaveLength(4);
     });
     const specTab = screen.getAllByRole('tab')[1];
-    fireEvent.click(specTab);
+    await user.click(specTab);
     await waitFor(() => {
-      expect(screen.getAllByRole('tab')).toHaveLength(4);
+      expect(specTab).toHaveAttribute('data-state', 'active');
     });
   });
 
@@ -64,10 +66,15 @@ describe('DocsPanel', () => {
   });
 
   it('switches to health tab', async () => {
+    const user = userEvent.setup();
     renderDocsPanel({ providerHealth: [{ name: 'claude', status: 'healthy', lastEvent: '' }] });
     await waitFor(() => {
-      const healthTab = screen.getByRole('tab', { name: /Health/ });
-      fireEvent.click(healthTab);
+      expect(screen.getByRole('tab', { name: /Health/ })).toBeInTheDocument();
+    });
+    const healthTab = screen.getByRole('tab', { name: /Health/i });
+    await user.click(healthTab);
+    await waitFor(() => {
+      expect(screen.getByRole('tab', { name: /Health/i })).toHaveAttribute('data-state', 'active');
     });
   });
 
