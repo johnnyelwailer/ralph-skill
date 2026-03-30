@@ -46,3 +46,20 @@ Layout screenshots verified visually:
 **Gate 4: `playwright.stories.config.ts:1-2,5`** — The prior Gate 4 fix renamed `artifactDir` to `currentDir` without deleting it. All three lines remain dead code: `import path from 'node:path'` (line 1), `import { fileURLToPath } from 'node:url'` (line 2), and `const currentDir = path.dirname(fileURLToPath(import.meta.url))` (line 5). None are referenced in `defineConfig`. Violates Constitution rule 13. QA log at iter 59 independently confirms this.
 
 ---
+
+## Review — 2026-03-30 — commits 4187d269c..13d5ec377
+
+**Verdict: FAIL** (1 finding → written to TODO.md as [review] task)
+**Scope:** `DocsPanel.test.tsx`, `playwright.stories.config.ts`, `Sidebar.test.tsx`
+
+### Prior findings resolved
+
+- ✓ Gate 2: `DocsPanel.test.tsx:145-160` — overflow tab now asserted via `waitFor(() => expect(screen.getByRole('tabpanel')).toHaveTextContent('Extra content'))` — behavioral and concrete ✓
+- ✓ Gate 4: `playwright.stories.config.ts:1-2,5` — all dead imports (`path`, `fileURLToPath`, `currentDir`) removed; only `defineConfig` import remains ✓
+- ✓ Gate 3 (QA-backed): Sidebar.tsx coverage raised from 78.46% to 95.38% by 24 new tests; context menu position, stop/kill/copy actions, Escape dismiss, older sessions toggle, cost fetch URL assertion, collapsed dot clicks all have concrete behavioral assertions ✓
+
+### Findings
+
+**Gate 2: `Sidebar.test.tsx` — 4 cost API branch tests are shallow** — `handles cost API returning opencode_unavailable error`, `handles cost API returning string total_usd`, `handles cost API returning non-number non-string total_usd`, and `handles cost API fetch rejection` all terminate with `expect(mockFetch).toHaveBeenCalled()`. This assertion is identical regardless of which branch runs — a broken `setCostUnavailable(true)` call or a removed `parseFloat` would not cause any of these tests to fail. SessionCard renders "Cost: unavailable" (line 91) and `$X.XXXX` (lines 78/92) based on these state values. After expanding the "Older" collapsible, these rendered values are assertable. 1 `[review]` task written to TODO.md.
+
+---
