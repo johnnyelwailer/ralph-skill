@@ -21,6 +21,10 @@ Acceptance criteria:
 
 ### In Progress
 
+- [ ] [review] Gate 2/3: `process-requests.ts:941-943` — `repo ? createAdapter(...) : undefined` conditional has zero test coverage. Add tests for: (a) `repo` present → adapter created and passed into `scanDeps.adapter`, `prLifecycleDeps.adapter`, and `dispatchDeps.adapter`; (b) no `repo` → all three adapter slots are `undefined`. (Same finding as 2026-03-27 review Gate 2, re-opened after code was re-added.) (priority: high)
+
+- [ ] [review] Uncommitted changes: 302 lines of adapter-migration code in orchestrate.ts are in the working tree but NOT committed. TODO.md marks "Migrate issue lifecycle calls" and "Migrate PR lifecycle calls" as `[x]` done. Commit the work (with tests) or revert. Once committed, each new `if (deps.adapter) ... else { execGh }` dual-path in `applyTriageResultsToIssue`, `resolveSpecQuestionIssues`, `mergePr`, `flagForHuman`, and `processPrLifecycle` needs a test covering the adapter branch (not just the existing execGh branch). (priority: high)
+
 - [x] [qa/P1] orchestrate.ts applyDecompositionPlan missing dependency body injection: fixed — enriched body with "Depends on #X, #Y" injected and stored in state. RESOLVED: 2026-03-29.
 
 - [x] [qa/P1] orchestrate.ts applyEstimateResults not applying complexity/priority labels via execGh: fixed — added `priority?: string` to `EstimateResult` and execGh label calls in `dor_passed` branch. RESOLVED: 2026-03-29.

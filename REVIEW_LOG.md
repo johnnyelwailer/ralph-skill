@@ -172,3 +172,51 @@ Observation: Gate 5 finding from last review (TS2367 at process-requests.ts:551)
 - Gate 10: QA coverage 75% (12/16 features PASS); open P1 bugs filed 2026-03-28 (< 3 iterations old)
 
 ---
+
+## Review — 2026-03-30 — commits 3f2287b93..fce7c6c30 (build: dep injection + label enrichment + adapter threading)
+
+**Verdict: FAIL** (2 findings → written to TODO.md as [review] tasks)
+**Scope:** `aloop/cli/src/commands/orchestrate.ts`, `aloop/cli/src/commands/process-requests.ts`
+
+### Gate 1 — PASS
+
+- `applyDecompositionPlan`: appends "Depends on #X, #Y" to issue body when `depends_on` is non-empty; stores enriched body in state. Matches TODO and AC 6 intent. ✓
+- `applyEstimateResults`: adds `complexity/<tier>` and `priority` labels via `execGh` after DoR passes, guarded by `deps.execGh && deps.repo`. ✓
+- Adapter field threading (`adapter?` in all 5 deps interfaces + pass-through in `runTriageMonitorCycle`, `runOrchestratorScanPass`, `process-requests.ts`) is aligned with the incremental migration plan. ✓
+
+### Gate 2 FAIL — Adapter instantiation branch untested
+
+`process-requests.ts:941-943` — `const adapter = repo ? createAdapter(...) : undefined` is a two-branch conditional with zero test coverage:
+- No test verifies adapter is created when `repo` is provided and flows into `scanDeps.adapter`, `prLifecycleDeps.adapter`, and `dispatchDeps.adapter`
+- No test verifies adapter is `undefined` when `repo` is absent
+
+This is the same class of finding as the first review (2026-03-27 Gate 2), which was closed as N/A when the code was removed. Code is back; finding re-opens.
+
+Additionally: there are 302 lines of uncommitted adapter-migration changes in `orchestrate.ts` (working tree) marked as done in TODO. Every new `if (deps.adapter) ... else { execGh }` dual-path adds an untested adapter branch. These must be committed with tests before the next review.
+
+### Gate 3 FAIL — 0% branch coverage for `repo ? createAdapter(...) : undefined`
+
+Both branches of the conditional at `process-requests.ts:941-943` are uncovered.
+
+### Gate 4 — PASS
+
+- `createAdapter` and `OrchestratorAdapter` imports are used. No dead imports.
+- `deps.execGh && deps.repo` guard before label call is correct — avoids passing `undefined` to execGh array.
+- No dead code or leftover TODOs in changed files.
+
+### Gate 5 — PASS
+
+- `tsc --noEmit` passes with zero errors (first time in this session). ✓
+- 1099/1134 tests pass; 34 failures all pre-existing (QA confirms: "exactly matches pre-regression baseline"). No new regressions. ✓
+- `npm run build` clean. ✓
+
+Observation: Gate 2 finding at `applyEstimateResults` (ok 396): test subtests 1–6 are concrete — exact `--add-label` value checks, combined-label verification, and no-label-when-absent assertions. Thorough.
+
+### Gates 6–9 — Pass / N/A
+
+- Gate 6: Internal TypeScript plumbing only; skip correct
+- Gate 7: No UI changes
+- Gate 8: No new dependencies
+- Gate 9: No user-facing behavior changed
+
+---
