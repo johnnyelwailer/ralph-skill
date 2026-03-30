@@ -96,7 +96,7 @@ All pipeline intervals, thresholds, and caps are config-driven — no hardcoded 
 
 ```yaml
 loop:
-  max_iterations: 50            # Max iterations before auto-stopping (0 = unlimited)
+  max_iterations: 50            # Max iterations before auto-stopping (must be a positive integer)
   max_stuck: 3                  # Skip a task after N consecutive failures
   inter_iteration_sleep: 3      # Seconds between iterations
   triage_interval: 5            # Run orchestrator triage every N scan iterations
