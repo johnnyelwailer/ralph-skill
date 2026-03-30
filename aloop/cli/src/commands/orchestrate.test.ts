@@ -688,6 +688,43 @@ describe('applyDecompositionPlan', () => {
     assert.equal(result.issues[1].number, 10);
     assert.deepStrictEqual(result.issues[1].depends_on, [5]);
   });
+
+  it('uses adapter.createIssue when adapter is present', async () => {
+    const adapter = createMockAdapter();
+    const deps: OrchestrateDeps = {
+      ...baseDeps(),
+      adapter,
+      execGhIssueCreate: async () => { throw new Error('execGhIssueCreate should not be called'); },
+    };
+    const plan: DecompositionPlan = {
+      issues: [planIssue(1, 'A'), planIssue(2, 'B', [1])],
+    };
+    const result = await applyDecompositionPlan(plan, baseState(), '/sessions/orch-1', 'owner/repo', deps);
+
+    // Mock adapter returns number: 1 for every createIssue call
+    assert.equal(result.issues[0].number, 1);
+    assert.equal(result.issues[1].number, 1);
+    const createCalls = adapter.calls.filter((c) => c.method === 'createIssue');
+    assert.equal(createCalls.length, 2);
+    assert.equal(createCalls[0].args[0], 'A');
+    assert.equal(createCalls[1].args[0], 'B');
+  });
+
+  it('prefers adapter over execGhIssueCreate when both present', async () => {
+    const adapter = createMockAdapter();
+    const deps: OrchestrateDeps = {
+      ...baseDeps(),
+      adapter,
+      execGhIssueCreate: async () => { throw new Error('should not be called'); },
+    };
+    const plan: DecompositionPlan = {
+      issues: [planIssue(1, 'X')],
+    };
+    const result = await applyDecompositionPlan(plan, baseState(), '/sessions/orch-1', 'owner/repo', deps);
+    assert.equal(result.issues[0].number, 1); // mock adapter returns number: 1
+    const createCalls = adapter.calls.filter((c) => c.method === 'createIssue');
+    assert.equal(createCalls.length, 1);
+  });
 });
 
 describe('orchestrateCommandWithDeps with --plan', () => {
@@ -1538,6 +1575,83 @@ describe('runTriageMonitorCycle', () => {
 
     assert.deepStrictEqual(result, { processed_issues: 0, triaged_entries: 0 });
     assert.equal(state.issues[0].last_comment_check, undefined);
+  });
+
+  it('uses adapter.listComments when adapter is present', async () => {
+    const adapter = createMockAdapter({
+      listComments: async (issueNumber: number, _since?: string) => {
+        if (issueNumber === 42) {
+          return [
+            { id: 601, body: 'Please fix the types.', author: 'alice', created_at: '2026-03-14T11:30:00.000Z' },
+          ];
+        }
+        return [];
+      },
+    });
+    const state = makeState({
+      created_at: '2026-03-14T10:00:00.000Z',
+      updated_at: '2026-03-14T10:00:00.000Z',
+      issues: [
+        makeIssue({
+          number: 42,
+          pr_number: null,
+          blocked_on_human: false,
+          processed_comment_ids: [],
+          triage_log: [],
+          last_comment_check: '2026-03-14T11:00:00.000Z',
+        }),
+      ],
+    });
+    const deps: Pick<OrchestrateDeps, 'now'> & { adapter: OrchestratorAdapter } = {
+      now: () => new Date('2026-03-14T12:00:00.000Z'),
+      adapter,
+    };
+    const result = await runTriageMonitorCycle(state, 'orch-20260314', 'owner/repo', deps);
+    assert.equal(result.processed_issues, 1);
+    assert.equal(result.triaged_entries, 1);
+    assert.ok(state.issues[0].processed_comment_ids?.includes(601));
+    assert.equal(state.issues[0].last_comment_check, '2026-03-14T12:00:00.000Z');
+    const listCalls = adapter.calls.filter((c) => c.method === 'listComments');
+    assert.equal(listCalls.length, 1);
+    assert.equal(listCalls[0].args[0], 42);
+  });
+
+  it('adapter path fetches PR comments via listComments', async () => {
+    const adapter = createMockAdapter({
+      listComments: async (issueNumber: number, _since?: string) => {
+        if (issueNumber === 77) {
+          return [
+            { id: 701, body: 'Can we simplify this?', author: 'bob', created_at: '2026-03-14T11:15:00.000Z' },
+          ];
+        }
+        return [];
+      },
+    });
+    const state = makeState({
+      created_at: '2026-03-14T10:00:00.000Z',
+      updated_at: '2026-03-14T10:00:00.000Z',
+      issues: [
+        makeIssue({
+          number: 42,
+          pr_number: 77,
+          blocked_on_human: false,
+          processed_comment_ids: [],
+          triage_log: [],
+          last_comment_check: '2026-03-14T11:00:00.000Z',
+        }),
+      ],
+    });
+    const deps: Pick<OrchestrateDeps, 'now'> & { adapter: OrchestratorAdapter } = {
+      now: () => new Date('2026-03-14T12:00:00.000Z'),
+      adapter,
+    };
+    const result = await runTriageMonitorCycle(state, 'orch-20260314', 'owner/repo', deps);
+    assert.equal(result.processed_issues, 1);
+    assert.equal(result.triaged_entries, 1);
+    const listCalls = adapter.calls.filter((c) => c.method === 'listComments');
+    assert.equal(listCalls.length, 2); // one for issue 42, one for PR 77
+    assert.equal(listCalls[0].args[0], 42);
+    assert.equal(listCalls[1].args[0], 77);
   });
 });
 

@@ -673,7 +673,10 @@ export async function applyDecompositionPlan(
     }
 
     let ghNumber: number;
-    if (deps.execGhIssueCreate && repo) {
+    if (deps.adapter && repo) {
+      const created = await deps.adapter.createIssue(planIssue.title, enrichedBody, labels);
+      ghNumber = created.number;
+    } else if (deps.execGhIssueCreate && repo) {
       ghNumber = await deps.execGhIssueCreate(repo, path.basename(sessionDir), planIssue.title, enrichedBody, labels);
     } else {
       // When no GH executor is available (plan-only without repo, or no executor),
@@ -1270,7 +1273,7 @@ export async function orchestrateCommandWithDeps(
     );
   }
 
-  if (filterRepo && state.issues.length > 0 && deps.execGh) {
+  if (filterRepo && state.issues.length > 0 && (deps.execGh || deps.adapter)) {
     await runTriageMonitorCycle(state, path.basename(sessionDir), filterRepo, deps, aloopRoot);
   }
 
@@ -2049,46 +2052,83 @@ export async function runTriageMonitorCycle(
   state: OrchestratorState,
   sessionId: string,
   repo: string,
-  deps: Pick<OrchestrateDeps, 'execGh' | 'now'> & { writeFile?: OrchestrateDeps['writeFile']; adapter?: OrchestratorAdapter },
+  deps: Pick<OrchestrateDeps, 'now'> & { execGh?: OrchestrateDeps['execGh']; writeFile?: OrchestrateDeps['writeFile']; adapter?: OrchestratorAdapter },
   aloopRoot?: string,
 ): Promise<TriageMonitorCycleResult> {
-  if (!deps.execGh) {
+  if (!deps.execGh && !deps.adapter) {
     return { processed_issues: 0, triaged_entries: 0 };
   }
 
   let triagedEntries = 0;
   for (const issue of state.issues) {
     const since = issue.last_comment_check ?? state.created_at;
-    const issueCommentsResponse = await deps.execGh([
-      'issue-comments',
-      '--session', sessionId,
-      '--since', since,
-      '--role', 'orchestrator',
-    ]);
-    const prCommentsResponse = await deps.execGh([
-      'pr-comments',
-      '--session', sessionId,
-      '--since', since,
-      '--role', 'orchestrator',
-    ]);
 
-    const normalizedIssueComments = normalizeMonitorComments(
-      extractCommentsPayload(issueCommentsResponse.stdout),
-      'issue',
-    ).filter((entry) => entry.issueNumber === issue.number)
-      .map((entry) => entry.comment);
+    let issueComments: TriageComment[];
+    let prComments: TriageComment[];
 
-    const normalizedPrComments = normalizeMonitorComments(
-      extractCommentsPayload(prCommentsResponse.stdout),
-      'pr',
-    ).filter((entry) => issue.pr_number !== null && entry.issueNumber === issue.pr_number)
-      .map((entry) => entry.comment);
+    if (deps.adapter) {
+      // Adapter path: fetch comments directly per issue/PR
+      const rawIssueComments = await deps.adapter.listComments(issue.number, since);
+      issueComments = rawIssueComments.map((c) => ({
+        id: c.id,
+        author: c.author,
+        body: c.body,
+        created_at: c.created_at,
+        context: 'issue' as const,
+      }));
+
+      if (issue.pr_number !== null) {
+        const rawPrComments = await deps.adapter.listComments(issue.pr_number, since);
+        prComments = rawPrComments.map((c) => ({
+          id: c.id,
+          author: c.author,
+          body: c.body,
+          created_at: c.created_at,
+          context: 'pr' as const,
+        }));
+      } else {
+        prComments = [];
+      }
+    } else {
+      // Legacy path: use aloop CLI subcommands
+      const issueCommentsResponse = await deps.execGh!([
+        'issue-comments',
+        '--session', sessionId,
+        '--since', since,
+        '--role', 'orchestrator',
+      ]);
+      const prCommentsResponse = await deps.execGh!([
+        'pr-comments',
+        '--session', sessionId,
+        '--since', since,
+        '--role', 'orchestrator',
+      ]);
+
+      issueComments = normalizeMonitorComments(
+        extractCommentsPayload(issueCommentsResponse.stdout),
+        'issue',
+      ).filter((entry) => entry.issueNumber === issue.number)
+        .map((entry) => entry.comment);
+
+      prComments = normalizeMonitorComments(
+        extractCommentsPayload(prCommentsResponse.stdout),
+        'pr',
+      ).filter((entry) => issue.pr_number !== null && entry.issueNumber === issue.pr_number)
+        .map((entry) => entry.comment);
+    }
+
+    const execGhForTriage = deps.execGh ?? (async (args: string[]) => {
+      const { spawnSync: nodeSpawnSync } = await import('node:child_process');
+      const result = nodeSpawnSync('gh', args, { encoding: 'utf8' });
+      if (result.status !== 0) throw new Error(result.stderr ?? 'gh failed');
+      return { stdout: result.stdout ?? '', stderr: result.stderr ?? '' };
+    });
 
     const entries = await applyTriageResultsToIssue(
       issue,
-      [...normalizedIssueComments, ...normalizedPrComments],
+      [...issueComments, ...prComments],
       repo,
-      { execGh: deps.execGh, now: deps.now, writeFile: deps.writeFile, aloopRoot, adapter: deps.adapter },
+      { execGh: execGhForTriage, now: deps.now, writeFile: deps.writeFile, aloopRoot, adapter: deps.adapter },
     );
     triagedEntries += entries.length;
 
@@ -5501,7 +5541,7 @@ export async function runOrchestratorScanPass(
   }
 
   // 1. Triage monitoring cycle (every 5th iteration to conserve API rate limit)
-  if (repo && deps.execGh && iteration % 5 === 0) {
+  if (repo && (deps.execGh || deps.adapter) && iteration % 5 === 0) {
     result.triage = await runTriageMonitorCycle(
       state,
       path.basename(sessionDir),

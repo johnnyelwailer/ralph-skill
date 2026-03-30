@@ -391,7 +391,7 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
         state = await applyDecompositionPlan(
           { issues: normalizedIssues } as DecompositionPlan,
           state, sessionDir, repo,
-          { existsSync, readFile: (p: string, e: BufferEncoding) => readFile(p, e), writeFile: (p: string, d: string, e: BufferEncoding) => writeFile(p, d, e), mkdir: (p: string, o?: { recursive?: boolean }) => mkdir(p, o).then(() => undefined), now: () => new Date(), execGhIssueCreate: ghIssueCreator },
+          { existsSync, readFile: (p: string, e: BufferEncoding) => readFile(p, e), writeFile: (p: string, d: string, e: BufferEncoding) => writeFile(p, d, e), mkdir: (p: string, o?: { recursive?: boolean }) => mkdir(p, o).then(() => undefined), now: () => new Date(), execGhIssueCreate: ghIssueCreator, adapter },
         );
         stateChanged = true;
         console.log(`[process-requests] Applied epic decomposition: ${state.issues.length} issues`);

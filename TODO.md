@@ -14,11 +14,6 @@
   - Verify adapter is created once at `processRequests()` entry point and passed through deps (already partially done at line 354)
   - Leave all `spawnSync('gh', ['api', 'graphql', ...])` project board calls unchanged (out of scope)
 
-- [ ] **Migrate orchestrate.ts — applyDecompositionPlan and triageMonitoringCycle** — Replace two targeted call-sites:
-  - `applyDecompositionPlan`: `deps.execGhIssueCreate` → `deps.adapter.createIssue()` when adapter present; fall back to `execGhIssueCreate` otherwise
-  - `triageMonitoringCycle` comment fetching: `execGh(['issue', 'view', ..., '--json', 'comments'])` → `adapter.listComments()`
-  - Verify adapter is created once at `orchestrateCommandWithDeps()` entry and passed through deps
-
 - [ ] **Migrate orchestrate.ts — checkPrGates and prLifecycle** — Replace PR lifecycle call-sites:
   - `checkPrGates`: `execGh(['pr', 'view', ..., '--json', 'mergeable,mergeStateStatus'])` → `adapter.getPrStatus()`; CI check queries → `adapter.getPrChecks()`
   - `prLifecycle` merge: `execGh(['pr', 'merge', ...])` → `adapter.mergePr()`
@@ -36,4 +31,11 @@
   - Verify `npm run build` compiles and `npm test` passes
 
 ### Completed
+
+- [x] **Migrate orchestrate.ts — applyDecompositionPlan and triageMonitoringCycle** — Two targeted call-sites migrated:
+  - `applyDecompositionPlan`: `deps.execGhIssueCreate` → `deps.adapter.createIssue()` with fallback
+  - `runTriageMonitorCycle`: `execGh(['issue-comments', ...])` → `adapter.listComments()` with fallback
+  - Caller gate checks updated to accept `deps.adapter` alongside `deps.execGh`
+  - Adapter threaded to `applyDecompositionPlan` in process-requests.ts
+  - Adapter-path tests added for both functions
 
