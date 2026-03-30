@@ -12,19 +12,15 @@
 
 ### In Progress
 
-- [ ] [review] Gate 2+3: `compile-loop-plan.test.ts` line 847's loopSettings test does NOT verify the new issue-94 fields — add assertions for `triage_interval`, `scan_pass_throttle_ms`, `rate_limit_backoff` (all in `numFields`). Use pipeline.yml content that sets e.g. `triage_interval: 10`, `scan_pass_throttle_ms: 45000`, `rate_limit_backoff: exponential` and assert the values appear in `loopPlanJson.loopSettings`. (priority: high)
+- [x] [review] Gate 2+3: `compile-loop-plan.test.ts` line 847's loopSettings test does NOT verify the new issue-94 fields — add `triage_interval: 10`, `scan_pass_throttle_ms: 45000`, `rate_limit_backoff: exponential` to the pipeline.yml string in that test, then add assertions `assert.equal(loopPlanJson.loopSettings.triage_interval, 10)`, `assert.equal(loopPlanJson.loopSettings.scan_pass_throttle_ms, 45000)`, `assert.equal(loopPlanJson.loopSettings.rate_limit_backoff, 'exponential')`. (priority: high)
 
-- [ ] [review] Gate 4: `loop.sh` loads `TRIAGE_INTERVAL`, `SCAN_PASS_THROTTLE_MS`, `RATE_LIMIT_BACKOFF` via `load_loop_settings()` and `refresh_loop_settings_from_meta()` but never references them in any loop logic — 9 occurrences setting these vars, 0 uses. These are orchestrator-level settings that belong in orchestrate.ts, not in the inner loop runner. Remove them from `load_loop_settings`, the initializer block (lines 338-340), and `refresh_loop_settings_from_meta`. (priority: high)
+- [ ] [review] Gate 4: `loop.sh` loads `TRIAGE_INTERVAL`, `SCAN_PASS_THROTTLE_MS`, `RATE_LIMIT_BACKOFF` via `load_loop_settings()` and `refresh_loop_settings_from_meta()` but never references them in any loop logic — these are orchestrator-level settings that belong in orchestrate.ts, not in the inner loop runner. Remove the `("triage_interval", "TRIAGE_INTERVAL", int)` and `("scan_pass_throttle_ms", "SCAN_PASS_THROTTLE_MS", int)` entries from the `mappings` list in `load_loop_settings` (lines ~306-307), remove the `rate_limit_backoff`/`RATE_LIMIT_BACKOFF` export block from `load_loop_settings` (lines ~313-315), remove the initializer defaults at lines 338-340 (`TRIAGE_INTERVAL=5`, `SCAN_PASS_THROTTLE_MS=30000`, `RATE_LIMIT_BACKOFF="fixed"`), and remove the same three entries from `refresh_loop_settings_from_meta` (lines ~368-369, ~375-377). (priority: high)
 
-- [ ] [review] Gate 2: `runOrchestratorScanLoop` backoff calculation (orchestrate.ts:5856-5876) — the three strategies `exponential`, `linear`, `fixed` each produce different sleep values but no unit test exercises them. Add a test for `runOrchestratorScanLoop` that sets `rate_limit_backoff: 'exponential'` and `consecutiveRateLimits > 0`, then asserts the sleep arg is `baseInterval * 2^(n-1)` vs. linear `baseInterval * n`. (priority: medium)
+- [ ] [review] Gate 2: `runOrchestratorScanLoop` backoff calculation (orchestrate.ts:5856-5876) — the three strategies `exponential`, `linear`, `fixed` each produce different sleep values but no unit test exercises them. Add a test to the `runOrchestratorScanLoop` describe block: set `rate_limit_backoff: 'exponential'` on the state, make a scan pass return a rate-limit signal so `consecutiveRateLimits` becomes > 0, then assert the sleep arg is `baseInterval * 2^(n-1)` (exponential) vs. `baseInterval * n` (linear). (priority: medium)
 
 ### Up Next
 
-- [x] **Add `concurrency_cap` to pipeline.yml `loop:` section** — the `concurrency_cap` key is missing from pipeline.yml's `loop:` section; add it with default `3` so users can configure it without CLI args
-
-- [x] **Read orchestrator settings from pipeline.yml at startup** — `orchestrateCommandWithDeps` only reads `triage_interval`, `scan_pass_throttle_ms`, `rate_limit_backoff`, and `concurrency_cap` from CLI options; add a `resolveOrchestratorSettingsFromConfig` function that falls back to pipeline.yml when CLI option is absent (similar to `resolveAutoMerge`). This requires removing the Commander default `'3'` for `--concurrency` and handling the default in code.
-
-- [ ] **Tests: orchestrate command reads settings from pipeline.yml** — add tests to `orchestrate.test.ts` verifying that `triage_interval`, `scan_pass_throttle_ms`, `rate_limit_backoff`, and `concurrency_cap` are read from pipeline.yml when not provided via CLI args
+- [ ] **Tests: orchestrate command reads settings from pipeline.yml** — VERIFY: tests for `resolveOrchestratorSettingsFromConfig` are already present in `orchestrate.test.ts` lines 4621-4690, covering all four settings. Run `npm test` to confirm they pass. (priority: medium)
 
 ### Completed
 
@@ -35,3 +31,6 @@
 - [x] orchestrate scan loop uses `state.triage_interval`, `state.scan_pass_throttle_ms`, `state.rate_limit_backoff` (hot-reload via state.json re-read each pass)
 - [x] `rate_limit_backoff` strategy (exponential/linear/fixed) implemented in scan loop
 - [x] `max_iterations` for child loops reads from `state.max_iterations` (not hardcoded 999999)
+- [x] **Add `concurrency_cap` to pipeline.yml `loop:` section** — key present with default `3`
+- [x] **Read orchestrator settings from pipeline.yml at startup** — `resolveOrchestratorSettingsFromConfig` reads all four settings from pipeline.yml with CLI override support
+- [x] **Tests: `resolveOrchestratorSettingsFromConfig`** — 6 tests covering defaults, yml-read, CLI override, partial merge, no-loop-section, and unreadable file (`orchestrate.test.ts` lines 4621-4690)

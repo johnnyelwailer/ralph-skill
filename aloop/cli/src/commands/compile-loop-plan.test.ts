@@ -863,6 +863,9 @@ test('compileLoopPlan — includes loopSettings from pipeline.yml in loop-plan.j
       '  cooldown_ladder: [0, 60, 120, 300]',
       '  request_timeout: 600',
       '  concurrent_cap_cooldown: 60',
+      '  triage_interval: 10',
+      '  scan_pass_throttle_ms: 45000',
+      '  rate_limit_backoff: exponential',
     ].join('\n'),
     'utf8',
   );
@@ -885,6 +888,9 @@ test('compileLoopPlan — includes loopSettings from pipeline.yml in loop-plan.j
   assert.deepStrictEqual(loopPlanJson.loopSettings.cooldown_ladder, [0, 60, 120, 300]);
   assert.equal(loopPlanJson.loopSettings.request_timeout, 600);
   assert.equal(loopPlanJson.loopSettings.concurrent_cap_cooldown, 60);
+  assert.equal(loopPlanJson.loopSettings.triage_interval, 10);
+  assert.equal(loopPlanJson.loopSettings.scan_pass_throttle_ms, 45000);
+  assert.equal(loopPlanJson.loopSettings.rate_limit_backoff, 'exponential');
 });
 
 test('compileLoopPlan — omits loopSettings when pipeline.yml has no loop section', async () => {
