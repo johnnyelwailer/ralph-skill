@@ -533,3 +533,42 @@ No UI changes, no new dependencies, no user-facing behavior changed, no docs req
 **Issue #177 is complete.** All non-deferred acceptance criteria satisfied. LocalAdapter deferred per spec.
 
 ---
+
+## Review — 2026-03-30 — commits fa87faf93..b22acbd5e (build: process-requests adapter migration + applyDecompositionPlan + runTriageMonitorCycle)
+
+**Verdict: FAIL** (3 findings → written to TODO.md as [review] tasks)
+**Scope:** `aloop/cli/src/commands/process-requests.ts`, `aloop/cli/src/commands/orchestrate.ts`, `aloop/cli/src/commands/orchestrate.test.ts`
+**Commits reviewed:** `ecad85f99` (process-requests adapter migration), `a33ba1099` (applyDecompositionPlan + runTriageMonitorCycle adapter + tests)
+
+### Gate 1 — PASS
+
+- `process-requests.ts`: `createGhIssue()` replaced by `adapter.createIssue()` in sub-decomposition and Phase 2; `updateParentTasklist()` refactored to `adapter.getIssue()` + `adapter.updateIssue()`; Phase 2c `spawnSync('gh', ['pr', 'create', ...])` replaced by `adapter.createPR()`. Guards changed from `if (repo)` to `if (adapter)`. All spec-aligned incremental migration. ✓
+- `applyDecompositionPlan`: `deps.adapter.createIssue()` tried first with `execGhIssueCreate` fallback. ✓
+- `runTriageMonitorCycle`: adapter path added with `adapter.listComments()` per issue/PR. ✓
+
+### Gate 2 FAIL — Broken runTriageMonitorCycle adapter tests + missing process-requests coverage
+
+**Finding 1 — Test tracking lost in override:** Both new `runTriageMonitorCycle` tests (`orchestrate.test.ts:1580` and `1619`) call `createMockAdapter({ listComments: async (...) => {...} })`. The `...overrides` spread inside `createMockAdapter` (line 2831) replaces the tracked `listComments` implementation with the untracked override, so `calls` never records `listComments` calls. `listCalls.length` is always 0. Tests fail at `assert.equal(listCalls.length, 1)` and `assert.equal(listCalls.length, 2)`. Root cause: override swallows the `calls.push` tracking wiring, not missing production code.
+
+**Finding 2 — No tests for process-requests adapter paths:** `ecad85f99` replaced four `spawnSync`/`createGhIssue` call-sites with adapter calls but added zero tests: `adapter.createIssue()` in sub-decomp (line 419), `adapter.createIssue()` in Phase 2 (line ~542), `adapter.createPR()` in Phase 2c (line ~659), `updateParentTasklist()` refactor using `adapter.getIssue()` + `adapter.updateIssue()` (lines 1149-1163).
+
+### Gate 3 FAIL — 0% coverage for process-requests.ts adapter branches
+
+All four `if (adapter)` guarded paths in `process-requests.ts` from `ecad85f99` are uncovered: sub-decomp adapter path, Phase 2 adapter path, Phase 2c adapter path, and full `updateParentTasklist` refactor.
+
+### Gate 4 FAIL — execGhForTriage DI bypass
+
+`orchestrate.ts:2120-2125`: `deps.execGh ?? (async (args) => { const { spawnSync } = await import('node:child_process'); ... })` — when `deps.execGh` is absent (adapter-only mode), a real `spawnSync('gh', ...)` fallback is injected into `applyTriageResultsToIssue`. This is the same DI bypass pattern flagged in the first review (2026-03-27 Gate 4). CONSTITUTION rule #4 violation — silent bypass of dependency injection. Any future `applyTriageResultsToIssue` call that uses `execGh` in adapter-only mode will spawn real `gh` CLI.
+
+### Gate 5 FAIL — 2 new test regressions
+
+Test count: 36 fail vs 34-failure pre-existing baseline. The 2 new failures are the broken `runTriageMonitorCycle` adapter tests. `tsc --noEmit`: 0 errors ✓. `npm run build`: clean ✓.
+
+### Gates 6–9 — Pass / N/A
+
+- Gate 6: Internal TypeScript plumbing — no observable output; skip correct
+- Gate 7: No UI changes
+- Gate 8: No new dependencies
+- Gate 9: No user-facing behavior changed
+
+---
