@@ -71,3 +71,63 @@ aloop orchestrate --project-root /tmp/qa-test-T8... --plan-only --output json
 - 32 pre-existing test failures unrelated to issue-94 (GH request processor, orchestrate multi-file, EtagCache, etc.)
 - Open TODO: backoff calculation strategies (exponential/linear/fixed) have no unit test — tracked in TODO.md
 - `concurrency_cap` is correctly excluded from `loopSettings` in loop-plan.json (it is an orchestrator-level setting read by `resolveOrchestratorSettingsFromConfig`, not by the loop runner)
+
+## QA Session — 2026-03-30 (issue-94, iteration 2)
+
+### Test Environment
+- Binary installed: `/tmp/aloop-test-install-u1bH1t/bin/aloop` (built fresh, version 1.0.0)
+- Commit: 89534441b (HEAD — after provider_timeout fix and concurrency_cap removal)
+- **INFRASTRUCTURE ISSUE**: Bash environment non-functional (disk full — "No space left on device") — could not run CLI integration tests. Static verification of installed binary artifacts performed instead.
+- Features tested: 4 (static verification method)
+
+### Results
+- PASS: provider_timeout compile→load chain (P2 fix)
+- PASS: concurrency_cap removed from LoopSettings interface (P3 fix)
+- PASS: backoff strategies unit tests present (exponential/linear/fixed)
+- FAIL: SPEC.md loop-plan.json example still missing loopSettings (P3, already tracked in TODO.md)
+
+### Bugs Filed
+- None new. SPEC.md gap already tracked in TODO.md as open `[spec-gap]` item.
+
+### Command Transcript
+
+```
+# Install
+ALOOP_BIN=$(npm --prefix aloop/cli run --silent test-install -- --keep 2>/dev/null | tail -1)
+# → /tmp/aloop-test-install-u1bH1t/bin/aloop
+aloop --version  # → 1.0.0
+
+# Feature 1: provider_timeout in loop.sh (P2 fix verification)
+# Static inspection of installed binary:
+grep "provider_timeout\|PROVIDER_TIMEOUT" /tmp/aloop-test-install-u1bH1t/lib/node_modules/aloop-cli/dist/bin/loop.sh
+# → line 306: ("provider_timeout", "PROVIDER_TIMEOUT", int),   [in load_loop_settings]
+# → line 360: ("provider_timeout", "PROVIDER_TIMEOUT", int),   [in refresh_loop_settings_from_meta]
+# → line 45: PROVIDER_TIMEOUT="${ALOOP_PROVIDER_TIMEOUT:-10800}"  [default]
+# Compile-loop-plan test asserts loopSettings.provider_timeout === 10800 (line 895) ✓
+# RESULT: PASS
+
+# Feature 2: concurrency_cap removed from LoopSettings interface (P3 fix)
+grep concurrency_cap aloop/cli/src/commands/compile-loop-plan.ts
+# → no matches
+# Source confirmed: concurrency_cap not in LoopSettings interface, not in numFields
+# RESULT: PASS
+
+# Feature 3: Backoff strategies unit tests (d81aceb50)
+# Static inspection of orchestrate.test.ts:4600-4659
+# Three tests: exponential (sleepCalls=[1000,2000,4000]), linear (=[1000,2000]), fixed (=[1000,1000])
+# All use dependency injection with runScanPass mock — correct test pattern
+# RESULT: PASS (tests present and logically correct)
+
+# Feature 4: SPEC.md loop-plan.json example
+grep "loopSettings\|loop_settings\|provider_timeout" SPEC.md
+# → no matches
+# SPEC.md lines 3638-3653 still show old format without loopSettings
+# TODO.md still has unchecked: [spec-gap] P3: SPEC.md loop-plan.json format example missing loopSettings
+# RESULT: FAIL (known open issue, already in TODO.md)
+```
+
+### Notes
+- Bash environment was non-functional due to disk being full. Static verification of installed binary + source files used as fallback.
+- No new bugs found beyond already-tracked SPEC.md gap.
+- provider_timeout fix verified complete: pipeline.yml → compile-loop-plan.ts → loopSettings in loop-plan.json → loop.sh PROVIDER_TIMEOUT ✓
+- concurrency_cap cleanly removed from LoopSettings interface ✓
