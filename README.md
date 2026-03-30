@@ -8,16 +8,16 @@ Aloop runs autonomous AI coding agents in two modes: a **single-session loop** f
 
 ### Loop Mode (`aloop start`)
 
-A single autonomous coding session. The agent cycles through three phases until all tasks are done:
+A single autonomous coding session. The agent cycles through four phases until all tasks are done:
 
 1. **Plan** — Gap analysis between spec and code, outputs prioritized `TODO.md`
-2. **Build** — Picks one task, implements, validates (types/tests/lint), commits
-3. **Review** — Audits the build against 9 quality gates, writes fix tasks or approves
+2. **Build × 5** — Picks one task, implements, validates (types/tests/lint), commits (5 build iterations per cycle)
+3. **QA** — Tests features as a real user (never reads source code)
+4. **Review** — Audits the build against 9 quality gates, writes fix tasks or approves
 
-Additional agents run between cycles:
-- **Proof** — Captures screenshots, API responses, test output as evidence
-- **Steer** — Applies live direction changes from the dashboard mid-flight
-- **QA** — Tests features as a real user (never reads source code)
+The cycle repeats until all TODO tasks are done. When complete, the **finalizer** runs once: spec-gap → docs → spec-review → final-review → final-qa → **proof** (evidence capture: screenshots, API responses, test output).
+
+**Steer** — Send live direction changes from the dashboard at any point; the loop picks them up between iterations.
 
 Each iteration gets fresh context. The loop handles stuck detection, provider failover, and worktree isolation automatically.
 
@@ -181,6 +181,9 @@ The installer deploys skill files to each harness directory and the Aloop runtim
 | `aloop discover` | Auto-detect project specs and validation |
 | `aloop update` | Refresh runtime from repo |
 | `aloop devcontainer` | Generate .devcontainer config |
+| `aloop devcontainer-verify` | Verify devcontainer builds and passes checks |
+| `aloop scaffold` | Scaffold project workdir and prompt templates |
+| `aloop active` | List active session IDs (machine-readable) |
 
 ### Slash commands (Claude Code / Codex / Copilot)
 
@@ -237,6 +240,7 @@ The installer deploys skill files to each harness directory and the Aloop runtim
 
 - **Two modes**: Single-session loop for focused work, orchestrator for spec-to-ship parallelism
 - **5 providers**: Claude, Codex, Gemini, Copilot, OpenCode — single or round-robin
+- **8-step cycle**: plan → build × 5 → qa → review; finalizer adds spec-gap → docs → spec-review → final-review → final-qa → proof
 - **9 review gates**: Spec compliance, test depth, coverage, code quality, integration, proof, layout, version compliance, documentation freshness
 - **Live steering**: Change direction mid-flight without stopping the loop
 - **Real-time dashboard**: SSE-powered UI with activity log, docs, proof gallery, and steering controls
