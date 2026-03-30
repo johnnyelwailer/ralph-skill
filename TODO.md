@@ -13,7 +13,7 @@
 
 ### In Progress
 
-- [ ] [review] Gate 9: `.aloop/pipeline.yml:31` — comment `(set 0 for unlimited)` is wrong. `toPositiveInt` returns null for 0 (requires `value > 0`); `start.ts:743-744` throws "must be a positive integer" if `max_iterations: 0` is set. Commit `51a3cfc24` fixed README.md but missed this comment. Fix: change to `(must be a positive integer)`. (priority: high)
+- [ ] [review] Gate 9: `.aloop/pipeline.yml:31` — comment `(set 0 for unlimited)` is wrong. `toPositiveInt` returns null for 0 (requires `value > 0`); `start.ts:743-744` throws "must be a positive integer" if `max_iterations: 0` is set. Commit `51a3cfc24` fixed README.md but missed this comment. Fix: change to `(must be a positive integer)`. (priority: high) — still failing at final-qa (2026-03-30, commit 6082ba681): confirmed via `cat .aloop/pipeline.yml | grep max_iterations`, comment unchanged.
 
 - [x] [build] Gate 9: `README.md:130` — "The orchestrator reads `concurrency_cap` from `pipeline.yml` (at root level, not under `loop:`)\" is inaccurate. The canonical `.aloop/pipeline.yml` has `concurrency_cap: 3` under the `loop:` section, directly contradicting the README's instruction and YAML example (which shows root-level `concurrency_cap: 5`). Fix: (1) change line 130 description to say "under the `loop:` section", (2) update YAML example to show `concurrency_cap: 3` nested under `loop:`, (3) simplify line 136 since all settings are now consistently under `loop:`. (priority: high)
 

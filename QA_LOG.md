@@ -292,3 +292,83 @@ aloop stop qa-test-16vp-20260330-140118
 - No new bugs filed; all findings already tracked in TODO.md
 - Test binary install path /tmp/aloop-test-install-O5fDjL cleaned up after session
 - Test temp dir /tmp/qa-test-16vp and associated sessions cleaned up
+
+## QA Session — 2026-03-30 (final-qa, commit 6082ba681)
+
+### Test Environment
+- Binary under test: `/tmp/aloop-test-install-WMzm0d/bin/aloop`
+- Version: 1.0.0
+- Commit: 6082ba681
+- Temp dir: /tmp/qa-test-1xNJOF (cleaned up)
+- Test session: qa-test-1xnjof-20260330-143301 (stopped and cleaned up)
+- Features tested: 4
+
+### Results
+- PASS: README.md concurrency_cap placement (Gate 9, line 130) — re-test confirms fix
+- PASS: max_iterations validation (--max-iterations 0 and -1 both rejected with correct error)
+- PASS: compile-loop-plan loopSettings 6-field integration (all custom values correctly embedded)
+- FAIL: .aloop/pipeline.yml:31 max_iterations comment — still says "(set 0 for unlimited)"
+
+### Bugs
+- No new bugs filed. The pipeline.yml:31 comment issue is already tracked as open `[review]` Gate 9 in TODO.md. Added re-test note to the existing entry.
+
+### Command Transcript
+
+```
+# Install binary
+$ npm --prefix aloop/cli run --silent test-install -- --keep 2>/dev/null | tail -1
+/tmp/aloop-test-install-WMzm0d/bin/aloop
+# EXIT: 0 ✓
+
+$ /tmp/aloop-test-install-WMzm0d/bin/aloop --version
+1.0.0
+# EXIT: 0 ✓
+
+# Test: max_iterations validation
+$ aloop start --max-iterations 0
+Error: Invalid --max-iterations value: 0 (must be a positive integer)
+# EXIT: 1 ✓
+
+$ aloop start --max-iterations -1
+Error: Invalid --max-iterations value: -1 (must be a positive integer)
+# EXIT: 1 ✓
+
+# Test: compile-loop-plan loopSettings integration
+# Created /tmp/qa-test-1xNJOF with pipeline.yml loop: section:
+#   max_iterations: 10, max_stuck: 5, provider_timeout: 7200
+#   triage_interval: 12, scan_pass_throttle_ms: 55000, rate_limit_backoff: exponential
+$ aloop start --in-place --output json
+# Session created: qa-test-1xnjof-20260330-143301
+# EXIT: 0 ✓
+
+# Verified loop-plan.json loopSettings:
+# {
+#   "max_iterations": 10, "max_stuck": 5, "provider_timeout": 7200,
+#   "triage_interval": 12, "scan_pass_throttle_ms": 55000,
+#   "rate_limit_backoff": "exponential"
+# }
+# All 6 values match pipeline.yml. concurrency_cap absent (orchestrator-only). PASS ✓
+
+# Test: .aloop/pipeline.yml:31 comment check
+$ grep max_iterations .aloop/pipeline.yml
+  max_iterations: 50            # Max iterations before auto-stopping (set 0 for unlimited)
+# FAIL: comment still "(set 0 for unlimited)" — 0 is rejected with "must be a positive integer"
+# Commit 51a3cfc24 fixed README.md but missed pipeline.yml. Bug tracked in TODO.md.
+
+# Test: README.md concurrency_cap
+$ grep concurrency_cap README.md (relevant lines)
+# Line 130: "under the loop: section" ✓
+# Line 134: concurrency_cap: 3 (nested under loop:) ✓
+# PASS: README fix from commit ab2d68409 confirmed correct.
+
+# Cleanup
+$ aloop stop qa-test-1xnjof-20260330-143301
+Session qa-test-1xnjof-20260330-143301 stopped.
+# EXIT: 0 ✓
+$ rm -rf /tmp/qa-test-1xNJOF /tmp/aloop-test-install-WMzm0d
+```
+
+### Notes
+- One open bug remains: `.aloop/pipeline.yml:31` comment "(set 0 for unlimited)" contradicts runtime validation
+- All other tested features pass
+- No source code read during testing
