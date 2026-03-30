@@ -41,3 +41,5 @@
 spec-gap analysis: no discrepancies found — spec fully fulfilled
 
 All `LoopSettings` fields in `compile-loop-plan.ts` match SPEC.md `loop-plan.json` format example exactly. Default values in `defaults.ts` match SPEC.md example values. `loop.sh` and `loop.ps1` both handle all fields including `provider_timeout` in both startup load and hot-reload. `concurrency_cap` is correctly absent from `loopSettings` (it's orchestrator-only, read separately by `resolveOrchestratorSettingsFromConfig`). All previously-filed `[spec-gap]` items are resolved.
+
+spec-gap re-analysis (2026-03-30): no new discrepancies found. Verified: (1) README.md Gate 9 fix confirmed — `concurrency_cap` now under `loop:` section. (2) Backoff strategy unit tests present at `orchestrate.test.ts:4600` for all 3 strategies. (3) `compile-loop-plan.test.ts:885` verifies all 9 loopSettings fields with exact-value assertions. (4) `loop.sh` `load_loop_settings` and `refresh_loop_settings_from_meta` mappings are complete. (5) Orchestrator-specific settings (`triage_interval`, `scan_pass_throttle_ms`, `rate_limit_backoff`) correctly excluded from inner-loop loading. Spec fully fulfilled.
