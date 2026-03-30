@@ -72,3 +72,11 @@
 | tsc --noEmit (non-test files) | 2026-03-30 | a33ba1099 | PASS | Zero type errors; exit 0 |
 | No hardcoded github.com URLs (adapter paths) | 2026-03-30 | a33ba1099 | PASS | Zero non-comment github.com refs in orchestrate.ts, process-requests.ts, adapter.ts |
 | runTriageMonitorCycle adapter path (listComments) | 2026-03-30 | a33ba1099 | FAIL | orchestrate.test.ts:1615,1652 — adapter.listComments called 0 times; expected 1 and 2; regression from a33ba1099; bug filed |
+| TypeScript build (npm run build) | 2026-03-30 | 644b2663c | PASS | Build clean exit 0 (iter 13) |
+| adapter.test.ts unit tests | 2026-03-30 | 644b2663c | PASS | 35/35 pass — stable |
+| process-requests.ts full suite | 2026-03-30 | 644b2663c | PASS | 23/23 pass — stable |
+| orchestrate.test.ts full suite | 2026-03-30 | 644b2663c | PASS | 339/366 pass, 27 fail — 2 iter-12 regressions fixed; back to pre-existing baseline |
+| runTriageMonitorCycle adapter path (listComments) | 2026-03-30 | 644b2663c | PASS | orchestrate.test.ts: "uses adapter.listComments" ok 3, "adapter path fetches PR comments" ok 4 — both pass after createMockAdapter override fix |
+| execGhForTriage DI bypass removed | 2026-03-30 | 644b2663c | PASS | No spawnSync/dynamic import in runTriageMonitorCycle path; grep returns empty for execGhForTriage and dynamic import child_process |
+| tsc --noEmit (non-test files) | 2026-03-30 | 644b2663c | PASS | Zero type errors; exit 0 |
+| No hardcoded github.com URLs (adapter paths) | 2026-03-30 | 644b2663c | PASS | Zero non-comment github.com refs in orchestrate.ts, process-requests.ts, adapter.ts |
