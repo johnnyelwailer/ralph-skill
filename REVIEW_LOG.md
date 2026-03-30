@@ -35,6 +35,34 @@
 
 ---
 
+## Review — 2026-03-30 — commits c84f2094c..485e1a11e (issue #94 provider_timeout + concurrency_cap cleanup)
+
+**Verdict: FAIL** (1 finding → written to TODO.md as [review] task)
+**Scope:** `aloop/cli/src/commands/compile-loop-plan.ts`, `aloop/cli/src/commands/compile-loop-plan.test.ts`, `aloop/bin/loop.sh`, `aloop/cli/src/commands/orchestrate.test.ts`, `README.md`
+
+### What the build implemented
+
+- **P2 fix** (`0b42fcc73`): Added `{ key: 'provider_timeout', ... }` to `numFields` in `compile-loop-plan.ts` (line 310) and `("provider_timeout", "PROVIDER_TIMEOUT", int)` to both `load_loop_settings()` (line 306) and `refresh_loop_settings_from_meta()` (line 360) in `loop.sh`. Full chain: `pipeline.yml` → `loopSettings` in `loop-plan.json` → `PROVIDER_TIMEOUT` shell var.
+- **P3 fix** (`89534441b`): Removed `concurrency_cap?: number` from `LoopSettings` interface in `compile-loop-plan.ts`. Interface now has `concurrent_cap_cooldown` (kept — legitimate per-loop setting) but no `concurrency_cap` (dead code gone).
+- **Backoff strategy tests** (`d81aceb50`): Three unit tests in `orchestrate.test.ts:4600–4659` covering exponential (`[1000,2000,4000]`), linear (`[1000,2000]`), and fixed (`[1000,1000]`) strategies with exact `deepStrictEqual` assertions. Dependency injection via `runScanPass` mock. Resolves prior review's outstanding tracked gap.
+- **docs** (`db550038b`): Added "Pipeline Configuration" section to README.md documenting the `loop:` settings YAML and implementation status.
+- **compile-loop-plan.test.ts**: `provider_timeout: 10800` added to pipeline YAML fixture; `assert.equal(loopPlanJson.loopSettings.provider_timeout, 10800)` assertion at line 895. Exact-value, not shape-only.
+
+### Findings
+
+- **Gate 9**: `README.md:114` — "provider_timeout — **Partial** (written to loop-plan.json but loop scripts do not yet read it; loop uses its compiled-in default)" is stale after commit `0b42fcc73`. Both `load_loop_settings()` and `refresh_loop_settings_from_meta()` now map `provider_timeout` → `PROVIDER_TIMEOUT` (confirmed via QA static inspection and grep). The implementation status bullet must be updated to "Implemented" and `provider_timeout: 10800` should be added to the YAML example in the README. → written as `[review]` task.
+
+### Gates that passed
+
+- **Gate 1**: All required settings config-driven. provider_timeout chain complete. concurrency_cap dead code removed. SPEC.md P3 loop-plan.json example gap still tracked as `[ ]` in TODO.md — legitimately deferred.
+- **Gate 2**: `compile-loop-plan.test.ts:895` — `assert.equal(...provider_timeout, 10800)` exact value ✅. Backoff tests at `orchestrate.test.ts:4618,4638,4658` use `deepStrictEqual` on exact sleep call arrays — thorough.
+- **Gate 3**: provider_timeout and all three backoff branches now covered by exact-value tests.
+- **Gate 4**: `concurrency_cap` removed from LoopSettings (dead code eliminated). No new dead code introduced.
+- **Gate 5**: 32 pre-existing failures unchanged. QA session 2 used static verification due to disk full — changes are additive/dead-code-removal only; regression risk is negligible.
+- **Gate 6**: Internal plumbing — no proof artifacts expected.
+- **Gates 7–8**: N/A.
+
+---
 ## Review — 2026-03-30 — commits d37de1e..1d2a610 (issue #94 fix iterations + QA)
 
 **Verdict: PASS** (prior FAIL findings resolved; one tracked gap remains)

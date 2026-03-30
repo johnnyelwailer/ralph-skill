@@ -12,6 +12,8 @@
 
 ### In Progress
 
+- [ ] [review] Gate 9: README.md line 114 lists `provider_timeout` as "Partial" ("written to loop-plan.json but loop scripts do not yet read it") — this is stale after commit `0b42fcc73` which added `("provider_timeout", "PROVIDER_TIMEOUT", int)` to both `load_loop_settings()` and `refresh_loop_settings_from_meta()` in `loop.sh`, completing the full pipeline.yml → loopSettings → PROVIDER_TIMEOUT chain. Fix: (1) move `provider_timeout` from the "Partial" bullet to the "Implemented" bullet at README.md line 112; (2) add `provider_timeout: 10800` to the pipeline.yml YAML example at lines 97–107. (priority: low)
+
 ### Up Next
 
 - [x] [spec-gap] **P2: `provider_timeout` compile→load chain is broken** — `provider_timeout: 10800` exists in `.aloop/pipeline.yml` `loop:` section and in the `LoopSettings` interface (`compile-loop-plan.ts:19`), but `readLoopSettingsFromPipeline` never reads it into `loopSettings` (not in `numFields` array at lines 302-313), and `loop.sh` `load_loop_settings()` / `refresh_loop_settings_from_meta()` never map it to `PROVIDER_TIMEOUT` (mappings lists at lines 297-306 / 350-358). Setting in pipeline.yml is silently ignored — user cannot configure provider timeout via YAML. Fix: add `{ key: 'provider_timeout', ... }` to `numFields` in `compile-loop-plan.ts` and add `("provider_timeout", "PROVIDER_TIMEOUT", int)` to both mapping lists in `loop.sh`. Add a test to `compile-loop-plan.test.ts` asserting `provider_timeout` is emitted in `loopSettings`.
