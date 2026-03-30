@@ -129,9 +129,11 @@ describe('Header', () => {
   });
 
   it('renders elapsed timer when startedAt is provided', () => {
-    renderHeader({ startedAt: '2026-01-01T00:00:00Z' });
-    // ElapsedTimer renders formatted time like "0s", "1m 30s", etc.
-    const timerEl = screen.getAllByText(/\d+s/).find(el => /^\d+[smh](\s\d+s)?$/.test(el.textContent ?? ''));
+    // Use a recent startedAt (a few seconds ago) so formatSecs returns e.g. "5s", not "Xm"
+    const recentStart = new Date(Date.now() - 5000).toISOString();
+    renderHeader({ startedAt: recentStart });
+    // ElapsedTimer renders formatted time like "5s", "1m 30s", etc.
+    const timerEl = screen.getAllByText(/\d+[smh]/).find(el => /^\d+[smh](\s\d+s)?$/.test(el.textContent ?? ''));
     expect(timerEl).toBeTruthy();
   });
 

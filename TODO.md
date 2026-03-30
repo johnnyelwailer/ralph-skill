@@ -4,28 +4,16 @@
 
 ### In Progress
 
-- [x] [qa/P1] Fix Header.tsx branch coverage (currently 87.61%, now 90.26%, need ≥90%): added tests for 4 uncovered branches — (1) `f.status` non-string → `'UNTESTED'` fallback, (2) `stuckCount > 0` red styling in hover card, (3) `avgDuration && sessionCost > 0` separator in stats span, (4) `updatedAt` empty while not loading → empty string. (priority: high)
-- [x] [qa/P1] Header stories missing from story-screenshots.spec.ts: `Header.stories.tsx` has 7 stories (`Default`, `Loading`, `Disconnected`, `Stopped`, `NoProvider`, `HighBudgetUsage`, `QABadgeDefault`) but `e2e/story-screenshots.spec.ts` only covered 23 stories (Sidebar/SessionDetail/DocsPanel/MainPanel). Added Header story IDs and proof-artifact filenames. (priority: high)
-- [ ] [review] Gate 5: `e2e/story-screenshots.spec.ts` includes `layout-header--qa-badge-default` which always fails (empty `#storybook-root` → 15s timeout) — the Playwright e2e suite now reports 1 FAIL every run. Either fix the `QABadgeDefault` story rendering or skip this entry (`test.skip`) until the P2 bug is resolved. (priority: high)
+- [x] [review] Gate 5: `e2e/story-screenshots.spec.ts` includes `layout-header--qa-badge-default` which always fails (empty `#storybook-root` → 15s timeout) — added `skip: true` field to StoryDef interface and marked the entry, so `test.skip()` is called inside the test body; also fixed `Header.test.tsx:135` elapsed timer test that used a hardcoded past date causing `/\d+s/` to never match. (priority: high)
 
-- [ ] [qa/P2] `layout-header--qa-badge-default` story renders "No Preview" in static Storybook build: story appears in index.json (type=story, exportName=QABadgeDefault) but #storybook-root is empty when loaded in iframe. Other 6 Header stories render correctly. Investigate and fix. (priority: medium)
-
-- [x] Extract Header component from AppView.tsx (priority: critical)
-  - `Header` (lines 233–362, ~130 LOC): session header with phase badge, iteration counter, elapsed timer, stop/resume buttons, steer input
-  - Created `src/components/layout/Header.tsx`, `Header.test.tsx`, `Header.stories.tsx`
-  - AppView.tsx reduced from 823 → 554 LOC
-
-- [x] Extract QACoverageBadge from AppView.tsx (priority: high)
-  - `QACoverageBadge` (lines 363–452, ~90 LOC): QA coverage display badge with fetch logic
-  - Moved into `Header.tsx` (co-located since Header directly uses it); re-exported from AppView.tsx
-  - Tests added to `Header.test.tsx`; stories added to `Header.stories.tsx`
+- [ ] [qa/P2] `layout-header--qa-badge-default` story renders "No Preview" in static Storybook build: story appears in index.json (type=story, exportName=QABadgeDefault) but #storybook-root is empty when loaded in iframe. Root cause: `QACoverageBadge` makes a real fetch call to `/api/qa-coverage`; the story renders `<QACoverageBadge sessionId={null} refreshKey="" />` with no mock — so the component renders nothing visible. Fix: add a MSW handler or mock the fetch in the story decorator so the component renders meaningful content. (priority: medium)
 
 - [ ] Extract CommandPalette from AppView.tsx (priority: high)
-  - `CommandPalette` (lines 453–492, ~40 LOC): Ctrl+K search overlay
+  - `CommandPalette` (lines ~184–220, ~40 LOC): Ctrl+K search overlay defined inline in AppView.tsx
   - Create `src/components/shared/CommandPalette.tsx`, `.test.tsx`, `.stories.tsx`
 
 - [ ] Break up AppInner and reduce AppView.tsx to <100 LOC (priority: high)
-  - `AppInner` (lines 493–814, ~322 LOC) contains the main SSE/state/layout orchestration
+  - `AppInner` (~322 LOC) contains the main SSE/state/layout orchestration in AppView.tsx (currently 554 LOC)
   - Extract hooks (useSSE / useDashboardState) and remaining sub-components
   - AppView.tsx becomes a thin shell re-exporting everything; then remove the re-exports
 
@@ -39,6 +27,16 @@
 
 ### Completed
 
+- [x] [qa/P1] Fix Header.tsx branch coverage (currently 87.61%, now 90.26%, need ≥90%): added tests for 4 uncovered branches — (1) `f.status` non-string → `'UNTESTED'` fallback, (2) `stuckCount > 0` red styling in hover card, (3) `avgDuration && sessionCost > 0` separator in stats span, (4) `updatedAt` empty while not loading → empty string. (priority: high)
+- [x] [qa/P1] Header stories missing from story-screenshots.spec.ts: `Header.stories.tsx` has 7 stories (`Default`, `Loading`, `Disconnected`, `Stopped`, `NoProvider`, `HighBudgetUsage`, `QABadgeDefault`) but `e2e/story-screenshots.spec.ts` only covered 23 stories (Sidebar/SessionDetail/DocsPanel/MainPanel). Added Header story IDs and proof-artifact filenames. (priority: high)
+- [x] Extract Header component from AppView.tsx (priority: critical)
+  - `Header` (lines 233–362, ~130 LOC): session header with phase badge, iteration counter, elapsed timer, stop/resume buttons, steer input
+  - Created `src/components/layout/Header.tsx`, `Header.test.tsx`, `Header.stories.tsx`
+  - AppView.tsx reduced from 823 → 554 LOC
+- [x] Extract QACoverageBadge from AppView.tsx (priority: high)
+  - `QACoverageBadge` (lines 363–452, ~90 LOC): QA coverage display badge with fetch logic
+  - Moved into `Header.tsx` (co-located since Header directly uses it); re-exported from AppView.tsx
+  - Tests added to `Header.test.tsx`; stories added to `Header.stories.tsx`
 - [x] [review] Gate 2: `Sidebar.test.tsx` — 4 cost API branch tests assert rendered output via tooltip. (priority: high)
 - [x] [review] Gate 2: `Header.test.tsx:94-97` — rewrote `renders connection indicator` to assert ConnectionIndicator component renders by data-testid, not just outer wrapper. (priority: high)
 - [x] [review] Gate 2: `Header.test.tsx:135-139` — rewrote elapsed timer test to match formatted time pattern. (priority: high)
