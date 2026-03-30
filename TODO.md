@@ -4,22 +4,9 @@
 
 ### In Progress
 
-- [x] [review] Gate 3: DocsPanel.tsx branch coverage still 85.71% after test fixes — add test to cover `useEffect` reset branch at line 37; render with `docs` containing `TODO.md`, then re-render with `docs` omitting `TODO.md` entirely (so `activeTab === 'TODO.md'` is no longer valid), assert the active tab falls back to the new default (priority: critical)
-- [x] [review] Gate 4: `playwright.stories.config.ts:6` — `const artifactDir = path.resolve(...)` is defined but never referenced in `defineConfig`; delete it (priority: low)
-- [x] [review] Gate 2: `DocsPanel.test.tsx:145-160` — `switches to overflow tab via dropdown menu` clicks the EXTRA dropdown menuitem at line 159 but has no post-click assertion; the tab switch is completely unverified. Add `expect(screen.getByRole('tab', { name: 'EXTRA' })).toHaveAttribute('data-state', 'active')` after the final `await user.click(...)` call. (priority: high)
-- [x] [review] Gate 4 (follow-up): `playwright.stories.config.ts:1-2,5` — Gate 4 fix was incomplete; deleting `artifactDir` renamed it to `currentDir` but left it unused. Lines 1 (`import path from 'node:path'`), 2 (`import { fileURLToPath } from 'node:url'`), and 5 (`const currentDir = path.dirname(...)`) are all dead code — none referenced in `defineConfig`. Delete all three lines. (priority: low)
-- [ ] [review] Gate 2: `Sidebar.test.tsx` — 4 cost API branch tests (`handles cost API returning opencode_unavailable error`, `handles cost API returning string total_usd`, `handles cost API returning non-number non-string total_usd`, `handles cost API fetch rejection`) all assert only `expect(mockFetch).toHaveBeenCalled()`. A broken handler (e.g., `setCostUnavailable` never called, `parseFloat` removed) would still pass these tests. Fix: expand the "Older" section first (`fireEvent.click(screen.getByText('Older').closest('button')!)`), then assert rendered output: (a) `opencode_unavailable` → `await waitFor(() => expect(screen.getByText('Cost: unavailable')).toBeInTheDocument())`; (b) `string '2.50'` → assert `$2.5000` appears in the card; (c) `null` and `rejection` → assert no "Cost:" text is rendered. (priority: high)
+- [x] [review] Gate 2: `Sidebar.test.tsx` — 4 cost API branch tests now assert rendered output via tooltip (touch-mode): `opencode_unavailable` → `Cost: unavailable` in tooltip; `string '2.50'` → `$2.5000` in card; `null` and `rejection` → no `Cost:` in tooltip. (priority: high)
 
 ### Up Next
-
-- [x] [qa/P1] Fix Sidebar.tsx branch coverage (was 78.46%, now 92.3%, need ≥90%)
-  - Added context menu tests: right-click renders menu at correct position, "Stop after iteration"/"Kill immediately"/"Copy session ID" actions + close, Escape key dismisses menu
-  - Added older sessions collapse toggle test
-  - Added cost API response branch tests (string, null, rejection, opencode_unavailable)
-  - Added collapsed state tests (current id → null, non-current id)
-  - Added selectedSessionId matching tests
-  - Added "current" expanded session click → null branch
-  - Added suppress-click-after-context-menu test
 
 - [ ] Extract Header component from AppView.tsx (priority: critical)
   - `Header` (lines 233–362, ~130 LOC): session header with phase badge, iteration counter, elapsed timer, stop/resume buttons, steer input
@@ -49,6 +36,12 @@
 
 ### Completed
 
+- [x] [review] Gate 3: DocsPanel.tsx branch coverage still 85.71% after test fixes — added test to cover `useEffect` reset branch at line 37 (priority: critical)
+- [x] [review] Gate 4: `playwright.stories.config.ts` dead code removed — confirmed clean (priority: low)
+- [x] [review] Gate 2: `DocsPanel.test.tsx:145-160` — added post-click assertion `expect(screen.getByRole('tab', { name: 'EXTRA' })).toHaveAttribute('data-state', 'active')` (priority: high)
+- [x] [review] Gate 4 (follow-up): `playwright.stories.config.ts:1-2,5` dead imports deleted (priority: low)
+- [x] [qa/P1] Fix Sidebar.tsx branch coverage (was 78.46%, now 92.3%, need ≥90%)
+  - Added context menu tests, older sessions collapse toggle, cost API response branches, collapsed state tests, selectedSessionId matching, current session click → null branch, suppress-click-after-context-menu
 - [x] [review] Fix 3 broken test assertions in MainPanel.test.tsx and DocsPanel.test.tsx (priority: critical)
   - `MainPanel.test.tsx:79` — "calls setActivityCollapsed when collapse button clicked": mock created but collapse button never clicked and mock never asserted; fix: click the collapse button via `getByLabelText` and assert `toHaveBeenCalledWith(true)`
   - `DocsPanel.test.tsx:47` — "switches tab when tab trigger is clicked": asserts `toHaveLength(4)` before AND after the click — proves nothing; fix: assert `data-state="active"` on the clicked tab after click

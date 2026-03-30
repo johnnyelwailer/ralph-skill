@@ -1,4 +1,4 @@
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { act, render, screen, fireEvent, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { TooltipProvider } from '@/components/ui/tooltip';
@@ -216,36 +216,79 @@ describe('Sidebar', () => {
     });
   });
 
-  it('handles cost API returning opencode_unavailable error', async () => {
-    const mockFetch = vi.fn().mockResolvedValue({
-      ok: true,
-      json: () => Promise.resolve({ error: 'opencode_unavailable' }),
-    });
-    vi.stubGlobal('fetch', mockFetch);
-    renderSidebar({ sessions: [stoppedSession] });
-    await waitFor(() => {
-      expect(mockFetch).toHaveBeenCalled();
-    });
-  });
+  describe('cost API branch outputs', () => {
+    const originalMatchMedia = window.matchMedia;
 
-  it('handles cost API returning string total_usd', async () => {
-    const mockFetch = vi.fn().mockResolvedValue({
-      ok: true,
-      json: () => Promise.resolve({ total_usd: '2.50' }),
+    beforeEach(() => {
+      // Mock touch device so the tooltip opens on click (no hover-delay needed).
+      Object.defineProperty(window, 'matchMedia', {
+        writable: true,
+        value: vi.fn().mockImplementation(() => ({
+          matches: true,
+          media: '(hover: none), (pointer: coarse)',
+          onchange: null,
+          addEventListener: vi.fn(),
+          removeEventListener: vi.fn(),
+          addListener: vi.fn(),
+          removeListener: vi.fn(),
+          dispatchEvent: vi.fn(),
+        })),
+      });
+      vi.useFakeTimers();
     });
-    vi.stubGlobal('fetch', mockFetch);
-    renderSidebar({ sessions: [stoppedSession] });
-    await waitFor(() => {
-      expect(mockFetch).toHaveBeenCalled();
-    });
-  });
 
-  it('handles cost API fetch rejection', async () => {
-    const mockFetch = vi.fn().mockRejectedValue(new Error('network error'));
-    vi.stubGlobal('fetch', mockFetch);
-    renderSidebar({ sessions: [stoppedSession] });
-    await waitFor(() => {
-      expect(mockFetch).toHaveBeenCalled();
+    afterEach(() => {
+      window.matchMedia = originalMatchMedia;
+      vi.runOnlyPendingTimers();
+      vi.useRealTimers();
+    });
+
+    it('handles cost API returning opencode_unavailable error', async () => {
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({ error: 'opencode_unavailable' }),
+      }));
+      renderSidebar({ sessions: [stoppedSession] });
+      await act(async () => { await vi.runAllTimersAsync(); });
+      fireEvent.click(screen.getByText('Older').closest('button')!);
+      await act(async () => { await vi.runAllTimersAsync(); });
+      fireEvent.click(screen.getByText('old-session').closest('button')!);
+      expect(screen.getByRole('tooltip')).toHaveTextContent('Cost: unavailable');
+    });
+
+    it('handles cost API returning string total_usd', async () => {
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({ total_usd: '2.50' }),
+      }));
+      renderSidebar({ sessions: [stoppedSession] });
+      await act(async () => { await vi.runAllTimersAsync(); });
+      fireEvent.click(screen.getByText('Older').closest('button')!);
+      await act(async () => { await vi.runAllTimersAsync(); });
+      expect(screen.getByText(/\$2\.5000/)).toBeInTheDocument();
+    });
+
+    it('handles cost API returning non-number non-string total_usd', async () => {
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({ total_usd: null }),
+      }));
+      renderSidebar({ sessions: [stoppedSession] });
+      await act(async () => { await vi.runAllTimersAsync(); });
+      fireEvent.click(screen.getByText('Older').closest('button')!);
+      await act(async () => { await vi.runAllTimersAsync(); });
+      fireEvent.click(screen.getByText('old-session').closest('button')!);
+      expect(screen.getByRole('tooltip')).not.toHaveTextContent('Cost:');
+    });
+
+    it('handles cost API fetch rejection', async () => {
+      vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('network error')));
+      renderSidebar({ sessions: [stoppedSession] });
+      await act(async () => { await vi.runAllTimersAsync(); });
+      fireEvent.click(screen.getByText('Older').closest('button')!);
+      await act(async () => { await vi.runAllTimersAsync(); });
+      fireEvent.click(screen.getByText('old-session').closest('button')!);
+      expect(screen.getByRole('tooltip')).not.toHaveTextContent('Cost:');
     });
   });
 
@@ -322,18 +365,6 @@ describe('Sidebar', () => {
     fireEvent.contextMenu(card, { clientX: 0, clientY: 0 });
     await userEvent.click(screen.getByText('Kill immediately'));
     expect(onStopSession).toHaveBeenCalledWith(null, true);
-  });
-
-  it('handles cost API returning non-number non-string total_usd', async () => {
-    const mockFetch = vi.fn().mockResolvedValue({
-      ok: true,
-      json: () => Promise.resolve({ total_usd: null }),
-    });
-    vi.stubGlobal('fetch', mockFetch);
-    renderSidebar({ sessions: [stoppedSession] });
-    await waitFor(() => {
-      expect(mockFetch).toHaveBeenCalled();
-    });
   });
 
   it('matches selectedSessionId to session id for isSelected', async () => {
