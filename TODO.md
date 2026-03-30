@@ -4,6 +4,9 @@
 
 ### In Progress
 
+- [ ] [review] Gate 3: DocsPanel.tsx branch coverage still 85.71% after test fixes — add test to cover `useEffect` reset branch at line 37; render with `docs` containing `TODO.md`, then re-render with `docs` omitting `TODO.md` entirely (so `activeTab === 'TODO.md'` is no longer valid), assert the active tab falls back to the new default (priority: critical)
+- [ ] [review] Gate 4: `playwright.stories.config.ts:6` — `const artifactDir = path.resolve(...)` is defined but never referenced in `defineConfig`; delete it (priority: low)
+
 ### Up Next
 
 - [x] [review] Fix 3 broken test assertions in MainPanel.test.tsx and DocsPanel.test.tsx (priority: critical)
