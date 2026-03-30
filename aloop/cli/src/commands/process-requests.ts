@@ -121,6 +121,24 @@ export interface ProcessRequestsOptions {
 }
 
 /**
+ * Update a GH issue body using the adapter when available, else call the fallback.
+ * Extracted for testability — covers the adapter vs. raw-execGh branch.
+ * @internal exported for testing
+ */
+export async function updateIssueBodyViaAdapter(
+  issueNumber: number,
+  body: string,
+  adapter: OrchestratorAdapter | undefined,
+  fallback: () => Promise<void>,
+): Promise<void> {
+  if (adapter) {
+    await adapter.updateIssue(issueNumber, { body });
+  } else {
+    await fallback();
+  }
+}
+
+/**
  * Create an OrchestratorAdapter when a repo is available, or return undefined.
  * Extracted for testability — covers the repo ? createAdapter(...) : undefined branch.
  * @internal exported for testing
@@ -331,6 +349,9 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
     return { stdout: r.stdout ?? '', stderr: r.stderr ?? '' };
   };
 
+  // adapter must be defined early — used by refine-result handler (Phase 1c)
+  const adapter = makeAdapterForRepo(repo, execGh);
+
   // ── Phase 0: Bridge agent output → requests ──
   // Agents write to worktree/.aloop/output/ (inside their sandbox).
   // Runtime moves files to session_dir/requests/ for processing.
@@ -426,12 +447,14 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
       const result = JSON.parse(await readFile(filePath, 'utf8'));
       const issue = state.issues.find((i: any) => i.number === result.issue_number);
       if (issue && result.updated_body && repo) {
-        // Update GH issue body via temp file (body can be large)
+        // Update GH issue body — use adapter when available, else fall back to --body-file
         try {
-          const bodyFile = path.join(requestsDir, `_body-${issue.number}.md`);
-          await writeFile(bodyFile, result.updated_body, 'utf8');
-          await execGh(['issue', 'edit', String(issue.number), '--repo', repo, '--body-file', bodyFile]);
-          await unlink(bodyFile).catch(() => {});
+          await updateIssueBodyViaAdapter(issue.number, result.updated_body, adapter, async () => {
+            const bodyFile = path.join(requestsDir, `_body-${issue.number}.md`);
+            await writeFile(bodyFile, result.updated_body, 'utf8');
+            await execGh(['issue', 'edit', String(issue.number), '--repo', repo, '--body-file', bodyFile]);
+            await unlink(bodyFile).catch(() => {});
+          });
           issue.body = result.updated_body;
           (issue as any).refined = true;
           stateChanged = true;
@@ -942,15 +965,12 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
   const etagCache = new EtagCache(path.join(aloopRoot, '.cache'));
   await etagCache.load();
 
-  // execGh already defined earlier (before result handlers)
+  // execGh and adapter already defined earlier (before result handlers)
 
   const execGit = async (args: string[], cwd?: string): Promise<{ stdout: string; stderr: string }> => {
     const r = spawnSync('git', args, { encoding: 'utf8', cwd: cwd ?? projectRoot, stdio: ['pipe', 'pipe', 'pipe'] });
     return { stdout: r.stdout ?? '', stderr: r.stderr ?? '' };
   };
-
-  // Create adapter for GitHub operations when repo is available
-  const adapter = makeAdapterForRepo(repo, execGh);
 
   const scanDeps: ScanLoopDeps = {
     existsSync,

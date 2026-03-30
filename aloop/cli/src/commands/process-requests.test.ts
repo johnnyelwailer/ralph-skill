@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { existsSync } from 'node:fs';
 import { mkdtemp, mkdir, rm, writeFile, readFile } from 'node:fs/promises';
-import { formatReviewCommentHistory, getDirectorySizeBytes, pruneLargeV8CacheDir, syncMasterToTrunk, syncChildBranches, makeAdapterForRepo, type ChildBranchSyncDeps } from './process-requests.js';
+import { formatReviewCommentHistory, getDirectorySizeBytes, pruneLargeV8CacheDir, syncMasterToTrunk, syncChildBranches, makeAdapterForRepo, updateIssueBodyViaAdapter, type ChildBranchSyncDeps } from './process-requests.js';
 import { GitHubAdapter } from '../lib/adapter.js';
 import { processCrResultFiles, type CrResultDeps } from './cr-pipeline.js';
 import type { OrchestratorIssue } from './orchestrate.js';
@@ -446,5 +446,40 @@ describe('makeAdapterForRepo', () => {
     assert.strictEqual(scanDeps.adapter, undefined);
     assert.strictEqual(scanDeps.prLifecycleDeps.adapter, undefined);
     assert.strictEqual(scanDeps.dispatchDeps.adapter, undefined);
+  });
+});
+
+
+// --- updateIssueBodyViaAdapter tests (adapter-branch for refine-result handler) ---
+
+describe('updateIssueBodyViaAdapter', () => {
+  it('(a) adapter present → calls adapter.updateIssue, not fallback', async () => {
+    const adapterCalls: Array<{ number: number; update: Record<string, unknown> }> = [];
+    let fallbackCalled = false;
+
+    const mockAdapter = {
+      updateIssue: async (number: number, update: Record<string, unknown>) => {
+        adapterCalls.push({ number, update });
+      },
+    } as any;
+
+    await updateIssueBodyViaAdapter(42, 'new body text', mockAdapter, async () => {
+      fallbackCalled = true;
+    });
+
+    assert.equal(adapterCalls.length, 1, 'adapter.updateIssue should be called once');
+    assert.equal(adapterCalls[0].number, 42);
+    assert.deepEqual(adapterCalls[0].update, { body: 'new body text' });
+    assert.equal(fallbackCalled, false, 'fallback must not be called when adapter is present');
+  });
+
+  it('(b) adapter absent → calls fallback, not adapter', async () => {
+    let fallbackCalled = false;
+
+    await updateIssueBodyViaAdapter(42, 'new body text', undefined, async () => {
+      fallbackCalled = true;
+    });
+
+    assert.equal(fallbackCalled, true, 'fallback must be called when adapter is absent');
   });
 });
