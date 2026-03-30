@@ -1872,22 +1872,34 @@ export async function applyTriageResultsToIssue(
     }
 
     if (result.classification === 'needs_clarification') {
-      await deps.execGh([
-        'issue', 'comment', String(issue.number), '--repo', repo, '--body', formatNeedsClarificationReply(comment),
-      ]);
-      if (!issue.blocked_on_human) {
+      if (deps.adapter) {
+        await deps.adapter.postComment(issue.number, formatNeedsClarificationReply(comment));
+      } else {
         await deps.execGh([
-          'issue', 'edit', String(issue.number), '--repo', repo, '--add-label', 'aloop/blocked-on-human',
+          'issue', 'comment', String(issue.number), '--repo', repo, '--body', formatNeedsClarificationReply(comment),
         ]);
+      }
+      if (!issue.blocked_on_human) {
+        if (deps.adapter) {
+          await deps.adapter.updateIssue(issue.number, { labels_add: ['aloop/blocked-on-human'] });
+        } else {
+          await deps.execGh([
+            'issue', 'edit', String(issue.number), '--repo', repo, '--add-label', 'aloop/blocked-on-human',
+          ]);
+        }
       }
       issue.blocked_on_human = true;
       actionTaken = 'post_reply_and_block';
     } else if (result.classification === 'actionable') {
       let unblocked = false;
       if (issue.blocked_on_human) {
-        await deps.execGh([
-          'issue', 'edit', String(issue.number), '--repo', repo, '--remove-label', 'aloop/blocked-on-human',
-        ]);
+        if (deps.adapter) {
+          await deps.adapter.updateIssue(issue.number, { labels_remove: ['aloop/blocked-on-human'] });
+        } else {
+          await deps.execGh([
+            'issue', 'edit', String(issue.number), '--repo', repo, '--remove-label', 'aloop/blocked-on-human',
+          ]);
+        }
         issue.blocked_on_human = false;
         unblocked = true;
       }
@@ -1908,9 +1920,13 @@ export async function applyTriageResultsToIssue(
         actionTaken = 'steering_deferred';
       }
     } else if (result.classification === 'question') {
-      await deps.execGh([
-        'issue', 'comment', String(issue.number), '--repo', repo, '--body', formatQuestionReply(comment),
-      ]);
+      if (deps.adapter) {
+        await deps.adapter.postComment(issue.number, formatQuestionReply(comment));
+      } else {
+        await deps.execGh([
+          'issue', 'comment', String(issue.number), '--repo', repo, '--body', formatQuestionReply(comment),
+        ]);
+      }
       actionTaken = 'question_answered';
     } else {
       actionTaken = 'triaged_no_action';
@@ -2172,37 +2188,53 @@ export async function resolveSpecQuestionIssues(
   state: OrchestratorState,
   repo: string,
   sessionDir: string,
-  deps: Pick<ScanLoopDeps, 'execGh' | 'appendLog' | 'now'>,
+  deps: Pick<ScanLoopDeps, 'execGh' | 'appendLog' | 'now' | 'adapter'>,
 ): Promise<SpecQuestionResolveStats> {
-  if (!deps.execGh) {
+  if (!deps.execGh && !deps.adapter) {
     return { processed: 0, waiting: 0, autoResolved: 0, userOverrides: 0 };
   }
   const result: SpecQuestionResolveStats = { processed: 0, waiting: 0, autoResolved: 0, userOverrides: 0 };
-  const response = await deps.execGh([
-    'issue',
-    'list',
-    '--repo',
-    repo,
-    '--label',
-    'aloop/spec-question',
-    '--state',
-    'open',
-    '--json',
-    'number,title,body,labels',
-  ]);
-  const issues = parseSpecQuestionIssueList(response.stdout);
+  let issues;
+  if (deps.adapter) {
+    const adapterIssues = await deps.adapter.listIssues({ labels: ['aloop/spec-question'], state: 'open' });
+    // adapter.listIssues only returns { number, title, state } — fetch full details
+    const fullIssues = [];
+    for (const ai of adapterIssues) {
+      const full = await deps.adapter.getIssue(ai.number);
+      fullIssues.push({ number: full.number, title: full.title, body: full.body, labels: full.labels.map((l) => ({ name: l })) });
+    }
+    issues = fullIssues;
+  } else {
+    const response = await deps.execGh!([
+      'issue',
+      'list',
+      '--repo',
+      repo,
+      '--label',
+      'aloop/spec-question',
+      '--state',
+      'open',
+      '--json',
+      'number,title,body,labels',
+    ]);
+    issues = parseSpecQuestionIssueList(response.stdout);
+  }
   for (const issue of issues) {
     result.processed += 1;
     const labelNames = extractLabelNames(issue.labels);
-    const issueNumber = String(issue.number);
+    const issueNumber = issue.number;
     const risk = classifySpecQuestionRisk(issue);
     const action = resolveSpecQuestionAction(state.autonomy_level ?? 'balanced', risk);
     const reopenedByUser = labelNames.has('aloop/auto-resolved');
     if (reopenedByUser) {
       if (!labelNames.has('aloop/blocked-on-human')) {
-        await deps.execGh([
-          'issue', 'edit', issueNumber, '--repo', repo, '--add-label', 'aloop/blocked-on-human',
-        ]);
+        if (deps.adapter) {
+          await deps.adapter.updateIssue(issueNumber, { labels_add: ['aloop/blocked-on-human'] });
+        } else {
+          await deps.execGh!([
+            'issue', 'edit', String(issueNumber), '--repo', repo, '--add-label', 'aloop/blocked-on-human',
+          ]);
+        }
       }
       result.userOverrides += 1;
       deps.appendLog(sessionDir, {
@@ -2216,9 +2248,13 @@ export async function resolveSpecQuestionIssues(
 
     if (action === 'wait_for_user') {
       if (!labelNames.has('aloop/blocked-on-human')) {
-        await deps.execGh([
-          'issue', 'edit', issueNumber, '--repo', repo, '--add-label', 'aloop/blocked-on-human',
-        ]);
+        if (deps.adapter) {
+          await deps.adapter.updateIssue(issueNumber, { labels_add: ['aloop/blocked-on-human'] });
+        } else {
+          await deps.execGh!([
+            'issue', 'edit', String(issueNumber), '--repo', repo, '--add-label', 'aloop/blocked-on-human',
+          ]);
+        }
       }
       result.waiting += 1;
       deps.appendLog(sessionDir, {
@@ -2231,27 +2267,33 @@ export async function resolveSpecQuestionIssues(
       continue;
     }
 
-    await deps.execGh([
-      'issue',
-      'comment',
-      issueNumber,
-      '--repo',
-      repo,
-      '--body',
-      formatResolverDecisionComment(state.autonomy_level ?? 'balanced', risk),
-    ]);
-    await deps.execGh([
-      'issue',
-      'edit',
-      issueNumber,
-      '--repo',
-      repo,
-      '--add-label',
-      'aloop/auto-resolved',
-      '--remove-label',
-      'aloop/blocked-on-human',
-    ]);
-    await deps.execGh(['issue', 'close', issueNumber, '--repo', repo]);
+    if (deps.adapter) {
+      await deps.adapter.postComment(issueNumber, formatResolverDecisionComment(state.autonomy_level ?? 'balanced', risk));
+      await deps.adapter.updateIssue(issueNumber, { labels_add: ['aloop/auto-resolved'], labels_remove: ['aloop/blocked-on-human'] });
+      await deps.adapter.closeIssue(issueNumber);
+    } else {
+      await deps.execGh!([
+        'issue',
+        'comment',
+        String(issueNumber),
+        '--repo',
+        repo,
+        '--body',
+        formatResolverDecisionComment(state.autonomy_level ?? 'balanced', risk),
+      ]);
+      await deps.execGh!([
+        'issue',
+        'edit',
+        String(issueNumber),
+        '--repo',
+        repo,
+        '--add-label',
+        'aloop/auto-resolved',
+        '--remove-label',
+        'aloop/blocked-on-human',
+      ]);
+      await deps.execGh!(['issue', 'close', String(issueNumber), '--repo', repo]);
+    }
     result.autoResolved += 1;
     deps.appendLog(sessionDir, {
       timestamp: deps.now().toISOString(),
@@ -3568,9 +3610,13 @@ export async function mergePr(
   deps: PrLifecycleDeps,
 ): Promise<PrMergeResult> {
   try {
-    await deps.execGh([
-      'pr', 'merge', String(prNumber), '--repo', repo, '--squash', '--delete-branch',
-    ]);
+    if (deps.adapter) {
+      await deps.adapter.mergePR(prNumber, 'squash');
+    } else {
+      await deps.execGh([
+        'pr', 'merge', String(prNumber), '--repo', repo, '--squash', '--delete-branch',
+      ]);
+    }
     return { pr_number: prNumber, merged: true };
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
@@ -3674,12 +3720,17 @@ export async function flagForHuman(
 ): Promise<void> {
   const body = `Flagged for human resolution: ${reason}`;
   try {
-    await deps.execGh([
-      'issue', 'comment', String(issue.number), '--repo', repo, '--body', body,
-    ]);
-    await deps.execGh([
-      'issue', 'edit', String(issue.number), '--repo', repo, '--add-label', 'aloop/blocked-on-human',
-    ]);
+    if (deps.adapter) {
+      await deps.adapter.postComment(issue.number, body);
+      await deps.adapter.updateIssue(issue.number, { labels_add: ['aloop/blocked-on-human'] });
+    } else {
+      await deps.execGh([
+        'issue', 'comment', String(issue.number), '--repo', repo, '--body', body,
+      ]);
+      await deps.execGh([
+        'issue', 'edit', String(issue.number), '--repo', repo, '--add-label', 'aloop/blocked-on-human',
+      ]);
+    }
   } catch {
     // Best-effort labeling
   }
@@ -3827,10 +3878,15 @@ export async function processPrLifecycle(
       const ciRetryNote = ciFailure && stateIssue
         ? ` CI retry ${stateIssue.ci_failure_retries ?? 1}/${ORCHESTRATOR_CI_PERSISTENCE_LIMIT} before human escalation.`
         : '';
-      await deps.execGh([
-        'issue', 'comment', String(issue.number), '--repo', repo,
-        '--body', `PR #${prNumber} failed gates: ${failDetail}.${ciRetryNote} Please address and update the PR.`,
-      ]);
+      const commentBody = `PR #${prNumber} failed gates: ${failDetail}.${ciRetryNote} Please address and update the PR.`;
+      if (deps.adapter) {
+        await deps.adapter.postComment(issue.number, commentBody);
+      } else {
+        await deps.execGh([
+          'issue', 'comment', String(issue.number), '--repo', repo,
+          '--body', commentBody,
+        ]);
+      }
     } catch {
       // Best-effort comment
     }
@@ -3865,10 +3921,14 @@ export async function processPrLifecycle(
     const alreadyCommented = (stateIssue as any)?.last_review_comment === reviewResult.summary;
     if (!alreadyCommented) {
       try {
-        await deps.execGh([
-          'pr', 'comment', String(prNumber), '--repo', repo,
-          '--body', `Agent review requested changes:\n\n${reviewResult.summary}`,
-        ]);
+        if (deps.adapter) {
+          await deps.adapter.postComment(prNumber, `Agent review requested changes:\n\n${reviewResult.summary}`);
+        } else {
+          await deps.execGh([
+            'pr', 'comment', String(prNumber), '--repo', repo,
+            '--body', `Agent review requested changes:\n\n${reviewResult.summary}`,
+          ]);
+        }
       } catch {
         // Best-effort
       }
@@ -3928,7 +3988,11 @@ export async function processPrLifecycle(
 
     // Close the issue
     try {
-      await deps.execGh(['issue', 'close', String(issue.number), '--repo', repo]);
+      if (deps.adapter) {
+        await deps.adapter.closeIssue(issue.number);
+      } else {
+        await deps.execGh(['issue', 'close', String(issue.number), '--repo', repo]);
+      }
     } catch {
       // Best-effort close
     }

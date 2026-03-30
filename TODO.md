@@ -33,7 +33,7 @@ Acceptance criteria:
 
 - [x] Migrate issue lifecycle calls in orchestrate.ts (TriageDeps / triage functions) — replace `deps.execGh(['issue', ...])` with `adapter.closeIssue()`, `adapter.addLabels()`, `adapter.removeLabels()`, `adapter.postComment()`, `adapter.listIssues()`, and `adapter.updateIssue()` in triage functions; replace `deps.execGhIssueCreate` with `adapter.createIssue()` in dispatch
 
-- [ ] Migrate PR lifecycle calls in orchestrate.ts (PrLifecycleDeps) — replace `deps.execGh` calls in PR creation/merge/status functions with `adapter.createPR()`, `adapter.mergePR()`, `adapter.getPRStatus()`
+- [x] Migrate PR lifecycle calls in orchestrate.ts (PrLifecycleDeps) — replaced `deps.execGh` calls in `mergePr()` with `adapter.mergePR()` and in `processPrLifecycle()` review feedback with `adapter.postComment()`. Remaining calls (`pr view`, `pr diff`, `pr close`, `gh api`) have no direct adapter equivalents.
 
 - [ ] Migrate scanLoop / bulk fetch execGh calls in orchestrate.ts — replace `deps.execGh` calls in bulk fetch, issue close, and auto-merge with adapter calls
 
