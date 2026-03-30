@@ -8,7 +8,7 @@
 
 - [x] [review] **Gate 2/Gate 5: Fix broken runTriageMonitorCycle adapter tests** — `createMockAdapter({ listComments: ... })` spreads the override into `base` after `calls.push(...)` tracking is wired, so the override replaces the tracked implementation and `calls` never records `listComments` calls. Tests at `orchestrate.test.ts:1614-1616` and `1651-1654` always see `listCalls.length === 0`. Fix: wrap each override in a closure that pushes to `calls` first then delegates to the override (for all overridable methods), rather than spreading overrides raw. The two failing tests are the only regressions vs the 34-failure baseline (now 36). (priority: high)
 
-- [ ] [review] **Gate 4: Remove execGhForTriage DI bypass in runTriageMonitorCycle** — `orchestrate.ts:2120-2125` creates an inline `spawnSync('gh', ...)` fallback when `deps.execGh` is absent. In adapter-only mode (tests and future LocalAdapter use), `applyTriageResultsToIssue` receives a function that spawns real `gh` CLI — defeating DI and violating CONSTITUTION rule #4. Fix: pass `undefined` as `execGh` to `applyTriageResultsToIssue` when `deps.execGh` is absent (let it guard internally), or make `applyTriageResultsToIssue` accept optional `execGh` and skip label operations when absent. Remove the dynamic `import('node:child_process')` inline. (priority: high)
+- [x] [review] **Gate 4: Remove execGhForTriage DI bypass in runTriageMonitorCycle** — `orchestrate.ts:2120-2125` creates an inline `spawnSync('gh', ...)` fallback when `deps.execGh` is absent. In adapter-only mode (tests and future LocalAdapter use), `applyTriageResultsToIssue` receives a function that spawns real `gh` CLI — defeating DI and violating CONSTITUTION rule #4. Fix: pass `undefined` as `execGh` to `applyTriageResultsToIssue` when `deps.execGh` is absent (let it guard internally), or make `applyTriageResultsToIssue` accept optional `execGh` and skip label operations when absent. Remove the dynamic `import('node:child_process')` inline. (priority: high)
 
 - [ ] [review] **Gate 2/Gate 3: Add adapter-path tests for process-requests.ts changes** — `ecad85f99` migrated four call-sites to the adapter but added zero tests: (1) `adapter.createIssue()` in sub-decomposition at line 419, (2) `adapter.createIssue()` in Phase 2 at line ~542, (3) `adapter.createPR()` in Phase 2c at line ~659, (4) `updateParentTasklist()` refactored to use `adapter.getIssue()` + `adapter.updateIssue()` at lines 1149-1163. All four adapter-guarded branches have 0% coverage. Add tests following the `makeAdapterForRepo` test pattern: inject a mock adapter, exercise the path, assert exact adapter call args. (priority: high)
 
@@ -37,6 +37,8 @@
   - Verify `npm run build` compiles and `npm test` passes
 
 ### Completed
+
+- [x] [review] **Gate 4: Remove execGhForTriage DI bypass in runTriageMonitorCycle** — Removed inline `spawnSync('gh', ...)` fallback at `orchestrate.ts:2120-2125`. Made `TriageDeps.execGh` optional. When adapter is present and `execGh` is absent, `undefined` is passed through instead of spawning real `gh` CLI. All adapter-path `deps.execGh` calls in `applyTriageResultsToIssue` are already guarded behind `if (deps.adapter)` checks.
 
 - [x] **Migrate orchestrate.ts — applyDecompositionPlan and triageMonitoringCycle** — Two targeted call-sites migrated:
   - `applyDecompositionPlan`: `deps.execGhIssueCreate` → `deps.adapter.createIssue()` with fallback

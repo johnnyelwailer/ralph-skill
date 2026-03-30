@@ -6560,7 +6560,6 @@ describe('adapter-branch tests', () => {
         { id: 10, author: 'alice', body: 'hmm maybe we should switch to polling?', context: 'issue', author_association: 'COLLABORATOR' },
       ];
       const deps: TriageDeps = {
-        execGh: async () => { throw new Error('execGh should not be called'); },
         now: () => new Date('2026-03-14T12:00:00.000Z'),
         adapter,
       };
@@ -6597,7 +6596,6 @@ describe('adapter-branch tests', () => {
       const tempDir = await mkdtemp(path.join(os.tmpdir(), 'aloop-triage-adapter-'));
       const aloopRoot = path.join(tempDir, '.aloop');
       const deps: TriageDeps = {
-        execGh: async () => { throw new Error('execGh should not be called'); },
         now: () => new Date('2026-03-14T12:05:00.000Z'),
         writeFile: async (p, data) => {
           await mkdir(path.dirname(p), { recursive: true });
@@ -6629,7 +6627,6 @@ describe('adapter-branch tests', () => {
         { id: 21, author: 'alice', body: 'What is the expected response shape?', context: 'issue', author_association: 'COLLABORATOR' },
       ];
       const deps: TriageDeps = {
-        execGh: async () => { throw new Error('execGh should not be called'); },
         now: () => new Date('2026-03-14T12:06:00.000Z'),
         adapter,
       };

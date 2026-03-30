@@ -189,7 +189,7 @@ export interface TriageLogEntry {
 }
 
 export interface TriageDeps {
-  execGh: (args: string[]) => Promise<{ stdout: string; stderr: string }>;
+  execGh?: (args: string[]) => Promise<{ stdout: string; stderr: string }>;
   now: () => Date;
   writeFile?: (path: string, data: string, encoding: BufferEncoding) => Promise<void>;
   aloopRoot?: string;
@@ -1878,7 +1878,7 @@ export async function applyTriageResultsToIssue(
       if (deps.adapter) {
         await deps.adapter.postComment(issue.number, formatNeedsClarificationReply(comment));
       } else {
-        await deps.execGh([
+        await deps.execGh!([
           'issue', 'comment', String(issue.number), '--repo', repo, '--body', formatNeedsClarificationReply(comment),
         ]);
       }
@@ -1886,7 +1886,7 @@ export async function applyTriageResultsToIssue(
         if (deps.adapter) {
           await deps.adapter.updateIssue(issue.number, { labels_add: ['aloop/blocked-on-human'] });
         } else {
-          await deps.execGh([
+          await deps.execGh!([
             'issue', 'edit', String(issue.number), '--repo', repo, '--add-label', 'aloop/blocked-on-human',
           ]);
         }
@@ -1899,7 +1899,7 @@ export async function applyTriageResultsToIssue(
         if (deps.adapter) {
           await deps.adapter.updateIssue(issue.number, { labels_remove: ['aloop/blocked-on-human'] });
         } else {
-          await deps.execGh([
+          await deps.execGh!([
             'issue', 'edit', String(issue.number), '--repo', repo, '--remove-label', 'aloop/blocked-on-human',
           ]);
         }
@@ -1926,7 +1926,7 @@ export async function applyTriageResultsToIssue(
       if (deps.adapter) {
         await deps.adapter.postComment(issue.number, formatQuestionReply(comment));
       } else {
-        await deps.execGh([
+        await deps.execGh!([
           'issue', 'comment', String(issue.number), '--repo', repo, '--body', formatQuestionReply(comment),
         ]);
       }
@@ -2117,18 +2117,11 @@ export async function runTriageMonitorCycle(
         .map((entry) => entry.comment);
     }
 
-    const execGhForTriage = deps.execGh ?? (async (args: string[]) => {
-      const { spawnSync: nodeSpawnSync } = await import('node:child_process');
-      const result = nodeSpawnSync('gh', args, { encoding: 'utf8' });
-      if (result.status !== 0) throw new Error(result.stderr ?? 'gh failed');
-      return { stdout: result.stdout ?? '', stderr: result.stderr ?? '' };
-    });
-
     const entries = await applyTriageResultsToIssue(
       issue,
       [...issueComments, ...prComments],
       repo,
-      { execGh: execGhForTriage, now: deps.now, writeFile: deps.writeFile, aloopRoot, adapter: deps.adapter },
+      { execGh: deps.execGh, now: deps.now, writeFile: deps.writeFile, aloopRoot, adapter: deps.adapter },
     );
     triagedEntries += entries.length;
 
