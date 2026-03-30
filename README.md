@@ -104,14 +104,14 @@ loop:
   rate_limit_backoff: fixed     # Backoff strategy: exponential, linear, or fixed
   concurrency_cap: 3            # Max concurrent child loops (orchestrator)
   cooldown_ladder: [0, 120, 300, 900, 1800, 3600]  # Provider cooldown seconds per failure count
+  provider_timeout: 10800       # Max seconds to wait for a provider response
 ```
 
 These settings are written to `loop-plan.json` at session start and hot-reloaded each iteration from `meta.json`. Changes take effect on the next iteration without restarting.
 
 **Implementation status:**
 - `triage_interval`, `scan_pass_throttle_ms`, `rate_limit_backoff`, `concurrency_cap` — **Implemented** (config overrides CLI defaults for orchestrator)
-- `max_iterations`, `max_stuck`, `inter_iteration_sleep`, `cooldown_ladder` — **Implemented** (written to `loop-plan.json`, read by loop scripts)
-- `provider_timeout` — **Partial** (written to `loop-plan.json` but loop scripts do not yet read it; loop uses its compiled-in default)
+- `max_iterations`, `max_stuck`, `inter_iteration_sleep`, `cooldown_ladder`, `provider_timeout` — **Implemented** (written to `loop-plan.json`, read by loop scripts)
 
 ### Per-agent config (`.aloop/agents/<name>.yml`)
 

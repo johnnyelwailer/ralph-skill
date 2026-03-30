@@ -124,6 +124,7 @@ function Load-LoopSettings {
         if ($null -ne $s.request_timeout) { $script:RequestTimeout = [int]$s.request_timeout }
         if ($null -ne $s.request_poll_interval) { $script:RequestPollInterval = [int]$s.request_poll_interval }
         if ($null -ne $s.unavailable_sleep) { $script:UnavailableSleep = [int]$s.unavailable_sleep }
+        if ($null -ne $s.provider_timeout) { $script:ProviderTimeoutSec = [int]$s.provider_timeout }
         if ($s.cooldown_ladder -and $s.cooldown_ladder.Count -ge 2) {
             $script:CooldownLadder = @($s.cooldown_ladder | ForEach-Object { [int]$_ })
         }
@@ -150,6 +151,7 @@ function Refresh-LoopSettingsFromMeta {
         if ($null -ne $s.request_timeout) { $script:RequestTimeout = [int]$s.request_timeout }
         if ($null -ne $s.request_poll_interval) { $script:RequestPollInterval = [int]$s.request_poll_interval }
         if ($null -ne $s.unavailable_sleep) { $script:UnavailableSleep = [int]$s.unavailable_sleep }
+        if ($null -ne $s.provider_timeout) { $script:ProviderTimeoutSec = [int]$s.provider_timeout }
         if ($s.cooldown_ladder -and $s.cooldown_ladder.Count -ge 2) {
             $script:CooldownLadder = @($s.cooldown_ladder | ForEach-Object { [int]$_ })
         }
