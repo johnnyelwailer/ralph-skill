@@ -4,15 +4,10 @@
 
 ### In Progress
 
-- [ ] [review] Gate 3: DocsPanel.tsx branch coverage still 85.71% after test fixes — add test to cover `useEffect` reset branch at line 37; render with `docs` containing `TODO.md`, then re-render with `docs` omitting `TODO.md` entirely (so `activeTab === 'TODO.md'` is no longer valid), assert the active tab falls back to the new default (priority: critical)
-- [ ] [review] Gate 4: `playwright.stories.config.ts:6` — `const artifactDir = path.resolve(...)` is defined but never referenced in `defineConfig`; delete it (priority: low)
+- [x] [review] Gate 3: DocsPanel.tsx branch coverage still 85.71% after test fixes — add test to cover `useEffect` reset branch at line 37; render with `docs` containing `TODO.md`, then re-render with `docs` omitting `TODO.md` entirely (so `activeTab === 'TODO.md'` is no longer valid), assert the active tab falls back to the new default (priority: critical)
+- [x] [review] Gate 4: `playwright.stories.config.ts:6` — `const artifactDir = path.resolve(...)` is defined but never referenced in `defineConfig`; delete it (priority: low)
 
 ### Up Next
-
-- [x] [review] Fix 3 broken test assertions in MainPanel.test.tsx and DocsPanel.test.tsx (priority: critical)
-  - `MainPanel.test.tsx:79` — "calls setActivityCollapsed when collapse button clicked": mock created but collapse button never clicked and mock never asserted; fix: click the collapse button via `getByLabelText` and assert `toHaveBeenCalledWith(true)`
-  - `DocsPanel.test.tsx:47` — "switches tab when tab trigger is clicked": asserts `toHaveLength(4)` before AND after the click — proves nothing; fix: assert `data-state="active"` on the clicked tab after click
-  - `DocsPanel.test.tsx:63` — "switches to health tab": `fireEvent.click` inside `waitFor` with no post-click assertion; fix: add `expect(screen.getByRole('tab', { name: /Health/i })).toHaveAttribute('data-state', 'active')` after the click
 
 - [ ] [qa/P1] Fix DocsPanel.tsx branch coverage (currently 85.71%, need ≥90%)
   - Uncovered: `useEffect` reset path at line 37 (`setActiveTab(defaultTab)` when `activeTab` becomes invalid)
@@ -52,6 +47,10 @@
 
 ### Completed
 
+- [x] [review] Fix 3 broken test assertions in MainPanel.test.tsx and DocsPanel.test.tsx (priority: critical)
+  - `MainPanel.test.tsx:79` — "calls setActivityCollapsed when collapse button clicked": mock created but collapse button never clicked and mock never asserted; fix: click the collapse button via `getByLabelText` and assert `toHaveBeenCalledWith(true)`
+  - `DocsPanel.test.tsx:47` — "switches tab when tab trigger is clicked": asserts `toHaveLength(4)` before AND after the click — proves nothing; fix: assert `data-state="active"` on the clicked tab after click
+  - `DocsPanel.test.tsx:63` — "switches to health tab": `fireEvent.click` inside `waitFor` with no post-click assertion; fix: add `expect(screen.getByRole('tab', { name: /Health/i })).toHaveAttribute('data-state', 'active')` after the click
 - [x] Configure Storybook 10 with `@storybook/react-vite` in `.storybook/main.ts`
 - [x] Add `npm run storybook` and `build-storybook` scripts to package.json
 - [x] Add global decorators in `.storybook/preview.ts` (withThemeByClassName light/dark toggle, TooltipProvider, imports index.css)

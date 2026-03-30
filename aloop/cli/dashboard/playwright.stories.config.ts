@@ -3,7 +3,6 @@ import { fileURLToPath } from 'node:url';
 import { defineConfig } from '@playwright/test';
 
 const currentDir = path.dirname(fileURLToPath(import.meta.url));
-const artifactDir = path.resolve(currentDir, '..', '..', '..', 'proof-artifacts');
 
 export default defineConfig({
   testDir: './e2e',

@@ -99,4 +99,27 @@ describe('DocsPanel', () => {
       expect(screen.getByRole('tab', { name: 'SPEC' })).toBeInTheDocument();
     });
   });
+
+  it('resets activeTab to defaultTab when active tab is removed from docs', async () => {
+    const { rerender } = render(
+      <TooltipProvider>
+        <div className="h-[400px] w-[300px]">
+          <DocsPanel {...defaultProps} docs={{ 'TODO.md': '# TODO', 'SPEC.md': '# Spec' }} />
+        </div>
+      </TooltipProvider>,
+    );
+    await waitFor(() => {
+      expect(screen.getByRole('tab', { name: 'TODO' })).toHaveAttribute('data-state', 'active');
+    });
+    rerender(
+      <TooltipProvider>
+        <div className="h-[400px] w-[300px]">
+          <DocsPanel {...defaultProps} docs={{ 'SPEC.md': '# Spec' }} />
+        </div>
+      </TooltipProvider>,
+    );
+    await waitFor(() => {
+      expect(screen.getByRole('tab', { name: 'SPEC' })).toHaveAttribute('data-state', 'active');
+    });
+  });
 });
