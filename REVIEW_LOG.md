@@ -111,3 +111,23 @@ Header.stories.tsx adds 7 stories; none are in `e2e/story-screenshots.spec.ts` a
 **Gate 3: `Header.tsx` branch coverage 87.61% (persists)** — No new branch coverage tests were added in this iteration. The test-strengthening commits improved assertion depth on existing tests only. Coverage report from QA (commit 55caec1a1) confirms unchanged at 87.61%. Uncovered branches remain: line 43 (`f.status` non-string → `'UNTESTED'`), line 211 (`stuckCount > 0` red class), line 227 (`avgDuration && sessionCost > 0` separator), line 275 (empty `updatedAt` while not loading). Task already in TODO.md as `[ ] [review] Gate 3`.
 
 ---
+
+## Review — 2026-03-30 — commits c59f2d417..879e90588
+
+**Verdict: FAIL** (1 finding → written to TODO.md as [review] task)
+**Scope:** `Header.test.tsx`, `e2e/story-screenshots.spec.ts`
+
+### Prior findings resolved
+
+- ✓ Gate 3: `Header.tsx` branch coverage raised from 87.61% to 90.26% — 4 new tests added:
+  - `shows stuck count with red styling when stuckCount > 0` — hovers iter span, asserts `getByText('3').toHaveClass('text-red-500')` — concrete class assertion
+  - `renders stats span without separator when sessionCost is 0` — asserts exact text `'~2m 30s/iter'` with no separator — covers line 227 false branch
+  - `renders empty updated-at when not loading and updatedAt is empty` — asserts `toHaveTextContent('')` via testid — covers line 275 falsy `updatedAt` branch
+  - `uses UNTESTED status when feature status is not a string` — clicks expanded badge, asserts `'UNTESTED'` text — covers line 43 non-string status branch; concrete and behavioral
+- ✓ Gate 2: All 4 new tests have specific, concrete value assertions — no toBeDefined/truthy anti-patterns
+
+### Findings
+
+**Gate 5: `e2e/story-screenshots.spec.ts:53`** — `{ id: 'layout-header--qa-badge-default', file: 'header-qabadgedefault.png' }` was added to the stories array knowing the story renders an empty `#storybook-root`. The spec asserts `await expect(storyRoot).not.toBeEmpty({ timeout: 15_000 })`, which times out for this story. QA iter 63 confirms: 29/30 Playwright tests pass, test 30 (`screenshot: header-qabadgedefault.png`) fails. The e2e suite now reports a persistent FAIL on every run. Adding a known-broken story to the spec without a `test.skip` guard embeds a CI failure. 1 `[review]` task written to TODO.md.
+
+---
