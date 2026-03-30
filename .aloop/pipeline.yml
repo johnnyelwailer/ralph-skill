@@ -19,7 +19,6 @@ finalizer:
   - PROMPT_final-review.md
   - PROMPT_final-qa.md
   - PROMPT_proof.md
-  - PROMPT_cleanup.md
 
 # Orchestrator event→prompt mapping.
 # process-requests scans issue state, matches filters, queues the prompt.
