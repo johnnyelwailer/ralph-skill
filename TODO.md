@@ -12,6 +12,7 @@
   - (b) `proof_manifest_found` PASS (manifest present), `proof_manifest_missing` PASS (absent, no iteration_error)
   - (c) `{{ARTIFACTS_DIR}}` and `{{ITERATION}}` verified via proof path matching — PASS
   - (d) `bash -n` on loop.sh PASS (both installed and worktree copies)
+  [reviewed: gates 1-10 pass]
 
 ### Up Next
 
