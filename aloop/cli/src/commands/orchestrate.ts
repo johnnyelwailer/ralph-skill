@@ -545,6 +545,55 @@ export async function resolveAutoMerge(
   }
 }
 
+export interface OrchestratorSettings {
+  concurrency_cap: number;
+  triage_interval: number;
+  scan_pass_throttle_ms: number;
+  rate_limit_backoff: 'exponential' | 'linear' | 'fixed';
+}
+
+export async function resolveOrchestratorSettingsFromConfig(
+  options: OrchestrateCommandOptions,
+  projectRoot: string,
+  deps: Pick<OrchestrateDeps, 'existsSync' | 'readFile'>,
+): Promise<OrchestratorSettings> {
+  const pipelinePath = path.join(projectRoot, '.aloop', 'pipeline.yml');
+  let ymlContent = '';
+  if (deps.existsSync(pipelinePath)) {
+    try {
+      ymlContent = await deps.readFile(pipelinePath, 'utf8');
+    } catch {
+      // fall through to defaults
+    }
+  }
+
+  let concurrencyCap = parseConcurrency(options.concurrency);
+  if (options.concurrency === undefined) {
+    const fromYml = parseConfigScalar(ymlContent, 'concurrency_cap');
+    concurrencyCap = fromYml ? parseConcurrency(fromYml) : DEFAULT_LOOP_SETTINGS.concurrency_cap;
+  }
+
+  let triageInterval = parseTriageInterval(options.triageInterval);
+  if (options.triageInterval === undefined) {
+    const fromYml = parseConfigScalar(ymlContent, 'triage_interval');
+    triageInterval = fromYml ? parseTriageInterval(fromYml) : DEFAULT_LOOP_SETTINGS.triage_interval;
+  }
+
+  let scanPassThrottleMs = parseInterval(options.interval);
+  if (options.interval === undefined) {
+    const fromYml = parseConfigScalar(ymlContent, 'scan_pass_throttle_ms');
+    scanPassThrottleMs = fromYml ? parseInterval(fromYml) : DEFAULT_LOOP_SETTINGS.scan_pass_throttle_ms;
+  }
+
+  let rateLimitBackoff = parseRateLimitBackoff(options.rateLimitBackoff);
+  if (options.rateLimitBackoff === undefined) {
+    const fromYml = parseConfigScalar(ymlContent, 'rate_limit_backoff');
+    rateLimitBackoff = fromYml ? parseRateLimitBackoff(fromYml) : DEFAULT_LOOP_SETTINGS.rate_limit_backoff;
+  }
+
+  return { concurrency_cap: concurrencyCap, triage_interval: triageInterval, scan_pass_throttle_ms: scanPassThrottleMs, rate_limit_backoff: rateLimitBackoff };
+}
+
 export function validateDependencyGraph(issues: DecompositionPlanIssue[]): void {
   const ids = new Set(issues.map((i) => i.id));
 
@@ -994,7 +1043,6 @@ export async function orchestrateCommandWithDeps(
   // Primary spec file for backward compatibility (first resolved file)
   const specFile = path.relative(projectRoot, existingSpecFiles[0]) || existingSpecFiles[0];
   const trunkBranch = options.trunk ?? 'agent/trunk';
-  const concurrencyCap = parseConcurrency(options.concurrency);
   const filterIssues = parseIssueNumbers(options.issues);
   const filterLabel = options.label ?? null;
   const filterRepo = options.repo ?? null;
@@ -1002,10 +1050,12 @@ export async function orchestrateCommandWithDeps(
   const budgetCap = parseBudget(options.budget);
   const autonomyLevel = await resolveOrchestratorAutonomyLevel(options, homeDir, deps);
   const autoMergeToMain = await resolveAutoMerge(options, homeDir, deps);
-  const triageInterval = parseTriageInterval(options.triageInterval);
-  const rateLimitBackoff = parseRateLimitBackoff(options.rateLimitBackoff);
+  const orchSettings = await resolveOrchestratorSettingsFromConfig(options, projectRoot, deps);
+  const concurrencyCap = orchSettings.concurrency_cap;
+  const triageInterval = orchSettings.triage_interval;
+  const rateLimitBackoff = orchSettings.rate_limit_backoff;
   const childMaxIterations = parseChildMaxIterations(options.childMaxIterations);
-  const scanPassThrottleMs = parseInterval(options.interval);
+  const scanPassThrottleMs = orchSettings.scan_pass_throttle_ms;
 
   const now = deps.now();
   const timestamp = `${now.getUTCFullYear()}${String(now.getUTCMonth() + 1).padStart(2, '0')}${String(now.getUTCDate()).padStart(2, '0')}-${String(now.getUTCHours()).padStart(2, '0')}${String(now.getUTCMinutes()).padStart(2, '0')}${String(now.getUTCSeconds()).padStart(2, '0')}`;

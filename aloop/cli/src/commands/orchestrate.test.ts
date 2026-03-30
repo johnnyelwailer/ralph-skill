@@ -68,6 +68,7 @@ import {
   processQueuedPrompts,
   createTrunkToMainPr,
   resolveAutoMerge,
+  resolveOrchestratorSettingsFromConfig,
   type EstimateResult,
   type OrchestrateCommandOptions,
   type OrchestrateDeps,
@@ -4614,6 +4615,77 @@ describe('resolveAutoMerge', () => {
     };
     const result = await resolveAutoMerge({ autoMerge: false }, '/home', deps);
     assert.equal(result, false);
+  });
+});
+
+describe('resolveOrchestratorSettingsFromConfig', () => {
+  const pipelineYml = [
+    'loop:',
+    '  triage_interval: 10',
+    '  scan_pass_throttle_ms: 45000',
+    '  rate_limit_backoff: exponential',
+    '  concurrency_cap: 5',
+    '',
+  ].join('\n');
+
+  it('returns defaults when no CLI options and no pipeline.yml', async () => {
+    const deps = { existsSync: () => false, readFile: async () => '' };
+    const result = await resolveOrchestratorSettingsFromConfig({}, '/proj', deps);
+    assert.equal(result.concurrency_cap, 3);
+    assert.equal(result.triage_interval, 5);
+    assert.equal(result.scan_pass_throttle_ms, 30000);
+    assert.equal(result.rate_limit_backoff, 'fixed');
+  });
+
+  it('reads settings from pipeline.yml when CLI options absent', async () => {
+    const deps = { existsSync: () => true, readFile: async () => pipelineYml };
+    const result = await resolveOrchestratorSettingsFromConfig({}, '/proj', deps);
+    assert.equal(result.concurrency_cap, 5);
+    assert.equal(result.triage_interval, 10);
+    assert.equal(result.scan_pass_throttle_ms, 45000);
+    assert.equal(result.rate_limit_backoff, 'exponential');
+  });
+
+  it('CLI options override pipeline.yml', async () => {
+    const deps = { existsSync: () => true, readFile: async () => pipelineYml };
+    const result = await resolveOrchestratorSettingsFromConfig(
+      { concurrency: '7', triageInterval: '20', interval: '60000', rateLimitBackoff: 'linear' },
+      '/proj',
+      deps,
+    );
+    assert.equal(result.concurrency_cap, 7);
+    assert.equal(result.triage_interval, 20);
+    assert.equal(result.scan_pass_throttle_ms, 60000);
+    assert.equal(result.rate_limit_backoff, 'linear');
+  });
+
+  it('partial CLI options merge with pipeline.yml for the rest', async () => {
+    const deps = { existsSync: () => true, readFile: async () => pipelineYml };
+    const result = await resolveOrchestratorSettingsFromConfig(
+      { concurrency: '2' },
+      '/proj',
+      deps,
+    );
+    assert.equal(result.concurrency_cap, 2);
+    assert.equal(result.triage_interval, 10);
+    assert.equal(result.scan_pass_throttle_ms, 45000);
+    assert.equal(result.rate_limit_backoff, 'exponential');
+  });
+
+  it('falls back to defaults when pipeline.yml has no loop section', async () => {
+    const deps = { existsSync: () => true, readFile: async () => 'pipeline:\n  - step: build\n' };
+    const result = await resolveOrchestratorSettingsFromConfig({}, '/proj', deps);
+    assert.equal(result.concurrency_cap, 3);
+    assert.equal(result.triage_interval, 5);
+    assert.equal(result.scan_pass_throttle_ms, 30000);
+    assert.equal(result.rate_limit_backoff, 'fixed');
+  });
+
+  it('handles unreadable pipeline.yml gracefully', async () => {
+    const deps = { existsSync: () => true, readFile: async () => { throw new Error('EACCES'); } };
+    const result = await resolveOrchestratorSettingsFromConfig({}, '/proj', deps);
+    assert.equal(result.concurrency_cap, 3);
+    assert.equal(result.triage_interval, 5);
   });
 });
 
