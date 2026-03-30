@@ -303,16 +303,10 @@ mappings = [
     ("request_timeout", "REQUEST_TIMEOUT", int),
     ("request_poll_interval", "REQUEST_POLL_INTERVAL", int),
     ("unavailable_sleep", "UNAVAILABLE_SLEEP", int),
-    ("triage_interval", "TRIAGE_INTERVAL", int),
-    ("scan_pass_throttle_ms", "SCAN_PASS_THROTTLE_MS", int),
 ]
 for key, var, cast in mappings:
     if key in s and s[key] is not None:
         print(f'export {var}="{cast(s[key])}"')
-# Rate limit backoff strategy
-rlb = s.get("rate_limit_backoff")
-if isinstance(rlb, str) and rlb in ("exponential", "linear", "fixed"):
-    print(f'export RATE_LIMIT_BACKOFF="{rlb}"')
 cl = s.get("cooldown_ladder")
 if isinstance(cl, list) and len(cl) >= 2:
     vals = ",".join(str(int(v)) for v in cl if isinstance(v, (int, float)))
@@ -335,9 +329,6 @@ UNAVAILABLE_SLEEP=60
 CONCURRENT_CAP_COOLDOWN=120
 PHASE_RETRIES_MULTIPLIER=2
 COOLDOWN_LADDER="0,120,300,900,1800,3600"
-TRIAGE_INTERVAL=5
-SCAN_PASS_THROTTLE_MS=30000
-RATE_LIMIT_BACKOFF="fixed"
 
 # Load settings from loop-plan.json at startup
 load_loop_settings
@@ -365,16 +356,10 @@ mappings = [
     ("request_timeout", "REQUEST_TIMEOUT", int),
     ("request_poll_interval", "REQUEST_POLL_INTERVAL", int),
     ("unavailable_sleep", "UNAVAILABLE_SLEEP", int),
-    ("triage_interval", "TRIAGE_INTERVAL", int),
-    ("scan_pass_throttle_ms", "SCAN_PASS_THROTTLE_MS", int),
 ]
 for key, var, cast in mappings:
     if key in s and s[key] is not None:
         print(f'export {var}="{cast(s[key])}"')
-# Rate limit backoff strategy
-rlb = s.get("rate_limit_backoff")
-if isinstance(rlb, str) and rlb in ("exponential", "linear", "fixed"):
-    print(f'export RATE_LIMIT_BACKOFF="{rlb}"')
 cl = s.get("cooldown_ladder")
 if isinstance(cl, list) and len(cl) >= 2:
     vals = ",".join(str(int(v)) for v in cl if isinstance(v, (int, float)))
