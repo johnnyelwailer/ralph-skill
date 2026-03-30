@@ -46,6 +46,7 @@ export interface OrchestratorAdapter {
   createPR(title: string, body: string, head: string, base: string): Promise<{ number: number; url: string }>;
   mergePR(number: number, method: 'squash' | 'merge' | 'rebase'): Promise<void>;
   getPRStatus(number: number): Promise<{ mergeable: boolean; ci_status: 'success' | 'failure' | 'pending'; reviews: Array<{ verdict: string }> }>;
+  getPrChecks(prNumber: number): Promise<PrChecksResult>;
 
   // Project status (optional)
   setIssueStatus?(number: number, status: string): Promise<void>;

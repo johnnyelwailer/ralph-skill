@@ -3526,18 +3526,28 @@ export async function checkPrGates(
   // Gate 1: Mergeability (conflict check)
   let mergeable = false;
   try {
-    const viewResult = await deps.execGh([
-      'pr', 'view', String(prNumber), '--repo', repo, '--json', 'mergeable,mergeStateStatus',
-    ]);
-    const prData = JSON.parse(viewResult.stdout);
-    mergeable = prData.mergeable === 'MERGEABLE';
-    const mergeState = prData.mergeStateStatus ?? 'UNKNOWN';
-    const mergeUnknown = prData.mergeable === 'UNKNOWN' || mergeState === 'UNKNOWN';
-    gates.push({
-      gate: 'merge_conflicts',
-      status: mergeable ? 'pass' : mergeUnknown ? 'pending' : 'fail',
-      detail: mergeable ? 'No merge conflicts' : mergeUnknown ? 'Mergeability not yet computed' : `Merge state: ${mergeState}`,
-    });
+    if (deps.adapter) {
+      const status = await deps.adapter.getPRStatus(prNumber);
+      mergeable = status.mergeable;
+      gates.push({
+        gate: 'merge_conflicts',
+        status: mergeable ? 'pass' : 'fail',
+        detail: mergeable ? 'No merge conflicts' : 'Merge conflicts detected',
+      });
+    } else {
+      const viewResult = await deps.execGh([
+        'pr', 'view', String(prNumber), '--repo', repo, '--json', 'mergeable,mergeStateStatus',
+      ]);
+      const prData = JSON.parse(viewResult.stdout);
+      mergeable = prData.mergeable === 'MERGEABLE';
+      const mergeState = prData.mergeStateStatus ?? 'UNKNOWN';
+      const mergeUnknown = prData.mergeable === 'UNKNOWN' || mergeState === 'UNKNOWN';
+      gates.push({
+        gate: 'merge_conflicts',
+        status: mergeable ? 'pass' : mergeUnknown ? 'pending' : 'fail',
+        detail: mergeable ? 'No merge conflicts' : mergeUnknown ? 'Mergeability not yet computed' : `Merge state: ${mergeState}`,
+      });
+    }
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
     // API error — don't block the PR, just skip this gate (will retry next pass)
@@ -3546,43 +3556,64 @@ export async function checkPrGates(
 
   // Gate 2: CI checks (covers CI pipeline, coverage, lint/type check)
   try {
-    const checksResult = await deps.execGh([
-      'pr', 'view', String(prNumber), '--repo', repo, '--json', 'statusCheckRollup',
-    ]);
-    const parsed = JSON.parse(checksResult.stdout);
-    const checks: Array<{ name: string; state: string; conclusion: string }> = (parsed.statusCheckRollup ?? []).map((c: any) => ({
-      name: c.name ?? c.context ?? 'unknown',
-      state: c.status ?? c.state ?? 'COMPLETED',
-      conclusion: c.conclusion ?? (c.state === 'SUCCESS' ? 'SUCCESS' : 'PENDING'),
-    }));
-    const allCompleted = checks.every((c) => c.state === 'COMPLETED' || c.state === 'completed');
-    const allPassed = checks.every(
-      (c) => (c.state === 'COMPLETED' || c.state === 'completed') &&
-        (c.conclusion === 'SUCCESS' || c.conclusion === 'success' ||
-         c.conclusion === 'NEUTRAL' || c.conclusion === 'neutral' ||
-         c.conclusion === 'SKIPPED' || c.conclusion === 'skipped'),
-    );
-    const failedChecks = checks.filter(
-      (c) => c.conclusion === 'FAILURE' || c.conclusion === 'failure' ||
-        c.conclusion === 'CANCELLED' || c.conclusion === 'cancelled' ||
-        c.conclusion === 'TIMED_OUT' || c.conclusion === 'timed_out',
-    );
-
-    if (checks.length === 0) {
-      // No check runs — pass regardless of workflow existence
-      // (workflow may not trigger on this branch/PR target)
-      if (ciWorkflowsConfigured) {
-        gates.push({ gate: 'ci_checks', status: 'pass', detail: 'CI workflows exist but no checks ran on this PR — passing' });
+    if (deps.adapter) {
+      const prChecks = await deps.adapter.getPrChecks(prNumber);
+      if (prChecks.checks.length === 0) {
+        if (ciWorkflowsConfigured) {
+          gates.push({ gate: 'ci_checks', status: 'pending', detail: 'CI workflows configured but no check runs reported yet' });
+        } else {
+          gates.push({ gate: 'ci_checks', status: 'pass', detail: 'No GitHub Actions workflows detected; local fallback validation required' });
+        }
+      } else if (prChecks.pending) {
+        gates.push({ gate: 'ci_checks', status: 'pending', detail: 'Some CI checks still running' });
+      } else if (prChecks.passed) {
+        gates.push({ gate: 'ci_checks', status: 'pass', detail: `All ${prChecks.checks.length} checks passed` });
       } else {
-        gates.push({ gate: 'ci_checks', status: 'pass', detail: 'No GitHub Actions workflows detected; local fallback validation required' });
+        const failedChecks = prChecks.checks.filter(
+          (c) => c.conclusion === 'FAILURE' || c.conclusion === 'failure' ||
+            c.conclusion === 'CANCELLED' || c.conclusion === 'cancelled' ||
+            c.conclusion === 'TIMED_OUT' || c.conclusion === 'timed_out',
+        );
+        const failNames = failedChecks.map((c) => c.name).join(', ');
+        gates.push({ gate: 'ci_checks', status: 'fail', detail: `Failed checks: ${failNames}` });
       }
-    } else if (!allCompleted) {
-      gates.push({ gate: 'ci_checks', status: 'pending', detail: 'Some CI checks still running' });
-    } else if (allPassed) {
-      gates.push({ gate: 'ci_checks', status: 'pass', detail: `All ${checks.length} checks passed` });
     } else {
-      const failNames = failedChecks.map((c) => c.name).join(', ');
-      gates.push({ gate: 'ci_checks', status: 'fail', detail: `Failed checks: ${failNames}` });
+      const checksResult = await deps.execGh([
+        'pr', 'view', String(prNumber), '--repo', repo, '--json', 'statusCheckRollup',
+      ]);
+      const parsed = JSON.parse(checksResult.stdout);
+      const checks: Array<{ name: string; state: string; conclusion: string }> = (parsed.statusCheckRollup ?? []).map((c: any) => ({
+        name: c.name ?? c.context ?? 'unknown',
+        state: c.status ?? c.state ?? 'COMPLETED',
+        conclusion: c.conclusion ?? (c.state === 'SUCCESS' ? 'SUCCESS' : 'PENDING'),
+      }));
+      const allCompleted = checks.every((c) => c.state === 'COMPLETED' || c.state === 'completed');
+      const allPassed = checks.every(
+        (c) => (c.state === 'COMPLETED' || c.state === 'completed') &&
+          (c.conclusion === 'SUCCESS' || c.conclusion === 'success' ||
+           c.conclusion === 'NEUTRAL' || c.conclusion === 'neutral' ||
+           c.conclusion === 'SKIPPED' || c.conclusion === 'skipped'),
+      );
+      const failedChecks = checks.filter(
+        (c) => c.conclusion === 'FAILURE' || c.conclusion === 'failure' ||
+          c.conclusion === 'CANCELLED' || c.conclusion === 'cancelled' ||
+          c.conclusion === 'TIMED_OUT' || c.conclusion === 'timed_out',
+      );
+
+      if (checks.length === 0) {
+        if (ciWorkflowsConfigured) {
+          gates.push({ gate: 'ci_checks', status: 'pending', detail: 'CI workflows configured but no check runs reported yet' });
+        } else {
+          gates.push({ gate: 'ci_checks', status: 'pass', detail: 'No GitHub Actions workflows detected; local fallback validation required' });
+        }
+      } else if (!allCompleted) {
+        gates.push({ gate: 'ci_checks', status: 'pending', detail: 'Some CI checks still running' });
+      } else if (allPassed) {
+        gates.push({ gate: 'ci_checks', status: 'pass', detail: `All ${checks.length} checks passed` });
+      } else {
+        const failNames = failedChecks.map((c) => c.name).join(', ');
+        gates.push({ gate: 'ci_checks', status: 'fail', detail: `Failed checks: ${failNames}` });
+      }
     }
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);

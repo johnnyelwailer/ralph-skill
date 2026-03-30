@@ -2843,6 +2843,14 @@ function createMockAdapter(overrides: Partial<OrchestratorAdapter> = {}): Orches
       calls.push({ method: 'getPRStatus', args: [number] });
       return { mergeable: true, ci_status: 'success' as const, reviews: [] };
     },
+    getPrChecks: async (number: number) => {
+      calls.push({ method: 'getPrChecks', args: [number] });
+      return {
+        passed: true,
+        pending: false,
+        checks: [{ name: 'build', status: 'COMPLETED', conclusion: 'SUCCESS' }],
+      };
+    },
     ...trackedOverrides,
   };
   return { ...base, calls };
@@ -3008,6 +3016,103 @@ describe('checkPrGates', () => {
     const result = await checkPrGates(100, 'owner/repo', deps);
     assert.equal(result.all_passed, true);
     assert.equal(result.gates[1].status, 'pass');
+  });
+});
+
+describe('checkPrGates adapter path', () => {
+  it('uses adapter.getPRStatus and adapter.getPrChecks when adapter present', async () => {
+    const adapter = createMockAdapter();
+    const deps = createMockPrDeps({
+      execGh: async () => { throw new Error('execGh should not be called'); },
+      adapter,
+    });
+    const result = await checkPrGates(100, 'owner/repo', deps);
+    assert.equal(result.all_passed, true);
+    assert.equal(result.mergeable, true);
+    assert.equal(result.gates.length, 2);
+    assert.equal(result.gates[0].gate, 'merge_conflicts');
+    assert.equal(result.gates[0].status, 'pass');
+    assert.equal(result.gates[1].gate, 'ci_checks');
+    assert.equal(result.gates[1].status, 'pass');
+
+    const prStatusCalls = adapter.calls.filter((c) => c.method === 'getPRStatus');
+    assert.equal(prStatusCalls.length, 1);
+    assert.equal(prStatusCalls[0].args[0], 100);
+  });
+
+  it('returns fail for merge_conflicts when adapter reports not mergeable', async () => {
+    const adapter = createMockAdapter({
+      getPRStatus: async (number: number) => {
+        return { mergeable: false, ci_status: 'success' as const, reviews: [] };
+      },
+    });
+    const deps = createMockPrDeps({
+      execGh: async () => { throw new Error('execGh should not be called'); },
+      adapter,
+    });
+    const result = await checkPrGates(100, 'owner/repo', deps);
+    assert.equal(result.mergeable, false);
+    assert.equal(result.gates[0].status, 'fail');
+    assert.ok(result.gates[0].detail.includes('conflicts'));
+  });
+
+  it('returns pending for ci_checks when adapter reports pending checks', async () => {
+    const adapter = createMockAdapter({
+      getPrChecks: async () => ({
+        passed: false,
+        pending: true,
+        checks: [
+          { name: 'build', status: 'IN_PROGRESS', conclusion: null },
+        ],
+      }),
+    });
+    const deps = createMockPrDeps({
+      execGh: async () => { throw new Error('execGh should not be called'); },
+      adapter,
+    });
+    const result = await checkPrGates(100, 'owner/repo', deps);
+    assert.equal(result.all_passed, false);
+    assert.equal(result.gates[1].status, 'pending');
+    assert.ok(result.gates[1].detail.includes('running'));
+  });
+
+  it('returns fail for ci_checks when adapter reports failed checks', async () => {
+    const adapter = createMockAdapter({
+      getPrChecks: async () => ({
+        passed: false,
+        pending: false,
+        checks: [
+          { name: 'build', status: 'COMPLETED', conclusion: 'SUCCESS' },
+          { name: 'lint', status: 'COMPLETED', conclusion: 'FAILURE' },
+        ],
+      }),
+    });
+    const deps = createMockPrDeps({
+      execGh: async () => { throw new Error('execGh should not be called'); },
+      adapter,
+    });
+    const result = await checkPrGates(100, 'owner/repo', deps);
+    assert.equal(result.gates[1].status, 'fail');
+    assert.ok(result.gates[1].detail.includes('lint'));
+  });
+
+  it('falls back to execGh when adapter is not provided', async () => {
+    const deps = createMockPrDeps({
+      execGh: async (args) => {
+        if (args.includes('mergeable,mergeStateStatus')) {
+          return { stdout: JSON.stringify({ mergeable: 'MERGEABLE', mergeStateStatus: 'CLEAN' }), stderr: '' };
+        }
+        if (args.includes('statusCheckRollup')) {
+          return { stdout: JSON.stringify({ statusCheckRollup: [
+            { name: 'build', status: 'COMPLETED', conclusion: 'SUCCESS' },
+          ] }), stderr: '' };
+        }
+        return { stdout: '', stderr: '' };
+      },
+    });
+    const result = await checkPrGates(100, 'owner/repo', deps);
+    assert.equal(result.all_passed, true);
+    assert.equal(result.mergeable, true);
   });
 });
 
