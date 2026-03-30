@@ -157,13 +157,14 @@ WAIT_FOR_REQUESTS_FUNC="$(extract_function wait_for_requests)"
 RUN_QUEUE_FUNC="$(extract_function run_queue_if_present)"
 RESOLVE_MODE_FUNC="$(extract_function resolve_iteration_mode)"
 DERIVE_MODE_FUNC="$(extract_function derive_mode_from_prompt_name)"
+SUBSTITUTE_PLACEHOLDERS_FUNC="$(extract_function substitute_prompt_placeholders)"
 
 if [ -z "$RESOLVE_FUNC" ] || [ -z "$SETUP_FUNC" ] || [ -z "$CLEANUP_FUNC" ] || [ -z "$INVOKE_FUNC" ] || [ -z "$WAIT_FUNC" ] || [ -z "$KILL_PROVIDER_FUNC" ]; then
     echo "FAIL: could not extract one or more target functions from $LOOP_SH"
     exit 1
 fi
 
-if [ -z "$CYCLE_RESOLVE_FUNC" ] || [ -z "$CHECK_PHASE_PREREQ_FUNC" ] || [ -z "$CHECK_HAS_BUILDS_FUNC" ] || [ -z "$FRONTMATTER_FUNC" ] || [ -z "$DURATION_FUNC" ] || [ -z "$EXEC_CONTROLS_FUNC" ] || [ -z "$ADVANCE_FUNC" ] || [ -z "$WAIT_FOR_REQUESTS_FUNC" ] || [ -z "$RUN_QUEUE_FUNC" ] || [ -z "$RESOLVE_MODE_FUNC" ] || [ -z "$DERIVE_MODE_FUNC" ]; then
+if [ -z "$CYCLE_RESOLVE_FUNC" ] || [ -z "$CHECK_PHASE_PREREQ_FUNC" ] || [ -z "$CHECK_HAS_BUILDS_FUNC" ] || [ -z "$FRONTMATTER_FUNC" ] || [ -z "$DURATION_FUNC" ] || [ -z "$EXEC_CONTROLS_FUNC" ] || [ -z "$ADVANCE_FUNC" ] || [ -z "$WAIT_FOR_REQUESTS_FUNC" ] || [ -z "$RUN_QUEUE_FUNC" ] || [ -z "$RESOLVE_MODE_FUNC" ] || [ -z "$DERIVE_MODE_FUNC" ] || [ -z "$SUBSTITUTE_PLACEHOLDERS_FUNC" ]; then
     echo "FAIL: could not extract cycle/frontmatter/duration/exec-controls/advance/requests/queue functions from $LOOP_SH"
     exit 1
 fi
@@ -185,6 +186,7 @@ eval "$WAIT_FOR_REQUESTS_FUNC"
 eval "$RUN_QUEUE_FUNC"
 eval "$RESOLVE_MODE_FUNC"
 eval "$DERIVE_MODE_FUNC"
+eval "$SUBSTITUTE_PLACEHOLDERS_FUNC"
 
 ORIGINAL_PATH="$PATH"
 _gh_block_dir=""
@@ -199,6 +201,8 @@ FAKE_PROVIDER_DIR="$(mktemp -d)"
 DC_EXEC=()
 SESSION_DIR=""
 WORK_DIR=""
+ARTIFACTS_DIR=""
+LAST_PROOF_ITERATION=0
 ITERATION=1
 STUCK_COUNT=0
 
@@ -960,6 +964,7 @@ rm -rf "$REQ_TMPDIR"
 QUEUE_TMPDIR="$(mktemp -d)"
 SESSION_DIR="$QUEUE_TMPDIR"
 WORK_DIR="$QUEUE_TMPDIR/work"
+ARTIFACTS_DIR="$SESSION_DIR/artifacts"
 mkdir -p "$WORK_DIR"
 
 # queue.empty — no queue directory
