@@ -187,3 +187,62 @@ To test `proof_manifest_found` and `proof_manifest_missing` events behaviorally,
 5. Check log.jsonl for `proof_manifest_found` or `proof_manifest_missing` event
 
 The host session `orchestrator-20260321-172932-issue-101-20260327-114125` meets conditions 2-4 and will eventually reach the finalizer. At that point, `proof_manifest_found` or `proof_manifest_missing` will appear in its `log.jsonl`.
+
+---
+
+## QA Session — 2026-03-29 (Gate 6 re-test, issue #101)
+
+### Test Environment
+- Binary under test: `/home/pj/.aloop/bin/aloop` (1.0.0, system-installed)
+- `aloop update` applied → runtime updated to `f58478938` (2026-03-29T15:25:02Z, 57 files updated)
+- Test method: Pester behavioral tests in `loop.tests.ps1` (queue_override proof suite)
+- Host OS: Linux (6.17.8-orbstack), /tmp: 6.7GB free (disk-full blocker resolved)
+- Blockers resolved: [qa/P1] f58478938 (queue_override + proof_manifest events), [qa/P2] 18be430cc (monitor chain-completion)
+
+### Results
+
+- PASS: `bash -n` syntax check — both `/home/pj/.aloop/bin/loop.sh` (installed) and worktree copy exit 0
+- PASS: `proof_manifest_found` event logged when proof-manifest.json is present (queue_override path) — Pester test at loop.tests.ps1:3684 passes
+- PASS: `proof_manifest_missing` event logged when proof-manifest.json is absent (queue_override path), no `iteration_error` — Pester test at loop.tests.ps1:3728 passes
+- PASS: `{{ITERATION}}` resolves correctly in queue_override proof prompt (fake provider extracts correct iter number from resolved prompt text)
+- PASS: `{{ARTIFACTS_DIR}}` resolves correctly — proof-manifest.json written to ARTIFACTS_DIR/iter-N path is found by loop's existence check
+- PASS: `aloop update` updated runtime to f58478938 from current worktree
+
+### Bugs Filed
+None — all previously filed blockers resolved. Gate 6 PASS.
+
+### Command Transcript
+
+```
+# Verify /tmp disk space (prior blocker)
+df -h /tmp
+# Output: tmpfs 13G 5.9G 6.7G 47% /tmp — RESOLVED
+
+# Update runtime to latest worktree commit
+aloop update
+# Output: Updated ~/.aloop from /home/pj/.aloop/sessions/orchestrator-20260321-172932-issue-101-20260329-151810/worktree
+#         Version: f58478938 (2026-03-29T15:25:02Z)
+#         Files updated: 57
+
+# Syntax check on installed loop.sh
+bash -n /home/pj/.aloop/bin/loop.sh && echo "SYNTAX OK"
+# Output: SYNTAX OK — PASS
+
+# Syntax check on worktree loop.sh
+bash -n aloop/bin/loop.sh && echo "SYNTAX OK"
+# Output: SYNTAX OK — PASS
+
+# Run queue_override proof behavioral tests
+pwsh -NonInteractive -Command "
+  Import-Module Pester -Force
+  \$cfg = New-PesterConfiguration
+  \$cfg.Run.Path = './aloop/bin/loop.tests.ps1'
+  \$cfg.Filter.FullName = '*queue_override proof*'
+  \$cfg.Output.Verbosity = 'Normal'
+  \$result = Invoke-Pester -Configuration \$cfg
+  exit \$result.FailedCount
+"
+# Output: Tests Passed: 2, Failed: 0
+#   PASS: queue_override proof iteration emits proof_manifest_found when manifest is present
+#   PASS: queue_override proof iteration emits proof_manifest_missing when manifest is absent
+```
