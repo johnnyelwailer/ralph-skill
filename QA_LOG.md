@@ -1,5 +1,47 @@
 # QA Log
 
+## QA Session — 2026-03-30 (iteration 60)
+
+### Test Environment
+- Working dir: aloop/cli/dashboard/
+- Commit: bf074991f
+- Features tested: 5
+
+### Results
+- PASS: Sidebar branch coverage 95.38% (FIXED — was 78.46% at iter 59)
+- PASS: playwright.stories.config.ts dead imports removed (FIXED — was failing at iter 59)
+- PASS: DocsPanel overflow tab assertion present and verified
+- PASS: All unit tests (437 tests, 38 files — 23 new tests vs iter 59)
+- PASS: Storybook build (no errors)
+
+### Bugs Filed
+- None — all previously failing items are now resolved
+
+### Re-test Notes
+- Sidebar branch coverage: FIXED at 95.38% (commit bf074991f); no longer failing
+- playwright.stories.config.ts: FIXED at commit 248e0b314; confirmed clean at bf074991f
+
+### Command Transcript
+
+```
+$ npm run test -- --run --reporter=verbose
+Test Files: 38 passed (38)
+Tests: 437 passed (437)
+Duration: 3.31s
+Exit code: 0
+
+$ npm run test -- --run --coverage | grep -E "(Sidebar|DocsPanel)"
+  DocsPanel.tsx    |     100 |    95.23 |     100 |     100 | 91
+  Sidebar.tsx      |     100 |    95.38 |     100 |     100 | 45,73,100
+
+$ cat playwright.stories.config.ts
+(only contains: import { defineConfig } from '@playwright/test' + config — no dead imports)
+
+$ npm run build-storybook
+Storybook build completed successfully
+Exit code: 0
+```
+
 ## QA Session — 2026-03-30 (iteration 59)
 
 ### Test Environment
