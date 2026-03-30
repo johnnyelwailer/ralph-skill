@@ -4,20 +4,9 @@
 
 ### In Progress
 
-- [x] [review] Gate 2: `Sidebar.test.tsx` — 4 cost API branch tests now assert rendered output via tooltip (touch-mode): `opencode_unavailable` → `Cost: unavailable` in tooltip; `string '2.50'` → `$2.5000` in card; `null` and `rejection` → no `Cost:` in tooltip. (priority: high)
-
-- [x] [review] Gate 2: `Header.test.tsx:94-97` — `renders connection indicator` only asserts `data-testid="session-header-grid"` exists; this is the outer wrapper div, not the ConnectionIndicator component. A broken ConnectionIndicator wouldn't fail this test. Rewrite to assert ConnectionIndicator renders — e.g. locate the indicator element by its `data-testid` or accessible label and check its content/class matches `connectionStatus`. (priority: high)
-- [x] [review] Gate 2: `Header.test.tsx:135-139` — rewrote elapsed timer test to match formatted time pattern `/\d+s/` instead of any digit. (priority: high)
-- [x] [review] Gate 2: `Header.test.tsx:141-149` — added assertion for `$2.5000` cost value in hover card alongside existing `Session cost:` label check. (priority: high)
-- [ ] [review] Gate 3: `Header.tsx` branch coverage 87.61% — below the ≥90% threshold required for new modules. Uncovered branches: line 43 (`f.status` non-string → `'UNTESTED'` fallback in `parseQACoveragePayload`), line 211 (`stuckCount > 0` red styling in hover card), line 227 (`avgDuration && sessionCost > 0` separator rendering), line 275 (`updatedAt` empty while not loading → empty string). Add tests for each branch. (priority: high)
-- [x] [review] Gate 4: `Header.tsx:14` — deleted dead import `str` from `@/lib/activityLogHelpers`. (priority: medium)
-- [x] [review] Gate 4: `Header.test.tsx:8-10` — removed dead `vi.mock('@/hooks/useCost', ...)` mock that Header.tsx does not import. (priority: low)
-
-### Up Next
-
-- [ ] [qa/P1] Fix Header.tsx branch coverage (currently 87.61%, need ≥90%): uncovered branches at lines 130, 211, 227, 275. Same threshold as Sidebar and DocsPanel. (priority: high) — still failing at iter 62
-- [ ] [qa/P1] Header stories missing from story-screenshots.spec.ts: `Header.stories.tsx` added 7 stories but `e2e/story-screenshots.spec.ts` only covers 23 stories (Sidebar/SessionDetail/DocsPanel/MainPanel) — Header stories never get screenshot-tested or committed to proof-artifacts/. Add all Header story IDs and their proof-artifact filenames. (priority: high) — still failing at iter 62
-- [ ] [qa/P2] `layout-header--qa-badge-default` story renders "No Preview" in static Storybook build: story appears in index.json (type=story, exportName=QABadgeDefault) but #storybook-root is empty when loaded in iframe. Other 6 Header stories render correctly. (priority: medium) — still failing at iter 62
+- [x] [qa/P1] Fix Header.tsx branch coverage (currently 87.61%, now 90.26%, need ≥90%): added tests for 4 uncovered branches — (1) `f.status` non-string → `'UNTESTED'` fallback, (2) `stuckCount > 0` red styling in hover card, (3) `avgDuration && sessionCost > 0` separator in stats span, (4) `updatedAt` empty while not loading → empty string. (priority: high)
+- [ ] [qa/P1] Header stories missing from story-screenshots.spec.ts: `Header.stories.tsx` has 7 stories (`Default`, `Loading`, `Disconnected`, `Stopped`, `NoProvider`, `HighBudgetUsage`, `QABadgeDefault`) but `e2e/story-screenshots.spec.ts` only covers 23 stories (Sidebar/SessionDetail/DocsPanel/MainPanel). Add Header story IDs and proof-artifact filenames. (priority: high)
+- [ ] [qa/P2] `layout-header--qa-badge-default` story renders "No Preview" in static Storybook build: story appears in index.json (type=story, exportName=QABadgeDefault) but #storybook-root is empty when loaded in iframe. Other 6 Header stories render correctly. Investigate and fix. (priority: medium)
 
 - [x] Extract Header component from AppView.tsx (priority: critical)
   - `Header` (lines 233–362, ~130 LOC): session header with phase badge, iteration counter, elapsed timer, stop/resume buttons, steer input
@@ -48,6 +37,12 @@
 
 ### Completed
 
+- [x] [review] Gate 2: `Sidebar.test.tsx` — 4 cost API branch tests assert rendered output via tooltip. (priority: high)
+- [x] [review] Gate 2: `Header.test.tsx:94-97` — rewrote `renders connection indicator` to assert ConnectionIndicator component renders by data-testid, not just outer wrapper. (priority: high)
+- [x] [review] Gate 2: `Header.test.tsx:135-139` — rewrote elapsed timer test to match formatted time pattern. (priority: high)
+- [x] [review] Gate 2: `Header.test.tsx:141-149` — added `$2.5000` cost value assertion in hover card. (priority: high)
+- [x] [review] Gate 4: `Header.tsx:14` — deleted dead import `str` from `@/lib/activityLogHelpers`. (priority: medium)
+- [x] [review] Gate 4: `Header.test.tsx:8-10` — removed dead `vi.mock('@/hooks/useCost', ...)` mock. (priority: low)
 - [x] [review] Gate 3: DocsPanel.tsx branch coverage still 85.71% after test fixes — added test to cover `useEffect` reset branch at line 37 (priority: critical)
 - [x] [review] Gate 4: `playwright.stories.config.ts` dead code removed — confirmed clean (priority: low)
 - [x] [review] Gate 2: `DocsPanel.test.tsx:145-160` — added post-click assertion `expect(screen.getByRole('tab', { name: 'EXTRA' })).toHaveAttribute('data-state', 'active')` (priority: high)

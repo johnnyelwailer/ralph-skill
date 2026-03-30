@@ -145,6 +145,29 @@ describe('Header', () => {
       expect(screen.getByText('$2.5000')).toBeInTheDocument();
     });
   });
+
+  it('shows stuck count with red styling when stuckCount > 0', async () => {
+    const user = userEvent.setup();
+    renderHeader({ stuckCount: 3 });
+    const iterSpan = screen.getByText(/iter 3\/10/);
+    await user.hover(iterSpan);
+    await waitFor(() => {
+      expect(screen.getByText(/Stuck:/)).toBeInTheDocument();
+      const stuckValue = screen.getByText('3');
+      expect(stuckValue).toHaveClass('text-red-500');
+    });
+  });
+
+  it('renders stats span without separator when sessionCost is 0', () => {
+    renderHeader({ avgDuration: '2m 30s', sessionCost: 0 });
+    // When sessionCost=0, avgDuration && sessionCost > 0 is false so no separator
+    expect(screen.getByText('~2m 30s/iter')).toBeInTheDocument();
+  });
+
+  it('renders empty updated-at when not loading and updatedAt is empty', () => {
+    renderHeader({ loading: false, updatedAt: '', loadError: null });
+    expect(screen.getByTestId('header-updated-at')).toHaveTextContent('');
+  });
 });
 
 describe('QACoverageBadge', () => {
@@ -210,6 +233,26 @@ describe('QACoverageBadge', () => {
     render(<QACoverageBadge sessionId="s1" refreshKey="" />);
     await waitFor(() => {
       expect(screen.getByText('QA N/A')).toBeInTheDocument();
+    });
+  });
+
+  it('uses UNTESTED status when feature status is not a string', async () => {
+    const user = userEvent.setup();
+    (globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        available: true,
+        coverage_percent: 50,
+        features: [{ feature: 'Login', component: 'auth', status: null }],
+      }),
+    });
+    render(<QACoverageBadge sessionId="s1" refreshKey="" />);
+    await waitFor(() => {
+      expect(screen.getByText('QA 50%')).toBeInTheDocument();
+    });
+    await user.click(screen.getByText('QA 50%'));
+    await waitFor(() => {
+      expect(screen.getByText('UNTESTED')).toBeInTheDocument();
     });
   });
 });
