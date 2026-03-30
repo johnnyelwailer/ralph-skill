@@ -8,6 +8,10 @@
 
 ### Up Next
 
+- [ ] [qa/P1] Fix Header.tsx branch coverage (currently 87.61%, need ≥90%): uncovered branches at lines 130, 211, 227, 275. Same threshold as Sidebar and DocsPanel. (priority: high)
+- [ ] [qa/P1] Header stories missing from story-screenshots.spec.ts: `Header.stories.tsx` added 7 stories but `e2e/story-screenshots.spec.ts` only covers 23 stories (Sidebar/SessionDetail/DocsPanel/MainPanel) — Header stories never get screenshot-tested or committed to proof-artifacts/. Add all Header story IDs and their proof-artifact filenames. (priority: high)
+- [ ] [qa/P2] `layout-header--qa-badge-default` story renders "No Preview" in static Storybook build: story appears in index.json (type=story, exportName=QABadgeDefault) but #storybook-root is empty when loaded in iframe. Other 6 Header stories render correctly. (priority: medium)
+
 - [x] Extract Header component from AppView.tsx (priority: critical)
   - `Header` (lines 233–362, ~130 LOC): session header with phase badge, iteration counter, elapsed timer, stop/resume buttons, steer input
   - Created `src/components/layout/Header.tsx`, `Header.test.tsx`, `Header.stories.tsx`

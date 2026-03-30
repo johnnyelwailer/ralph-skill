@@ -125,3 +125,53 @@ $ python3 -c "(verify PNG headers on proof-artifacts)"
 → mainpanel-default.png: PNG=True, 1280x720
 → sidebar-default.png: PNG=True, 1280x720
 ```
+
+## QA Session — 2026-03-30 (iteration 61)
+
+### Test Environment
+- Working dir: /home/pj/.aloop/sessions/orchestrator-20260321-172932-issue-183-20260329-152815/worktree/aloop/cli/dashboard
+- Commit under test: 5d13e869b (feat: extract Header + QACoverageBadge from AppView.tsx)
+- Features tested: 5 (unit tests, Storybook build, Header stories, Header branch coverage, story-screenshot spec coverage)
+
+### Results
+- PASS: All unit tests (39 files, 458 tests)
+- PASS: Storybook build (no errors)
+- PASS: 23 existing story screenshots still render
+- PASS: 6 of 7 Header stories render correctly in Playwright
+- FAIL: Header.tsx branch coverage 87.61% — below ≥90% threshold
+- FAIL: `layout-header--qa-badge-default` story shows "No Preview" in static build
+- FAIL: Header stories absent from `e2e/story-screenshots.spec.ts`
+
+### Bugs Filed
+- [qa/P1] Header.tsx branch coverage 87.61% — below 90% threshold (lines 130,211,227,275 uncovered)
+- [qa/P1] Header stories missing from story-screenshots.spec.ts — 7 stories not screenshot-tested
+- [qa/P2] `layout-header--qa-badge-default` story: "No Preview" in static Storybook build
+
+### Command Transcript
+```
+$ npm test
+> vitest run
+✓ 39 test files, 458 tests passed
+
+$ npm run build-storybook
+→ Storybook build completed successfully
+
+$ npm run test:coverage
+→ Header.tsx  | 93.18% stmts | 87.61% branch | 91.66% funcs | 100% lines | uncovered: 130,211,227,275
+
+$ npm run test:e2e:stories
+→ 23 passed (34.3s) — Sidebar×6, SessionDetail×5, DocsPanel×6, MainPanel×6
+
+$ cat storybook-static/index.json | python3 -c "... filter header stories"
+→ Found: layout-header--{default,loading,disconnected,stopped,no-provider,high-budget-usage,qa-badge-default}
+
+$ python3 -m http.server 6007 --directory storybook-static (background)
+$ node /tmp/qa-header-test.mjs
+→ layout-header--default: OK (204 chars)
+→ layout-header--loading: OK (203 chars)
+→ layout-header--disconnected: OK (218 chars)
+→ layout-header--stopped: OK (205 chars)
+→ layout-header--no-provider: OK (161 chars)
+→ layout-header--high-budget-usage: OK (204 chars)
+→ layout-header--qa-badge-default: FAILED — #storybook-root is hidden (empty), "No Preview" error
+```
