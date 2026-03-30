@@ -165,3 +165,48 @@ git checkout 298ac3309 -- src/commands/orchestrate.ts
 npx tsx --test src/commands/orchestrate.test.ts  → 319 pass, 27 fail (suites 60,61 not in fail list)
 git checkout HEAD -- src/commands/orchestrate.ts
 ```
+
+---
+
+## QA Session — 2026-03-30 (iteration 4)
+
+### Test Environment
+- Working dir: /home/pj/.aloop/sessions/orchestrator-20260321-172932-issue-177-20260327-171514/worktree/aloop/cli
+- Commits under test: 984c333e9 (fix: inject deps + labels), b57ba6b32 (feat: adapter instantiation in process-requests)
+- Features tested: adapter field threading, adapter instantiation, regression baseline
+
+### Results
+- PASS: TypeScript build (`npm run build`) — clean exit 0
+- PASS: `adapter.test.ts` — 35/35 pass
+- PASS: `process-requests.test.ts` — 14/14 pass
+- PASS: `orchestrate.test.ts` — 319 pass, 27 fail — matches pre-regression baseline exactly
+- PASS: `tsc --noEmit` on non-test files — no errors
+- PASS: Adapter field present in all 5 deps interfaces (TriageDeps, OrchestrateDeps, DispatchDeps, PrLifecycleDeps, ScanLoopDeps)
+- PASS: `createAdapter` in process-requests.ts uses correct `execGh` (defined at line 316), instantiated at line 942
+- PASS: Adapter threaded through scanDeps (line 957), prLifecycleDeps (line 964), dispatchDeps (line 1049)
+
+### Bugs Filed
+None — all regressions from d49686908 are fixed; back at pre-regression baseline of 27 orchestrate failures.
+
+### Regression Analysis
+- Pre-regression baseline (298ac3309): 27 orchestrate failures
+- After d49686908: 39 failures (+12)
+- After wave/N fix (8a2efa43b): 34 failures
+- After 984c333e9 + b57ba6b32 (this session): 27 failures — BASELINE RESTORED
+
+### Command Transcript
+
+```
+npm run build  → EXIT: 0
+
+npx tsx --test src/lib/adapter.test.ts
+# tests 35 / pass 35 / fail 0
+
+npx tsx --test src/commands/process-requests.test.ts
+# tests 14 / pass 14 / fail 0
+
+npx tsx --test src/commands/orchestrate.test.ts
+# tests 346 / suites 62 / pass 319 / fail 27
+
+npx tsc --noEmit | grep -v "test.ts"  → (empty, no errors)
+```

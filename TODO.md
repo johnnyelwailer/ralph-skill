@@ -14,6 +14,11 @@ Acceptance criteria:
 
 ## Current Phase: Migration
 
+### QA — 2026-03-30 (iter 4): PASS
+- Build clean, adapter.test 35/35, process-requests 14/14
+- orchestrate.test 319/346 — exactly matches pre-regression baseline (27 failures)
+- No new bugs; all d49686908 regressions resolved
+
 ### In Progress
 
 - [x] [qa/P1] orchestrate.ts applyDecompositionPlan missing dependency body injection: fixed — enriched body with "Depends on #X, #Y" injected and stored in state. RESOLVED: 2026-03-29.
@@ -26,7 +31,7 @@ Acceptance criteria:
 
 - [x] Re-add adapter instantiation in `process-requests.ts` — create adapter when `repo` is provided, using static import of `node:child_process` and requiring `execGh` (no silent fallback). Threaded through `scanDeps`, `prLifecycleDeps`, and `dispatchDeps`. 2026-03-30.
 
-- [ ] Migrate issue lifecycle calls in orchestrate.ts (TriageDeps / triage functions) — replace `deps.execGh(['issue', ...])` with `adapter.closeIssue()`, `adapter.addLabels()`, `adapter.removeLabels()`, `adapter.postComment()`, `adapter.listIssues()`, and `adapter.updateIssue()` in triage functions; replace `deps.execGhIssueCreate` with `adapter.createIssue()` in dispatch
+- [x] Migrate issue lifecycle calls in orchestrate.ts (TriageDeps / triage functions) — replace `deps.execGh(['issue', ...])` with `adapter.closeIssue()`, `adapter.addLabels()`, `adapter.removeLabels()`, `adapter.postComment()`, `adapter.listIssues()`, and `adapter.updateIssue()` in triage functions; replace `deps.execGhIssueCreate` with `adapter.createIssue()` in dispatch
 
 - [ ] Migrate PR lifecycle calls in orchestrate.ts (PrLifecycleDeps) — replace `deps.execGh` calls in PR creation/merge/status functions with `adapter.createPR()`, `adapter.mergePR()`, `adapter.getPRStatus()`
 
