@@ -522,3 +522,72 @@ pwsh -NonInteractive -Command "Invoke-Pester -Filter '*queue_override proof*' ..
 # Cleanup
 rm -rf /tmp/qa-test-pipeline-* /tmp/qa-test-orch-cr-* ~/.aloop/sessions/orchestrator-20260330-065213
 ```
+
+## QA Session — 2026-03-30 (final acceptance, commit 817980bdd)
+
+### Test Environment
+- Binary under test: `/tmp/aloop-test-install-ziovSf/bin/aloop` (1.0.0, built from commit `817980bdd`)
+- `aloop update` applied — Version: 817980bdd (2026-03-30T07:10:38Z), Files updated: 107
+- Features tested: 5 (pipeline.yml gate 1a/1b integrity, loop-plan.json finalizer, bash syntax, Pester proof_manifest, proof_manifest_found/missing code in loop.sh)
+
+### Results
+- PASS: pipeline.yml finalizer has 6 entries — no PROMPT_cleanup.md
+- PASS: pipeline.yml cr_analysis block present with all required fields (prompt, batch, filter, result_pattern)
+- PASS: PROMPT_orch_cr_analysis.md exists
+- PASS: orchestrate --plan-only exits 0 — pipeline.yml compiles without error
+- PASS: loop-plan.json finalizer (host session) = [spec-gap, docs, spec-review, final-review, final-qa, proof] — no cleanup
+- PASS: bash -n loop.sh (installed + worktree) — exit 0
+- PASS: Pester queue_override proof tests — Tests Passed: 2, Failed: 0 (proof_manifest_found + proof_manifest_missing)
+- PASS: loop.sh proof_manifest_found/missing events present at lines 2085, 2090, 2264, 2269 (main path + queue_override path)
+
+### Bugs Filed
+None — all acceptance criteria verified at final commit.
+
+### Command Transcript
+
+```
+# Install packaged CLI
+ALOOP_BIN=$(npm --prefix aloop/cli run --silent test-install -- --keep 2>/dev/null | tail -1)
+# Binary: /tmp/aloop-test-install-ziovSf/bin/aloop (1.0.0)
+
+$ALOOP_BIN update
+# Output: Updated ~/.aloop — Version: 817980bdd — Files updated: 107
+
+# Test 1: pipeline.yml finalizer — no PROMPT_cleanup.md
+grep -A 20 "^finalizer:" .aloop/pipeline.yml
+# Output: [spec-gap, docs, spec-review, final-review, final-qa, proof] — 6 entries, no cleanup
+grep -n "cleanup" .aloop/pipeline.yml
+# Exit 1 (no match) — PASS
+
+# Test 2: cr_analysis block present
+grep -A 10 "cr_analysis:" .aloop/pipeline.yml
+# Output: prompt, batch, filter (is_change_request, cr_spec_updated), result_pattern — all fields present
+ls aloop/templates/PROMPT_orch_cr_analysis.md
+# Exit 0 — PASS
+
+# Test 3: orchestrate --plan-only
+$ALOOP_BIN orchestrate --plan-only
+# Exit code: 0 — PASS
+
+# Test 4: loop-plan.json finalizer (host session)
+python3 -c "import json; print(json.load(open('~/.aloop/sessions/.../loop-plan.json'))['finalizer'])"
+# ['PROMPT_spec-gap.md','PROMPT_docs.md','PROMPT_spec-review.md','PROMPT_final-review.md','PROMPT_final-qa.md','PROMPT_proof.md'] — PASS
+
+# Test 5: bash -n loop.sh
+bash -n /home/pj/.aloop/bin/loop.sh
+# Exit code: 0 — PASS
+bash -n aloop/bin/loop.sh
+# Exit code: 0 — PASS
+
+# Test 6: Pester queue_override proof tests
+pwsh -Command "Invoke-Pester ... -FullName '*queue_override proof*'"
+# Tests Passed: 2, Failed: 0 — PASS
+
+# Test 7: proof_manifest_found/missing in loop.sh
+grep -n "proof_manifest_found\|proof_manifest_missing" /home/pj/.aloop/bin/loop.sh
+# Lines 2085, 2090 (main path), 2264, 2269 (queue_override path) — PASS
+
+# Cleanup
+rm -rf /tmp/aloop-test-install-ziovSf
+rm -rf ~/.aloop/sessions/orchestrator-20260330-071{058,433,448}
+```
