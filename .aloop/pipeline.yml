@@ -53,6 +53,7 @@ loop:
   triage_interval: 5                # Run triage monitor every N iterations
   scan_pass_throttle_ms: 30000      # Minimum milliseconds between scan passes
   rate_limit_backoff: fixed         # Backoff strategy: exponential, linear, or fixed
+  concurrency_cap: 3                # Max concurrent child loops
 
 orchestrator_events:
   refine:

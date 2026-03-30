@@ -21,6 +21,7 @@ interface LoopSettings {
   triage_interval?: number;
   scan_pass_throttle_ms?: number;
   rate_limit_backoff?: 'exponential' | 'linear' | 'fixed';
+  concurrency_cap?: number;
 }
 
 interface LoopPlan {

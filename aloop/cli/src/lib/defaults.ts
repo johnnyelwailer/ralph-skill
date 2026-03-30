@@ -29,4 +29,5 @@ export const DEFAULT_LOOP_SETTINGS = {
   triage_interval: 5,
   scan_pass_throttle_ms: 30000,
   rate_limit_backoff: 'fixed' as 'exponential' | 'linear' | 'fixed',
+  concurrency_cap: 3,
 } as const;
