@@ -127,13 +127,14 @@ retry_backoff: exponential
 
 ### Orchestrator settings (`.aloop/pipeline.yml`)
 
-The orchestrator reads `concurrency_cap` from `pipeline.yml` (at root level, not under `loop:`):
+The orchestrator reads `concurrency_cap` from `pipeline.yml` under the `loop:` section:
 
 ```yaml
-concurrency_cap: 5            # Max parallel child loops
+loop:
+  concurrency_cap: 3            # Max parallel child loops
 ```
 
-`triage_interval`, `scan_pass_throttle_ms`, and `rate_limit_backoff` can be set under `loop:` (shown above) — the orchestrator reads them from `pipeline.yml` regardless of nesting level.
+`triage_interval`, `scan_pass_throttle_ms`, and `rate_limit_backoff` are also set under `loop:` (shown above).
 
 CLI flags always take precedence over config file values.
 
