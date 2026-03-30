@@ -6,6 +6,8 @@
 
 ### Up Next
 
+- [x] **Fix P2 bug: `GitHubAdapter.updateIssue` unconditionally calls `execGh` with no edit flags** — `adapter.ts:84` runs `await this.execGh(args)` even when `update.body` is undefined and `args` has no edit flags beyond the 4-element base `['issue', 'edit', N, '--repo', repo]`. `gh issue edit` requires at least one flag, so all 7 label-only call-sites fail at runtime (orchestrate.ts:1888, 1901, 2266, 2286, 2306, 2505, 3814). Fix: guard the base call — only invoke it when `update.body` is defined (i.e. when body flag was pushed onto `args`). **Also fix existing tests:** `adapter.test.ts:105` (`labels_add` test) asserts `calls.length === 3` (base + 2 labels) and `adapter.test.ts:118` (`labels_remove` test) asserts `calls.length === 2` (base + 1 label) — both include the spurious base call and must be updated to reflect the correct post-fix behavior (2 and 1 respectively). Add a new test verifying no base call is made for label-only updates.
+
 ### Completed
 
 <!-- spec-review: PASS — all in-scope requirements for issue #177 verified 2026-03-30. OrchestratorAdapter interface defined (adapter.ts); GitHubAdapter implements all methods; all core GH CRUD call-sites in orchestrate.ts and process-requests.ts migrated to adapter-with-fallback pattern; adapter-path tests cover all migrated call-sites in both files (process-requests.test.ts 11/11 pass; orchestrate.test.ts adapter-path suites all pass). Remaining spawnSync('gh',...) calls (Project V2 GraphQL sync, PR comment context fetch) are out of scope — not in the adapter interface contract and not targeted by issue #177. No spec violations found. -->

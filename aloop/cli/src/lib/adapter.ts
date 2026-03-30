@@ -79,9 +79,10 @@ export class GitHubAdapter implements OrchestratorAdapter {
   }
 
   async updateIssue(number: number, update: { body?: string; labels_add?: string[]; labels_remove?: string[]; state?: 'open' | 'closed' }): Promise<void> {
-    const args = ['issue', 'edit', String(number), '--repo', this.repo];
-    if (update.body) args.push('--body', update.body);
-    await this.execGh(args);
+    if (update.body) {
+      const args = ['issue', 'edit', String(number), '--repo', this.repo, '--body', update.body];
+      await this.execGh(args);
+    }
     if (update.labels_add?.length) {
       for (const label of update.labels_add) {
         await this.execGh(['issue', 'edit', String(number), '--repo', this.repo, '--add-label', label]);

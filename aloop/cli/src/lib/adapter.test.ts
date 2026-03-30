@@ -103,12 +103,12 @@ describe('GitHubAdapter', () => {
       const execGh: GhExecFn = async (args) => { calls.push(args); return { stdout: '', stderr: '' }; };
       const adapter = new GitHubAdapter(config, execGh);
       await adapter.updateIssue(7, { labels_add: ['bug', 'p1'] });
-      // base edit call + 2 add-label calls
-      assert.equal(calls.length, 3);
+      // 2 add-label calls only (no base edit call when body is absent)
+      assert.equal(calls.length, 2);
+      assert.ok(calls[0].includes('--add-label'));
+      assert.ok(calls[0].includes('bug'));
       assert.ok(calls[1].includes('--add-label'));
-      assert.ok(calls[1].includes('bug'));
-      assert.ok(calls[2].includes('--add-label'));
-      assert.ok(calls[2].includes('p1'));
+      assert.ok(calls[1].includes('p1'));
     });
 
     it('labels_remove makes a separate --remove-label call per label', async () => {
@@ -116,10 +116,21 @@ describe('GitHubAdapter', () => {
       const execGh: GhExecFn = async (args) => { calls.push(args); return { stdout: '', stderr: '' }; };
       const adapter = new GitHubAdapter(config, execGh);
       await adapter.updateIssue(7, { labels_remove: ['stale'] });
-      // base edit call + 1 remove-label call
-      assert.equal(calls.length, 2);
-      assert.ok(calls[1].includes('--remove-label'));
-      assert.ok(calls[1].includes('stale'));
+      // 1 remove-label call only (no base edit call when body is absent)
+      assert.equal(calls.length, 1);
+      assert.ok(calls[0].includes('--remove-label'));
+      assert.ok(calls[0].includes('stale'));
+    });
+
+    it('label-only update makes no base edit call', async () => {
+      const calls: string[][] = [];
+      const execGh: GhExecFn = async (args) => { calls.push(args); return { stdout: '', stderr: '' }; };
+      const adapter = new GitHubAdapter(config, execGh);
+      await adapter.updateIssue(7, { labels_add: ['p0'], labels_remove: ['p1'] });
+      // Only add-label and remove-label calls — no bare "issue edit" base call
+      assert.ok(!calls.some((a) => a.join(' ').match(/issue edit \d+ --repo/) && !a.includes('--add-label') && !a.includes('--remove-label')));
+      assert.ok(calls.some((a) => a.includes('--add-label') && a.includes('p0')));
+      assert.ok(calls.some((a) => a.includes('--remove-label') && a.includes('p1')));
     });
 
     it('state "closed" calls gh issue close', async () => {
