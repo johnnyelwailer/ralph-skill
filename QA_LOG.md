@@ -261,3 +261,55 @@ npx tsx --test src/commands/orchestrate.test.ts
 
 npx tsc --noEmit | grep -v "test.ts"  → (empty, no errors)
 ```
+
+---
+
+## QA Session — 2026-03-30 (iteration 6)
+
+### Test Environment
+- Working dir: /home/pj/.aloop/sessions/orchestrator-20260321-172932-issue-177-20260330-080439/worktree/aloop/cli
+- Commits under test: 45c344642 (migrate scanLoop/bulk-fetch execGh calls), 364b994e3 (migrate refine-result execGh call), 097fc63ba (meta.json adapter config)
+- Features tested: 4 (build, refine-result adapter, meta.json adapter config, scanLoop/bulk-fetch adapter)
+
+### Results
+- PASS: TypeScript build (`npm run build`) — clean exit 0
+- PASS: `adapter.test.ts` — 35/35 pass (unchanged)
+- PASS: `process-requests.test.ts` — 23/23 pass (+5 new: makeAdapterForRepo subtests 5-7, updateIssueBodyViaAdapter suite 2 subtests)
+- PASS: `orchestrate.test.ts` — 335/362 pass, 27 fail — 6 new tests all pass; failure count stable at pre-regression baseline
+- PASS: `tsc --noEmit` — zero errors on non-test files
+- PASS: refine-result execGh→adapter: `updateIssueBodyViaAdapter` (a) adapter.updateIssue called when adapter present; (b) fallback execGh called when adapter absent
+- PASS: meta.json adapter config: adapterType forwarded to createAdapter; defaults to "github" when omitted; unknown adapterType throws
+- PASS: scanLoop/bulk-fetch adapter: `fetchAndApplyBulkIssueState` uses adapter.fetchBulkIssueState when adapter available; skips bulk fetch when neither execGh nor adapter present
+
+### Bugs Filed
+None — all new features pass; pre-regression baseline of 27 orchestrate failures maintained.
+
+### Regression Analysis
+- Pre-regression baseline (298ac3309): 27 orchestrate failures, 319 pass, 346 total
+- After iter 5 (e016e1acd): 27 failures, 329 pass, 356 total (+10 new adapter-branch tests)
+- After iter 6 (097fc63ba): 27 failures, 335 pass, 362 total (+6 new tests all pass)
+
+### New Test Coverage Since Iter 5
+- process-requests: `updateIssueBodyViaAdapter` (2 subtests) — NEW
+- process-requests: `makeAdapterForRepo` subtests 5-7 (adapterType forwarding) — NEW
+- orchestrate: `fetchAndApplyBulkIssueState adapter path` (2 subtests) — NEW
+
+### Command Transcript
+```
+npm run build  → EXIT: 0
+
+npx tsx --test src/lib/adapter.test.ts
+# tests 35 / pass 35 / fail 0
+
+npx tsx --test src/commands/process-requests.test.ts
+# tests 23 / suites 7 / pass 23 / fail 0
+# New: makeAdapterForRepo subtests 5-7 (adapterType), updateIssueBodyViaAdapter (2 subtests)
+
+npx tsx --test src/commands/orchestrate.test.ts
+# tests 362 / suites 71 / pass 335 / fail 27
+# New: fetchAndApplyBulkIssueState adapter path (2 subtests)
+#   ok 1 - uses adapter.fetchBulkIssueState instead of execGh when adapter is available
+#   ok 2 - skips bulk fetch when neither execGh nor adapter is present
+
+npx tsc --noEmit | grep -v "test.ts"  → (empty, no errors)
+```

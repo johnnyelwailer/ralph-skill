@@ -24,3 +24,8 @@
 | orchestrate.ts adapter-branch coverage | 2026-03-30 | e016e1a | PASS | 329/356, 27 fail (+10 new adapter-branch tests all pass: applyTriageResultsToIssue, resolveSpecQuestionIssues, mergePr, flagForHuman, processPrLifecycle) |
 | resolveSpecQuestionIssues adapter fix | 2026-03-30 | 77bc077 | PASS | adapter path reachable in production (adapter: deps.adapter now passed at call site); confirmed by adapter-path test passing |
 | tsc --noEmit (non-test files) | 2026-03-30 | e016e1a | PASS | Zero type errors on non-test files |
+| TypeScript build (npm run build) | 2026-03-30 | 097fc63b | PASS | Build clean exit 0 (iter 6) |
+| process-requests.ts updateIssueBodyViaAdapter | 2026-03-30 | 097fc63b | PASS | 23/23 tests pass (+5 new: makeAdapterForRepo subtests 5-7 for adapterType, updateIssueBodyViaAdapter 2 subtests — adapter present/absent) |
+| meta.json adapter config (makeAdapterForRepo adapterType) | 2026-03-30 | 097fc63b | PASS | adapterType forwarded to createAdapter; defaults to "github"; unknown type throws; 3 new subtests all pass |
+| refine-result execGh→adapter migration | 2026-03-30 | 097fc63b | PASS | updateIssueBodyViaAdapter dual-path: adapter.updateIssue when adapter present, fallback execGh when absent; both branches tested |
+| orchestrate.ts fetchAndApplyBulkIssueState adapter path | 2026-03-30 | 097fc63b | PASS | 335/362 pass (+6 new tests all pass); adapter.fetchBulkIssueState used when adapter available, skips bulk fetch when neither execGh nor adapter present |
