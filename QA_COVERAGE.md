@@ -47,3 +47,8 @@
 | meta.json adapter config wiring (live code) | 2026-03-30 | 62a92937e | PASS | meta.adapter→makeAdapterForRepo(line 354)→createAdapter; defaults to 'github'; confirmed via code grep |
 | updateIssueBodyViaAdapter dual-path (live code) | 2026-03-30 | 62a92937e | PASS | adapter.updateIssue at line 135, execGh fallback at line 453; 23/23 tests cover both branches |
 | fetchAndApplyBulkIssueState adapter path (live code) | 2026-03-30 | 62a92937e | PASS | adapter.fetchBulkIssueState at orchestrate.ts:5317-5319; confirmed stable |
+| TypeScript build (npm run build) | 2026-03-30 | 2f59e40cf | PASS | Build clean exit 0 (iter 9 — final regression check after review gates 1-10) |
+| adapter.test.ts unit tests | 2026-03-30 | 2f59e40cf | PASS | 35/35 pass — stable |
+| process-requests.ts full suite | 2026-03-30 | 2f59e40cf | PASS | 23/23 pass — stable |
+| orchestrate.test.ts full suite | 2026-03-30 | 2f59e40cf | PASS | 335/362 pass, 27 fail — identical baseline; no regressions |
+| tsc --noEmit (non-test files) | 2026-03-30 | 2f59e40cf | PASS | Zero type errors; exit 0 |

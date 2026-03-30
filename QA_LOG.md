@@ -414,3 +414,42 @@ grep "fetchBulkIssueState" orchestrate.ts → lines 14, 5317-5319
 
 rm -rf /tmp/aloop-test-install-Gg2b6i
 ```
+
+---
+
+## QA Session — 2026-03-30 (Issue #177 — iter 9, final regression check)
+
+### Test Environment
+- Binary under test: /tmp/aloop-test-install-uLgWX8/bin/aloop (version 1.0.0)
+- Head commit: 2f59e40cf chore(review): PASS — gates 1-10 pass
+- Changes since iter 8: documentation only (REVIEW_LOG.md, PR_DESCRIPTION.md, TODO.md — no code changes)
+- Features tested: 4 (build, adapter tests, process-requests tests, orchestrate tests + tsc)
+
+### Results
+- PASS: TypeScript build (npm run build) — exit 0
+- PASS: adapter.test.ts — 35/35 pass
+- PASS: process-requests.test.ts — 23/23 pass
+- PASS: orchestrate.test.ts — 335/362 pass, 27 fail (same baseline as iter 8; no regressions)
+- PASS: tsc --noEmit --skipLibCheck — exit 0, zero errors
+
+### Bugs Filed
+None — no code changes since iter 8; all suites stable.
+
+### Regression Analysis
+- Iter 8 (62a92937e): 27 failures, 335 pass, 362 total
+- Iter 9 (2f59e40cf): 27 failures, 335 pass, 362 total — IDENTICAL, stable
+
+### Command Transcript
+```
+ALOOP_BIN=$(npm run --silent test-install -- --keep 2>/dev/null | tail -1)
+# → /tmp/aloop-test-install-uLgWX8/bin/aloop
+$ALOOP_BIN --version → 1.0.0
+
+npm run build → BUILD_EXIT: 0
+npx tsx --test src/lib/adapter.test.ts → 35/35 pass, exit 0
+npx tsx --test src/commands/process-requests.test.ts → 23/23 pass, exit 0
+npx tsx --test src/commands/orchestrate.test.ts → 362 tests / 335 pass / 27 fail
+npx tsc --noEmit --skipLibCheck → exit 0, no output
+
+rm -rf /tmp/aloop-test-install-uLgWX8
+```
