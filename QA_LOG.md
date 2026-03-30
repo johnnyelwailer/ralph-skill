@@ -1,5 +1,59 @@
 # QA Log
 
+## QA Session — 2026-03-30 (iteration 63)
+
+### Test Environment
+- Binary under test: /tmp/aloop-test-install-ysoZpf/bin/aloop (version 1.0.0)
+- Working dir: aloop/cli/dashboard/
+- Commit: a11e15d95
+- Features tested: 4
+
+### Results
+- PASS: Header branch coverage 90.26% (FIXED — was 87.61% at iter 62; branches at lines 130,211,227,275 now covered)
+- PASS: Header stories in story-screenshots.spec.ts (FIXED — all 7 stories now in e2e/story-screenshots.spec.ts)
+- PASS: Playwright story screenshots 29/30 (header-default/loading/disconnected/stopped/noprovider/highbudgetusage all render)
+- PASS: All unit tests (462 tests, 39 files — 4 new branch-coverage tests for Header)
+- FAIL: `layout-header--qa-badge-default` story — still empty #storybook-root after 15s timeout; P2 bug persists
+
+### Bugs Filed
+- None — no new bugs; `qa-badge-default` (P2) already tracked in TODO.md
+
+### Re-test Notes
+- `Header branch coverage ≥90%`: FIXED — 90.26% at a11e15d95 (was FAIL at 55caec1a1)
+- `Header stories in story-screenshots.spec.ts`: FIXED — all 7 stories present at a11e15d95 (was FAIL at 55caec1a1)
+- `layout-header--qa-badge-default`: still FAIL — empty #storybook-root, same as iter 62
+
+### Command Transcript
+```
+# Install CLI from source
+npm --prefix aloop/cli install
+ALOOP_BIN=$(npm --prefix aloop/cli run --silent test-install -- --keep 2>/dev/null | tail -1)
+# => /tmp/aloop-test-install-ysoZpf/bin/aloop
+$ALOOP_BIN --version   # => 1.0.0
+
+# Header branch coverage
+cd aloop/cli/dashboard
+npm run test -- --coverage 2>&1 | grep "Header.tsx"
+# => Header.tsx | 93.18 | 90.26 | 91.66 | 100 | ...97,116,130,227
+# PASS: 90.26% branch coverage (≥90% threshold)
+
+# All unit tests
+npm run test
+# => 39 passed (39), 462 passed (462)
+
+# Verify Header stories in story-screenshots.spec.ts
+grep "header" e2e/story-screenshots.spec.ts
+# => 7 Header story IDs present (layout-header--default through layout-header--qa-badge-default)
+
+# Playwright story screenshots (all 30)
+npx playwright test --config=playwright.stories.config.ts --reporter=list
+# => 29 passed, 1 failed
+# PASS tests 24-29: header-default, header-loading, header-disconnected, header-stopped, header-noprovider, header-highbudgetusage
+# FAIL test 30: header-qabadgedefault — #storybook-root empty after 15s
+```
+
+---
+
 ## QA Session — 2026-03-30 (iteration 60)
 
 ### Test Environment

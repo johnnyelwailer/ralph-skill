@@ -25,3 +25,8 @@
 | Header stories render (6/7) in dev server | 2026-03-30 | 55caec1a1 | PASS | Default/Loading/Disconnected/Stopped/NoProvider/HighBudgetUsage render OK via Playwright |
 | `layout-header--qa-badge-default` story | 2026-03-30 | 55caec1a1 | FAIL | still empty #storybook-root; confirmed via Playwright headless browser |
 | Playwright story screenshots (23 stories) | 2026-03-30 | 55caec1a1 | PASS | all 23 existing story screenshots still pass |
+| All unit tests (vitest) | 2026-03-30 | a11e15d95 | PASS | 39 files, 462 tests (4 new branch-coverage tests for Header) |
+| Header branch coverage ≥90% | 2026-03-30 | a11e15d95 | PASS | 90.26% — branches at lines 130,211,227,275 now covered |
+| Header stories in story-screenshots.spec.ts | 2026-03-30 | a11e15d95 | PASS | all 7 Header stories now in e2e/story-screenshots.spec.ts |
+| Playwright story screenshots (30 stories) | 2026-03-30 | a11e15d95 | PASS | 29/30 pass; header-default/loading/disconnected/stopped/noprovider/highbudgetusage all render correctly |
+| `layout-header--qa-badge-default` story | 2026-03-30 | a11e15d95 | FAIL | still empty #storybook-root after 15s timeout; P2 bug persists (TODO.md [qa/P2]) |
