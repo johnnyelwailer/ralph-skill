@@ -4,7 +4,7 @@
 - `DEFAULT_LOOP_SETTINGS` in `defaults.ts` — single source of truth for all defaults ✅
 - `pipeline.yml` `loop:` section — has `triage_interval`, `scan_pass_throttle_ms`, `rate_limit_backoff`, `max_iterations`, etc. ✅
 - `loop.sh` — reads all loop settings from `loop-plan.json` at startup and hot-reloads from `meta.json` each iteration, including `provider_timeout` → `PROVIDER_TIMEOUT` ✅
-- `loop.ps1` — reads most loop settings, but **missing `provider_timeout` → `ProviderTimeoutSec` mapping** ⚠️
+- `loop.ps1` — reads all loop settings including `provider_timeout` → `ProviderTimeoutSec` in both `Load-LoopSettings` and `Refresh-LoopSettingsFromMeta` ✅
 - `compile-loop-plan.ts` — reads `loop:` section from pipeline.yml and embeds as `loopSettings` in `loop-plan.json` ✅
 - `orchestrate.ts` scan loop — hot-reloads `scan_pass_throttle_ms`, `rate_limit_backoff`, `triage_interval` from state.json each iteration ✅
 - `orchestrate.ts` — `triage_interval`, `scan_pass_throttle_ms`, `rate_limit_backoff` are settable via CLI options ✅
@@ -38,3 +38,9 @@
 - [x] [review] Gate 2+3: `compile-loop-plan.test.ts` loopSettings test — assertions for `triage_interval: 10`, `scan_pass_throttle_ms: 45000`, `rate_limit_backoff: 'exponential'` verified present at lines 891-893
 - [x] [review] Gate 4: `loop.sh` no longer loads `TRIAGE_INTERVAL`, `SCAN_PASS_THROTTLE_MS`, or `RATE_LIMIT_BACKOFF` — verified: none of these variables appear in `aloop/bin/loop.sh`
 - [x] [review] Gate 2: `runOrchestratorScanLoop` backoff calculation — added `runScanPass?` injectable field to `ScanLoopDeps`, used in loop, and added 3 unit tests for exponential/linear/fixed strategies (`orchestrate.test.ts` `runOrchestratorScanLoop backoff strategies`)
+
+---
+
+spec-gap analysis: no discrepancies found — spec fully fulfilled
+
+All `LoopSettings` fields in `compile-loop-plan.ts` match SPEC.md `loop-plan.json` format example exactly. Default values in `defaults.ts` match SPEC.md example values. `loop.sh` and `loop.ps1` both handle all fields including `provider_timeout` in both startup load and hot-reload. `concurrency_cap` is correctly absent from `loopSettings` (it's orchestrator-only, read separately by `resolveOrchestratorSettingsFromConfig`). All previously-filed `[spec-gap]` items are resolved.
