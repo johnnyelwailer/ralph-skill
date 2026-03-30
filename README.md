@@ -29,7 +29,7 @@ aloop start --provider claude
 aloop start --provider round-robin
 
 # Resume a stopped session
-aloop start --launch-mode resume --session-dir ~/.aloop/sessions/<id>
+aloop start <session-id> --launch resume
 ```
 
 ### Orchestrator Mode (`aloop orchestrate`)
@@ -69,6 +69,8 @@ aloop dashboard --port 3000 --session-dir ~/.aloop/sessions/<id>
 - Proof artifact gallery (screenshots, test output, layout assertions)
 - **Live steering** — send instructions to the running loop from the dashboard
 - **Stop controls** — graceful (SIGTERM) or force (SIGKILL)
+
+> **Note:** Dashboard component decomposition is in progress. The core `AppView.tsx` is being split into focused sub-components (see SPEC-ADDENDUM). Currently extracted: `ArtifactViewer`, `ResponsiveLayout`, `CostDisplay`.
 
 ## Quality Gates
 
