@@ -44,3 +44,15 @@
 spec-gap analysis: no discrepancies found — spec fully fulfilled
 
 All `LoopSettings` fields in `compile-loop-plan.ts` match SPEC.md `loop-plan.json` format example exactly. Default values in `defaults.ts` match SPEC.md example values. `loop.sh` and `loop.ps1` both handle all fields including `provider_timeout` in both startup load and hot-reload. `concurrency_cap` is correctly absent from `loopSettings` (it's orchestrator-only, read separately by `resolveOrchestratorSettingsFromConfig`). All previously-filed `[spec-gap]` items are resolved.
+
+---
+
+spec-review: PASS — all in-scope requirements met
+
+Verified against SPEC.md `loopSettings` format example (lines 3654–3669):
+- All 14 fields (`max_iterations`, `max_stuck`, `inter_iteration_sleep`, `phase_retries_multiplier`, `cooldown_ladder`, `concurrent_cap_cooldown`, `request_timeout`, `request_poll_interval`, `unavailable_sleep`, `provider_timeout`, `health_lock_retry_delays_ms`, `triage_interval`, `scan_pass_throttle_ms`, `rate_limit_backoff`) are present in `LoopSettings` interface, `readLoopSettingsFromPipeline`, `DEFAULT_LOOP_SETTINGS`, and the loop scripts (both startup and hot-reload).
+- Conditional emission (only when `loop:` section present in pipeline.yml) — ✅ `readLoopSettingsFromPipeline` returns `undefined` when no `loop` block.
+- "All fields optional; omitted fields fall back to hardcoded defaults" — ✅ defaults.ts + script-level initial defaults.
+- Orchestrator settings (`triage_interval`, `scan_pass_throttle_ms`, `rate_limit_backoff`, `concurrency_cap`) — ✅ `resolveOrchestratorSettingsFromConfig` reads from pipeline.yml with CLI override; hot-reloaded from state.json each scan pass.
+- `loop.ps1` `provider_timeout` in both Load-LoopSettings and Refresh-LoopSettingsFromMeta — ✅ lines 127 and 154.
+- `health_lock_retry_delays_ms` handled in both loop.sh (lines 316/370) and loop.ps1 (lines 131–132/158–159) — ✅.
