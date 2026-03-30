@@ -452,3 +452,73 @@ pwsh -NonInteractive -Command "...Pester filter *queue_override proof*..."
 aloop stop qa-cleanup-gyvwn4-20260330-063326
 rm -rf /tmp/qa-cleanup-GyvwN4 /tmp/qa-cleanup-logic-eRSE0V
 ```
+
+## QA Session — 2026-03-30 (cleanup agent fix — Gate 1a/1b regression + final fixes)
+
+### Test Environment
+- Binary under test: `/home/pj/.aloop/bin/aloop` (1.0.0, updated via `aloop update` to commit `3fbde7967`)
+- `aloop update` output: "Version: 3fbde7967 (2026-03-30T06:49:57Z) — Files updated: 57"
+- Features tested: 4 (PROMPT_cleanup.md removal from finalizer, cr_analysis restored, bash syntax regression, Pester regression)
+
+### Results
+- PASS: PROMPT_cleanup.md removed from pipeline.yml finalizer (Gate 1a)
+- PASS: PROMPT_cleanup.md template deleted from worktree aloop/templates/
+- PASS: cr_analysis event block restored in pipeline.yml with correct structure (Gates 1b+4)
+- PASS: PROMPT_orch_cr_analysis.md exists in installed templates
+- PASS: `orchestrate --plan-only` exits 0 without cr_analysis parse errors
+- PASS: loop-plan.json finalizer = [spec-gap, docs, spec-review, final-review, final-qa, proof] — no cleanup.md
+- PASS: No PROMPT_cleanup references in .aloop/ directory
+- PASS: `bash -n loop.sh` exits 0 — no regressions
+- PASS: Pester queue_override proof tests — Tests Passed: 2, Failed: 0
+
+### Bugs Filed
+None — all fix items verified, no regressions.
+
+### Command Transcript
+
+```
+# Update installed binary to latest commits
+aloop update
+# Output: Updated ~/.aloop from worktree — Version: 3fbde7967 (2026-03-30T06:49:57Z) — Files updated: 57
+
+# Verify pipeline.yml finalizer (no PROMPT_cleanup.md)
+cat .aloop/pipeline.yml | grep -A10 "finalizer:"
+# Output: finalizer: [PROMPT_spec-gap.md, PROMPT_docs.md, PROMPT_spec-review.md, PROMPT_final-review.md, PROMPT_final-qa.md, PROMPT_proof.md]
+
+# Verify pipeline.yml cr_analysis block
+cat .aloop/pipeline.yml | grep -A10 "cr_analysis:"
+# Output: cr_analysis: prompt: PROMPT_orch_cr_analysis.md, batch: 2, filter: {is_change_request: true, cr_spec_updated: false}, result_pattern: cr-analysis-result-{issue_number}.json
+
+# Verify PROMPT_cleanup.md removed from worktree templates
+ls aloop/templates/PROMPT_cleanup.md
+# Output: No such file or directory
+
+# Verify PROMPT_orch_cr_analysis.md exists
+ls ~/.aloop/templates/PROMPT_orch_cr_analysis.md
+# Output: /home/pj/.aloop/templates/PROMPT_orch_cr_analysis.md (exists)
+
+# Verify loop-plan.json finalizer has no cleanup.md (host session)
+cat ~/.aloop/sessions/orchestrator-20260321-172932-issue-101-20260329-151810/loop-plan.json | grep -A10 '"finalizer"'
+# Output: ["PROMPT_spec-gap.md","PROMPT_docs.md","PROMPT_spec-review.md","PROMPT_final-review.md","PROMPT_final-qa.md","PROMPT_proof.md"]
+
+# Test orchestrate with cr_analysis pipeline.yml (no parse errors)
+TESTDIR=/tmp/qa-test-orch-cr-<pid>; mkdir -p $TESTDIR && cd $TESTDIR && git init
+cp .aloop/pipeline.yml $TESTDIR/.aloop/
+aloop orchestrate --plan-only --spec SPEC.md
+# Output: "Orchestrator session initialized." — Exit code: 0
+
+# Verify no PROMPT_cleanup refs in .aloop/
+grep -r "PROMPT_cleanup" .aloop/
+# Output: (empty) — PASS
+
+# Regression: bash syntax check
+bash -n /home/pj/.aloop/bin/loop.sh
+# Exit code: 0 — PASS
+
+# Regression: Pester queue_override proof tests
+pwsh -NonInteractive -Command "Invoke-Pester -Filter '*queue_override proof*' ..."
+# Output: Tests Passed: 2, Failed: 0
+
+# Cleanup
+rm -rf /tmp/qa-test-pipeline-* /tmp/qa-test-orch-cr-* ~/.aloop/sessions/orchestrator-20260330-065213
+```

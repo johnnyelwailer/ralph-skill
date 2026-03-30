@@ -28,3 +28,8 @@
 | loop.sh bash syntax (-n check) at 45e927b6e | 2026-03-30 | 45e927b6e | PASS | `bash -n /home/pj/.aloop/bin/loop.sh` exits 0 — no regressions from cleanup agent addition |
 | branch-coverage harness at 45e927b6e | 2026-03-30 | 45e927b6e | PASS | `loop_branch_coverage.tests.sh` 52/52 branches — no regressions |
 | queue_override proof Pester tests at 45e927b6e | 2026-03-30 | 45e927b6e | PASS | Pester: Tests Passed: 2, Failed: 0 — proof_manifest_found + proof_manifest_missing still pass |
+| PROMPT_cleanup.md removed from pipeline.yml finalizer (Gate 1a) | 2026-03-30 | 3fbde7967 | PASS | Behavioral: pipeline.yml finalizer has 6 entries [spec-gap, docs, spec-review, final-review, final-qa, proof] — no cleanup entry; loop-plan.json compiled without cleanup.md; no PROMPT_cleanup refs in .aloop/ |
+| PROMPT_cleanup.md template deleted from worktree | 2026-03-30 | 3fbde7967 | PASS | Behavioral: `ls aloop/templates/PROMPT_cleanup.md` → No such file — file deleted as required |
+| cr_analysis event block restored in pipeline.yml (Gates 1b+4) | 2026-03-30 | 46367b742 | PASS | Behavioral: pipeline.yml orchestrator_events.cr_analysis block present with correct fields (prompt, batch, filter, result_pattern); PROMPT_orch_cr_analysis.md exists; orchestrate --plan-only exits 0 without parse errors |
+| loop.sh bash syntax (-n check) at 3fbde7967 | 2026-03-30 | 3fbde7967 | PASS | `bash -n /home/pj/.aloop/bin/loop.sh` exits 0 — no regressions from fix commits |
+| queue_override proof Pester tests at 3fbde7967 | 2026-03-30 | 3fbde7967 | PASS | Pester: Tests Passed: 2, Failed: 0 — proof_manifest_found + proof_manifest_missing still pass after Gate 1a/1b fixes |
