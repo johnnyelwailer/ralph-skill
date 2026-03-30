@@ -2791,6 +2791,21 @@ interface MockAdapterCall {
 
 function createMockAdapter(overrides: Partial<OrchestratorAdapter> = {}): OrchestratorAdapter & { calls: MockAdapterCall[] } {
   const calls: MockAdapterCall[] = [];
+
+  // Wrap each override so calls are still tracked before delegating to the override.
+  // Without this, spreading raw overrides would replace the tracked implementations
+  // and adapter.calls would never record those method invocations.
+  const trackedOverrides: Partial<OrchestratorAdapter> = {};
+  for (const [method, fn] of Object.entries(overrides)) {
+    if (typeof fn === 'function') {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (trackedOverrides as any)[method] = (...args: unknown[]) => {
+        calls.push({ method, args });
+        return (fn as (...a: unknown[]) => unknown)(...args);
+      };
+    }
+  }
+
   const base: OrchestratorAdapter = {
     createIssue: async (title: string, body: string, labels: string[]) => {
       calls.push({ method: 'createIssue', args: [title, body, labels] });
@@ -2828,7 +2843,7 @@ function createMockAdapter(overrides: Partial<OrchestratorAdapter> = {}): Orches
       calls.push({ method: 'getPRStatus', args: [number] });
       return { mergeable: true, ci_status: 'success' as const, reviews: [] };
     },
-    ...overrides,
+    ...trackedOverrides,
   };
   return { ...base, calls };
 }
