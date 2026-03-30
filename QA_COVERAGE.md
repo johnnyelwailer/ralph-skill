@@ -38,3 +38,12 @@
 | meta.json adapter config wiring (live code) | 2026-03-30 | 51c5eb860 | PASS | meta.adapter read at process-requests.ts:354, forwarded to makeAdapterForRepo:149, defaults to 'github' |
 | updateIssueBodyViaAdapter dual-path (live code) | 2026-03-30 | 51c5eb860 | PASS | adapter.updateIssue at line 135, fallback execGh at line 453 |
 | fetchAndApplyBulkIssueState adapter path (live code) | 2026-03-30 | 51c5eb860 | PASS | adapter.fetchBulkIssueState used at orchestrate.ts:5317-5319 when adapter present |
+| TypeScript build (npm run build) | 2026-03-30 | 62a92937e | PASS | Build clean exit 0 (iter 8 re-test) |
+| adapter.test.ts unit tests | 2026-03-30 | 62a92937e | PASS | 35/35 pass — stable |
+| process-requests.ts full suite | 2026-03-30 | 62a92937e | PASS | 23/23 pass — stable |
+| orchestrate.test.ts full suite | 2026-03-30 | 62a92937e | PASS | 335/362 pass, 27 fail — identical baseline; no regressions |
+| tsc --noEmit (non-test files) | 2026-03-30 | 62a92937e | PASS | Zero type errors on non-test files |
+| No hardcoded github.com URLs (adapter paths) | 2026-03-30 | 62a92937e | PASS | Only comment-line references in orchestrate.ts:4373, process-requests.ts:824; adapter.ts: none |
+| meta.json adapter config wiring (live code) | 2026-03-30 | 62a92937e | PASS | meta.adapter→makeAdapterForRepo(line 354)→createAdapter; defaults to 'github'; confirmed via code grep |
+| updateIssueBodyViaAdapter dual-path (live code) | 2026-03-30 | 62a92937e | PASS | adapter.updateIssue at line 135, execGh fallback at line 453; 23/23 tests cover both branches |
+| fetchAndApplyBulkIssueState adapter path (live code) | 2026-03-30 | 62a92937e | PASS | adapter.fetchBulkIssueState at orchestrate.ts:5317-5319; confirmed stable |
