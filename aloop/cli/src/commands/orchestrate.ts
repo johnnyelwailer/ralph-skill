@@ -5493,7 +5493,7 @@ export async function runOrchestratorScanPass(
       state,
       repo,
       sessionDir,
-      { execGh: deps.execGh, appendLog: deps.appendLog, now: deps.now },
+      { execGh: deps.execGh, appendLog: deps.appendLog, now: deps.now, adapter: deps.adapter },
     );
   }
 
