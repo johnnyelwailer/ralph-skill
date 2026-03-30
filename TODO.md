@@ -14,7 +14,7 @@
 
 ### Up Next
 
-- [ ] **Tests: orchestrate command reads settings from pipeline.yml** — VERIFY: tests for `resolveOrchestratorSettingsFromConfig` are already present in `orchestrate.test.ts` lines 4621-4690, covering all four settings (6 tests: defaults, yml-read, CLI override, partial merge, no-loop-section, unreadable file). Run `npm test` to confirm they pass. (priority: medium)
+- [x] **Tests: orchestrate command reads settings from pipeline.yml** — VERIFIED: all 6 `resolveOrchestratorSettingsFromConfig` tests pass (defaults, yml-read, CLI override, partial merge, no-loop-section, unreadable file).
 
 ### Completed
 
