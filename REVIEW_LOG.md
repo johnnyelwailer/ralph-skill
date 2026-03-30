@@ -34,3 +34,31 @@
 - **Gate 9**: README unchanged; no user-facing behavior change requiring documentation.
 
 ---
+
+## Review — 2026-03-30 — commits d37de1e..1d2a610 (issue #94 fix iterations + QA)
+
+**Verdict: PASS** (prior FAIL findings resolved; one tracked gap remains)
+**Scope:** `aloop/bin/loop.sh`, `aloop/cli/src/commands/compile-loop-plan.test.ts`, QA_LOG.md, QA_COVERAGE.md, TODO.md
+
+### What the build fixed
+
+- **Gate 2+3 fix** (`d37de1e`): `compile-loop-plan.test.ts:863` — Added `triage_interval: 10`, `scan_pass_throttle_ms: 45000`, `rate_limit_backoff: exponential` to the pipeline.yml fixture and added three `assert.equal` assertions with exact values. Correct — assertions use strict equality, not existence/shape checks.
+
+- **Gate 4 fix** (`66abdb0`): `loop.sh` — Removed `triage_interval`/`TRIAGE_INTERVAL`, `scan_pass_throttle_ms`/`SCAN_PASS_THROTTLE_MS`, `rate_limit_backoff`/`RATE_LIMIT_BACKOFF` from both `load_loop_settings()` and `refresh_loop_settings_from_meta()`, plus their initializer defaults at lines 329–331. `loop.ps1` confirmed clean — no occurrences of these vars. Architecture is now correct: orchestrator-level settings live only in `orchestrate.ts`.
+
+- **QA session** (`1d2a610`): All 4 features PASS integration verification (loopSettings in loop-plan.json, loop.sh cleaned, resolveOrchestratorSettingsFromConfig reads/overrides, concurrency_cap defaults). 32 pre-existing failures unchanged.
+
+### Gates
+
+- **Gate 1**: Spec compliance fully met. All four orchestrator settings (`concurrency_cap`, `triage_interval`, `scan_pass_throttle_ms`, `rate_limit_backoff`) are config-driven via pipeline.yml with CLI override precedence. `DEFAULT_LOOP_SETTINGS` is the single source of truth. Hardcoded 999999 is gone.
+- **Gate 2**: `resolveOrchestratorSettingsFromConfig` — 6 tests with exact value assertions ✅. `compile-loop-plan.test.ts` roundtrip now covers all three issue-94 fields ✅. **Remaining gap**: `runOrchestratorScanLoop` backoff arithmetic (lines 5857–5867) — the three strategy branches (exponential `baseInterval * 2^(n-1)`, linear `baseInterval * n`, fixed `baseInterval`) have no unit test. The existing `calls sleep between iterations` test only exercises `consecutiveRateLimits = 0` (no backoff path). This is tracked in TODO.md as medium priority.
+- **Gate 3**: New assertions are exact-value (`assert.equal(…, 10)`, `assert.equal(…, 45000)`, `assert.equal(…, 'exponential')`). No tautological or shape-only checks introduced.
+- **Gate 4**: No dead code. loop.sh and loop.ps1 contain no orchestrator-level settings. ✅
+- **Gate 5**: 32 failures, identical to QA baseline and master. Type-check passes. ✅
+- **Gates 6–9**: N/A (no UI, no deps, no docs, no proof artifacts).
+
+### Outstanding tracked gap
+
+`orchestrate.ts:5856–5876` — backoff arithmetic unit test still missing. Tracked as `[ ]` in TODO.md. Medium priority. Existing functionality is integration-verified but the per-strategy math has no unit-level coverage. Next build iteration should add a test to `runOrchestratorScanLoop` that sets `consecutiveRateLimits` via a rate-limited scan pass and asserts the sleep arg matches the expected formula for each of the three strategies.
+
+---
