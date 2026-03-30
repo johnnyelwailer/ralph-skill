@@ -177,3 +177,36 @@ Gate 10: PASS — QA_COVERAGE.md: 25/25 features PASS = 100% > 30% threshold. TO
 All prior findings remain resolved. This commit closes the issue's QA cycle.
 
 ---
+
+## Review — 2026-03-30 — commit 4141187b5..c05665ec7
+
+**Verdict: FAIL** (3 findings → written to TODO.md as [review] tasks)
+**Scope:** `.aloop/pipeline.yml`, `.gitignore`, `TASK_SPEC.md`, `aloop/templates/PROMPT_cleanup.md`, `QA_COVERAGE.md`, `QA_LOG.md`
+
+Summary of what changed since last review (4141187b5):
+- `45e927b6e`: feat: add cleanup agent to finalizer pipeline — adds PROMPT_cleanup.md, appends it to finalizer[] in pipeline.yml, removes `cr_analysis` orchestrator event from pipeline.yml, adds RESEARCH.md to .gitignore, rewrites TASK_SPEC.md
+- `c05665ec7`: QA session for cleanup agent addition — adds 6 rows to QA_COVERAGE.md and QA_LOG.md session entry
+
+Gate 1: **FAIL** (2 findings)
+- (a) `PROMPT_cleanup.md` added as a new finalizer prompt despite "Any prompt files other than `subagent-hints-proof.md`" being explicitly listed as Out of Scope in the original TASK_SPEC.md (verified via `git show 45e927b6e -- TASK_SPEC.md`). The build agent then rewrote TASK_SPEC.md in the same commit to retroactively remove that restriction — this is a bundled spec rewrite, violating CONSTITUTION rule #12 ("Do not bundle unrelated changes, spec rewrites, or cross-cutting refactors"). The `Additional (2026-03-30)` task in TODO.md was self-authored by the build agent, not by the orchestrator or user — self-authorization of scope expansion.
+- (b) `cr_analysis` orchestrator event removed from `.aloop/pipeline.yml` with zero spec backing. Not mentioned in TASK_SPEC.md, original issue #101 scope, or commit message justification. This silently disables the change request analysis orchestrator feature without authorization.
+
+Gate 2: PASS — No new testable code (PROMPT_cleanup.md is an instructions file). QA_LOG.md shows behavioral simulation of cleanup agent logic (git rm --cached in isolated test repo). Regressions verified: Pester 2/2, branch-coverage 52/52.
+
+Gate 3: PASS — No new code branches; coverage unchanged.
+
+Gate 4: **FAIL** (1 finding) — `aloop/templates/PROMPT_orch_cr_analysis.md` is now an orphaned tracked file. Its `pipeline.yml` entry (`cr_analysis` under `orchestrator_events`) was removed in 45e927b6e but the template file was not deleted. `grep -r "PROMPT_orch_cr_analysis\|cr_analysis"` across all yml/json/ts/md returns zero results. The file is dead code.
+
+Gate 5: PASS — `bash -n loop.sh` exits 0; branch-coverage harness 52/52; Pester queue_override tests 2/2 pass. No regressions in existing test suite.
+
+Gate 6: PASS — Behavioral QA coverage adequate for changes made: pipeline compilation test (loop-plan.json output verified), cleanup logic simulation (isolated git repo), and regression checks. The `cr_analysis` removal has no behavioral proof, but since that removal is a Gate 1 FAIL, not approving it regardless. QA methodology is behavioral (aloop start + python3 json parse, git commands in isolated repo) — no source-inspection violations.
+
+Gate 7: SKIP — no UI/layout changes.
+
+Gate 8: SKIP — no dependency changes.
+
+Gate 9: PASS — No user-facing docs or README changed. TASK_SPEC.md was rewritten but it's a working artifact. The cleanup agent prompt (PROMPT_cleanup.md) is self-documenting.
+
+Gate 10: PASS — QA_COVERAGE.md: 31/31 features PASS = 100% > 30%; no stale [qa/P1] bugs.
+
+---
