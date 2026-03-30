@@ -93,7 +93,7 @@ describe('Header', () => {
 
   it('renders connection indicator', () => {
     renderHeader({ connectionStatus: 'connected' });
-    expect(screen.getByTestId('session-header-grid')).toBeInTheDocument();
+    expect(screen.getByText('Live')).toBeInTheDocument();
   });
 
   it('calls onToggleMobileMenu when sidebar toggle is clicked', async () => {
