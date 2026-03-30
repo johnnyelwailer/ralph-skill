@@ -109,8 +109,8 @@ loop:
 These settings are written to `loop-plan.json` at session start and read by loop scripts on startup. Each iteration, loop scripts hot-reload settings from `meta.json`; changes to `meta.json` take effect on the next iteration without restarting.
 
 **Implementation status:**
-- `triage_interval`, `scan_pass_throttle_ms`, `rate_limit_backoff` — **Implemented** (stored in `loopSettings`; orchestrator reads them from session state)
-- `max_iterations`, `max_stuck`, `inter_iteration_sleep`, `cooldown_ladder`, `provider_timeout` — **Implemented** (written to `loop-plan.json`, read at startup; hot-reloaded from `meta.json` each iteration)
+- `triage_interval`, `scan_pass_throttle_ms`, `rate_limit_backoff` — **Implemented** (also stored in child `loopSettings`; orchestrator reads them directly from `pipeline.yml` at startup and caches them in orchestrator state)
+- `max_iterations`, `max_stuck`, `inter_iteration_sleep`, `cooldown_ladder`, `provider_timeout` — **Implemented** (written to `loop-plan.json`, read by loop scripts at startup; hot-reloaded from `meta.json` each iteration)
 
 ### Per-agent config (`.aloop/agents/<name>.yml`)
 
@@ -125,20 +125,26 @@ max_retries: 2
 retry_backoff: exponential
 ```
 
-### Orchestrator CLI defaults
+### Orchestrator settings (`.aloop/pipeline.yml`)
 
-Orchestrator settings can also be overridden per-project in `~/.aloop/projects/<hash>/config.yml`:
+The orchestrator reads `concurrency_cap` from `pipeline.yml` (at root level, not under `loop:`):
 
 ```yaml
-concurrency_cap: 5
-triage_interval: 3
-scan_pass_throttle_ms: 15000
-rate_limit_backoff: exponential
+concurrency_cap: 5            # Max parallel child loops
+```
+
+`triage_interval`, `scan_pass_throttle_ms`, and `rate_limit_backoff` can be set under `loop:` (shown above) — the orchestrator reads them from `pipeline.yml` regardless of nesting level.
+
+CLI flags always take precedence over config file values.
+
+### Per-project global config (`~/.aloop/projects/<hash>/config.yml`)
+
+Policy preferences that apply across all sessions for a project:
+
+```yaml
 autonomy_level: balanced
 auto_merge_to_main: false
 ```
-
-CLI flags always take precedence over config file values.
 
 ## Providers
 
