@@ -6,6 +6,8 @@
 
 - [x] [review] Gate 3: DocsPanel.tsx branch coverage still 85.71% after test fixes — add test to cover `useEffect` reset branch at line 37; render with `docs` containing `TODO.md`, then re-render with `docs` omitting `TODO.md` entirely (so `activeTab === 'TODO.md'` is no longer valid), assert the active tab falls back to the new default (priority: critical)
 - [x] [review] Gate 4: `playwright.stories.config.ts:6` — `const artifactDir = path.resolve(...)` is defined but never referenced in `defineConfig`; delete it (priority: low)
+- [ ] [review] Gate 2: `DocsPanel.test.tsx:145-160` — `switches to overflow tab via dropdown menu` clicks the EXTRA dropdown menuitem at line 159 but has no post-click assertion; the tab switch is completely unverified. Add `expect(screen.getByRole('tab', { name: 'EXTRA' })).toHaveAttribute('data-state', 'active')` after the final `await user.click(...)` call. (priority: high)
+- [ ] [review] Gate 4: `playwright.stories.config.ts:1-2,5` — Gate 4 fix was incomplete; deleting `artifactDir` renamed it to `currentDir` but left it unused. Lines 1 (`import path from 'node:path'`), 2 (`import { fileURLToPath } from 'node:url'`), and 5 (`const currentDir = path.dirname(...)`) are all dead code — none referenced in `defineConfig`. Delete all three lines. (priority: low)
 
 ### Up Next
 

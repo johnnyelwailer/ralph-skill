@@ -28,3 +28,21 @@ Layout screenshots verified visually:
 - `sidebar-collapsed.png`: Sidebar collapses to icon strip (expand icon + status dots) ✓
 
 ---
+
+## Review — 2026-03-30 — commits 827043500..67fa4d5a3
+
+**Verdict: FAIL** (2 findings → written to TODO.md as [review] tasks)
+**Scope:** `DocsPanel.test.tsx`, `playwright.stories.config.ts`
+
+### Prior findings resolved
+
+- ✓ Gate 3: DocsPanel.tsx `useEffect` reset branch now covered — `resets activeTab to defaultTab when active tab is removed from docs` (lines 103-124) rerenders with TODO.md removed and asserts SPEC tab becomes active via `data-state`. 95.23% branch coverage confirmed by QA.
+- ✗ Gate 4: `playwright.stories.config.ts` — `artifactDir` was deleted but renamed to `currentDir`; dead code persists.
+
+### Findings
+
+**Gate 2: `DocsPanel.test.tsx:145-160`** — `switches to overflow tab via dropdown menu` performs the interaction (clicks overflow button, waits for EXTRA menuitem, clicks EXTRA) but has no post-click assertion. The tab switch is entirely unverified. A broken `onSelect` handler would not cause this test to fail.
+
+**Gate 4: `playwright.stories.config.ts:1-2,5`** — The prior Gate 4 fix renamed `artifactDir` to `currentDir` without deleting it. All three lines remain dead code: `import path from 'node:path'` (line 1), `import { fileURLToPath } from 'node:url'` (line 2), and `const currentDir = path.dirname(fileURLToPath(import.meta.url))` (line 5). None are referenced in `defineConfig`. Violates Constitution rule 13. QA log at iter 59 independently confirms this.
+
+---
