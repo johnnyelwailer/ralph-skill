@@ -14,10 +14,12 @@
 - [ ] [qa/P1] Fix DocsPanel.tsx branch coverage (currently 85.71%, need ≥90%)
   - Uncovered: `useEffect` reset path at line 37 (`setActiveTab(defaultTab)` when `activeTab` becomes invalid)
   - Fix: add a test that renders with `docs` prop containing only one doc, then triggers a state where `activeTab` is no longer in the valid list (e.g., by re-rendering with fewer docs)
+  - Still failing at iter 58 (2026-03-30): branch coverage 85.71% at commit 538bfeb42
 
 - [ ] [qa/P1] Fix Sidebar.tsx branch coverage (currently 78.46%, need ≥90%)
   - Uncovered branches at lines 83,100,159,215 — primarily context menu and olderOpen collapse
   - Add context menu tests: (a) right-click renders menu with `role="menu"` at correct position, (b) "Stop after iteration" calls `onStopSession(id, false)` and closes menu, (c) "Kill immediately" calls `onStopSession(id, true)` and closes menu, (d) "Copy session ID" calls `onCopySessionId(id)` and closes menu, (e) Escape key fires `setContextMenuSessionId(null)`.
+  - Still failing at iter 58 (2026-03-30): branch coverage 78.46% at commit 538bfeb42
 
 - [ ] Extract Header component from AppView.tsx (priority: critical)
   - `Header` (lines 233–362, ~130 LOC): session header with phase badge, iteration counter, elapsed timer, stop/resume buttons, steer input
