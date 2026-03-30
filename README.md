@@ -29,7 +29,7 @@ aloop start --provider claude
 aloop start --provider round-robin
 
 # Resume a stopped session
-aloop start --launch-mode resume --session-dir ~/.aloop/sessions/<id>
+aloop start <session-id> --launch resume
 ```
 
 ### Orchestrator Mode (`aloop orchestrate`)
@@ -99,19 +99,18 @@ loop:
   max_iterations: 50            # Max iterations before auto-stopping (0 = unlimited)
   max_stuck: 3                  # Skip a task after N consecutive failures
   inter_iteration_sleep: 3      # Seconds between iterations
-  triage_interval: 5            # Run orchestrator triage every N iterations
+  triage_interval: 5            # Run orchestrator triage every N scan iterations
   scan_pass_throttle_ms: 30000  # Min milliseconds between orchestrator scan passes
   rate_limit_backoff: fixed     # Backoff strategy: exponential, linear, or fixed
-  concurrency_cap: 3            # Max concurrent child loops (orchestrator)
   cooldown_ladder: [0, 120, 300, 900, 1800, 3600]  # Provider cooldown seconds per failure count
   provider_timeout: 10800       # Max seconds to wait for a provider response
 ```
 
-These settings are written to `loop-plan.json` at session start and hot-reloaded each iteration from `meta.json`. Changes take effect on the next iteration without restarting.
+These settings are written to `loop-plan.json` at session start and hot-reloaded each iteration. Changes to `loop-plan.json` take effect on the next iteration without restarting.
 
 **Implementation status:**
-- `triage_interval`, `scan_pass_throttle_ms`, `rate_limit_backoff`, `concurrency_cap` — **Implemented** (config overrides CLI defaults for orchestrator)
-- `max_iterations`, `max_stuck`, `inter_iteration_sleep`, `cooldown_ladder`, `provider_timeout` — **Implemented** (written to `loop-plan.json`, read by loop scripts)
+- `triage_interval`, `scan_pass_throttle_ms`, `rate_limit_backoff` — **Implemented** (stored in `loopSettings`; orchestrator reads them from session state)
+- `max_iterations`, `max_stuck`, `inter_iteration_sleep`, `cooldown_ladder`, `provider_timeout` — **Implemented** (written to `loop-plan.json`, read and applied by loop scripts each iteration)
 
 ### Per-agent config (`.aloop/agents/<name>.yml`)
 
@@ -178,7 +177,7 @@ opencode run --agent vision-reviewer
 
 These agents run as read-only subagents (no write/edit access) via OpenRouter. Customize them by editing the markdown files in `.opencode/agents/`.
 
-Provider health is tracked automatically. Failed providers enter cooldown with exponential backoff and are skipped until recovery. Auth failures use longer cooldowns (10min → 30min → 1hr) but still auto-retry.
+Provider health is tracked automatically. Failed providers enter cooldown with exponential backoff and are skipped until recovery. Auth failures mark a provider as `degraded` — no auto-recovery; the user must re-authenticate (e.g., `gh auth login`).
 
 ## Prerequisites
 
