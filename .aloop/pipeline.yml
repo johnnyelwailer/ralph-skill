@@ -28,7 +28,7 @@ finalizer:
 # meta.json each iteration. Edit the file and the running loop picks it up.
 loop:
   # Iteration control
-  max_iterations: 50            # Max iterations before auto-stopping (set 0 for unlimited)
+  max_iterations: 50            # Max iterations before auto-stopping (must be a positive integer)
   max_stuck: 3                  # Skip task after N consecutive failures
   inter_iteration_sleep: 3      # Seconds between iterations
   phase_retries_multiplier: 2   # MAX_PHASE_RETRIES = provider_count * this
