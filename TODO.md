@@ -8,14 +8,15 @@
 
 ### Up Next
 
-- [ ] Extract Header component from AppView.tsx (priority: critical)
+- [x] Extract Header component from AppView.tsx (priority: critical)
   - `Header` (lines 233–362, ~130 LOC): session header with phase badge, iteration counter, elapsed timer, stop/resume buttons, steer input
-  - Create `src/components/layout/Header.tsx`, `Header.test.tsx`, `Header.stories.tsx`
-  - AppView.tsx still at 823 LOC; spec requires <100 LOC shell
+  - Created `src/components/layout/Header.tsx`, `Header.test.tsx`, `Header.stories.tsx`
+  - AppView.tsx reduced from 823 → 554 LOC
 
-- [ ] Extract QACoverageBadge from AppView.tsx (priority: high)
+- [x] Extract QACoverageBadge from AppView.tsx (priority: high)
   - `QACoverageBadge` (lines 363–452, ~90 LOC): QA coverage display badge with fetch logic
-  - Create `src/components/progress/QACoverageBadge.tsx`, `.test.tsx`, `.stories.tsx`
+  - Moved into `Header.tsx` (co-located since Header directly uses it); re-exported from AppView.tsx
+  - Tests added to `Header.test.tsx`; stories added to `Header.stories.tsx`
 
 - [ ] Extract CommandPalette from AppView.tsx (priority: high)
   - `CommandPalette` (lines 453–492, ~40 LOC): Ctrl+K search overlay
