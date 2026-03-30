@@ -175,3 +175,57 @@ $ node /tmp/qa-header-test.mjs
 → layout-header--high-budget-usage: OK (204 chars)
 → layout-header--qa-badge-default: FAILED — #storybook-root is hidden (empty), "No Preview" error
 ```
+
+---
+
+## QA Session — 2026-03-30 (iteration 62)
+
+### Test Environment
+- Working dir: aloop/cli/dashboard/
+- Commit: 55caec1a1 (test-strengthening commits: stronger assertions, removed dead mock/import)
+- Features re-tested: 4 (all were previously FAIL — re-test to see if fixed)
+
+### Results
+- PASS: All unit tests (458 tests, 39 files — no change in count; test assertions strengthened, no new tests)
+- PASS: Storybook build (no errors)
+- PASS: All 23 existing Playwright story screenshots (no regression)
+- PASS: 6/7 Header stories render correctly in dev server (Default, Loading, Disconnected, Stopped, NoProvider, HighBudgetUsage)
+- FAIL: Header.tsx branch coverage still 87.61% — test-strengthening commits did NOT cover lines 130,211,227,275
+- FAIL: `layout-header--qa-badge-default` still shows empty #storybook-root — confirmed via Playwright headless
+- FAIL: Header stories still absent from e2e/story-screenshots.spec.ts — spec has 23 stories (no Header)
+
+### Bugs Filed
+- None new — all 3 bugs from iter 61 confirmed still open; re-test notes added below
+
+### Re-test Notes
+- iter 62: [qa/P1] Header.tsx branch coverage — still 87.61%, not fixed by iter 62 commits
+- iter 62: [qa/P2] qa-badge-default story — still empty #storybook-root, confirmed via Playwright
+- iter 62: [qa/P1] Header stories in spec — still missing from story-screenshots.spec.ts
+
+### Command Transcript
+```
+$ npm run test -- --run
+→ 39 files, 458 tests passed
+
+$ npm run build-storybook
+→ Storybook build completed successfully
+
+$ npx vitest run --coverage
+→ Header.tsx | 93.18% stmts | 87.61% branch | 91.66% funcs | 100% lines | uncovered: 130,211,227,275
+
+$ npx playwright test --config playwright.stories.config.ts
+→ 23 passed (34.2s)
+
+$ cat e2e/story-screenshots.spec.ts | grep layout-header
+→ (no output — Header stories not in spec)
+
+$ npx storybook dev -p 6007 --ci --no-open &
+$ node /tmp/qa-header-playwright.mjs
+→ layout-header--default: empty=false, noPreview=false (content rendered OK, len=5653)
+→ layout-header--loading: empty=false (len=5652)
+→ layout-header--disconnected: empty=false (len=5646)
+→ layout-header--stopped: empty=false (len=5491)
+→ layout-header--no-provider: empty=false (len=5352)
+→ layout-header--high-budget-usage: empty=false (len=5645)
+→ layout-header--qa-badge-default: empty=true — #storybook-root empty, No Preview
+```

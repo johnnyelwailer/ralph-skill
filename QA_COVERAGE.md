@@ -18,3 +18,10 @@
 | Header branch coverage ≥90% | 2026-03-30 | 5d13e869b | FAIL | 87.61% — below threshold; uncovered branches at lines 130,211,227,275 — bug filed |
 | Header stories in story-screenshots.spec.ts | 2026-03-30 | 5d13e869b | FAIL | Header.stories.tsx has 7 stories but none in e2e/story-screenshots.spec.ts — bug filed |
 | Playwright story screenshots (23 stories) | 2026-03-30 | 5d13e869b | PASS | All 23 existing story screenshots still render correctly |
+| All unit tests (vitest) | 2026-03-30 | 55caec1a1 | PASS | 39 files, 458 tests — no regression after test-strengthening commits |
+| Storybook build (`npm run build-storybook`) | 2026-03-30 | 55caec1a1 | PASS | builds to storybook-static/ without errors |
+| Header branch coverage ≥90% | 2026-03-30 | 55caec1a1 | FAIL | still 87.61% — test-strengthening commits did not add branch coverage; lines 130,211,227,275 still uncovered |
+| Header stories in story-screenshots.spec.ts | 2026-03-30 | 55caec1a1 | FAIL | still 23 stories only; Header stories not added to spec |
+| Header stories render (6/7) in dev server | 2026-03-30 | 55caec1a1 | PASS | Default/Loading/Disconnected/Stopped/NoProvider/HighBudgetUsage render OK via Playwright |
+| `layout-header--qa-badge-default` story | 2026-03-30 | 55caec1a1 | FAIL | still empty #storybook-root; confirmed via Playwright headless browser |
+| Playwright story screenshots (23 stories) | 2026-03-30 | 55caec1a1 | PASS | all 23 existing story screenshots still pass |
