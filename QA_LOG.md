@@ -591,3 +591,60 @@ grep -n "proof_manifest_found\|proof_manifest_missing" /home/pj/.aloop/bin/loop.
 rm -rf /tmp/aloop-test-install-ziovSf
 rm -rf ~/.aloop/sessions/orchestrator-20260330-071{058,433,448}
 ```
+
+## QA Session — 2026-03-30 (final gate re-verification, commit c4380e7cf)
+
+### Test Environment
+- Binary under test: `/tmp/aloop-test-install-3oUhlI/bin/aloop` (1.0.0, built from current source)
+- `aloop update` applied — Version: c4380e7cf (2026-03-30T07:26:47Z), Files updated: 107
+- Features tested: 4 (pipeline.yml Gate 1a/1b integrity, bash syntax, Pester proof_manifest, orchestrate --plan-only)
+
+### Results
+- PASS: pipeline.yml finalizer has 6 entries — no PROMPT_cleanup.md; grep "cleanup" exits 1
+- PASS: pipeline.yml cr_analysis block present with all required fields (prompt, batch, filter, result_pattern); PROMPT_orch_cr_analysis.md exists
+- PASS: bash -n loop.sh (installed + worktree) — exit 0
+- PASS: Pester queue_override proof tests — Tests Passed: 2, Failed: 0
+- PASS: orchestrate --plan-only exits 0 — pipeline.yml compiles without error at final HEAD
+
+### Bugs Filed
+None — all tests pass at c4380e7cf.
+
+### Command Transcript
+
+```
+# Install packaged CLI
+ALOOP_BIN=$(npm --prefix aloop/cli run --silent test-install -- --keep 2>/dev/null | tail -1)
+# Binary: /tmp/aloop-test-install-3oUhlI/bin/aloop (1.0.0)
+
+$ALOOP_BIN update
+# Output: Updated ~/.aloop from worktree — Version: c4380e7cf (2026-03-30T07:26:47Z) — Files updated: 107
+
+# Test 1: pipeline.yml finalizer — no PROMPT_cleanup.md
+grep -A 20 "^finalizer:" .aloop/pipeline.yml
+# Output: [spec-gap, docs, spec-review, final-review, final-qa, proof] — 6 entries, no cleanup
+grep -in "cleanup" .aloop/pipeline.yml
+# Exit code: 1 (no match) — PASS
+
+# Test 1b: cr_analysis block
+grep -A 10 "cr_analysis:" .aloop/pipeline.yml
+# Output: prompt: PROMPT_orch_cr_analysis.md, batch: 2, filter: {is_change_request, cr_spec_updated}, result_pattern — all fields present
+ls ~/.aloop/templates/PROMPT_orch_cr_analysis.md
+# Exit 0 — PASS
+
+# Test 2: bash -n loop.sh
+bash -n /home/pj/.aloop/bin/loop.sh
+# Exit code: 0 — PASS
+bash -n aloop/bin/loop.sh
+# Exit code: 0 — PASS
+
+# Test 3: Pester queue_override proof tests
+pwsh -NonInteractive -Command "Invoke-Pester -Filter '*queue_override proof*' ..."
+# Tests Passed: 2, Failed: 0 — PASS
+
+# Test 4: orchestrate --plan-only
+$ALOOP_BIN orchestrate --plan-only --spec /dev/null  (in isolated temp dir)
+# Orchestrator session initialized... Exit code: 0 — PASS
+
+# Cleanup
+rm -rf /tmp/aloop-test-install-3oUhlI ~/.aloop/sessions/orchestrator-20260330-072744
+```

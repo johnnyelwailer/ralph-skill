@@ -40,3 +40,8 @@
 | loop.sh bash syntax (-n check) at 817980bdd | 2026-03-30 | 817980bdd | PASS | `bash -n /home/pj/.aloop/bin/loop.sh` and worktree copy both exit 0 |
 | queue_override proof Pester tests at 817980bdd | 2026-03-30 | 817980bdd | PASS | Pester: Tests Passed: 2, Failed: 0 — proof_manifest_found + proof_manifest_missing pass at final review-approved state |
 | proof_manifest_found/missing code in loop.sh (at 817980bdd) | 2026-03-30 | 817980bdd | PASS | Behavioral: loop.sh lines 2085,2090,2264,2269 emit proof_manifest_found/missing events — both main path and queue_override path covered |
+| pipeline.yml finalizer — no PROMPT_cleanup.md (at c4380e7cf) | 2026-03-30 | c4380e7cf | PASS | Behavioral: finalizer has 6 entries [spec-gap,docs,spec-review,final-review,final-qa,proof] — no cleanup entry; grep for "cleanup" exits 1 |
+| pipeline.yml cr_analysis block present (at c4380e7cf) | 2026-03-30 | c4380e7cf | PASS | Behavioral: cr_analysis block has all required fields (prompt, batch, filter, result_pattern); PROMPT_orch_cr_analysis.md exists |
+| orchestrate --plan-only exits 0 (at c4380e7cf) | 2026-03-30 | c4380e7cf | PASS | Behavioral: orchestrate --plan-only exits 0 — pipeline.yml (including cr_analysis block) parses without error |
+| loop.sh bash syntax (-n check) at c4380e7cf | 2026-03-30 | c4380e7cf | PASS | `bash -n /home/pj/.aloop/bin/loop.sh` and worktree copy both exit 0 |
+| queue_override proof Pester tests at c4380e7cf | 2026-03-30 | c4380e7cf | PASS | Pester: Tests Passed: 2, Failed: 0 — proof_manifest_found + proof_manifest_missing pass at final HEAD |
