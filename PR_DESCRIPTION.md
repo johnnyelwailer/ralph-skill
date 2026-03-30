@@ -1,6 +1,6 @@
 ## Summary
 
-Implements proof artifact storage infrastructure for issue #101:
+Implements proof artifact storage infrastructure for issue #101. An unauthorized scope expansion (cleanup agent added to finalizer, cr_analysis event removed from pipeline.yml) was detected by review and reverted in follow-up commits.
 
 - Moves `mkdir -p artifacts/iter-N` to **before** `invoke_provider` in loop.sh and loop.ps1 (was incorrectly placed after, so the proof agent could not write to it during execution)
 - Adds `mkdir -p artifacts/baselines` at session init in both scripts (idempotent, for baseline management)
@@ -20,6 +20,8 @@ Implements proof artifact storage infrastructure for issue #101:
 - `aloop/templates/subagent-hints-proof.md` — expand with vision-model delegation examples, {{ARTIFACTS_DIR}}/{{ITERATION}} usage patterns
 - `CONSTITUTION.md` — harden rule #1 (loop scripts must shrink, never grow — this issue is the last authorized addition)
 - `SPEC.md` — correct 9 stale references placing proof in continuous cycle
+- `.aloop/pipeline.yml` — reverted unauthorized removal of cr_analysis event; reverted unauthorized addition of PROMPT_cleanup.md to finalizer
+- `aloop/templates/PROMPT_cleanup.md` — deleted (unauthorized addition, out of scope)
 
 ## Verification
 

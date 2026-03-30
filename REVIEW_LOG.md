@@ -178,6 +178,40 @@ All prior findings remain resolved. This commit closes the issue's QA cycle.
 
 ---
 
+## Review — 2026-03-30 — commit c05665ec7..8d5daba06
+
+**Verdict: PASS** (0 findings)
+**Scope:** `.aloop/pipeline.yml`, `aloop/templates/PROMPT_cleanup.md`, `TODO.md`, `QA_COVERAGE.md`, `QA_LOG.md`
+
+Summary of what changed since last review (c05665ec7):
+- `46367b742`: Restore cr_analysis event block in pipeline.yml (Gate 1b+4 fix)
+- `3fbde7967`: Remove PROMPT_cleanup.md from pipeline.yml finalizer and delete template (Gate 1a fix)
+- `8d5daba06`: QA session confirming all fixes
+
+Gate 1: PASS — Both prior Gate 1 findings resolved. (a) PROMPT_cleanup.md removed from `finalizer:` list in pipeline.yml (diff confirms `-  - PROMPT_cleanup.md`); file deleted from `aloop/templates/` (confirmed `ls` → No such file). TASK_SPEC.md explicitly lists "Any prompt files other than `subagent-hints-proof.md`" as Out of Scope — revert is correct. (b) cr_analysis event block restored to pipeline.yml with exact required structure: `prompt: PROMPT_orch_cr_analysis.md, batch: 2, filter: {is_change_request: true, cr_spec_updated: false}, result_pattern: cr-analysis-result-{issue_number}.json`.
+
+Gate 2: PASS — No new code added. QA verified behavioral outcomes through CLI commands. N/A for unit tests.
+
+Gate 3: PASS — YAML/config files only. No branches.
+
+Gate 4: PASS — Prior finding resolved: PROMPT_orch_cr_analysis.md (aloop/templates/) is now referenced again by cr_analysis in pipeline.yml. No orphaned tracked files. QA_COVERAGE.md historical rows for 45e927b6e-era tests are append-only log entries — not dead code.
+
+Gate 5: PASS — QA session (8d5daba06): `bash -n loop.sh` exits 0; Pester queue_override proof tests 2/2 PASS; `orchestrate --plan-only` exits 0 without cr_analysis parse errors.
+
+Gate 6: PASS — Configuration file changes. Behavioral verification: pipeline.yml content confirmed via `grep -A10 "finalizer:"` and `grep -A10 "cr_analysis:"`; template deletion confirmed; `orchestrate --plan-only` end-to-end test confirms no parse errors. Appropriate proof for config-only changes.
+
+Gate 7: SKIP — no UI/layout changes.
+
+Gate 8: SKIP — no dependency changes.
+
+Gate 9: PASS — No user-facing docs changed. Internal tracking files (TODO.md, QA_COVERAGE.md) updated appropriately.
+
+Gate 10: PASS — QA_COVERAGE.md: all rows PASS, well above 30% threshold. No stale [qa/P1] bugs in TODO.md.
+
+Prior Gate 1(a) finding: RESOLVED (PROMPT_cleanup.md removed from finalizer and deleted from templates in 3fbde7967). Prior Gate 1(b) finding: RESOLVED (cr_analysis event restored in 46367b742). Prior Gate 4 finding: RESOLVED (PROMPT_orch_cr_analysis.md is now referenced again).
+
+---
+
 ## Review — 2026-03-30 — commit 4141187b5..c05665ec7
 
 **Verdict: FAIL** (3 findings → written to TODO.md as [review] tasks)
