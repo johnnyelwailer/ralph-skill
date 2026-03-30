@@ -88,6 +88,59 @@ The review agent enforces 9 gates on every build iteration:
 
 Failed gates produce `[review]` fix tasks that the next build iteration picks up before any new work.
 
+## Pipeline Configuration
+
+All pipeline intervals, thresholds, and caps are config-driven — no hardcoded values. Create `.aloop/pipeline.yml` in your project root to override defaults.
+
+### Loop settings (`.aloop/pipeline.yml`)
+
+```yaml
+loop:
+  max_iterations: 50            # Max iterations before auto-stopping (0 = unlimited)
+  max_stuck: 3                  # Skip a task after N consecutive failures
+  inter_iteration_sleep: 3      # Seconds between iterations
+  triage_interval: 5            # Run orchestrator triage every N iterations
+  scan_pass_throttle_ms: 30000  # Min milliseconds between orchestrator scan passes
+  rate_limit_backoff: fixed     # Backoff strategy: exponential, linear, or fixed
+  concurrency_cap: 3            # Max concurrent child loops (orchestrator)
+  cooldown_ladder: [0, 120, 300, 900, 1800, 3600]  # Provider cooldown seconds per failure count
+```
+
+These settings are written to `loop-plan.json` at session start and hot-reloaded each iteration from `meta.json`. Changes take effect on the next iteration without restarting.
+
+**Implementation status:**
+- `triage_interval`, `scan_pass_throttle_ms`, `rate_limit_backoff`, `concurrency_cap` — **Implemented** (config overrides CLI defaults for orchestrator)
+- `max_iterations`, `max_stuck`, `inter_iteration_sleep`, `cooldown_ladder` — **Implemented** (written to `loop-plan.json`, read by loop scripts)
+- `provider_timeout` — **Partial** (written to `loop-plan.json` but loop scripts do not yet read it; loop uses its compiled-in default)
+
+### Per-agent config (`.aloop/agents/<name>.yml`)
+
+Override reasoning effort, prompt file, or retry behavior per agent:
+
+```yaml
+# .aloop/agents/review.yml
+prompt: PROMPT_review.md
+reasoning: xhigh
+timeout: 600
+max_retries: 2
+retry_backoff: exponential
+```
+
+### Orchestrator CLI defaults
+
+Orchestrator settings can also be overridden per-project in `~/.aloop/projects/<hash>/config.yml`:
+
+```yaml
+concurrency_cap: 5
+triage_interval: 3
+scan_pass_throttle_ms: 15000
+rate_limit_backoff: exponential
+autonomy_level: balanced
+auto_merge_to_main: false
+```
+
+CLI flags always take precedence over config file values.
+
 ## Providers
 
 Five AI coding agents supported — use one, or round-robin across multiple:
@@ -229,6 +282,12 @@ The installer deploys skill files to each harness directory and the Aloop runtim
   RESEARCH.md                   # External knowledge log (append-only)
   REVIEW_LOG.md                 # Review findings log (append-only)
   docs/conventions/             # Project-specific conventions
+  .aloop/
+    pipeline.yml                # Pipeline config (cycle, finalizer, loop settings)
+    agents/
+      plan.yml                  # Per-agent config overrides (prompt, reasoning, timeout)
+      build.yml
+      review.yml
 ```
 
 ## Key Features
@@ -243,8 +302,9 @@ The installer deploys skill files to each harness directory and the Aloop runtim
 - **Provider health**: Automatic cooldown and failover on provider errors
 - **Worktree isolation**: Each session runs on its own git branch
 - **Backpressure validation**: Types, tests, and lint gate every commit
-- **Stuck detection**: Auto-skip tasks after N consecutive failures
+- **Stuck detection**: Auto-skip tasks after N consecutive failures (configurable via `max_stuck`)
 - **Persistent logs**: RESEARCH.md and REVIEW_LOG.md survive TODO regenerations
+- **Config-driven pipeline**: All intervals, thresholds, and caps set in `.aloop/pipeline.yml` — no hardcoded values
 
 ## Development
 
