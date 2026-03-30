@@ -120,6 +120,18 @@ export interface ProcessRequestsOptions {
   output?: string;
 }
 
+/**
+ * Create an OrchestratorAdapter when a repo is available, or return undefined.
+ * Extracted for testability — covers the repo ? createAdapter(...) : undefined branch.
+ * @internal exported for testing
+ */
+export function makeAdapterForRepo(
+  repo: string | null,
+  execGh: Parameters<typeof createAdapter>[1],
+): OrchestratorAdapter | undefined {
+  return repo ? createAdapter({ type: 'github', repo }, execGh) : undefined;
+}
+
 interface ReviewCommentLike {
   author?: { login?: string | null } | null;
   createdAt?: string | null;
@@ -938,9 +950,7 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
   };
 
   // Create adapter for GitHub operations when repo is available
-  const adapter: OrchestratorAdapter | undefined = repo
-    ? createAdapter({ type: 'github', repo }, execGh)
-    : undefined;
+  const adapter = makeAdapterForRepo(repo, execGh);
 
   const scanDeps: ScanLoopDeps = {
     existsSync,

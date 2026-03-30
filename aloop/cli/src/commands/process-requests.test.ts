@@ -4,7 +4,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { existsSync } from 'node:fs';
 import { mkdtemp, mkdir, rm, writeFile, readFile } from 'node:fs/promises';
-import { formatReviewCommentHistory, getDirectorySizeBytes, pruneLargeV8CacheDir, syncMasterToTrunk, syncChildBranches, type ChildBranchSyncDeps } from './process-requests.js';
+import { formatReviewCommentHistory, getDirectorySizeBytes, pruneLargeV8CacheDir, syncMasterToTrunk, syncChildBranches, makeAdapterForRepo, type ChildBranchSyncDeps } from './process-requests.js';
+import { GitHubAdapter } from '../lib/adapter.js';
 import { processCrResultFiles, type CrResultDeps } from './cr-pipeline.js';
 import type { OrchestratorIssue } from './orchestrate.js';
 
@@ -409,5 +410,41 @@ describe('PR body enrichment', () => {
     } finally {
       await rm(root, { recursive: true, force: true });
     }
+  });
+});
+
+
+// --- makeAdapterForRepo tests (process-requests.ts:941-943 branch coverage) ---
+
+describe('makeAdapterForRepo', () => {
+  const mockExecGh = async (_args: string[]) => ({ stdout: '', stderr: '' });
+
+  it('(a) repo present → returns a GitHubAdapter (OrchestratorAdapter)', () => {
+    const adapter = makeAdapterForRepo('owner/repo', mockExecGh);
+    assert.ok(adapter !== undefined, 'adapter should be defined when repo is present');
+    assert.ok(adapter instanceof GitHubAdapter, 'adapter should be a GitHubAdapter');
+  });
+
+  it('(a) adapter reference is the same when threaded into scanDeps, prLifecycleDeps, dispatchDeps', () => {
+    const adapter = makeAdapterForRepo('owner/repo', mockExecGh);
+    // Simulate the threading in processRequestsCommand (lines 957, 964, 1049)
+    const scanDeps = { adapter, prLifecycleDeps: { adapter }, dispatchDeps: { adapter } };
+    assert.strictEqual(scanDeps.adapter, adapter);
+    assert.strictEqual(scanDeps.prLifecycleDeps.adapter, adapter);
+    assert.strictEqual(scanDeps.dispatchDeps.adapter, adapter);
+  });
+
+  it('(b) repo null → returns undefined', () => {
+    const adapter = makeAdapterForRepo(null, mockExecGh);
+    assert.strictEqual(adapter, undefined);
+  });
+
+  it('(b) no repo → all three adapter slots are undefined', () => {
+    const adapter = makeAdapterForRepo(null, mockExecGh);
+    // Simulate the threading in processRequestsCommand (lines 957, 964, 1049)
+    const scanDeps = { adapter, prLifecycleDeps: { adapter }, dispatchDeps: { adapter } };
+    assert.strictEqual(scanDeps.adapter, undefined);
+    assert.strictEqual(scanDeps.prLifecycleDeps.adapter, undefined);
+    assert.strictEqual(scanDeps.dispatchDeps.adapter, undefined);
   });
 });

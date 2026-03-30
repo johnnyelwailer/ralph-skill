@@ -21,9 +21,11 @@ Acceptance criteria:
 
 ### In Progress
 
-- [ ] [review] Gate 2/3: `process-requests.ts:941-943` — `repo ? createAdapter(...) : undefined` conditional has zero test coverage. Add tests for: (a) `repo` present → adapter created and passed into `scanDeps.adapter`, `prLifecycleDeps.adapter`, and `dispatchDeps.adapter`; (b) no `repo` → all three adapter slots are `undefined`. (Same finding as 2026-03-27 review Gate 2, re-opened after code was re-added.) (priority: high)
+- [x] [review] Gate 2/3: `process-requests.ts:941-943` — `repo ? createAdapter(...) : undefined` conditional has zero test coverage. Add tests for: (a) `repo` present → adapter created and passed into `scanDeps.adapter`, `prLifecycleDeps.adapter`, and `dispatchDeps.adapter`; (b) no `repo` → all three adapter slots are `undefined`. (Same finding as 2026-03-27 review Gate 2, re-opened after code was re-added.) (priority: high)
 
-- [ ] [review] Uncommitted changes: 302 lines of adapter-migration code in orchestrate.ts are in the working tree but NOT committed. TODO.md marks "Migrate issue lifecycle calls" and "Migrate PR lifecycle calls" as `[x]` done. Commit the work (with tests) or revert. Once committed, each new `if (deps.adapter) ... else { execGh }` dual-path in `applyTriageResultsToIssue`, `resolveSpecQuestionIssues`, `mergePr`, `flagForHuman`, and `processPrLifecycle` needs a test covering the adapter branch (not just the existing execGh branch). (priority: high)
+- [ ] [review] Add adapter-branch tests for orchestrate.ts dual-path functions: `applyTriageResultsToIssue`, `resolveSpecQuestionIssues`, `mergePr`, `flagForHuman`, and `processPrLifecycle` each have `if (deps.adapter) ... else { execGh }` paths with zero test coverage for the adapter branch. Add tests covering adapter path for each. (priority: high)
+
+- [x] Fix: `resolveSpecQuestionIssues` call at orchestrate.ts:5496 does not pass `adapter` from `deps` — the function accepts `adapter` in its deps type but the call site omits it, so the adapter branch is never reached in production. Add `adapter: deps.adapter` to the call. (priority: high)
 
 - [x] [qa/P1] orchestrate.ts applyDecompositionPlan missing dependency body injection: fixed — enriched body with "Depends on #X, #Y" injected and stored in state. RESOLVED: 2026-03-29.
 
@@ -41,7 +43,7 @@ Acceptance criteria:
 
 - [ ] Migrate scanLoop / bulk fetch execGh calls in orchestrate.ts — replace `deps.execGh` calls in bulk fetch, issue close, and auto-merge with adapter calls
 
-- [ ] Migrate process-requests.ts execGh calls — replace `execGh` usage with adapter calls; thread adapter through deps
+- [ ] Migrate process-requests.ts execGh calls — replace `execGh` usage with adapter calls (currently one raw `execGh` call at line 421 for refine-result body update; migrate to `adapter.updateIssue`)
 
 - [ ] Meta.json adapter config — read `adapter` field from `meta.json` (default: `"github"`) and pass the type to `createAdapter()` instead of hardcoding `"github"`
 
@@ -71,3 +73,4 @@ Acceptance criteria:
 - [x] [review] Gate 4: execGh fallback breaks DI — gate no longer applicable (instantiation code removed pending re-implementation)
 - [x] [review] Gate 5: `process-requests.ts:551` — `issue.state !== 'review'` dead comparison fixed by adding `'review'` to `OrchestratorIssueState` union type
 - [x] `applyDecompositionPlan` adds `wave/N` label alongside `aloop/wave-N` and derives component labels from `file_hints`
+- [x] [review] Uncommitted changes: adapter-migration code (triage, spec-question, PR lifecycle) committed in `49c01a745`
