@@ -4,6 +4,10 @@
 
 ### Open
 
+_(none)_
+
+### In Review
+
 - [x] Fix TypeScript errors in `orchestrate.test.ts` blocking clean build — 3 errors found via `npx tsc --noEmit`:
   1. `line 367`: `result.state.issues[1].priority` — `priority` is not declared on `OrchestratorIssue`; fix by adding `priority?: number` to the interface (already stored via `as any` at line 1211)
   2. `line 446`: `epic` is possibly `undefined` — add non-null assertion `epic!.status` or an assert guard after `.find()`
