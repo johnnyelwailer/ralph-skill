@@ -136,6 +136,7 @@ Health files are protected by flock-based locking (bash) and .NET file locking (
 | **Git** | any recent | Commits, branches, worktree isolation |
 | **Node.js + npm** | 22 LTS | CLI runtime and provider CLI installs |
 | **Bash** or **PowerShell 7** | — | `loop.sh` (macOS/Linux) or `loop.ps1` (all platforms) |
+| **`flock` (util-linux)** | — | Required by `loop.sh` for health file locking. Standard on Linux. macOS: `brew install util-linux` |
 | **At least one provider CLI** | — | See provider table above |
 
 ### Installing Provider CLIs
