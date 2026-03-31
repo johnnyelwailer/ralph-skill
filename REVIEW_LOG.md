@@ -851,3 +851,49 @@ QA session `96f65112d` (HEAD regression check) confirms no new regressions.
 No UI changes, no new dependencies, no user-facing behavior changed, no docs required.
 
 **Issue #177 is complete.** All non-deferred acceptance criteria satisfied. LocalAdapter deferred per spec.
+
+---
+
+## Review — 2026-03-31 — commits 96f65112d..0685e00b4 (final-review: spec-gap docs + README model name fix)
+
+**Verdict: PASS** (1 observation)
+**Scope:** `README.md`, `TODO.md` (no production code changed)
+**Commits reviewed:** `80b033e71` (spec-gap run 4 — no new gaps), `3013ea666` (README: fix model names), `0685e00b4` (TODO.md review note by spec-gap agent)
+
+### Gate 1 — PASS (spec compliance unchanged)
+
+No production code modified since the prior PASS review (`96f65112d`). All issue #177 acceptance criteria remain satisfied. `3013ea666` corrects README.md model names for error-analyst and vision-reviewer from `gemini-3.1-flash-lite` → `gemini-3.1-flash-lite-preview`, aligning with SPEC.md:3454 and SPEC.md:3473 which both specify `openrouter/google/gemini-3.1-flash-lite-preview`. No impact on OrchestratorAdapter migration ACs. ✓
+
+### Gate 2 — PASS
+
+No new tests added or changed. Existing test suite unchanged.
+
+### Gate 3 — PASS
+
+No new production code branches introduced.
+
+### Gate 4 — PASS
+
+Documentation-only changes. No dead code, no leftover TODOs, no duplication issues.
+
+### Gate 5 — PASS
+
+No production code changed since `96f65112d`. Prior confirmed baseline stands: adapter.test.ts 36/36, process-requests.test.ts 38/38, orchestrate.test.ts 348/375 (27 pre-existing failures unchanged), tsc 0 errors, npm run build clean.
+
+### Gate 6 — PASS (N/A)
+
+Documentation-only changes — no observable output to prove. Skip correct.
+
+### Gate 7 — N/A
+
+No UI changes.
+
+### Gate 8 — N/A
+
+No new dependencies.
+
+### Gate 9 — PASS
+
+**Observation**: Gate 9 — README model name correction (`gemini-3.1-flash-lite` → `gemini-3.1-flash-lite-preview`) verified against SPEC.md:3454 and SPEC.md:3473 — exact match with spec-defined model IDs for error-analyst and vision-reviewer agents.
+
+**Issue #177 is complete.** All non-deferred acceptance criteria satisfied. LocalAdapter deferred per spec.
