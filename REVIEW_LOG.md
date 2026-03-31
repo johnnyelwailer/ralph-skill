@@ -367,3 +367,55 @@ No dependency changes.
 README `.aloop/` directory addition accurately reflects real files on disk (confirmed by glob). All Issue #38 documentation requirements remain satisfied: finalizer prose (6 agents), template list (includes PROMPT_spec-review.md), CI workflow description unchanged.
 
 ---
+
+## Review — 2026-03-31 — uncommitted changes (final-review, spec-review trigger — repeat pass)
+
+**Verdict: PASS** (0 findings)
+**Scope:** `QA_COVERAGE.md` (staged — 1 new row added at 1933cd7eb), `QA_LOG.md` (unstaged — docs audit + final-qa session at 1933cd7eb), `README.md` (unstaged — minor tracking updates), `TODO.md` (unstaged — spec-gap re-runs, both [review] tasks now [x])
+
+**Prior findings resolution:**
+- All prior findings remain resolved. Both README [review] tasks (PROMPT_spec-review.md in template list; finalizer prose 6 agents) confirmed [x] and verified in code.
+
+### Gate 1 (Spec Compliance) — PASS
+
+All Issue #38 ACs verified via static checks:
+- CI workflow (`ci.yml`): triggers on push+PR to master/agent/trunk, Node 22, `npm ci` + `npm test` in `aloop/cli/dashboard` ✓
+- SPEC-ADDENDUM line 122: all 28 non-ui components have `.test.tsx` — 30 files confirmed via Glob (28 non-ui + 2 ui/) ✓
+- SPEC-ADDENDUM line 123: all 28 non-ui components have `.stories.tsx` — 41 files confirmed ✓
+- README finalizer prose (lines 22–28): all 6 agents present ✓
+- README template list (line 246): `PROMPT_spec-review.md` present ✓
+- TypeScript fixes intact: `afterEach` at `Sidebar.test.tsx:3`; `iterationStartedAt` in `ActivityPanel.test.tsx:14` baseProps ✓
+
+### Gate 2 (Test Depth) — N/A
+
+No test code changed in this scope.
+
+### Gate 3 (Coverage) — N/A
+
+No code branches added.
+
+### Gate 4 (Code Quality) — PASS
+
+QA_COVERAGE.md, QA_LOG.md, TODO.md additions are tracking-only. No dead content.
+
+### Gate 5 (Integration Sanity) — PASS
+
+Last dynamic run at `6650dcf30`/`613a7bab4`: `tsc --noEmit` exit 0, 632 tests pass. No code changes since — zero regression risk. Note: ENOSPC on /tmp prevents re-running bash commands in this session, same as prior passes.
+
+### Gate 6 (Proof) — N/A
+
+Tracking files only. No observable output requiring proof.
+
+### Gate 7 (Runtime Layout) — N/A
+
+No CSS or layout changes.
+
+### Gate 8 (Version Compliance) — N/A
+
+No dependency changes.
+
+### Gate 9 (Documentation) — PASS
+
+README.md: no new content added in this scope that contradicts reality. All prior documentation fixes remain intact and accurate.
+
+---
