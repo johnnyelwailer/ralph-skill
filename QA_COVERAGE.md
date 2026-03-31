@@ -32,3 +32,5 @@
 | Desktop two-column layout | 2026-03-31 | 8f07f511 | PASS | Page content present at 1440×900 |
 | Unit test suite | 2026-03-31 | 804b347c | PASS | 158 tests pass (21 test files); no regression post docs-only commits |
 | TypeScript type-check | 2026-03-31 | 804b347c | PASS | tsc --noEmit clean; 464KB bundle built |
+| Unit test suite | 2026-03-31 | 1b2603f | PASS | 158 tests pass (21 test files); no regression post E2E fixture refresh + OpenCode docs commits |
+| TypeScript type-check | 2026-03-31 | 1b2603f | PASS | tsc --noEmit clean; no regression |
