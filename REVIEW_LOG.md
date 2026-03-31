@@ -1,5 +1,32 @@
 # Review Log
 
+## Review — 2026-03-31 19:15 — commit 95201b0d7..4738a8b16
+
+**Verdict: PASS** (docs-only changes; no code changes)
+**Scope:** `README.md` (auth failure behavior correction), `TODO.md` (spec-review approval note)
+
+**Changes since last review (`95201b0d7`):**
+- `d1566ef9e` — REVIEW_LOG.md (prior review commit)
+- `f8ce4c4d3` — README.md: corrects auth failure behavior description
+- `4738a8b16` — TODO.md: spec-review approval of docs commit
+
+**Gate results:**
+- Gate 1 (Spec Compliance): PASS — docs-only change; no spec requirements introduced or affected
+- Gate 2 (Test Depth): PASS — no tests modified
+- Gate 3 (Coverage): PASS — no new code
+- Gate 4 (Code Quality): PASS — README correction is accurate; no dead code or duplication
+- Gate 5 (Integration Sanity): PASS — 158 dashboard tests unchanged; docs change cannot cause regressions
+- Gate 6 (Proof Verification): PASS — docs-only; skip with empty artifacts is the correct outcome
+- Gate 7 (Runtime Layout): PASS — no layout changes
+- Gate 8 (Version Compliance): PASS — no dependency changes
+- Gate 9 (Documentation Freshness): PASS — README corrected to accurately reflect `loop.sh:1073-1074` behavior (auth reason → `new_status="degraded"`, permanent skip, no auto-retry). Verified against actual code. Correction is accurate.
+
+**Concrete observation:** Gate 9 — `README.md` change at `f8ce4c4d3` corrects "Auth failures use longer cooldowns (10min → 30min → 1hr) but still auto-retry" to "Auth failures mark the provider as `degraded` (skipped permanently until the user fixes authentication — no auto-retry)". `loop.sh:1073-1074` confirms: `if [ "$reason" = "auth" ]; then new_status="degraded"`. The `degraded` branch at lines 1125-1136 permanently skips with no cooldown expiry path. Documentation is now accurate.
+
+PR_DESCRIPTION.md updated to include auth failure docs correction in Files Changed.
+
+---
+
 ## Review — 2026-03-31 19:05 — commit bcbff3fa7..95201b0d7
 
 **Verdict: PASS** (no code changes since last review)

@@ -23,7 +23,7 @@ Key changes:
 - `aloop/cli/dashboard/src/lib/ansi.ts`, `format.ts`, `log.ts`, `providerHealth.ts`, `types.ts` — extracted utilities
 - `aloop/cli/dashboard/src/AppView.tsx` — mobile hamburger, responsive layout, aria-labels on close buttons
 - `aloop/cli/dashboard/e2e/smoke.spec.ts` — Playwright bounding box checks for tap targets at 375×667 and 390×844
-- `README.md` — documents responsive mobile layout, corrects CLI flags, adds OpenCode limitation note
+- `README.md` — documents responsive mobile layout, corrects CLI flags, adds OpenCode limitation note, corrects auth failure behavior (degraded/no-auto-retry)
 
 ## Verification
 

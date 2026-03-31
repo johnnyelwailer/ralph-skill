@@ -70,4 +70,4 @@ All 9 SPEC-ADDENDUM.md "Dashboard Responsiveness" acceptance criteria remain APP
 
 ## Spec Re-Review — 2026-03-31 (docs trigger — auth failure behavior)
 
-**Result: APPROVED** — docs commit f8ce4c4d3 reviewed. README.md one-line correction changes "Auth failures use longer cooldowns (10min → 30min → 1hr) but still auto-retry" to "Auth failures mark the provider as `degraded` (skipped permanently until the user fixes authentication — no auto-retry)". This is a documentation accuracy fix only; no new spec requirements introduced and no impact on SPEC-ADDENDUM.md "Dashboard Responsiveness" acceptance criteria. Prior approval stands.
+**Result: APPROVED** [reviewed: gates 1-9 pass] — docs commit f8ce4c4d3 reviewed. README.md one-line correction changes "Auth failures use longer cooldowns (10min → 30min → 1hr) but still auto-retry" to "Auth failures mark the provider as `degraded` (skipped permanently until the user fixes authentication — no auto-retry)". This is a documentation accuracy fix only; no new spec requirements introduced and no impact on SPEC-ADDENDUM.md "Dashboard Responsiveness" acceptance criteria. Prior approval stands.
