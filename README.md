@@ -209,13 +209,38 @@ The installer deploys skill files to each harness directory and the Aloop runtim
 | `aloop setup` | Interactive project configuration (`--non-interactive` for CI) |
 | `aloop scaffold` | Scaffold workspace config files |
 | `aloop steer <instruction>` | Send live instruction to a running loop |
-| `aloop gh <op>` | Policy-enforced GitHub operations |
+| `aloop gh start --issue <n>` | Start a GitHub-linked loop for an issue (creates branch, loop, PR) |
+| `aloop gh watch` | Monitor labeled issues and auto-dispatch loops with concurrency queuing |
+| `aloop gh status` | Show GH-linked issue/session/PR tracking state |
+| `aloop gh stop` | Stop GH-linked loops (--issue \<n\> or --all) |
+| `aloop gh <op>` | Policy-enforced GitHub operations (pr-create, pr-comment, pr-merge, etc.) |
 | `aloop discover` | Auto-detect project specs and validation |
 | `aloop resolve` | Print resolved project config for current directory |
 | `aloop process-requests` | Process pending orchestrator request files |
 | `aloop update` | Refresh runtime from repo |
 | `aloop devcontainer` | Generate .devcontainer config |
 | `aloop devcontainer-verify` | Verify devcontainer builds and passes checks |
+
+### `aloop gh` — GitHub-Linked Loops
+
+Run loops directly triggered by GitHub issues, or watch for labeled issues and dispatch automatically:
+
+```bash
+# Start a loop for a specific issue (creates branch, runs loop, opens PR)
+aloop gh start --issue 42
+
+# Watch for issues labeled "aloop" and auto-dispatch loops (with queuing)
+aloop gh watch --label aloop --max-concurrent 3
+
+# Check status of all GH-linked issue/session/PR tracking
+aloop gh status
+
+# Stop a specific GH-linked loop or all of them
+aloop gh stop --issue 42
+aloop gh stop --all
+```
+
+Child loops use `aloop gh pr-create`, `aloop gh issue-comment`, etc. for policy-gated GitHub operations (write access is scoped by role).
 
 ### Slash commands (Claude Code / Codex / Copilot)
 
