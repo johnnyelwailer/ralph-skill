@@ -1,5 +1,29 @@
 # Review Log
 
+## Review — 2026-03-31 18:50 — commit 6e972170b..c0945faee
+
+**Verdict: PASS** (2 prior findings resolved; gates 1-9 pass)
+**Scope:** `LogEntryRow.accessibility.test.tsx` (Gate 2 fix), `AppView.tsx` (Gate 4 fix)
+
+**Prior findings resolved:**
+- Gate 2: `LogEntryRow.accessibility.test.tsx:152` — `if (imgBtn)` guard replaced with `expect(imgBtn).not.toBeNull()` + unconditional assertions (commit 162aad5ef). Test now enforces selector matches and tap-target classes on lightbox close button. ✓
+- Gate 4: `AppView.tsx:854` — dead import (`import { findBaselineIterations, ArtifactComparisonDialog }`) removed (commit cb2eaeed2). Re-export on line 853 unaffected. ✓
+
+**Gate results:**
+- Gate 1 (Spec Compliance): PASS — all 9 SPEC-ADDENDUM L237-L245 AC verified per prior spec-review; fix commits introduce no new spec gaps
+- Gate 2 (Test Depth): PASS — `expect(imgBtn).not.toBeNull()` + unconditional assertions; 158 tests pass including this one (selector actually finds element in rendered DOM)
+- Gate 3 (Coverage): PASS — 158 tests, 21 files; same coverage level as prior review
+- Gate 4 (Code Quality): PASS — dead import removed; AppView now has only the re-export on line 853
+- Gate 5 (Integration Sanity): PASS — 158 dashboard vitest tests pass; `tsc --noEmit` clean; Vite build 464kB. 68 broader CLI test failures confirmed pre-existing (same count before/after stash)
+- Gate 6 (Proof Verification): PASS — fix commits are internal only (test assertion + dead import removal); no observable UI output; skip is correct outcome
+- Gate 7 (Runtime Layout): PASS — no layout changes in fix commits; prior Playwright smoke.spec.ts bounding box assertions remain in place
+- Gate 8 (Version Compliance): PASS — no dependency changes
+- Gate 9 (Documentation Freshness): PASS — no doc changes needed for these fix commits; prior README update already approved
+
+**Written PR_DESCRIPTION.md** with all acceptance criteria.
+
+---
+
 ## Review — 2026-03-31 18:20 — commit a2e75cbab..065b10da6
 
 **Verdict: FAIL** (2 findings → written to TODO.md as [review] tasks)
