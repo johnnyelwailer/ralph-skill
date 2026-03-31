@@ -133,7 +133,7 @@ opencode run --agent vision-reviewer
 
 These agents run as read-only subagents (no write/edit access) via OpenRouter. Customize them by editing the markdown files in `.opencode/agents/`.
 
-Provider health is tracked automatically. Failed providers enter cooldown with exponential backoff and are skipped until recovery. Auth failures use longer cooldowns (10min → 30min → 1hr) but still auto-retry.
+Provider health is tracked automatically. Failed providers enter cooldown with exponential backoff and are skipped until recovery. Auth failures set the provider to **degraded** status with no automatic recovery — manual intervention is required to restore an auth-failed provider.
 
 ## Prerequisites
 
