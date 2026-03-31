@@ -206,3 +206,64 @@ ls dist/bin/loop.sh
 # Cleanup
 rm -rf /tmp/aloop-test-install-g0IE8k
 ```
+
+## QA Session — 2026-03-31 (final-qa at final HEAD, issue-172)
+
+### Test Environment
+- Binary under test: /tmp/aloop-test-install-dKiC0b/bin/aloop (cleaned up)
+- Version: 1.0.0
+- Install method: npm pack + isolated temp prefix (test-install script)
+- Commits since last QA: 1e60bc905 (docs: README sync), 16ebaddd8 (chore: review pass) — no functional changes
+- Features tested: 4 (re-validation at final HEAD)
+
+### Features Tested
+1. POSIX flock-based health file locking (acquire/release cycle)
+2. Stale .lock directory cleanup from old mkdir approach
+3. loop.sh bundled correctly in npm package
+4. No mkdir in lock acquisition path
+
+### Results
+- PASS: All 7 unit tests in loop_provider_health_primitives.tests.sh (installed binary)
+- PASS: loop.sh present at dist/bin/loop.sh in installed package
+- PASS: Only 2 `mkdir` references in installed loop.sh, both cleanup comments (not acquisition)
+- PASS: flock used 5 times for actual locking
+
+### Bugs Filed
+None — no new bugs. All previous PASSes confirmed at HEAD.
+
+### Command Transcript
+
+```
+# Build
+npm --prefix aloop/cli run build
+# → success
+
+# Install from source
+ALOOP_BIN=$(npm --prefix aloop/cli run --silent test-install -- --keep 2>/dev/null | tail -1)
+# → /tmp/aloop-test-install-dKiC0b/bin/aloop
+
+# Verify binary
+/tmp/aloop-test-install-dKiC0b/bin/aloop --version
+# → 1.0.0
+
+# Unit tests (installed binary)
+bash aloop/bin/loop_provider_health_primitives.tests.sh
+# → All tests passed! (7/7)
+
+# Verify loop.sh bundled
+ls /tmp/aloop-test-install-dKiC0b/lib/node_modules/aloop-cli/dist/bin/loop.sh
+# → PASS
+
+# flock count in installed binary
+grep -c "flock" installed loop.sh
+# → 5
+
+# mkdir refs (should be cleanup-only)
+grep -n "mkdir.*lock" installed loop.sh
+# → line 872: comment about stale .lock dir cleanup
+# → line 899: comment about stale .lock dir cleanup
+# PASS: no mkdir used for lock acquisition
+
+# Cleanup
+rm -rf /tmp/aloop-test-install-dKiC0b
+```
