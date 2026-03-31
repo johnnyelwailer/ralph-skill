@@ -38,6 +38,31 @@ No user-facing behavior changed; no README/docs updates needed.
 
 ---
 
+## Review — 2026-03-31 — commits 9447f37dd..8a2b1b73c
+
+**Verdict: FAIL** (2 findings → written to TODO.md as [review] tasks)
+**Scope:** `src/hooks/useDashboardState.test.ts`, `src/hooks/useSSEConnection.test.ts`, `src/lib/logHelpers.test.ts`, `src/lib/sessionHelpers.test.ts`
+
+**Prior findings resolved:**
+- Gate 2 (providerHealth existence checks): ✓ All 3 `providerHealth` tests now use concrete `toEqual([])` / `toEqual([{ name: 'claude', status: 'unknown', lastEvent: '' }, ...])` assertions — anti-pattern eliminated.
+- Gate 3 (`logHelpers.ts`): ✓ 100% branch coverage — empty log, non-record JSON (null, number, boolean), string/number/null iteration values, backward scan ordering, fallback field names all covered.
+- Gate 3 (`sessionHelpers.ts`): ✓ 90% branch coverage — project_root derivation (trailing slash, backslash, no trailing slash), project_name override, fallback projectName, stuckCount, alternate field keys all covered.
+
+### Gate 2 (Test Depth) — FAIL (new finding)
+`useSSEConnection.test.ts` "processes valid SSE state events" (~line 96): asserts `expect(result.current.state).not.toBeNull()`. The test sends `stateData = { log: '', activeSessions: [], recentSessions: [] }` via SSE but only verifies state is non-null. Any truthy value passes — this is the existence-check anti-pattern. Fix: `expect(result.current.state).toEqual({ log: '', activeSessions: [], recentSessions: [] })`.
+
+### Gate 3 (Coverage) — FAIL (persistent)
+`useSSEConnection.ts` branch coverage confirmed at 80.76% (uncovered: lines 46, 57-70, 90). Coverage unchanged from last review despite 12 additional targeted tests. Remaining uncovered branches are architecturally unreachable without source changes:
+- Lines 57-58: `if (stateListener)` / `if (heartbeatListener)` null-guards in `cleanupEventSource` — stateListener/heartbeatListener are only nulled inside `cleanupEventSource` itself, making the false branches unreachable. These guards are redundant and should be removed.
+- Line 70: `if (cancelled) return` inside `connectSSE` — reconnect timer is always cleared before cancelled=true; guard is dead code.
+- Lines 46, 90: `if (!cancelled)` branches in async load() and errorListener — structurally difficult to trigger after cancelled=true given AbortController and onerror teardown order.
+
+Removal of the 3 redundant null-guards (lines 57-58, 70) would eliminate uncoverable branches and bring coverage to ≥90%.
+
+### Gates 1, 4–9 — PASS / N/A
+All tests pass (569). No source production code changed — gates 1, 4, 5 pass. Gates 6-9 N/A (pure test additions, no proof artifacts expected, no deps or docs changed).
+
+---
 ## Review — 2026-03-31 — commits bfc392e0a..20b158323
 
 **Verdict: FAIL** (2 findings → written to TODO.md as [review] tasks)
