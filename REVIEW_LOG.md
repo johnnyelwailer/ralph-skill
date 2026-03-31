@@ -1,5 +1,30 @@
 # Review Log
 
+## Review — 2026-03-31 19:30 — commit 8f07f511..d7ce2968d
+
+**Verdict: PASS** (docs-only changes; no code changes)
+**Scope:** `README.md` (OpenCode autonomous flag correction), `QA_COVERAGE.md`, `QA_LOG.md` (QA tracking), `TODO.md` (spec-review approval)
+
+**Changes since last review (`8f07f511`):**
+- `d4cd8c104` — QA_COVERAGE.md, QA_LOG.md (QA internal tracking)
+- `ea6da5aef` — README.md: OpenCode autonomous flag `run --dir <workdir>` → `run`
+- `d7ce2968d` — TODO.md: spec-review approval of docs commit
+
+**Gate results:**
+- Gate 1 (Spec Compliance): PASS — docs-only change; no spec requirements introduced or affected
+- Gate 2 (Test Depth): PASS — no tests modified
+- Gate 3 (Coverage): PASS — no new code
+- Gate 4 (Code Quality): PASS — README correction is accurate; no dead code or duplication
+- Gate 5 (Integration Sanity): PASS — 158 dashboard tests unchanged; docs change cannot cause regressions
+- Gate 6 (Proof Verification): PASS — docs-only; skip with empty artifacts is the correct outcome
+- Gate 7 (Runtime Layout): PASS — no layout changes
+- Gate 8 (Version Compliance): PASS — no dependency changes
+- Gate 9 (Documentation Freshness): PASS — README corrected to accurately reflect `loop.sh:1374` invocation: `opencode run "${opencode_args[@]}"` — no `--dir` flag is passed. Correction from `run --dir <workdir>` to `run` is accurate.
+
+**Concrete observation:** Gate 9 — `README.md` at `ea6da5aef` corrects the OpenCode autonomous flag column entry. Verified against `loop.sh:1374`: the actual invocation is `opencode run "${opencode_args[@]}"` with no `--dir` argument. The prior `run --dir <workdir>` entry was never accurate. The spec-review at `d7ce2968d` cross-referenced this against SPEC.md invocation description — consistent. PR_DESCRIPTION.md updated to reflect this correction.
+
+---
+
 ## Review — 2026-03-31 19:15 — commit 95201b0d7..4738a8b16
 
 **Verdict: PASS** (docs-only changes; no code changes)

@@ -1,6 +1,6 @@
 # Issue #114: Responsive layout: touch targets, tap equivalents & accessibility audit
 
-## Current Phase: Review
+## Current Phase: Review [reviewed: gates 1-9 pass — docs-only changes since last review; OpenCode flag correction verified against loop.sh:1374]
 
 ### In Progress
 - [x] [review] Gate 2: `LogEntryRow.accessibility.test.tsx:152` — `if (imgBtn)` guard silently skips all 4 tap-target assertions if `container.querySelector('button.text-blue-600')` returns null (selector change or rendering issue). Test passes vacuously in that case. Replace the conditional with `expect(imgBtn).not.toBeNull()` + unconditional body to ensure the assertion actually runs. (priority: high)
