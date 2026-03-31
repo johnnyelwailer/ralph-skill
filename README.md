@@ -301,9 +301,12 @@ Child loops use `aloop gh pr-create`, `aloop gh issue-comment`, etc. for policy-
   sessions/<session-id>/
     meta.json                   # Session metadata
     status.json                 # Current state (iteration, phase, provider)
+    loop-plan.json              # Compiled cycle + finalizer arrays, position state
     log.jsonl                   # Structured event log
     orchestrator.json           # Orchestrator state (issues, waves, PRs)
     prompts/                    # Copied prompt templates
+    queue/                      # Override prompts (processed before next iteration)
+    requests/                   # Agent side-effect requests (GitHub ops, child dispatch)
     artifacts/iter-<N>/         # Proof artifacts per iteration
     worktree/                   # Isolated git worktree
     steering-history/           # Archived steering instructions
