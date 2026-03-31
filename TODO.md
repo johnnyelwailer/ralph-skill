@@ -4,26 +4,14 @@
 
 ### In Progress
 
-- [x] [review] Gate 2: `orchestrate.test.ts:390-396` — test `'preload skips when adapter is not provided'` tests the wrong invariant and passes for the wrong reason. When `repo: 'owner/repo'` is passed, `orchestrate.ts:993-999` ALWAYS creates an adapter before reaching the preload check, so `deps.adapter` is never undefined at line 1135. The test passes only because real `spawnSync('gh', ...)` is invoked (createMockDeps has no execGh) and the error is silently swallowed by the `catch` block at line 1228. Replace this test with one that verifies the genuine invariant: when `repo` is NOT set (no filterRepo), listIssues is never called. Example: `orchestrateCommandWithDeps({}, deps_with_adapter)` → `listCalls.length === 0`. (priority: high)
-
-- [x] [review] Gate 2/3: `invokeAgentReview` comment fetch (process-requests.ts:965) — `if (adapter) { adapter.listComments(prNumber) }` is untested. Extracted `createInvokeAgentReview` factory function (exported), replaced inline closure in `processRequests`. Added 4 tests: listComments called with correct PR number and comments included in queue file, no listComments call when adapter absent, empty comments produce no comment section, listComments errors are swallowed and queue file still written. (priority: high)
-
-- [ ] [review] Gate 4 (b) + (a): `orchestrate.ts:993-999` — inline `spawnSync` fallback reintroduced. Move the adapter bootstrap (lines 993-999) into `orchestrateCommand` (the non-DI entry point) so `orchestrateCommandWithDeps` always receives a fully-populated `deps` and the spawnSync fallback stays outside the testable boundary. After this move, `&& deps.adapter` at line 1135 becomes genuinely dead code (CONSTITUTION rule 13 — no dead code) and must be removed: simplify to `if (filterRepo && state.issues.length === 0)`. Do both changes together. (priority: medium)
-
-### Up Next
-
-- [x] [review][P2] AC#11 partial — `orchestrateCommandWithDeps()` does NOT instantiate an adapter. `createAdapter` is never imported or called in `orchestrate.ts`. In production, `orchestrateCommand` calls `orchestrateCommandWithDeps(options, deps)` using `defaultDeps` which has no `adapter` field. All `deps.adapter`-guarded code paths inside `orchestrateCommandWithDeps` (preload at line 1126, plan application at lines 1108/1118) are dead in production. Specifically: `aloop orchestrate --plan plan.json --repo owner/repo` cannot create real GH issues — `applyDecompositionPlan` falls back to plan-ID placeholders. TASK_SPEC AC#11 requires: "Adapter created once in `orchestrateCommandWithDeps()`, passed through deps." Fix: import `createAdapter` in orchestrate.ts and instantiate adapter at the top of `orchestrateCommandWithDeps` when `filterRepo` is set (same pattern as process-requests.ts line 354: `makeAdapterForRepo(repo, execGh, meta.adapter)`).
-
-- [x] [review] Gate 2/3: preload path in `orchestrateCommandWithDeps` (orchestrate.ts:1135–1231) — Added 5 tests: preload populates state via adapter, preload skips when state has issues, preload skips without adapter, preload handles empty listIssues, preload infers status from labels without project status.
-
-### Spec-Gap Analysis
-
-spec-review: 1 gap found (P2)
-
-AC #11 is partially unimplemented: `processRequests()` correctly creates and passes the adapter ✅, but `orchestrateCommandWithDeps()` never instantiates an adapter, leaving all adapter-guarded paths within that function dead in production. All other acceptance criteria (AC#1–AC#10, AC#12–AC#15) are satisfied. See `[review]` task above.
+- [x] [review] Gate 4 (b) + (a): `orchestrate.ts:993-999` — inline `spawnSync` fallback reintroduced. Move the adapter bootstrap (lines 993-999) into `orchestrateCommand` (the non-DI entry point) so `orchestrateCommandWithDeps` always receives a fully-populated `deps` and the spawnSync fallback stays outside the testable boundary. After this move, `&& deps.adapter` at line 1135 becomes genuinely dead code (CONSTITUTION rule 13 — no dead code) and must be removed: simplify to `if (filterRepo && state.issues.length === 0)`. Do both changes together. (priority: medium)
 
 ### Completed
 
+- [x] [review] Gate 2: `orchestrate.test.ts:390-396` — replaced wrong-invariant test with one that verifies when `repo` is NOT set, `listIssues` is never called. Test: `orchestrateCommandWithDeps({}, deps_with_adapter)` → `listCalls.length === 0`.
+- [x] [review] Gate 2/3: `invokeAgentReview` comment fetch (process-requests.ts:965) — extracted `createInvokeAgentReview` factory function (exported), replaced inline closure in `processRequests`. Added 4 tests: listComments called with correct PR number and comments included in queue file, no listComments call when adapter absent, empty comments produce no comment section, listComments errors are swallowed and queue file still written.
+- [x] [review][P2] AC#11 partial — `orchestrateCommandWithDeps()` now instantiates an adapter at lines 993-999 when `filterRepo` is set. Note: Gate 4 still requires moving this bootstrap to `orchestrateCommand` to keep the DI boundary clean.
+- [x] [review] Gate 2/3: preload path in `orchestrateCommandWithDeps` (orchestrate.ts:1135–1231) — Added 5 tests: preload populates state via adapter, preload skips when state has issues, preload skips without adapter, preload handles empty listIssues, preload infers status from labels without project status.
 - [x] [spec-gap][P2] Removed dead code `createGhIssue`/`makeGhIssueCreator` and `execGhIssueCreate` field from `OrchestrateDeps` and fallback branch in `applyDecompositionPlan` — verified at process-requests.ts and orchestrate.ts
 - [x] [spec-gap][P3] Migrated preload in `orchestrateCommandWithDeps` from raw `nodeSpawnSync` to `deps.adapter.listIssues()` + `deps.adapter.getIssue()` pattern; project status GraphQL calls use `deps.execGh` when available
 - [x] Add `adapter?: OrchestratorAdapter` to `TriageDeps`, `OrchestrateDeps`, `DispatchDeps`, `PrLifecycleDeps`, `ScanLoopDeps` — verified at orchestrate.ts lines 191–234, 3513, 4747

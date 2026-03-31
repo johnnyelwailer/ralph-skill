@@ -990,14 +990,6 @@ export async function orchestrateCommandWithDeps(
   const filterIssues = parseIssueNumbers(options.issues);
   const filterLabel = options.label ?? null;
   const filterRepo = options.repo ?? null;
-  if (filterRepo && !deps.adapter) {
-    const execGh = deps.execGh ?? (async (args: string[]) => {
-      const r = spawnSync('gh', args, { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true, timeout: 30000 });
-      if (r.status === null && r.signal) throw new Error(`gh timed out (${r.signal})`);
-      return { stdout: r.stdout ?? '', stderr: r.stderr ?? '' };
-    });
-    deps = { ...deps, execGh, adapter: createAdapter({ type: 'github', repo: filterRepo }, execGh) };
-  }
   const planOnly = options.planOnly ?? false;
   const budgetCap = parseBudget(options.budget);
   const autonomyLevel = await resolveOrchestratorAutonomyLevel(options, homeDir, deps);
@@ -1132,9 +1124,9 @@ export async function orchestrateCommandWithDeps(
   }
 
   // Preload existing GitHub issues into state (dedup on restart/resume)
-  if (filterRepo && state.issues.length === 0 && deps.adapter) {
+  if (filterRepo && state.issues.length === 0) {
     try {
-      const issueSummaries = await deps.adapter.listIssues({ labels: ['aloop/auto'], state: 'open' });
+      const issueSummaries = await deps.adapter!.listIssues({ labels: ['aloop/auto'], state: 'open' });
       if (issueSummaries.length > 0) {
         // Fetch full issue details (body + labels) via adapter
         const ghIssues = await Promise.all(
@@ -1519,7 +1511,19 @@ export async function orchestrateCommand(options: OrchestrateCommandOptions = {}
   }
 
   // --- New session path ---
-  const result = await orchestrateCommandWithDeps(options, deps);
+  // Bootstrap adapter outside the DI boundary so orchestrateCommandWithDeps always receives a fully-populated deps
+  const filterRepo = options.repo ?? null;
+  let resolvedDeps = deps;
+  if (filterRepo && !(resolvedDeps ?? defaultDeps).adapter) {
+    const baseDeps = resolvedDeps ?? defaultDeps;
+    const execGh = baseDeps.execGh ?? (async (args: string[]) => {
+      const r = spawnSync('gh', args, { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true, timeout: 30000 });
+      if (r.status === null && r.signal) throw new Error(`gh timed out (${r.signal})`);
+      return { stdout: r.stdout ?? '', stderr: r.stderr ?? '' };
+    });
+    resolvedDeps = { ...baseDeps, execGh, adapter: createAdapter({ type: 'github', repo: filterRepo }, execGh) };
+  }
+  const result = await orchestrateCommandWithDeps(options, resolvedDeps);
 
   const planOnly = options.planOnly ?? false;
 
