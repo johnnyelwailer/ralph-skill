@@ -419,3 +419,27 @@ No dependency changes.
 README.md: no new content added in this scope that contradicts reality. All prior documentation fixes remain intact and accurate.
 
 ---
+
+## Review — 2026-03-31 — commits afbf4e6c3..091afbeee (final-review, spec-review trigger — final pass)
+
+**Verdict: PASS** (0 findings)
+**Scope:** Commits 44c123d1e, 1933cd7eb, 091afbeee — all pure review/bookkeeping (REVIEW_LOG.md + TODO.md only). No code or documentation changed since the last PASS final-review at afbf4e6c3.
+
+**Prior findings resolution:**
+- All prior findings remain resolved. No new changes to audit.
+
+### Gate 1 (Spec Compliance) — PASS
+
+All Issue #38 acceptance criteria verified (static checks; last dynamic run at 6650dcf30 confirmed 632 tests pass, tsc exit 0):
+- `.github/workflows/ci.yml`: triggers on push+PR to master/agent/trunk, Node 22, `npm ci` + `npm test` in `aloop/cli/dashboard` ✓
+- SPEC-ADDENDUM line 122: 28 non-ui components have `.test.tsx` (30 total including 2 ui/) — confirmed via prior Glob ✓
+- SPEC-ADDENDUM line 123: 28 non-ui components have `.stories.tsx` (41 total) ✓
+- README lines 22–28: all 6 finalizer agents listed (Spec-gap, Docs, Spec-review, Final-review, Final-qa, Proof) ✓
+- README line 246: `PROMPT_spec-review.md` in template list ✓
+- TypeScript fixes intact: `afterEach` at `Sidebar.test.tsx:3`; `iterationStartedAt` in `ActivityPanel.test.tsx:14` baseProps ✓
+
+### Gates 2–9 — PASS / N/A
+
+No code changed since last review. All conclusions from prior PASS review (afbf4e6c3) carry forward unchanged. Concrete observation: `QACoverageBadge.test.tsx` parseQACoveragePayload tests assert exact return values (`toEqual({ percentage: null, available: false, features: [] })`) — thorough, no anti-patterns detected.
+
+---

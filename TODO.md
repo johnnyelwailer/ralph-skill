@@ -41,6 +41,8 @@
 
 **Spec-gap re-run (2026-03-31, all-tasks-done trigger — post-final-qa re-run):** No new gaps found. README finalizer prose (lines 22–28): all 6 finalizer agents confirmed present. README template list (lines 246–248): PROMPT_spec-review.md, PROMPT_final-qa.md, PROMPT_final-review.md all confirmed. Both [review] items confirmed [x]. All Issue #38 scope items verified complete. The 3 pre-existing P2 gaps remain unchanged and out of scope.
 
+**Spec-gap re-run (2026-03-31, all-tasks-done trigger — eighth pass):** No new gaps found. Verified: ci.yml present; 34 .test.tsx files (28 non-ui components ✓, 2 ui/, 4 src root); 41 .stories.tsx files (28 non-ui ✓, 13 ui/); README lines 22–28 all 6 finalizer agents present; README lines 246–248 PROMPT_spec-review.md, PROMPT_final-qa.md, PROMPT_final-review.md all present. loop.sh line 33 default `sonnet` — pre-existing P2 gap unchanged and out of scope. No P1 or P2 gaps within Issue #38 scope. Issue #38 is complete and spec-compliant. spec-gap analysis: no discrepancies found — spec fully fulfilled (Issue #38 scope).
+
 **Spec-gap re-run (2026-03-31, all-tasks-done trigger — seventh pass):** No new gaps found. Verified via Glob: 30 .test.tsx files present (all 28 non-ui + 2 ui/), ci.yml exists at .github/workflows/ci.yml; README lines 22–28 all 6 finalizer agents present; README lines 246–248 all required PROMPT_*.md templates present. The 3 pre-existing P2 gaps (loop.sh model default, on_start config block, spec-gap periodic scheduling) and 1 P3 gap (ProviderName type union missing opencode) remain unchanged and out of scope for Issue #38. No P1 or P2 gaps exist within Issue #38 scope. Issue #38 is complete and spec-compliant.
 
 **Spec-gap re-run (2026-03-31, all-tasks-done trigger — completion chain):** No new gaps found. Verified: all 28 non-ui components have .test.tsx and .stories.tsx files; ci.yml present; TypeScript errors resolved; README finalizer prose lists all 6 agents; README template list includes all required PROMPT_*.md files. One additional P3 gap noted: `ProviderName` type union in `compile-loop-plan.ts` does not include `opencode` (runtime works via `provider: string` fallback — cosmetic only). The 3 pre-existing P2 gaps remain open and out of scope for Issue #38; no P1 gaps exist. Issue #38 is complete and spec-compliant.
@@ -149,6 +151,19 @@ Re-verified after docs trigger (fourth spec-review pass):
 - CI workflow (`ci.yml`): triggers on push+PR to master/agent/trunk, Node 22, `npm ci` + `npm test` in `aloop/cli/dashboard` ✓
 - SPEC-ADDENDUM line 122: all 28 non-ui components have `.test.tsx` files (30 total including 2 ui/) ✓
 - SPEC-ADDENDUM line 123: all 28 non-ui components have `.stories.tsx` files ✓
+- README finalizer prose (lines 22–28): all 6 finalizer agents present — Spec-gap, Docs, Spec-review, Final-review, Final-qa, Proof ✓
+- README template list (lines 246–248): `PROMPT_spec-review.md`, `PROMPT_final-qa.md`, `PROMPT_final-review.md` all present ✓
+- TypeScript errors resolved: `Sidebar.test.tsx:3` `afterEach` imported from vitest; `ActivityPanel.test.tsx:14` `iterationStartedAt` in baseProps ✓
+
+No new gaps found. Issue #38 implementation fully spec-compliant.
+
+### Spec Review — APPROVED (docs trigger re-run 4, 2026-03-31) [reviewed: all gates pass] [final-review: gates 1-9 pass]
+
+Re-verified after docs trigger (fifth spec-review pass):
+
+- CI workflow (`.github/workflows/ci.yml`): triggers on push+PR to master/agent/trunk, Node 22, `npm ci` + `npm test` in `aloop/cli/dashboard` ✓
+- SPEC-ADDENDUM line 122: 28 non-ui components confirmed with `.test.tsx` files (34 total including 2 ui/ + 4 src root) ✓
+- SPEC-ADDENDUM line 123: 28 non-ui components confirmed with `.stories.tsx` files (41 total including 13 ui/) ✓
 - README finalizer prose (lines 22–28): all 6 finalizer agents present — Spec-gap, Docs, Spec-review, Final-review, Final-qa, Proof ✓
 - README template list (lines 246–248): `PROMPT_spec-review.md`, `PROMPT_final-qa.md`, `PROMPT_final-review.md` all present ✓
 - TypeScript errors resolved: `Sidebar.test.tsx:3` `afterEach` imported from vitest; `ActivityPanel.test.tsx:14` `iterationStartedAt` in baseProps ✓
