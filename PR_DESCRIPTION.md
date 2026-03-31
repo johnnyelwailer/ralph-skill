@@ -10,7 +10,7 @@ Also corrects documentation in SPEC.md and README.md to accurately reflect the i
 - `aloop/bin/loop_provider_health_primitives.tests.sh` — added tests for lock acquire/release cycle, lock failure path, and flock mode verification
 - `aloop/bin/loop_provider_health.tests.sh` — updated tests to assert `flock -s`/`-x` flag presence
 - `SPEC.md` — corrected flock sidecar file description (`.lock` extension, dynamic FD via `exec {fd}>`)
-- `README.md` — corrected auth failure description (degraded state, no auto-recover)
+- `README.md` — corrected auth failure description (degraded state, no auto-recover); fixed two incorrect CLI examples (`aloop start --launch resume <session-id>` and `opencode run` invocation via stdin)
 
 ## Verification
 
@@ -24,6 +24,7 @@ Also corrects documentation in SPEC.md and README.md to accurately reflect the i
 - [x] SPEC.md accurately documents the implementation — updated to use `.lock` extension and dynamic FD
 - [x] README.md auth failure description accurate — updated to reflect `degraded` state (no auto-recover)
 - [x] All 7 unit tests pass
+- [x] README CLI examples accurate (`aloop start --launch resume <session-id>`, `opencode run` via stdin) — verified against CLI help and loop.sh:1393
 
 ## Proof Artifacts
 

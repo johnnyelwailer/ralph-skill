@@ -71,3 +71,41 @@ Documentation-only changes. No dead code introduced. One minor cosmetic note: `Q
 - `README.md` auth failure description corrected: `degraded` (no auto-recover, requires user action) — matches `loop.sh:1092-1093` (`reason = "auth"` → `new_status = "degraded"`) ✓
 
 ---
+
+## Review — 2026-03-31 — commit 4e339725c..2943bf920
+
+**Verdict: PASS** (final-review, all 10 gates pass)
+**Scope:** `QA_COVERAGE.md`, `QA_LOG.md`, `README.md`
+
+### Prior Finding Resolution
+All prior findings resolved. No open `[review]` tasks remain in TODO.md.
+
+### Gate 1 — Spec Compliance: PASS
+Documentation-only changes. Flock implementation was already spec-compliant per prior reviews.
+
+### Gate 2 — Test Depth: PASS (no test changes)
+
+### Gate 3 — Coverage: PASS (no code changes)
+
+### Gate 4 — Code Quality: PASS
+`QA_COVERAGE.md` stale INFO row ("SPEC says .flock/FD9, impl uses .lock/dynamic FD") corrected to reflect resolved state. No dead code or copy-paste.
+
+### Gate 5 — Integration Sanity: PASS
+7/7 bash tests pass — verified directly in this review run.
+
+### Gate 6 — Proof Verification: PASS
+No observable behavior changes. Documentation-only — empty proof artifacts is the correct outcome.
+
+### Gate 7 — Runtime Layout: N/A
+
+### Gate 8 — Version Compliance: N/A
+
+### Gate 9 — Documentation Freshness: PASS
+- `aloop start --launch resume <session-id>` — confirmed correct against `aloop start --help` (flag: `--launch`, positional arg for session-id) ✓
+- OpenCode autonomous invocation: `run` (prompt via stdin) — confirmed correct against `loop.sh:1393` (`echo "$prompt_content" | ... opencode run`) ✓
+- Prior README auth failure fix and SPEC.md flock description carry over correctly.
+
+### Gate 10 — QA Coverage: PASS
+`QA_COVERAGE.md`: 8/8 features PASS (all at commit `4e33972`). No `[qa/P1]` bugs in TODO.md.
+
+---
