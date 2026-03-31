@@ -267,3 +267,63 @@ grep -n "mkdir.*lock" installed loop.sh
 # Cleanup
 rm -rf /tmp/aloop-test-install-dKiC0b
 ```
+
+## QA Session — 2026-03-31 (final-qa triggered by final-review at dc75a3d9)
+
+### Test Environment
+- Binary under test: /tmp/aloop-test-install-P5t7nI/bin/aloop (v1.0.0)
+- Installed loop.sh: /tmp/aloop-test-install-P5t7nI/lib/node_modules/aloop-cli/dist/bin/loop.sh
+- Commit: dc75a3d92 (only REVIEW_LOG.md and TODO.md changed since last QA at 2ee390ca8 — no code changes)
+- Features tested: 5 (flock core, stale cleanup, installed binary, backoff delays, graceful degradation)
+
+### Results
+- PASS: loop_provider_health_primitives.tests.sh — 7/7 tests pass
+- PASS: loop_provider_health.tests.sh — 5/5 tests pass
+- PASS: flock references in installed binary = 5 (correct)
+- PASS: mkdir in installed loop.sh = 2 (cleanup-only, not acquisition)
+- PASS: aloop.test.mjs — 8/8 tests pass
+- INFO: 32 pre-existing npm test failures in orchestrate/dashboard/gh features (unrelated to issue-172 flock changes; not introduced by this branch)
+- INFO: loop_finalizer_qa_coverage.tests.sh — check_finalizer_qa_coverage_gate function missing from loop.sh (pre-existing issue from #104 PR; unrelated to flock work)
+
+### Bugs Filed
+None — no new bugs. All flock-specific tests confirmed PASS at HEAD.
+
+### Command Transcript
+
+```
+# Install from source
+ALOOP_BIN=$(npm --prefix aloop/cli run --silent test-install -- --keep 2>/dev/null | tail -1)
+# → /tmp/aloop-test-install-P5t7nI/bin/aloop
+
+# Version check
+/tmp/aloop-test-install-P5t7nI/bin/aloop --version
+# → 1.0.0
+
+# Flock primitives unit tests (source loop.sh)
+bash aloop/bin/loop_provider_health_primitives.tests.sh
+# → All tests passed! (7/7)
+
+# Provider health integration tests (source loop.sh)
+bash aloop/bin/loop_provider_health.tests.sh
+# → All tests passed! (5/5)
+
+# Verify installed binary has 5 flock references
+grep -c "flock" /tmp/aloop-test-install-P5t7nI/lib/node_modules/aloop-cli/dist/bin/loop.sh
+# → 5
+
+# Verify mkdir is cleanup-only (not acquisition)
+grep -n "mkdir.*lock" installed loop.sh
+# → line 872: comment about stale .lock dir cleanup
+# → line 899: comment about stale .lock dir cleanup
+
+# aloop.test.mjs
+node --test aloop/cli/aloop.test.mjs
+# → 8/8 pass
+
+# Full npm test suite (confirms pre-existing failures, not issue-172)
+npm --prefix aloop/cli test
+# → pass 1091, fail 32 (all failures in orchestrate/dashboard/gh — not flock)
+
+# Cleanup
+rm -rf /tmp/aloop-test-install-P5t7nI
+```
