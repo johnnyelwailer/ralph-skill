@@ -12,11 +12,13 @@
 
 - [x] [spec-gap][P3] `orchestrate.ts:1132` — raw `nodeSpawnSync('gh', ['issue', 'list', ...])` in `orchestrateCommandWithDeps` preload phase not migrated to adapter. Migrated to `deps.adapter.listIssues()` + `deps.adapter.getIssue()` pattern; project status GraphQL calls use `deps.execGh` when available.
 
+- [ ] [review][P2] AC#11 partial — `orchestrateCommandWithDeps()` does NOT instantiate an adapter. `createAdapter` is never imported or called in `orchestrate.ts`. In production, `orchestrateCommand` calls `orchestrateCommandWithDeps(options, deps)` using `defaultDeps` which has no `adapter` field. All `deps.adapter`-guarded code paths inside `orchestrateCommandWithDeps` (preload at line 1126, plan application at lines 1108/1118) are dead in production. Specifically: `aloop orchestrate --plan plan.json --repo owner/repo` cannot create real GH issues — `applyDecompositionPlan` falls back to plan-ID placeholders. TASK_SPEC AC#11 requires: "Adapter created once in `orchestrateCommandWithDeps()`, passed through deps." Fix: import `createAdapter` in orchestrate.ts and instantiate adapter at the top of `orchestrateCommandWithDeps` when `filterRepo` is set (same pattern as process-requests.ts line 354: `makeAdapterForRepo(repo, execGh, meta.adapter)`).
+
 ### Spec-Gap Analysis
 
-spec-gap analysis: no discrepancies found — spec fully fulfilled
+spec-review: 1 gap found (P2)
 
-All acceptance criteria for Issue #177 (adapter refactoring) are implemented. Both previously identified `[spec-gap]` items (P2 dead code removal, P3 raw `gh issue list` migration) are resolved and marked `[x]`.
+AC #11 is partially unimplemented: `processRequests()` correctly creates and passes the adapter ✅, but `orchestrateCommandWithDeps()` never instantiates an adapter, leaving all adapter-guarded paths within that function dead in production. All other acceptance criteria (AC#1–AC#10, AC#12–AC#15) are satisfied. See `[review]` task above.
 
 ### Completed
 
