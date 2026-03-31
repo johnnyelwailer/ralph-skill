@@ -41,6 +41,8 @@
 
 **Spec-gap re-run (2026-03-31, all-tasks-done trigger — post-final-qa re-run):** No new gaps found. README finalizer prose (lines 22–28): all 6 finalizer agents confirmed present. README template list (lines 246–248): PROMPT_spec-review.md, PROMPT_final-qa.md, PROMPT_final-review.md all confirmed. Both [review] items confirmed [x]. All Issue #38 scope items verified complete. The 3 pre-existing P2 gaps remain unchanged and out of scope.
 
+**Spec-gap re-run (2026-03-31, all-tasks-done trigger — completion chain):** No new gaps found. Verified: all 28 non-ui components have .test.tsx and .stories.tsx files; ci.yml present; TypeScript errors resolved; README finalizer prose lists all 6 agents; README template list includes all required PROMPT_*.md files. One additional P3 gap noted: `ProviderName` type union in `compile-loop-plan.ts` does not include `opencode` (runtime works via `provider: string` fallback — cosmetic only). The 3 pre-existing P2 gaps remain open and out of scope for Issue #38; no P1 gaps exist. Issue #38 is complete and spec-compliant.
+
 **New spec-gap findings (2026-03-31):**
 
 - [spec-gap/P2] `aloop/bin/loop.sh` default claude model (`sonnet`) disagrees with `aloop/config.yml` and `aloop/bin/loop.ps1` (both default to `opus`). SPEC §\"Global Configuration\" says `config.yml` is the \"single source of truth\" for default model IDs and \"Loop scripts and setup commands inherit from here.\" Files: `aloop/config.yml` line 21 (`claude: opus`), `aloop/bin/loop.sh` line 33 (`CLAUDE_MODEL=\"${ALOOP_CLAUDE_MODEL:-sonnet}\"`), `aloop/bin/loop.ps1` line 34 (`ClaudeModel = 'opus'`). Fix: update `loop.sh` default to `opus` to match `config.yml` and `loop.ps1`.
@@ -112,6 +114,18 @@ Re-verified after docs-triggered fixes committed:
 - Both previously-flagged [review] gaps confirmed fixed and marked [x] ✓
 
 All in-scope requirements satisfied. No new gaps found.
+
+### Spec Review — APPROVED (docs trigger, 2026-03-31 re-run 2) [reviewed: all gates pass]
+
+Re-verified after docs trigger (third spec-review pass):
+
+- README finalizer prose (lines 22–28): all 6 finalizer agents confirmed present — Spec-gap, Docs, Spec-review, Final-review, Final-qa, Proof ✓
+- README template list (lines 246–248): `PROMPT_spec-review.md`, `PROMPT_final-qa.md`, `PROMPT_final-review.md` all present ✓
+- All 28 non-ui components have `.test.tsx` and `.stories.tsx` ✓
+- CI workflow (`ci.yml`): triggers, Node 22, `npm ci` + `npm test` in `aloop/cli/dashboard` ✓
+- TypeScript errors resolved (`Sidebar.test.tsx`, `ActivityPanel.test.tsx`) ✓
+
+No new gaps found. Issue #38 implementation fully spec-compliant.
 
 ### Spec Review — APPROVED (docs trigger re-run, 2026-03-31) [reviewed: all gates pass]
 
