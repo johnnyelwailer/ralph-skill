@@ -57,8 +57,6 @@ aloop orchestrate --resume <session-id>
 
 The orchestrator enforces role-based GitHub policies — child loops can create PRs and comment, but only the orchestrator can merge PRs and close issues.
 
-> **Known issue (P2):** Label-only `updateIssue` calls (adding/removing labels without a body update) currently fail at runtime — `gh issue edit` requires at least one edit flag. Affected call-sites: `orchestrate.ts:1888`, `1901`, `2266`, `2286`, `2306`, `2505`, `3814`. A fix is tracked in TODO.md. Body updates and all other issue/PR operations are unaffected.
-
 ## Dashboard
 
 Real-time monitoring UI with SSE updates. Runs as a local web server.
