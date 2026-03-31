@@ -1,13 +1,22 @@
 # Issue #114: Responsive layout: touch targets, tap equivalents & accessibility audit
 
-## Tasks
+## Current Phase: Complete
 
+### In Progress
+_(none)_
+
+### Up Next
+_(none)_
+
+### Completed
 - [x] Implement as described in the issue
   - LogEntryRow uses `<button type="button">` with keyboard handler (Enter/Space)
   - LogEntryRow has `min-h-[44px] md:min-h-0` mobile tap target
   - Comparison-mode toggle buttons have `min-h-[44px] md:min-h-0`
   - All 147 tests pass (including 11 a11y-specific tests)
   - Lighthouse audit requires Chrome — run in CI or local dev environment
+- [x] [review] Close buttons missing mobile tap target classes — FIXED in commit 71d90e4. Added `min-h-[44px] min-w-[44px] md:min-h-0 md:min-w-0` to both ArtifactComparisonDialog close (ArtifactComparisonDialog.tsx) and ImageLightbox close (LogEntryRow.tsx). Tests added.
+- [x] [review] Circular module dependency — FIXED in commit 71d90e4. Moved `ElapsedTimer` to `@/components/shared/ElapsedTimer.tsx`, moved `ArtifactComparisonDialog` + `findBaselineIterations` to `@/components/artifacts/ArtifactComparisonDialog.tsx`. LogEntryRow now imports from lib files, no longer from AppView.
 
 ## Spec-Gap Analysis
 
@@ -21,11 +30,6 @@ spec-gap analysis: no discrepancies found — spec fully fulfilled
 - ✅ Close buttons have `aria-label` attributes (AppView.tsx:985, LogEntryRow.tsx:344)
 - ✅ Sidebar toggle buttons have `aria-label="Expand sidebar"` / `"Collapse sidebar"` / `"Toggle sidebar"`
 - P3 [spec-gap]: SPEC-ADDENDUM.md line 245 requires "Lighthouse mobile accessibility score >= 90". Score cannot be measured without Chrome (jsdom limitation). All underlying a11y attributes are implemented and unit-tested; formal score measurement deferred to CI/local dev run. **Does not block completion** — all testable acceptance criteria are met.
-
-## Review Findings — 2026-03-31
-
-- [x] [review] Gate 1/Gate 3: Close buttons missing mobile tap target classes — FIXED in commit 71d90e4. Added `min-h-[44px] min-w-[44px] md:min-h-0 md:min-w-0` to both ArtifactComparisonDialog close (ArtifactComparisonDialog.tsx) and ImageLightbox close (LogEntryRow.tsx). Tests added.
-- [x] [review] Gate 4: Circular module dependency — FIXED in commit 71d90e4. Moved `ElapsedTimer` to `@/components/shared/ElapsedTimer.tsx`, moved `ArtifactComparisonDialog` + `findBaselineIterations` to `@/components/artifacts/ArtifactComparisonDialog.tsx`. LogEntryRow now imports from lib files, no longer from AppView.
 
 ## Spec Review — 2026-03-31
 
@@ -42,3 +46,7 @@ spec-gap analysis: no discrepancies found — spec fully fulfilled
 | 7 | Desktop layout unchanged (L243) | ✅ Mobile panel toggle is `lg:hidden`; desktop shows both panels |
 | 8 | No hover-only interactions (L244) | ✅ HoverCard tap-toggle tested |
 | 9 | Lighthouse mobile a11y score ≥ 90 (L245) | ⚠️ Deferred (jsdom/Chrome limitation) — pre-existing P3, not blocking |
+
+## Spec Re-Review — 2026-03-31 (docs trigger)
+
+**Result: APPROVED** — docs commit 8fb3500e2 reviewed. README updates accurately document the verified implementation; no new spec requirements introduced. Prior approval stands.
