@@ -315,11 +315,10 @@ describe('useDashboardState', () => {
 
   // ---- configuredProviders ----
   describe('configuredProviders (via providerHealth)', () => {
-    it('returns undefined configuredProviders when metaRecord is null', () => {
+    it('returns empty array when metaRecord is null', () => {
       mockUseSSEConnection.mockReturnValue(makeSseResult({ state: makeState({ meta: null }), loading: false }));
       const { result } = renderHook(() => useDashboardState());
-      // providerHealth is computed but we just check it doesn't throw
-      expect(result.current.providerHealth).toBeDefined();
+      expect(result.current.providerHealth).toEqual([]);
     });
 
     it('reads enabled_providers from meta', () => {
@@ -328,7 +327,10 @@ describe('useDashboardState', () => {
         loading: false,
       }));
       const { result } = renderHook(() => useDashboardState());
-      expect(result.current.providerHealth).toBeDefined();
+      expect(result.current.providerHealth).toEqual([
+        { name: 'claude', status: 'unknown', lastEvent: '' },
+        { name: 'openai', status: 'unknown', lastEvent: '' },
+      ]);
     });
 
     it('falls back to round_robin_order when enabled_providers is absent', () => {
@@ -337,7 +339,9 @@ describe('useDashboardState', () => {
         loading: false,
       }));
       const { result } = renderHook(() => useDashboardState());
-      expect(result.current.providerHealth).toBeDefined();
+      expect(result.current.providerHealth).toEqual([
+        { name: 'claude', status: 'unknown', lastEvent: '' },
+      ]);
     });
   });
 
