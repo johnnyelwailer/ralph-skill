@@ -107,7 +107,7 @@ TypeScript fixes verified in code — no further gaps:
 
 All requirements satisfied. No new findings.
 
-### Spec Review — APPROVED (docs trigger re-run 10, 2026-03-31) [reviewed: all gates pass]
+### Spec Review — APPROVED (docs trigger re-run 10, 2026-03-31) [reviewed: gates 1-9 pass — nineteenth spec-review pass]
 
 Re-verified after docs commit `5c9765296` (add loop-plan.json, queue/, requests/ to session directory architecture):
 

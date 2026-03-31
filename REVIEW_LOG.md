@@ -719,3 +719,51 @@ No dependency changes.
 This IS the documentation fix. README line 160 now accurately describes SPEC-specified behavior (auth → degraded/manual, transient → backoff/auto-retry). Verified against SPEC lines 130, 151, 191. `PR_DESCRIPTION.md` remains present and complete.
 
 ---
+
+## Review — 2026-03-31 — commit 224d16c31..5c9765296 (spec-review trigger)
+
+**Verdict: PASS** (0 findings)
+**Scope:** `README.md` (commit 5c9765296 — adds loop-plan.json, queue/, requests/ to session directory architecture section)
+
+**Prior findings:** None pending — last review (224d16c31) was PASS.
+
+### Gate 1 (Spec Compliance) — PASS
+
+Three runtime files/dirs added to the README architecture section. Verified against SPEC:
+- `loop-plan.json` "Compiled cycle + finalizer arrays, position state" — matches SPEC lines 38-44, 275 (loop reads/writes loop-plan.json for cyclePosition, finalizerPosition, cycle[], finalizer[]) ✓
+- `queue/` "Override prompts (processed before next iteration)" — matches SPEC line 38 ("check queue/ folder for override prompts before anything else") ✓
+- `requests/` "Agent side-effect requests (GitHub ops, child dispatch)" — matches SPEC lines 46, 73-74, 93-94 ✓
+
+### Gate 2 (Test Depth) — N/A
+
+No tests changed.
+
+### Gate 3 (Coverage) — N/A
+
+No code changed.
+
+### Gate 4 (Code Quality) — PASS
+
+Clean, minimal README addition. No dead content introduced. Descriptions are concise and non-redundant.
+
+### Gate 5 (Integration Sanity) — PASS
+
+Documentation-only change — zero regression risk. Last confirmed dynamic run: tsc exit 0, 632 tests pass; no code changed since.
+
+### Gate 6 (Proof) — N/A
+
+Documentation-only. Empty artifacts is the correct outcome.
+
+### Gate 7 (Runtime Layout) — N/A
+
+No CSS or layout changes.
+
+### Gate 8 (Version Compliance) — N/A
+
+No dependency changes.
+
+### Gate 9 (Documentation) — PASS
+
+This IS the documentation change. The three additions fill a real gap: these runtime files/dirs are central to the inner loop protocol but were previously absent from the README architecture diagram. Content verified accurate per SPEC.
+
+---
