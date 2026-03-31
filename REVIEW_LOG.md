@@ -162,3 +162,53 @@ No dependency changes.
 `README.md`: model IDs corrected from `gemini-3.1-flash-lite` to `gemini-3.1-flash-lite-preview` — verified against actual agent files. Spec-gap P2 items documented in TODO.md are accurate descriptions of known issues (loop.sh/loop.ps1 model mismatch, missing `on_start` config block, periodic spec-gap scheduling unimplemented) — each references correct file paths and line numbers.
 
 ---
+
+## Review — 2026-03-31 — commits cc509515c..cc9dbbbe5 (final-review, spec-review trigger)
+
+**Verdict: PASS** (0 findings)
+**Scope:** `README.md` (commit 119006048 — one-line Storybook component list fix); all other commits are bookkeeping (review, QA, spec-gap)
+
+**Prior findings resolution:**
+- All prior Gate 5 FAIL findings (TS2353, TS2304) were resolved in the previous review (a37348513..cc509515c). No regressions.
+
+### Gate 1 (Spec Compliance) — PASS
+
+`README.md` Storybook status now accurately reflects the codebase:
+- `AppShell` removed — confirmed non-existent (no file found under `dashboard/src/`)
+- `ArtifactViewer` added — exists at `components/artifacts/ArtifactViewer.tsx` with `.stories.tsx` ✓
+- `ProviderHealth` added — exists at `components/health/ProviderHealth.tsx` with `.stories.tsx` ✓
+- `CostDisplay` added — exists at `components/progress/CostDisplay.tsx` with `.stories.tsx` ✓
+
+### Gate 2 (Test Depth) — PASS
+
+No tests changed in this scope.
+
+### Gate 3 (Coverage) — PASS
+
+No new code branches introduced.
+
+### Gate 4 (Code Quality) — PASS
+
+One-line README edit, clean and accurate. No dead code or duplication.
+
+### Gate 5 (Integration Sanity) — PASS
+
+`npm run type-check` in `aloop/cli` exits 0 (confirmed). Disk full (ENOSPC) prevented running the full test suite, but the README change cannot introduce test failures. Prior review confirmed 632 tests passing; no code was changed since.
+
+### Gate 6 (Proof) — N/A
+
+Purely internal docs fix. Skipping is correct.
+
+### Gate 7 (Runtime Layout) — N/A
+
+No CSS or layout changes.
+
+### Gate 8 (Version Compliance) — N/A
+
+No dependency changes.
+
+### Gate 9 (Documentation) — PASS
+
+This iteration IS a documentation fix. README Storybook status now correctly lists component names that actually exist in the codebase, verified against directory listing.
+
+---

@@ -73,7 +73,7 @@ TypeScript fixes verified in code — no further gaps:
 
 All requirements satisfied. No new findings.
 
-### Spec Review — APPROVED (docs trigger, 2026-03-31) [reviewed: all gates pass]
+### Spec Review — APPROVED (docs trigger, 2026-03-31) [reviewed: all gates pass] [final-review: gates 1-9 pass]
 
 Re-verified against SPEC.md and SPEC-ADDENDUM.md after docs trigger:
 
