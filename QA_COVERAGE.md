@@ -129,3 +129,12 @@
 | Gate 3: createInvokeAgentReview factory + listComments tests | 2026-03-31 | a45a51bc6 | PASS (static) | Factory exported from process-requests.ts:187; InvokeAgentReviewDeps type exported:174; 4 tests at test:786-878 cover adapter present, absent, empty, error-swallow |
 | Gate 4a: dead code — && deps.adapter at orchestrate.ts:1135 | 2026-03-31 | a45a51bc6 | FAIL (static) | Line 1135 condition: filterRepo && state.issues.length === 0 && deps.adapter — && deps.adapter is dead code because lines 993-999 guarantee adapter is set whenever filterRepo is set; violates Constitution Rule 13 (no dead code) |
 | Gate 4b: DI bypass — spawnSync inside orchestrateCommandWithDeps at lines 993-999 | 2026-03-31 | a45a51bc6 | FAIL (static) | orchestrateCommandWithDeps bootstraps execGh from spawnSync('gh',...) when deps.adapter is absent — hard-coded side effect in the DI-testable function; fix: move to orchestrateCommand (non-DI wrapper) |
+| TypeScript build (npm run build) | 2026-03-31 | 707e8fcb0 | PASS | Build clean exit 0 (final-qa session) |
+| tsc --noEmit (all files including test files) | 2026-03-31 | 707e8fcb0 | PASS | Zero TypeScript errors; 3 previously reported test-file errors (orchestrate.test.ts lines 367, 446, 449) are fixed |
+| adapter.test.ts unit tests | 2026-03-31 | 707e8fcb0 | PASS | 36/36 pass — stable |
+| process-requests.ts full suite | 2026-03-31 | 707e8fcb0 | PASS | 42/42 pass (+4 new createInvokeAgentReview tests: listComments path, absent adapter, empty comments, error swallow) |
+| orchestrate.test.ts full suite | 2026-03-31 | 707e8fcb0 | PASS | 352/379 pass, 27 fail — +4 new tests pass (Gate 4a/4b fix + preload invariant); pre-existing 27 failures unchanged |
+| Gate 4a fix: dead && deps.adapter removed | 2026-03-31 | 707e8fcb0 | PASS | preload condition is now simply `if (filterRepo && state.issues.length === 0)`; all preload tests pass |
+| Gate 4b fix: adapter bootstrap in orchestrateCommand | 2026-03-31 | 707e8fcb0 | PASS | spawnSync bootstrap moved to orchestrateCommand (non-DI wrapper at lines 1514-1525); DI boundary clean |
+| adapter instantiation in orchestrateCommandWithDeps (AC#11) | 2026-03-31 | 707e8fcb0 | PASS | Runtime test coverage confirmed; orchestrate.test.ts adapter-instantiation tests pass |
+| createInvokeAgentReview factory + listComments path | 2026-03-31 | 707e8fcb0 | PASS | 4 new tests all pass: adapter present (listComments called with correct PR), absent, empty, error-swallow |
