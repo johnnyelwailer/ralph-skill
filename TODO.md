@@ -14,6 +14,8 @@
 - [~] [spec-gap][P1] `loop.sh` Claude model default diverges from `config.yml`: `loop.sh:33` sets `CLAUDE_MODEL="${ALOOP_CLAUDE_MODEL:-sonnet}"` but `config.yml:21` declares `claude: opus`. — **Out of scope**: CONSTITUTION rule #1 and TASK_SPEC both prohibit touching `loop.sh`/`loop.ps1`. File a separate issue.
 - [~] [spec-gap][P2] OpenCode has no model variable in loop scripts: no `OPENCODE_MODEL` variable in `loop.sh`/`loop.ps1` unlike other providers. — **Out of scope**: same reason as P1. File a separate issue.
 
+<!-- spec-gap analysis (2026-03-31): no new discrepancies found for issue #177 scope — all OrchestratorAdapter acceptance criteria fulfilled. P1/P2 above are deferred carry-forwards (out of scope). -->
+
 ### Completed
 
 - [x] [review] Gate 4 (b) + (a): `orchestrate.ts:993-999` — moved adapter bootstrap into `orchestrateCommand` (lines 1514-1525), removed dead `&& deps.adapter` guard so preload is simply `if (filterRepo && state.issues.length === 0)`.
