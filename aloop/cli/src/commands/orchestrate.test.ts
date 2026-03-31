@@ -313,6 +313,138 @@ describe('orchestrateCommandWithDeps', () => {
       ['pr-comments', '--session', 'orchestrator-20260309-103000', '--since', '2026-03-09T10:30:00.000Z', '--role', 'orchestrator'],
     );
   });
+
+  it('preloads issues from adapter when filterRepo is set and state is empty', async () => {
+    const adapter = createMockAdapter({
+      listIssues: async (filters: Record<string, unknown>) => {
+        assert.deepStrictEqual(filters, { labels: ['aloop/auto'], state: 'open' });
+        return [
+          { number: 10, title: 'Issue 10', state: 'open' },
+          { number: 20, title: 'Issue 20', state: 'open' },
+        ];
+      },
+      getIssue: async (number: number) => {
+        if (number === 10) {
+          return {
+            number: 10,
+            title: 'Issue 10',
+            body: '## Acceptance Criteria\n- [ ] Works',
+            state: 'open',
+            labels: ['aloop/auto'],
+          };
+        }
+        if (number === 20) {
+          return {
+            number: 20,
+            title: 'Issue 20',
+            body: '## Acceptance Criteria\n- [ ] Also works',
+            state: 'open',
+            labels: ['aloop/auto', 'aloop/priority-high'],
+          };
+        }
+        throw new Error(`Unexpected issue number: ${number}`);
+      },
+    });
+    const deps = createMockDeps({ adapter, existsSync: () => true });
+    const result = await orchestrateCommandWithDeps({ repo: 'owner/repo' }, deps);
+
+    // Verify listIssues was called
+    const listCalls = adapter.calls.filter((c) => c.method === 'listIssues');
+    assert.equal(listCalls.length, 1);
+
+    // Verify getIssue was called for each issue
+    const getCalls = adapter.calls.filter((c) => c.method === 'getIssue');
+    assert.equal(getCalls.length, 2);
+    assert.equal(getCalls[0].args[0], 10);
+    assert.equal(getCalls[1].args[0], 20);
+
+    // Verify state was populated
+    assert.equal(result.state.issues.length, 2);
+    assert.equal(result.state.issues[0].number, 10);
+    assert.equal(result.state.issues[0].title, 'Issue 10');
+    assert.equal(result.state.issues[1].number, 20);
+    assert.equal(result.state.issues[1].title, 'Issue 20');
+    assert.equal(result.state.issues[1].priority, 50); // aloop/priority-high
+    assert.equal(result.state.current_wave, 1);
+  });
+
+  it('preload skips when state already has issues', async () => {
+    const adapter = createMockAdapter();
+    const samplePlan = JSON.stringify({
+      issues: [{ id: 1, title: 'Task A', body: 'Do A', depends_on: [] }],
+    });
+    const deps = createMockDeps({
+      adapter,
+      existsSync: () => true,
+      readFile: async () => samplePlan,
+    });
+
+    const result = await orchestrateCommandWithDeps({ plan: 'plan.json', repo: 'owner/repo' }, deps);
+
+    // state.issues already populated by plan, so preload should NOT fire
+    const listCalls = adapter.calls.filter((c) => c.method === 'listIssues');
+    assert.equal(listCalls.length, 0, 'listIssues should not be called when state already has issues');
+    assert.equal(result.state.issues.length, 1);
+  });
+
+  it('preload skips when adapter is not provided', async () => {
+    const deps = createMockDeps({ existsSync: () => true });
+    const result = await orchestrateCommandWithDeps({ repo: 'owner/repo' }, deps);
+
+    // No adapter → preload branch skipped, state stays empty
+    assert.equal(result.state.issues.length, 0);
+  });
+
+  it('preload handles empty listIssues result gracefully', async () => {
+    const adapter = createMockAdapter({
+      listIssues: async () => [],
+    });
+    const deps = createMockDeps({ adapter, existsSync: () => true });
+    const result = await orchestrateCommandWithDeps({ repo: 'owner/repo' }, deps);
+
+    const listCalls = adapter.calls.filter((c) => c.method === 'listIssues');
+    assert.equal(listCalls.length, 1);
+    const getCalls = adapter.calls.filter((c) => c.method === 'getIssue');
+    assert.equal(getCalls.length, 0, 'getIssue should not be called when listIssues returns empty');
+    assert.equal(result.state.issues.length, 0);
+  });
+
+  it('preload infers status from labels when no project status', async () => {
+    const adapter = createMockAdapter({
+      listIssues: async () => [
+        { number: 5, title: 'Epic', state: 'open' },
+        { number: 6, title: 'Normal', state: 'open' },
+      ],
+      getIssue: async (number: number) => {
+        if (number === 5) {
+          return {
+            number: 5,
+            title: 'Epic',
+            body: '## Tasklist\n- [tasklist]\n  - [ ] sub 1',
+            state: 'open',
+            labels: ['aloop/auto', 'aloop/epic'],
+          };
+        }
+        return {
+          number: 6,
+          title: 'Normal',
+          body: 'Body',
+          state: 'open',
+          labels: ['aloop/auto'],
+        };
+      },
+    });
+    const deps = createMockDeps({ adapter, existsSync: () => true });
+    const result = await orchestrateCommandWithDeps({ repo: 'owner/repo' }, deps);
+
+    assert.equal(result.state.issues.length, 2);
+    // Epic with tasklist → "In progress" status
+    const epic = result.state.issues.find((i) => i.number === 5);
+    assert.equal(epic.status, 'In progress');
+    // Normal issue → "Needs refinement"
+    const normal = result.state.issues.find((i) => i.number === 6);
+    assert.equal(normal.status, 'Needs refinement');
+  });
 });
 
 describe('orchestrateCommand', () => {
