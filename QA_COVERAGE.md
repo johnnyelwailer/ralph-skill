@@ -104,3 +104,8 @@
 | process-requests.ts full suite | 2026-03-31 | e6584c383 | PASS | 38/38 pass — stable; no regressions from P2 fix |
 | orchestrate.test.ts full suite | 2026-03-31 | e6584c383 | PASS | 348/375 pass, 27 fail — identical pre-existing baseline; no regressions from P2 fix |
 | tsc --noEmit (non-test files) | 2026-03-31 | e6584c383 | PASS | Zero type errors; exit 0 |
+| TypeScript build (npm run build) | 2026-03-31 | c9bcadf28 | PASS | Build clean exit 0 (final-qa gate, regression check at HEAD) |
+| adapter.test.ts unit tests | 2026-03-31 | c9bcadf28 | PASS | 36/36 pass — stable |
+| process-requests.ts full suite | 2026-03-31 | c9bcadf28 | PASS | 38/38 pass — stable |
+| orchestrate.test.ts full suite | 2026-03-31 | c9bcadf28 | PASS | 348/375 pass, 27 fail — identical pre-existing baseline; no regressions |
+| tsc --noEmit (non-test files) | 2026-03-31 | c9bcadf28 | PASS | Zero type errors; exit 0 |
