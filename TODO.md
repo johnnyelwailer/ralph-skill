@@ -21,6 +21,8 @@ _(none)_
 
 <!-- spec-gap analysis (2026-03-31): no new discrepancies found for issue #177 scope — all OrchestratorAdapter acceptance criteria fulfilled. P1/P2 above are deferred carry-forwards (out of scope). -->
 
+<!-- spec-review (2026-03-31): PASS — all 15 TASK_SPEC acceptance criteria verified against implementation. AC#1-2: all five *Deps interfaces have adapter? field (orchestrate.ts:193-235, 3518, 4744). AC#3: applyDecompositionPlan uses adapter.createIssue() at orchestrate.ts:678, execGhIssueCreate removed from OrchestrateDeps. AC#4: checkPrGates uses adapter.getPRStatus()/getPrChecks() at orchestrate.ts:3558-3589. AC#5: mergePR at orchestrate.ts:3707. AC#6: createPR at process-requests.ts:1181. AC#7: getIssue+updateIssue at process-requests.ts:1101-1105. AC#8: updateIssueBodyViaAdapter at process-requests.ts:128-135. AC#9: GraphQL project board sync unchanged. AC#10: git calls unchanged. AC#11: adapter created once in processRequests():426, orchestrateCommandWithDeps():1525. AC#12: tests 1152/1188, 35 pre-existing failures. AC#13: no raw spawnSync('gh',...) for CRUD (only execGh transport def and GraphQL board). AC#14: tsc --noEmit clean. AC#15: tests pass. Note: TASK_SPEC table listed addLabels/removeLabels/ensureLabelExists but these are not in OrchestratorAdapter interface — implementation correctly uses adapter.updateIssue({labels_add/labels_remove}) per actual interface. -->
+
 ### Completed
 
 - [x] [review] Gate 4 (b) + (a): `orchestrate.ts:993-999` — moved adapter bootstrap into `orchestrateCommand` (lines 1514-1525), removed dead `&& deps.adapter` guard so preload is simply `if (filterRepo && state.issues.length === 0)`.
