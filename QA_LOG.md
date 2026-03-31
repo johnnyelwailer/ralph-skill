@@ -1,5 +1,76 @@
 # QA Log
 
+## QA Session — 2026-03-31 (final-qa, triggered by final-review, commit 6650dcf30)
+
+### Test Environment
+- Binary under test: /tmp/aloop-test-install-UPzAsn/bin/aloop (version 1.0.0)
+- Commit: 6650dcf30
+- Disk space: /tmp 5.9G available, / 331G available (disk full resolved)
+- Features tested: 5
+
+### Results
+- PASS: TypeScript type-check (`tsc --noEmit`) — exit 0
+- PASS: `npm test` (vitest) in dashboard — 51 test files, 632 tests, exit 0
+- PASS: Every non-ui component has `.test.tsx` — no missing files
+- PASS: Every non-ui component has `.stories.tsx` — no missing files
+- FAIL (pre-existing, tracked): README template list missing `PROMPT_spec-review.md` — file exists at `aloop/templates/PROMPT_spec-review.md` but absent from README Architecture section template listing. Already tracked as `[review]` in TODO.md.
+- FAIL (pre-existing, tracked): README finalizer prose lists only 3 agents (Proof, Spec-gap, Docs) — SPEC defines 6 (spec-gap, docs, spec-review, final-review, final-qa, proof). Already tracked as `[review]` in TODO.md.
+
+### Bugs Filed
+- None new. Both README gaps are pre-existing and already tracked as `[review]` items in TODO.md (re-confirmed still open at commit 6650dcf30).
+
+### Command Transcript
+
+```
+# Install CLI from packaged source
+ALOOP_BIN=$(npm --prefix aloop/cli run --silent test-install -- --keep 2>/dev/null | tail -1)
+echo "Binary under test: $ALOOP_BIN"
+# → Binary under test: /tmp/aloop-test-install-UPzAsn/bin/aloop
+$ALOOP_BIN --version
+# → 1.0.0
+
+# TypeScript type-check
+npm --prefix aloop/cli/dashboard run type-check
+# → (no output)
+# Exit: 0
+
+# Run vitest suite
+npm --prefix aloop/cli/dashboard test -- --run
+# → Test Files  51 passed (51)
+# → Tests       632 passed (632)
+# → Duration    5.04s
+# → (2 expected console errors from ResponsiveLayout.test.tsx .toThrow() case — not failures)
+# Exit: 0
+
+# Check .test.tsx coverage (non-ui components)
+find aloop/cli/dashboard/src/components -name "*.tsx" ! -name "*.test.tsx" ! -name "*.stories.tsx" ! -path "*/ui/*" | while read f; do base="${f%.tsx}"; [ ! -f "${base}.test.tsx" ] && echo "NO TEST: $f"; done
+# → (no output — all components have test files)
+
+# Check .stories.tsx coverage (non-ui components)
+find aloop/cli/dashboard/src/components -name "*.tsx" ! -name "*.test.tsx" ! -name "*.stories.tsx" ! -path "*/ui/*" | while read f; do base="${f%.tsx}"; [ ! -f "${base}.stories.tsx" ] && echo "NO STORY: $f"; done
+# → (no output — all components have story files)
+
+# Verify README gaps (static check against spec)
+grep -n "PROMPT_spec-review\|finalizer" README.md
+# → Line 22: When all tasks are marked done, finalizer agents run once:
+# → Line 23: - **Proof** — ...
+# → Line 24: - **Spec-gap** — ...
+# → Line 25: - **Docs** — ...  ← only 3 listed, spec requires 6
+# → Line 240: PROMPT_proof.md
+# → Line 241: PROMPT_spec-gap.md
+# → Line 242: PROMPT_docs.md
+# → Line 243: PROMPT_final-qa.md
+# → Line 244: PROMPT_final-review.md
+# →  (PROMPT_spec-review.md absent from template list)
+
+# Verify PROMPT_spec-review.md exists
+ls aloop/templates/PROMPT_spec-review.md
+# → aloop/templates/PROMPT_spec-review.md  ← file exists, just not in README
+
+# Clean up install prefix
+rm -rf /tmp/aloop-test-install-UPzAsn
+```
+
 ## QA Session — 2026-03-31 (iteration 1)
 
 ### Test Environment
@@ -128,6 +199,54 @@ find aloop/cli/dashboard/src/components -name "*.tsx" ! -name "*.test.tsx" ! -na
 cat .github/workflows/ci.yml
 # → name: CI; on: push+PR to master,agent/trunk; Node 22 via actions/setup-node@v4; working-directory: aloop/cli/dashboard; npm ci then npm test
 ```
+## QA Session — 2026-03-31 (final-qa re-run, triggered by final-review)
+
+### Test Environment
+- Binary under test: N/A — disk full (ENOSPC), commands blocked
+- Commit: a43e2b433
+- Features tested: 5 (static verification via file reads only)
+
+### Blocker
+- `/tmp` partition is full (ENOSPC). Could not run `npm test`, `tsc --noEmit`, or install the packaged CLI binary.
+- Reverted to static verification using Glob/Grep tools to confirm file presence and content.
+
+### Results
+- PASS (static): `.github/workflows/ci.yml` — file present, correct triggers/Node 22/npm ci+test ✓
+- PASS (static): All non-ui components have `.test.tsx` — Glob confirms all 30 test files present ✓
+- PASS (static): All non-ui components have `.stories.tsx` — Glob confirms all stories files present ✓
+- PASS (static): `Sidebar.test.tsx:3` — `afterEach` imported from vitest (TS2304 fix confirmed in place) ✓
+- PASS (static): `ActivityPanel.test.tsx:14` — `iterationStartedAt: undefined as string | undefined` in baseProps (TS2353 fix confirmed in place) ✓
+
+### Bugs Filed
+- None. All previously filed bugs remain resolved per static checks.
+- NOTE: Dynamic test execution (npm test, tsc) not possible this session due to disk space exhaustion. Last confirmed passing run: iter final-qa at commit 613a7bab4.
+
+### Command Transcript
+```
+# Check for file existence and TypeScript fixes — via Glob/Grep (commands blocked by ENOSPC)
+
+Glob: aloop/cli/dashboard/src/components/**/*.test.tsx
+→ 30 test files found (all non-ui components covered)
+
+Glob: aloop/cli/dashboard/src/components/**/*.stories.tsx
+→ 41 stories files found (all non-ui components covered + ui/ stories)
+
+Grep: afterEach in Sidebar.test.tsx
+→ Line 3: import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+→ Line 240: afterEach(() => {
+
+Grep: iterationStartedAt in ActivityPanel.test.tsx
+→ Line 14: iterationStartedAt: undefined as string | undefined,
+→ Line 73: renderActivityPanel({ log, isRunning: true, currentIteration: 5, iterationStartedAt: undefined });
+
+cat .github/workflows/ci.yml (via Read tool)
+→ name: CI
+→ on: push+PR to master, agent/trunk
+→ actions/setup-node@v4 node-version: 22
+→ working-directory: aloop/cli/dashboard
+→ npm ci then npm test
+```
+
 ## QA Session — 2026-03-31 (iteration 3)
 
 ### Test Environment
