@@ -2,7 +2,8 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { TooltipProvider } from '@/components/ui/tooltip';
-import { Header, QACoverageBadge } from './Header';
+import { Header } from './Header';
+import { QACoverageBadge } from '@/components/shared/QACoverageBadge';
 import type { ConnectionStatus } from '@/lib/types';
 
 const defaultHeaderProps: React.ComponentProps<typeof Header> = {

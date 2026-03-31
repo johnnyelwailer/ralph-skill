@@ -4,8 +4,8 @@ import { Toaster } from '@/components/ui/sonner';
 import { CommandPalette } from '@/components/shared/CommandPalette';
 import { Sidebar } from '@/components/layout/Sidebar';
 export { Sidebar } from '@/components/layout/Sidebar';
-import { Header, QACoverageBadge } from '@/components/layout/Header';
-export { QACoverageBadge } from '@/components/layout/Header';
+import { Header } from '@/components/layout/Header';
+export { QACoverageBadge } from '@/components/shared/QACoverageBadge';
 import { SessionDetail } from '@/components/session/SessionDetail';
 export { slugify, DocContent } from '@/components/session/SessionDetail';
 export {

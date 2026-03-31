@@ -1,5 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react';
-import { Header, QACoverageBadge } from './Header';
+import { Header } from './Header';
+import { QACoverageBadge } from '@/components/shared/QACoverageBadge';
 import type { ConnectionStatus } from '@/lib/types';
 
 const meta: Meta<typeof Header> = {

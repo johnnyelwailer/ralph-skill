@@ -4,20 +4,17 @@
 
 ### In Progress
 
-- [x] [review] Gate 3 (persistent): Remove 3 redundant null-guards from `useSSEConnection.ts` to unlock ≥90% branch coverage. Required changes: (1) line 57 — remove `if (stateListener)` guard, call `eventSource.removeEventListener('state', stateListener)` directly (stateListener is always set when eventSource is non-null, since they're assigned together in connectSSE); (2) line 58 — remove `if (heartbeatListener)` guard, same reasoning; (3) line 70 — remove `if (cancelled) return` guard from connectSSE (reconnect timer is always cleared before connectSSE could run post-cancel). After removal, ≥90% branch coverage must pass. (priority: high)
-- [x] [review] Gate 2: `useSSEConnection.test.ts` line 111 asserts `expect(result.current.state).not.toBeNull()` — existence-check anti-pattern. Rewrite to `expect(result.current.state).toEqual({ log: 'line1', activeSessions: [], recentSessions: [] })` (the exact stateData object emitted in that test). (priority: high) [reviewed: gates 1-9 pass]
-
-### Up Next
-
-- [ ] Split `Header.tsx` (280 LOC) below 200-line limit (priority: high)
+- [x] Split `Header.tsx` (280 LOC) below 200-line limit (priority: high)
   - Extract `QACoverageBadge` (lines 62–148) + `parseQACoveragePayload` + related constants → `src/components/shared/QACoverageBadge.tsx`
-  - Also move `QACoverageBadge` to the `coverage.include` array in `vitest.config.ts` if not present
-  - After extraction, `Header.tsx` should be ~140 LOC; verify tests pass (`npm test`)
+  - `vitest.config.ts` already covers `src/components/**/*.tsx` — no config change needed
+  - After extraction, `Header.tsx` is 158 LOC; all 569 tests pass
 
 - [ ] Split `Sidebar.tsx` (255 LOC) below 200-line limit (priority: high)
   - Extract context menu (lines 210–252) → `src/components/layout/SidebarContextMenu.tsx`
   - Extract collapsed sidebar panel (lines 111–135) → `src/components/layout/CollapsedSidebar.tsx`, or combine both into one extraction if needed
   - `Sidebar.tsx` must stay <200 LOC after extraction; update imports; verify tests pass
+
+### Up Next
 
 ### Deferred
 
@@ -27,6 +24,8 @@
 
 ### Completed
 
+- [x] [review] Gate 3 (persistent): Remove 3 redundant null-guards from `useSSEConnection.ts` to unlock ≥90% branch coverage
+- [x] [review] Gate 2: `useSSEConnection.test.ts` line 111 — rewrote existence-check anti-pattern to assert exact stateData object; gates 1-9 pass
 - [x] Create `.github/workflows/ci.yml` — dashboard unit tests run on PRs to master
 - [x] Configure Storybook 10 with `@storybook/react-vite` in `aloop/dashboard/.storybook/`
 - [x] Extract `Sidebar.tsx`, `Header.tsx`, `MainPanel.tsx`, `DocsPanel.tsx`, `ResponsiveLayout.tsx` from AppView — each with `.test.tsx` and `.stories.tsx`
