@@ -13,7 +13,7 @@ _(none)_
   - Move `computeAvgDuration` + `latestQaCoverageRefreshSignal` → `src/lib/logHelpers.ts`
   - Update all imports in `AppView.tsx` and consumers; verify all tests still pass (`npm test`)
 
-- [ ] Extract `CommandPalette` + SSE hook to collapse `AppView.tsx` to <100 LOC (priority: critical)
+- [x] Extract `CommandPalette` + SSE hook to collapse `AppView.tsx` to <100 LOC (priority: critical)
   - Extract `CommandPalette` component → `src/components/shared/CommandPalette.tsx` (with `.test.tsx` and `.stories.tsx`)
   - Extract SSE + state-fetch logic from `AppInner` → `src/hooks/useDashboardState.ts`
   - Make `AppView.tsx` a thin shell: only imports/re-exports + `App` component (<100 LOC)

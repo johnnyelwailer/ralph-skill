@@ -1,6 +1,17 @@
 import '@testing-library/jest-dom/vitest';
 import { vi } from 'vitest';
 
+// jsdom does not implement ResizeObserver — provide a stub for radix/cmdk components
+globalThis.ResizeObserver = class ResizeObserver {
+  observe = vi.fn();
+  unobserve = vi.fn();
+  disconnect = vi.fn();
+  constructor(_callback: ResizeObserverCallback) {}
+};
+
+// jsdom does not implement scrollIntoView — stub for cmdk components
+Element.prototype.scrollIntoView = vi.fn();
+
 // jsdom does not implement window.matchMedia — provide a stub so hooks like
 // useBreakpoint that call window.matchMedia don't throw in unit tests.
 // The stub evaluates simple min-width / max-width queries against window.innerWidth
