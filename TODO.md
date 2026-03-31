@@ -18,3 +18,5 @@ spec-review (2026-03-31): all flock locking requirements confirmed implemented �
 spec-review (2026-03-31, re-run): all flock locking requirements re-verified against SPEC.md lines 157–175 — flock -x writes, flock -s reads, 5-attempt backoff (50–250ms), flock -n non-blocking, dynamic FD, .lock sidecar, stale-dir cleanup, health_lock_failed logged, all-providers-cooldown sleep — APPROVED, no gaps found
 
 [final-review: gates 1-10 pass (spec-review re-run + flock/util-linux prereq docs) — 2026-03-31]
+
+spec-review (2026-03-31, triggered by docs): re-verified after README steer/devcontainer docs fix — no locking logic changed, all flock requirements still pass — APPROVED
