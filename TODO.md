@@ -94,6 +94,17 @@ TypeScript fixes verified in code — no further gaps:
 
 All requirements satisfied. No new findings.
 
+### Spec Review — APPROVED (docs trigger re-run 6, 2026-03-31) [reviewed: all gates pass]
+
+Re-verified after docs commit `586afd444` (document --in-place, --watch, and --non-interactive flags):
+
+- `aloop start --in-place`: SPEC line 913 defines it; implemented at `start.ts:783` (`!options.inPlace && worktreeDefault`); README code example added ✓
+- `aloop status --watch`: SPEC line 1243 AC `aloop status --watch provides terminal-based live monitoring (auto-refresh)`; implemented at `status.ts:87-110` with `setInterval`; README table updated ✓
+- `aloop setup --non-interactive`: SPEC line 946 defines it; implemented at `setup.ts:127-128`; README table updated ✓
+- Docs agent AC (SPEC line 879): documentation reflects actual implementation state ✓; only README.md modified (no SPEC.md or code changes) ✓
+
+No new gaps found. Docs commit is spec-compliant.
+
 ### Spec Review — FAIL (docs trigger, 2026-03-31 re-run)
 
 Two gaps found in the docs commit (`06a97c3c2`):
