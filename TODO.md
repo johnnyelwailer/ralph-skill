@@ -19,7 +19,7 @@
 <!-- spec-gap analysis (2026-03-31 run 3): no new P1/P2 gaps found within issue #177 scope. Both previous [spec-gap] items resolved [x]. Broader SPEC.md features (Finalizer array, Proof phase, QA coverage tracking, periodic spec-gap scheduling) are out of scope for this issue — not part of OrchestratorAdapter migration AC. Issue #177 spec-review PASS gates stand. spec-gap analysis: no discrepancies found — spec fully fulfilled for issue #177. -->
 <!-- spec-gap analysis (2026-03-30 run 2): one new P2 gap found — see item below. Previous P3 cosmetic gap remains [x]. -->
 
-- [x] [spec-gap] **P2 — `GitHubAdapter.updateIssue` unconditionally calls `execGh` with no edit flags when only labels are updated** — Fixed: `adapter.ts:82` guards the base call with `if (update.body)`, so label-only updates skip the base `gh issue edit` call entirely. All 36 adapter tests pass, including dedicated label-only tests. Verified: `labels_add` (2 calls), `labels_remove` (1 call), and combined label-only update (no bare base call) all behave correctly.
+- [x] [spec-gap] **P2 — `GitHubAdapter.updateIssue` unconditionally calls `execGh` with no edit flags when only labels are updated** — Fixed: `adapter.ts:82` guards the base call with `if (update.body)`, so label-only updates skip the base `gh issue edit` call entirely. All 36 adapter tests pass, including dedicated label-only tests. Verified: `labels_add` (2 calls), `labels_remove` (1 call), and combined label-only update (no bare base call) all behave correctly. [reviewed: gates 1-9 pass]
 
 <!-- spec-gap analysis: no P1/P2 gaps found — spec fully fulfilled for issue #177 (OrchestratorAdapter migration). One P3 cosmetic gap noted below (pre-existing, does not block completion). -->
 

@@ -752,3 +752,59 @@ No new dependencies installed.
 - Steer repositioned as ad-hoc steering tool — correct (it's not a cycle agent) ✓
 
 **Issue #177 is complete.** All non-deferred acceptance criteria satisfied. LocalAdapter deferred per spec.
+
+---
+
+## Review — 2026-03-31 — commits 6261b512..283bd2df8 (final-review: P2 bug fix + docs cleanup)
+
+**Verdict: PASS** (1 observation)
+**Scope:** `aloop/cli/src/lib/adapter.ts`, `aloop/cli/src/lib/adapter.test.ts`, `README.md`
+**Commits reviewed:** `5faf96d05` (P2 fix: guard base edit call), `e3d57bfef` (README: add resolve/resume), `df9394a6f` (README: remove stale P2 known-issue block), plus docs-only commits (`f613a31bc`, `9ecb12f76`, `7cf9d5e1d`, `320f820ff`, `283bd2df8`)
+
+### Gate 1 — PASS
+
+`adapter.ts:82` — `if (update.body)` guard correctly isolates the base `gh issue edit --body` call from label-only update paths. The spec-gap P2 root cause (unconditional `execGh` with zero flags for label-only calls) is eliminated. All 7 label-only call-sites in orchestrate.ts that were previously broken at runtime are now correctly handled.
+
+### Gate 2 — PASS
+
+Three tests updated/added in `adapter.test.ts`:
+- `labels_add` test (line 101): `assert.equal(calls.length, 2)` — exact count, no spurious base call ✓
+- `labels_remove` test (line 114): `assert.equal(calls.length, 1)` — exact count ✓
+- New `label-only update makes no base edit call` test (line 125): adversarial — checks no `issue edit N --repo` call lacking `--add-label`/`--remove-label` is present; also verifies both label mutations with exact values (`'p0'`, `'p1'`). A regression would fail this test.
+
+### Gate 3 — PASS
+
+Both branches of `if (update.body)` (body-present: combined test at line 156; body-absent: labels_add/labels_remove/label-only tests) are covered. All five conditional branches in `updateIssue` remain covered.
+
+### Gate 4 — PASS
+
+Implementation is tight: 3-line replacement, no dead code, no commented-out code, no leftover TODOs. No duplication introduced.
+
+### Gate 5 — PASS
+
+- `tsc --noEmit`: 0 errors ✓
+- Tests: 1153/1188 pass, 34 fail — identical to confirmed pre-existing baseline ✓
+- `npm run build`: clean ✓
+
+### Gate 6 — PASS (N/A)
+
+Purely internal TypeScript logic fix — no observable output. Skip correct.
+
+### Gate 7 — N/A
+
+No UI changes.
+
+### Gate 8 — N/A
+
+No new dependencies.
+
+### Gate 9 — PASS
+
+- `df9394a6f` removed the stale P2 "Known issue" callout from README (added in `e3d57bfef`, obsoleted by `5faf96d05`). Removal is accurate — bug is fixed.
+- `aloop resolve` command confirmed at `src/index.ts:29` ✓
+- `aloop orchestrate --resume` flag confirmed at `src/index.ts:161` ✓
+- README is consistent with current implementation.
+
+**Observation**: Gate 2 — `label-only update makes no base edit call` test at `adapter.test.ts:125–134` is the strongest of the three: it uses a negative assertion (no bare `issue edit` call present) plus positive assertions for both label mutations with exact string values. A broken implementation would not silently pass.
+
+**Issue #177 is complete.** All non-deferred acceptance criteria satisfied. P2 bug fixed and verified. LocalAdapter deferred per spec.
