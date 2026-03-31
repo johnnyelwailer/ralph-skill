@@ -104,3 +104,26 @@ No proof-manifest. Pure test/refactor build — per CONSTITUTION, skipping proof
 No CSS/layout changes, no dependency changes, no user-facing behavior changes.
 
 ---
+
+## Review — 2026-03-31 — commits 7cabbdf64..e8a8248d7
+
+**Verdict: PASS** (2 observations)
+**Scope:** `aloop/cli/dashboard/src/hooks/useSSEConnection.ts`, `aloop/cli/dashboard/src/hooks/useSSEConnection.test.ts`
+
+**Prior findings resolved:**
+- Gate 2: `useSSEConnection.test.ts` line 111 `expect(result.current.state).not.toBeNull()` → `expect(result.current.state).toEqual({ log: 'line1', activeSessions: [], recentSessions: [] })` ✓
+- Gate 3: `useSSEConnection.ts` branch coverage 80.76% → 90% (confirmed by running `npm run test:coverage`) ✓ — 3 redundant null-guards removed: `if (stateListener)` (old line 57), `if (heartbeatListener)` (old line 58), and `if (cancelled) return` in `connectSSE` (old line 70).
+
+### Gate 1 (Spec Compliance) — PASS
+Both changes directly implement the two `[review]` tasks. Scope is minimal and precise — only changed exactly what was requested.
+
+### Gate 2 (Test Depth) — PASS
+`useSSEConnection.test.ts` line 111: `toEqual({ log: 'line1', activeSessions: [], recentSessions: [] })` — concrete shape assertion, anti-pattern eliminated. 14 tests total, covering: network failure, malformed JSON, valid state, QA signal, heartbeat, error/reconnect, HTTP error, open event, session reset, null-eventSource cleanup, cancel-during-reconnect, multi-reconnect, and cancelled `load()` paths. Thorough.
+
+### Gate 3 (Coverage) — PASS
+`useSSEConnection.ts` branch coverage confirmed at exactly 90% (`npm run test:coverage`). Uncovered lines 46, 89 are `!cancelled` branches in async paths that cannot be reliably triggered after `controller.abort()` — architecturally unreachable without non-deterministic timing. 90% meets the ≥90% threshold for new modules.
+
+### Gates 4–9 — PASS / N/A
+No dead code. 569 dashboard tests pass. Build succeeds. No proof artifacts expected (pure internal change). No CSS, deps, or docs changed.
+
+---
