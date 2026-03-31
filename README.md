@@ -56,7 +56,7 @@ The orchestrator enforces role-based GitHub policies — child loops can create 
 
 ## Dashboard
 
-Real-time monitoring UI with SSE updates. Runs as a local web server.
+Real-time monitoring UI with SSE updates. Runs as a local web server. Fully responsive — usable on mobile and tablet viewports.
 
 ```bash
 aloop dashboard
@@ -69,6 +69,7 @@ aloop dashboard --port 3000 --session-dir ~/.aloop/sessions/<id>
 - Proof artifact gallery (screenshots, test output, layout assertions)
 - **Live steering** — send instructions to the running loop from the dashboard
 - **Stop controls** — graceful (SIGTERM) or force (SIGKILL)
+- **Responsive layout** — sidebar collapses to hamburger below 640px; all tap targets ≥ 44×44px on mobile; no hover-only interactions
 
 ## Quality Gates
 
@@ -217,7 +218,7 @@ The installer deploys skill files to each harness directory and the Aloop runtim
 - **5 providers**: Claude, Codex, Gemini, Copilot, OpenCode — single or round-robin
 - **9 review gates**: Spec compliance, test depth, coverage, code quality, integration, proof, layout, version compliance, documentation freshness
 - **Live steering**: Change direction mid-flight without stopping the loop
-- **Real-time dashboard**: SSE-powered UI with activity log, docs, proof gallery, and steering controls
+- **Real-time dashboard**: SSE-powered UI with activity log, docs, proof gallery, steering controls, and responsive mobile layout
 - **GitHub integration**: Issue decomposition, PR lifecycle, squash-merge, conflict rebase, agent review
 - **Budget tracking**: Cost aggregation across child sessions with configurable caps
 - **Provider health**: Automatic cooldown and failover on provider errors
