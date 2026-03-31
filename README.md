@@ -29,7 +29,7 @@ aloop start --provider claude
 aloop start --provider round-robin
 
 # Resume a stopped session
-aloop start --launch-mode resume --session-dir ~/.aloop/sessions/<id>
+aloop start --launch resume <session-id>
 ```
 
 ### Orchestrator Mode (`aloop orchestrate`)
@@ -102,6 +102,8 @@ Five AI coding agents supported — use one, or round-robin across multiple:
 
 **Round-robin mode** cycles providers each iteration — e.g., Claude plans, Codex builds, Gemini reviews, OpenCode builds.
 
+> **Note:** OpenCode is not selectable via `aloop start --provider opencode` (the CLI only accepts `claude`, `codex`, `gemini`, `copilot`, or `round-robin`). OpenCode participates in round-robin when included in `round_robin_order` in `config.yml`, or by invoking `loop.sh` directly.
+
 Provider health is tracked automatically. Failed providers enter cooldown with exponential backoff and are skipped until recovery. Auth failures use longer cooldowns (10min → 30min → 1hr) but still auto-retry.
 
 ## Prerequisites
@@ -151,11 +153,12 @@ The installer deploys skill files to each harness directory and the Aloop runtim
 | `aloop status` | List active sessions and provider health |
 | `aloop stop <id>` | Stop a running session |
 | `aloop setup` | Interactive project configuration |
-| `aloop steer` | Send live instruction to a running loop |
+| `aloop steer <instruction>` | Send live instruction to a running loop |
 | `aloop gh <op>` | Policy-enforced GitHub operations |
 | `aloop discover` | Auto-detect project specs and validation |
 | `aloop update` | Refresh runtime from repo |
-| `aloop devcontainer` | Generate .devcontainer config |
+| `aloop devcontainer` | Generate or augment .devcontainer config |
+| `aloop devcontainer-verify` | Verify devcontainer builds and passes checks |
 
 ### Slash commands (Claude Code / Codex / Copilot)
 
