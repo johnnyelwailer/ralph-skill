@@ -72,7 +72,18 @@ All 9 SPEC-ADDENDUM.md "Dashboard Responsiveness" acceptance criteria remain APP
 
 **Result: APPROVED** [reviewed: gates 1-9 pass] — docs commit f8ce4c4d3 reviewed. README.md one-line correction changes "Auth failures use longer cooldowns (10min → 30min → 1hr) but still auto-retry" to "Auth failures mark the provider as `degraded` (skipped permanently until the user fixes authentication — no auto-retry)". This is a documentation accuracy fix only; no new spec requirements introduced and no impact on SPEC-ADDENDUM.md "Dashboard Responsiveness" acceptance criteria. Prior approval stands.
 
+## Spec Re-Review — 2026-03-31 (docs trigger — E2E fixture refresh)
+
+**Result: APPROVED** — Unstaged fixture changes reviewed. Working-tree diffs are E2E test artifacts only:
+- `active.json`, `history.json`, `log.jsonl`, `status.json` — timestamp refresh (2026-03-24 → 2026-03-31); cosmetic.
+- `workdir/STEERING.md` deleted — `smoke.spec.ts:resetFixtures()` explicitly removes it (line 57).
+- `workdir/EXTRA.md`, `RESEARCH.md`, `SPEC.md` added — created by `resetFixtures()` (lines 52–54) to seed the DocsPanel's extra-docs path (`AppView.tsx:559`); test data only.
+- Queue `1774975974639-steering.md` / `1774976015159-steering.md` / `1774976352443-steering.md` — artifacts from the "writes steering instruction" E2E test.
+
+No new spec requirements introduced. All 9 SPEC-ADDENDUM.md "Dashboard Responsiveness" acceptance criteria remain as previously approved. Prior approval stands.
+
 ## Spec Re-Review — 2026-03-31 (docs trigger — OpenCode autonomous flag)
+
 
 **Result: APPROVED** — docs commit ea6da5aef reviewed. README.md provider table corrects OpenCode's autonomous invocation flag from `run --dir <workdir>` to `run`. Verified against:
 - `loop.sh:1374` — actual invocation is `opencode run "${opencode_args[@]}"` (no `--dir` flag)
