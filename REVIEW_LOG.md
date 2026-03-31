@@ -224,3 +224,40 @@ No user-facing docs changed. `QA_COVERAGE.md` and `QA_LOG.md` are internal track
 `QA_COVERAGE.md`: 9 PASS + 1 INFO at HEAD (`16ebaddd`). QA_LOG.md session confirms flock acquire/release, stale .lock cleanup, npm bundle, and no-mkdir-acquisition all re-validated at HEAD.
 
 ---
+
+## Review — 2026-03-31 — commit ab85cf7b1..2b1b20e8f
+
+**Verdict: PASS** (all 10 gates pass — spec-review re-run + flock/util-linux prereq docs)
+**Scope:** `README.md`, `QA_COVERAGE.md`, `QA_LOG.md`, `TODO.md`
+
+### Prior Finding Resolution
+No open `[review]` tasks. All prior findings resolved.
+
+### Gate 1 — Spec Compliance: PASS
+Documentation-only changes. Flock implementation verified spec-compliant per all prior reviews (SPEC.md lines 157–175).
+
+### Gate 2 — Test Depth: PASS (no test changes)
+
+### Gate 3 — Coverage: PASS (no code changes)
+
+### Gate 4 — Code Quality: PASS
+`QA_COVERAGE.md`: commit refs updated from `dc75a3d9`/`a4ed87d` to `ab85cf7b`; "README CLI examples accuracy" row renamed to "README flock/concurrent_cap docs". The renamed row now covers concurrent_cap cooldown, .lock sidecar, and silent degradation. The prior CLI examples content (`aloop start --launch resume <id>`, `opencode run` stdin) was validated in an earlier session — README has not changed for those. No dead code, no duplication.
+
+### Gate 5 — Integration Sanity: PASS
+7/7 `loop_provider_health_primitives.tests.sh` + 5/5 `loop_provider_health.tests.sh` pass at HEAD — verified directly in this review run.
+
+### Gate 6 — Proof Verification: PASS
+Documentation-only changes. Empty proof artifacts is the correct outcome.
+
+### Gate 7 — Runtime Layout: N/A
+
+### Gate 8 — Version Compliance: N/A
+
+### Gate 9 — Documentation Freshness: PASS
+- `README.md` adds `flock (util-linux)` prerequisite row ✓ — `loop.sh:906` calls `flock` directly; util-linux is the correct package (`brew install util-linux` on macOS) ✓
+- `QA_LOG.md` new session entry: correct scope (5 features re-tested), correct results (all PASS), transcript matches actual verification steps ✓
+
+### Gate 10 — QA Coverage: PASS
+`QA_COVERAGE.md`: 9 PASS + 1 INFO at HEAD (`ab85cf7b`). No `[qa/P1]` bugs in TODO.md.
+
+---
