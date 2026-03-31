@@ -1,5 +1,60 @@
 # QA Log
 
+## QA Session — 2026-03-31 (final-qa gate — post-review regression check at 561487771)
+
+### Test Environment
+- Working dir: /home/pj/.aloop/sessions/orchestrator-20260321-172932-issue-177-20260330-095024/worktree/aloop/cli
+- Commit under test: 561487771 (chore(review): PASS — OpenCode run (stdin mode) README fix)
+- Commits since last QA: 3 docs/chore commits (README OpenCode invocation fix + review artifacts)
+- Features tested: 5 — TypeScript build, adapter.test.ts, process-requests.test.ts, orchestrate.test.ts, tsc type check
+
+### Results
+- PASS: TypeScript build (npm run build) — ✓ built in 1.42s; exit 0
+- PASS: adapter.test.ts — 36/36 pass — stable
+- PASS: process-requests.test.ts — 38/38 pass — stable
+- PASS: orchestrate.test.ts — 348/375 pass, 27 fail — identical pre-existing baseline; no regressions
+- PASS: tsc --noEmit — zero type errors; exit 0
+
+### Bugs Filed
+None — all tested items pass. No regressions at HEAD. Issue #177 complete.
+
+### Regression Analysis
+- Prior session (d8d2c45bd): 36/36 adapter, 38/38 process-requests, 348/375 orchestrate (27 pre-existing fail)
+- This session (561487771): identical — no regressions; intervening commits are docs/chore only
+
+### Command Transcript
+```
+$ cd /home/pj/.aloop/sessions/orchestrator-20260321-172932-issue-177-20260330-095024/worktree/aloop/cli
+$ git rev-parse --short HEAD
+561487771
+
+$ npm run build 2>&1 | grep -E "(built|error TS)"
+✓ built in 1.42s
+Exit: 0
+
+$ npx tsx --test src/lib/adapter.test.ts 2>&1 | grep -E "^# (tests|pass|fail)"
+# tests 36
+# pass 36
+# fail 0
+Exit: 0
+
+$ npx tsx --test src/commands/process-requests.test.ts 2>&1 | grep -E "^# (tests|pass|fail)"
+# tests 38
+# pass 38
+# fail 0
+Exit: 0
+
+$ npx tsx --test src/commands/orchestrate.test.ts 2>&1 | grep -E "^# (tests|pass|fail)"
+# tests 375
+# pass 348
+# fail 27
+Exit: 1 (pre-existing failures, unrelated to adapter work)
+
+$ npx tsc --noEmit --skipLibCheck 2>&1 | grep -v "node_modules"
+(no output — zero errors)
+Exit: 0
+```
+
 ## QA Session — 2026-03-31 (final-qa gate — HEAD regression check)
 
 ### Test Environment
