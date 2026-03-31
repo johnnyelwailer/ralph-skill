@@ -92,3 +92,54 @@ npm --prefix aloop/cli/dashboard run preview -- --port 4041 &
 
 ### Assessment
 All 9 acceptance criteria from SPEC-ADDENDUM.md L237–L244 pass (Lighthouse deferred as pre-existing P3). Issue-114 work is complete and verified. One P3 spec-text gap (swipe gesture) noted but does not block completion.
+
+## QA Session — 2026-03-31 (final-qa re-run after Gate 2 + Gate 4 fixes)
+
+### Test Environment
+- Dashboard: built from source (`npm run build && npx vite preview --port 4045/4046`)
+- Playwright: dashboard/node_modules/playwright (chromium)
+- Viewports tested: 320×568, 390×844
+- Commit under test: bcbff3fa7
+
+### Features Tested
+1. Unit test suite (Gate 2: imgBtn assertion enforcement)
+2. TypeScript type-check (Gate 4: unused import removal)
+3. Tap targets ≥ 44px at 320px and 390px
+4. No horizontal scroll at 320px
+5. E2E smoke test suite (npx playwright test e2e/)
+
+### Results
+- PASS: 158 unit tests (21 files) — Gate 2 imgBtn assertion enforced, passes with real assertion
+- PASS: tsc --noEmit clean — Gate 4 dead import removed, no type errors
+- PASS: Tap targets — 0 small buttons (<44px) at 390×844 and 320×568
+- PASS: No horizontal scroll at 320px (bodyScrollWidth === windowWidth)
+- FAIL (pre-existing): `npx playwright test e2e/smoke.spec.ts:162` — Stop after iteration menuitem not visible without menu being opened first; confirmed same failure at 6e97217 (pre-dates Gate fixes); 10/11 E2E tests pass
+
+### Bugs Filed
+None filed. Pre-existing E2E smoke test failure at smoke.spec.ts:162 is confirmed pre-existing (identical failure at 6e97217). No regression from Gate 2/4 fixes. Product tap target feature verified PASS via custom Playwright against preview.
+
+### Command Transcript
+```
+# Unit tests
+cd aloop/cli/dashboard && npm test -- --run
+→ 21 test files, 158 tests passed in 2.69s
+
+# TypeScript type-check
+npx tsc --noEmit
+→ (no output — clean)
+
+# E2E tests via npx playwright test
+npx playwright test e2e/ --reporter=line
+→ 10 passed, 1 failed (smoke.spec.ts:162 — pre-existing, see notes)
+
+# Tap targets via custom Playwright at 390×844
+node /tmp/qa-tap.cjs (preview http://localhost:4045)
+→ Small buttons (<44px): [] — Total buttons: 10 — Steer visible: true
+
+# No horizontal scroll + tap targets at 320×568
+node /tmp/qa-tap-320.cjs (preview http://localhost:4046)
+→ Small buttons (<44px): [] — Total buttons: 10 — bodyScrollWidth: 320 === windowWidth: 320
+```
+
+### Assessment
+Gate 2 and Gate 4 fixes verified. No regressions. All 9 SPEC-ADDENDUM.md acceptance criteria remain PASS. Issue-114 complete.
