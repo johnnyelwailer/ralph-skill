@@ -30,6 +30,14 @@
 **Pre-existing P2 spec-internal inconsistency (does not block this issue, spec doc needs updating):**
 - [spec-gap/P2] SPEC lines 717 and 775 (acceptance criteria in Proof and QA sections) reference a "9-step" default pipeline including proof in the cycle: `plan → build × 5 → proof → qa → review`. However, the SPEC body at lines 407–409 and 420–422 explicitly states "Proof does NOT run in the cycle — it's expensive and only meaningful as final evidence" and shows proof only in the finalizer. The `pipeline.yml` correctly implements the body text (proof in finalizer only). Fix: update SPEC ACs at lines 717 and 775 to remove proof from the cycle description and note proof runs in the finalizer only. (Spec is wrong, code is correct.)
 
+**New spec-gap findings (2026-03-31):**
+
+- [spec-gap/P2] `aloop/bin/loop.sh` default claude model (`sonnet`) disagrees with `aloop/config.yml` and `aloop/bin/loop.ps1` (both default to `opus`). SPEC §"Global Configuration" says `config.yml` is the "single source of truth" for default model IDs and "Loop scripts and setup commands inherit from here." Files: `aloop/config.yml` line 21 (`claude: opus`), `aloop/bin/loop.sh` line 33 (`CLAUDE_MODEL="${ALOOP_CLAUDE_MODEL:-sonnet}"`), `aloop/bin/loop.ps1` line 34 (`ClaudeModel = 'opus'`). Fix: update `loop.sh` default to `opus` to match `config.yml` and `loop.ps1`.
+
+- [spec-gap/P2] `aloop/config.yml` is missing the `on_start` config block required by SPEC §"UX: Dashboard, Start Flow" (~line 1047). SPEC defines: `on_start: { monitor: dashboard, auto_open: true }` as a configurable option controlling auto-launch behavior. The key is absent from `aloop/config.yml`, meaning there is no config-layer entry point for users to control this behavior. Fix: add the `on_start` block to `aloop/config.yml` with documented defaults.
+
+- [spec-gap/P2] Spec-gap periodic scheduling ("runs before every 2nd plan phase") is not implemented in `loop.sh` or `loop.ps1`. SPEC §"Spec-Gap Analysis Agent" line 839 states: "Spec-gap runs before every 2nd plan phase (i.e., every other cycle)" and shows `Cycle 2: spec-gap → plan → build x5 → qa → docs → review`. The loop scripts have a fixed 8-step cycle with no mechanism to inject spec-gap or docs before every 2nd plan. Spec-gap only appears in the finalizer array (`pipeline.yml` line 16). Fix: implement cycle counter in loop scripts that injects spec-gap and docs prompts at the start of every 2nd cycle, OR document that periodic scheduling is handled by compile-loop-plan generating a longer cycle array with these agents interspersed.
+
 ### Spec Review — APPROVED (iter 2, 2026-03-31)
 
 All in-scope requirements satisfied — verified against SPEC.md and SPEC-ADDENDUM.md:
