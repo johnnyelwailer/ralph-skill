@@ -10,7 +10,7 @@ Also corrects documentation in SPEC.md and README.md to accurately reflect the i
 - `aloop/bin/loop_provider_health_primitives.tests.sh` — added tests for lock acquire/release cycle, lock failure path, and flock mode verification
 - `aloop/bin/loop_provider_health.tests.sh` — updated tests to assert `flock -s`/`-x` flag presence
 - `SPEC.md` — corrected flock sidecar file description (`.lock` extension, dynamic FD via `exec {fd}>`)
-- `README.md` — corrected auth failure description (degraded state, no auto-recover); fixed two incorrect CLI examples (`aloop start --launch resume <session-id>` and `opencode run` invocation via stdin)
+- `README.md` — corrected auth failure description (degraded state, no auto-recover); fixed two incorrect CLI examples (`aloop start --launch resume <session-id>` and `opencode run` invocation via stdin); added `flock (util-linux)` prerequisite; documented flock locking / `concurrent_cap` cooldown; corrected `aloop steer <instruction>` argument syntax; added `/aloop:devcontainer` slash command
 
 ## Verification
 

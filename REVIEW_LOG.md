@@ -261,3 +261,40 @@ Documentation-only changes. Empty proof artifacts is the correct outcome.
 `QA_COVERAGE.md`: 9 PASS + 1 INFO at HEAD (`ab85cf7b`). No `[qa/P1]` bugs in TODO.md.
 
 ---
+
+## Review — 2026-03-31 — commit 2b1b20e8f..0df8923e0
+
+**Verdict: PASS** (all 10 gates pass — spec-review triggered, README steer/devcontainer docs fix)
+**Scope:** `README.md`, `QA_COVERAGE.md`, `QA_LOG.md`, `TODO.md`
+
+### Prior Finding Resolution
+No open `[review]` tasks. All prior findings resolved.
+
+### Gate 1 — Spec Compliance: PASS
+Documentation-only changes. Flock implementation spec-compliant per all prior reviews. No locking code changed.
+
+### Gate 2 — Test Depth: PASS (no test changes)
+
+### Gate 3 — Coverage: PASS (no code changes)
+
+### Gate 4 — Code Quality: PASS
+`QA_COVERAGE.md` commit ref updated from `ab85cf7b` to `c55f0c8`. `QA_LOG.md` new session records re-validation scope. README two-line fix: `aloop steer <instruction>` arg syntax and `/aloop:devcontainer` slash command row added. No dead code, no duplication.
+
+### Gate 5 — Integration Sanity: PASS
+7/7 `loop_provider_health_primitives.tests.sh` + 5/5 `loop_provider_health.tests.sh` pass at HEAD — verified directly in this review run.
+
+### Gate 6 — Proof Verification: PASS
+Documentation-only changes. Empty proof artifacts is the correct outcome.
+
+### Gate 7 — Runtime Layout: N/A
+
+### Gate 8 — Version Compliance: N/A
+
+### Gate 9 — Documentation Freshness: PASS
+- `aloop steer <instruction>` ✓ — `steer.ts:42` signature `steerCommand(instruction: string, ...)` confirms positional argument
+- `/aloop:devcontainer` ✓ — `claude/commands/aloop/devcontainer.md` and `aloop/cli/src/commands/devcontainer.ts` both exist
+
+### Gate 10 — QA Coverage: PASS
+`QA_COVERAGE.md`: 9 PASS + 1 INFO at HEAD (`c55f0c8`). No `[qa/P1]` bugs in TODO.md.
+
+---
