@@ -1,5 +1,92 @@
 # QA Log
 
+## QA Session — 2026-03-31 (final-qa, triggered by final-review, commit 02f4faec1)
+
+### Test Environment
+- Binary under test: N/A — dashboard/CLI testing only (no aloop CLI install needed for this task)
+- Commit: 02f4faec1
+- /tmp disk: 13G total, 453M used — no ENOSPC (disk restored)
+- Features tested: 5 (Issue #183 Storybook setup + Issue #38 vitest regression)
+
+### Results
+- PASS: `.storybook/main.ts` and `.storybook/preview.ts` exist at `aloop/cli/dashboard/.storybook/`
+- PASS: `storybook` and `build-storybook` scripts in package.json (`storybook dev -p 6006`, `storybook build`)
+- PASS: Required Storybook deps installed — `@storybook/react-vite`, `@storybook/react`, `@storybook/addon-themes`, `@storybook/addon-docs`, `storybook` (v10.3.1)
+- PASS: `npm run build-storybook` — exit 0; 2104 modules transformed; 178 stories in index.json; no errors
+- PASS: `button.stories.tsx` exists at `src/components/ui/`; 8 button stories in build (Default, Ghost, Outline, Destructive + small variants)
+- PASS: `npm test` — 51 test files, 632 tests all pass (dynamic run — ENOSPC resolved)
+- PASS: `tsc --noEmit` — exit 0
+
+### Observations (non-bug)
+- Installed version is Storybook v10.3.1 (spec says "Storybook 8") — v10 satisfies all functional requirements; build, stories, and decorators work correctly
+- `@storybook/addon-essentials` (spec-listed dep) not installed; replaced by `@storybook/addon-docs` — correct for Storybook v10 which decomposed essentials into individual packages; build passes without it
+
+### Bugs Filed
+- None. All Issue #183 requirements verified. All Issue #38 requirements confirmed intact. No regressions.
+
+### Command Transcript
+
+```
+# Check disk space
+$ df -h /tmp
+tmpfs 13G 453M 13G 4% /tmp
+EXIT: 0
+
+# Verify storybook scripts in package.json
+$ grep -A2 '"storybook"\|"build-storybook"' aloop/cli/dashboard/package.json
+    "storybook": "storybook dev -p 6006",
+    "build-storybook": "storybook build"
+    "storybook": "^10.3.1",
+EXIT: 0
+
+# Verify storybook deps installed
+$ grep -i "@storybook" aloop/cli/dashboard/package.json
+"@storybook/addon-docs": "^10.3.1",
+"@storybook/addon-themes": "^10.3.1",
+"@storybook/react": "^10.3.1",
+"@storybook/react-vite": "^10.3.1",
+EXIT: 0
+
+# Verify storybook binary present
+$ ls node_modules/.bin/storybook
+/home/pj/.aloop/.../node_modules/.bin/storybook
+→ storybook binary found
+
+# Verify .storybook config files
+$ ls aloop/cli/dashboard/.storybook/
+main.ts  preview.ts
+
+# Verify button.stories.tsx
+$ ls aloop/cli/dashboard/src/components/ui/ | grep button
+button.stories.tsx
+button.tsx
+
+# Build storybook (main test)
+$ npm run build-storybook -- --output-dir /tmp/storybook-test-build
+→ Building storybook v10.3.1
+→ 2104 modules transformed
+→ Storybook build completed successfully
+EXIT: 0
+
+# Verify stories in build output
+$ cat /tmp/storybook-test-build/index.json | python3 -c "..."
+Total stories in build: 178
+Button stories: ['Default', 'Ghost', 'Outline', 'Destructive', 'Small Default', 'Small Ghost', 'Small Outline', 'Small Destructive']
+
+# TypeScript type-check
+$ npm run type-check
+EXIT: 0
+
+# Vitest (regression check)
+$ npm test
+Test Files: 51 passed (51)
+Tests: 632 passed (632)
+EXIT: 0 (all tests pass)
+
+# Cleanup
+$ rm -rf /tmp/storybook-test-build
+```
+
 ## QA Session — 2026-03-31 (final-qa, triggered by final-review, commit 7e9c3bbf5)
 
 ### Test Environment
