@@ -1,5 +1,65 @@
 # QA Log
 
+## QA Session — 2026-03-31 (final-qa post-docs-fix, issue-172)
+
+### Test Environment
+- Binary under test: /tmp/aloop-test-install-8sTUsH/bin/aloop (cleaned up)
+- Version: 1.0.0
+- Install method: npm pack + isolated temp prefix (test-install script)
+- Commit: a4ed87d (HEAD — only README docs fix since prior QA at 4e33972)
+- Features tested: 3
+
+### Scope Note
+Only change since prior QA (4e33972): README.md — two CLI example corrections (aloop start resume syntax; opencode invocation). Re-ran flock tests to confirm no regression, plus verified README examples against real CLI.
+
+### Results
+- PASS: All 7 unit tests in loop_provider_health_primitives.tests.sh (source)
+- PASS: All 5 unit tests in loop_provider_health.tests.sh (source)
+- PASS: README `aloop start --launch resume <session-id>` matches actual `aloop start --help`
+- PASS: README `opencode run` (prompt via stdin) matches `echo "$prompt_content" | opencode run` in loop.sh
+- PASS: flock -x/-s present in installed binary; no mkdir-based lock acquisition
+
+### Bugs Filed
+None — no regressions, no new bugs.
+
+### Command Transcript
+
+```
+# Install from source (pack → isolated temp prefix)
+ALOOP_BIN=$(npm --prefix aloop/cli run --silent test-install -- --keep 2>/dev/null | tail -1)
+# → /tmp/aloop-test-install-8sTUsH/bin/aloop
+aloop --version
+# → 1.0.0
+
+# Flock unit tests (source)
+bash aloop/bin/loop_provider_health_primitives.tests.sh
+# → All tests passed! (7/7)
+bash aloop/bin/loop_provider_health.tests.sh
+# → All tests passed! (5/5)
+
+# Verify README fix: --launch flag
+aloop start --help 2>&1 | grep "launch\|session-id"
+# → session-id  Session ID to resume (used with --launch resume)
+# → --launch <mode>  Session launch mode: start, restart, or resume
+
+# Verify README fix: opencode stdin invocation
+grep "opencode run" loop.sh
+# → echo "$prompt_content" | env -u CLAUDECODE opencode run ...
+
+# Verify no mkdir locking in installed binary
+grep -n "flock" installed_loop.sh | head -5
+# → flock_mode="-s", flock_mode="-x", flock -n $flock_mode $fd
+
+# Confirm pre-existing test failures unchanged (not caused by this issue)
+npm --prefix aloop/cli test -- --reporter=tap 2>&1 | grep "^not ok"
+# → 17 pre-existing failures (GH/orchestrator tests) — same set as master
+
+# Cleanup
+rm -rf /tmp/aloop-test-install-8sTUsH
+```
+
+---
+
 ## QA Session — 2026-03-31 (final-qa re-run, issue-172)
 
 ### Test Environment
