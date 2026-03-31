@@ -1,5 +1,73 @@
 # QA Log
 
+## QA Session — 2026-03-31 (final-qa gate — P2 fix verification)
+
+### Test Environment
+- Working dir: /home/pj/.aloop/sessions/orchestrator-20260321-172932-issue-177-20260330-095024/worktree/aloop/cli
+- Commit under test: e6584c383 (chore(review): PASS — gates 1-9 pass)
+- Source fix: 5faf96d05 (fix: guard GitHubAdapter.updateIssue base edit call to label-only updates)
+- Prior baseline: 6261b5121 — 35/35 adapter, 38/38 process-requests, 348/375 orchestrate
+- Features tested: 5 — TypeScript build, adapter.test.ts (P2 fix), process-requests.test.ts, orchestrate.test.ts, tsc type check
+
+### Results
+- PASS: TypeScript build (npm run build) — ✓ built in 1.65s; exit 0
+- PASS: adapter.test.ts — 36/36 pass (+1 new label-only guard test from P2 fix; was 35/35)
+- PASS: GitHubAdapter.updateIssue label-only guard — new test confirms no bare `gh issue edit` for label-only updates; labels_add=2 calls, labels_remove=1 call
+- PASS: process-requests.test.ts — 38/38 pass — stable; no regressions
+- PASS: orchestrate.test.ts — 348/375 pass, 27 fail — identical pre-existing baseline; no regressions
+- PASS: tsc --noEmit — zero type errors; exit 0
+
+### Bugs Filed
+None — all tested items pass. P2 fix verified. No regressions.
+
+### Regression Analysis
+- Final-qa 2nd run (6261b5121): 35/35 adapter, 38/38 process-requests, 348/375 orchestrate (27 pre-existing fail)
+- Final-qa P2-fix run (e6584c383): 36/36 adapter (+1 new), 38/38 process-requests (stable), 348/375 orchestrate (27 pre-existing fail unchanged)
+- No regressions introduced by P2 fix
+
+### Command Transcript
+```
+$ cd /home/pj/.aloop/sessions/orchestrator-20260321-172932-issue-177-20260330-095024/worktree/aloop/cli
+$ git log --oneline 6261b5121..HEAD
+e6584c383 chore(review): PASS — gates 1-9 pass
+283bd2df8 docs: spec-review PASS for P2 GitHubAdapter.updateIssue label-only guard fix
+df9394a6f docs: remove stale P2 known-issue block from README
+320f820ff docs: spec-gap analysis run 3 — no new gaps, issue #177 spec fully fulfilled
+7cf9d5e1d docs: close spec-gap P2 — updateIssue label-only guard already implemented
+5faf96d05 fix: guard GitHubAdapter.updateIssue base edit call to label-only updates
+e3d57bfef docs: sync README with implementation
+9ecb12f76 chore(spec-gap): flag P2 — GitHubAdapter.updateIssue empty-call bug
+f613a31bc chore(qa): QA session 2026-03-30 — final-qa gate (second run)
+
+$ npm run build 2>&1 | grep -E "(✓ built|error TS)"
+✓ built in 1.65s
+Exit: 0
+
+$ npx tsx --test src/lib/adapter.test.ts 2>&1 | grep -E "^# (tests|pass|fail)"
+# tests 36
+# pass 36
+# fail 0
+Exit: 0
+
+$ npx tsx --test src/commands/process-requests.test.ts 2>&1 | grep -E "^# (tests|pass|fail)"
+# tests 38
+# pass 38
+# fail 0
+Exit: 0
+
+$ npx tsx --test src/commands/orchestrate.test.ts 2>&1 | grep -E "^# (tests|pass|fail)"
+# tests 375
+# pass 348
+# fail 27
+Exit: 0
+
+$ npx tsc --noEmit --skipLibCheck 2>&1 | grep -v "node_modules"
+(no output — zero errors)
+Exit: 0
+```
+
+---
+
 ## QA Session — 2026-03-30 (final-qa gate, second run — env functional)
 
 ### Test Environment

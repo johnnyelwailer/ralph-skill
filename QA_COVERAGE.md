@@ -98,3 +98,9 @@
 | orchestrate.test.ts full suite | 2026-03-30 | 6261b5121 | PASS | 348/375 pass, 27 fail — +4 new pass from applyEstimateResults adapter migration; pre-existing 27 failures unchanged |
 | applyEstimateResults adapter path | 2026-03-30 | 6261b5121 | PASS | 4 new adapter-path tests all pass (label ops + spec-question issue creation via adapter) |
 | tsc --noEmit (non-test files) | 2026-03-30 | 6261b5121 | PASS | Zero type errors; exit 0 |
+| TypeScript build (npm run build) | 2026-03-31 | e6584c383 | PASS | Build clean exit 0 (final-qa gate, P2 fix iteration) |
+| adapter.test.ts unit tests | 2026-03-31 | e6584c383 | PASS | 36/36 pass (+1 new label-only test from P2 fix; was 35/35) |
+| GitHubAdapter.updateIssue label-only guard (P2 fix) | 2026-03-31 | e6584c383 | PASS | New test confirms no base `gh issue edit` call for label-only updates; labels_add=2 calls, labels_remove=1 call |
+| process-requests.ts full suite | 2026-03-31 | e6584c383 | PASS | 38/38 pass — stable; no regressions from P2 fix |
+| orchestrate.test.ts full suite | 2026-03-31 | e6584c383 | PASS | 348/375 pass, 27 fail — identical pre-existing baseline; no regressions from P2 fix |
+| tsc --noEmit (non-test files) | 2026-03-31 | e6584c383 | PASS | Zero type errors; exit 0 |
