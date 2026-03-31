@@ -50,6 +50,10 @@ spec-gap analysis: 3 P3 (documentation-only) gaps found — no P1/P2 gaps — co
 
 - [spec-gap/P3] TASK_SPEC §"Specific call-sites to migrate" says label operations should use `adapter.addLabels()`, but the implementation correctly uses `adapter.updateIssue({ labels_add, labels_remove })` (consistent with TASK_SPEC ACs and the adapter interface). The call-site migration section was written before the adapter interface stabilized. Suggested fix: update migration section to say `adapter.updateIssue({ labels_add: [...] })` for label add/remove. (Files: `TASK_SPEC.md` vs `orchestrate.ts` lines 1901, 1914, 2279, etc.)
 
+### Spec-Review — 2026-03-31 (PASS, docs trigger)
+
+Triggered by docs commit `e7f44d93b` (README.md auth failure description fix). Change is outside TASK_SPEC scope. All 15 ACs remain satisfied — no new gaps. PASS.
+
 ### Spec-Review — 2026-03-31 (PASS)
 
 All 15 TASK_SPEC acceptance criteria verified against current implementation:
