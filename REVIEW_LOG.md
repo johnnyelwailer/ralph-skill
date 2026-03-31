@@ -443,3 +443,26 @@ All Issue #38 acceptance criteria verified (static checks; last dynamic run at 6
 No code changed since last review. All conclusions from prior PASS review (afbf4e6c3) carry forward unchanged. Concrete observation: `QACoverageBadge.test.tsx` parseQACoveragePayload tests assert exact return values (`toEqual({ percentage: null, available: false, features: [] })`) — thorough, no anti-patterns detected.
 
 ---
+
+## Review — 2026-03-31 — commits 091afbeee..4e8918f9e (final-review, spec-review trigger — seventh pass)
+
+**Verdict: PASS** (0 findings)
+**Scope:** Commits 79d1b1612, 7eb33f105, 91ca070f1, 4e8918f9e — `README.md` (91ca070f1 adds `.aloop/pipeline.yml` and `agents/<name>.yml` to architecture section); all others are review/bookkeeping only.
+
+**Prior findings resolution:**
+- All prior findings remain resolved. No regressions introduced.
+
+### Gate 1 (Spec Compliance) — PASS
+
+`91ca070f1` adds `.aloop/pipeline.yml` and `agents/<name>.yml` to README architecture section (lines 287–289). Both files actively used by `compile-loop-plan.ts`; SPEC §4078 and §4082 confirm them. Verified: `.aloop/pipeline.yml` exists on disk; agents directory contains 5 yml files. All Issue #38 ACs remain satisfied:
+- `.github/workflows/ci.yml`: triggers push+PR master/agent/trunk, Node 22, `npm ci` + `npm test` in `aloop/cli/dashboard` ✓
+- SPEC-ADDENDUM line 122: 28 non-ui components have `.test.tsx` — spot-checked via `find`: 28 files returned ✓
+- SPEC-ADDENDUM line 123: 28 non-ui components have `.stories.tsx` — spot-checked via `find`: 28 files returned ✓
+- README lines 22–28: all 6 finalizer agents listed (Spec-gap, Docs, Spec-review, Final-review, Final-qa, Proof) ✓
+- README line 246: `PROMPT_spec-review.md` in template list ✓
+
+### Gates 2–9 — PASS / N/A
+
+No code changes since last substantive review. All gate conclusions carry forward. Concrete observation: README architecture section (lines 284–289) now correctly lists `RESEARCH.md`, `REVIEW_LOG.md`, `docs/conventions/`, `.aloop/pipeline.yml`, and `agents/<name>.yml` — the directory listing matches actual file structure on disk.
+
+---
