@@ -61,6 +61,16 @@ All in-scope requirements satisfied — verified against SPEC.md and SPEC-ADDEND
 
 No gaps found. Issue #38 implementation is complete and spec-compliant.
 
+### Spec Review — APPROVED (iter 3, 2026-03-31)
+
+TypeScript fixes verified in code — no further gaps:
+
+- `Sidebar.test.tsx` line 3: `afterEach` imported from vitest — TS2304 resolved ✓
+- `ActivityPanel.test.tsx` line 14: `iterationStartedAt: undefined as string | undefined` present in `baseProps` — TS2353 resolved ✓
+- CI workflow (`ci.yml`): correct triggers, Node 22, `npm ci` + `npm test` in `aloop/cli/dashboard` ✓
+
+All requirements satisfied. No new findings.
+
 ### Notes
 - No `.github/workflows/` directory or `ci.yml` exists on master or this branch
 - The spec says "Dashboard deps should already be installed from the core workflow" but that core workflow hasn't been created yet — we need to include basic setup (checkout + Node + npm ci) so the dashboard test step can run
