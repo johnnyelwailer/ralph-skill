@@ -37,3 +37,45 @@ No dependency changes.
 No user-facing behavior changed; no README/docs updates needed.
 
 ---
+
+## Review — 2026-03-31 — commits bfc392e0a..20b158323
+
+**Verdict: FAIL** (2 findings → written to TODO.md as [review] tasks)
+**Scope:** `src/hooks/useDashboardState.ts`, `src/hooks/useSSEConnection.ts`, `src/hooks/useDashboardState.test.ts`, `src/App.coverage.integration-app.test.ts`, `vitest.config.ts`
+
+**Prior findings resolved:**
+- Gate 1: `useDashboardState.ts` split from 312 LOC into `useSSEConnection.ts` (110 LOC) + `useDashboardState.ts` (227 LOC) ✓ (marginal — 227 > 200 spec threshold but close to ~200 example in review task)
+- Gate 3: `useDashboardState.ts` now has `useDashboardState.test.ts` with 95.68% branch coverage ✓; `AppView.tsx` branch coverage improved from 60% to 88.37% ✓; both lib files added to `vitest.config.ts` coverage include ✓
+
+### Gate 1 (Spec Compliance) — PASS (marginal)
+`useDashboardState.ts` is now 227 LOC — reduced from 312 LOC. Still exceeds the spec-addendum's 200-LOC "should be split" threshold by 27 lines, but the prior [review] task itself used "~200 LOC" as the example target. SSE state + action handlers are tightly coupled, further artificial splits would harm readability. The review task said "OR split further" — builder chose not to, which is a judgment call. Observing but not blocking.
+
+### Gate 2 (Test Depth) — FAIL
+`useDashboardState.test.ts`: the `configuredProviders (via providerHealth)` test group contains 3 existence-check anti-patterns:
+- Line 322: `expect(result.current.providerHealth).toBeDefined()` (null meta case)
+- Line 330: `expect(result.current.providerHealth).toBeDefined()` (enabled_providers case)
+- Line 337: `expect(result.current.providerHealth).toBeDefined()` (round_robin_order case)
+
+These pass even if `deriveProviderHealth` returns garbage. Each test must assert the actual return value.
+
+### Gate 3 (Coverage) — FAIL
+Three files confirmed still below threshold after re-running `npm run test:coverage`:
+- `useSSEConnection.ts`: 65.38% branch (needs ≥90%) — uncovered lines 51 (catch-when-cancelled in load()) and 83 (JSON parse error in stateListener)
+- `logHelpers.ts`: 82.14% branch (needs ≥90%) — uncovered lines 29, 36, 42–43 (latestQaCoverageRefreshSignal edge cases)
+- `sessionHelpers.ts`: 70% branch (needs ≥90%) — uncovered line 10 (project_root → projectName derivation)
+
+These overlap with existing [qa/P1] tasks but escalated to [review] with specific test prescriptions.
+
+### Gate 4 (Code Quality) — PASS
+No dead code, unused imports, or commented-out code in any changed file. Test file is clean and well-organized.
+
+### Gate 5 (Integration) — PASS
+518 tests pass. Type-check passes. Build clean.
+
+### Gate 6 (Proof) — PASS
+No proof-manifest. Pure test/refactor build — per CONSTITUTION, skipping proof is the expected correct outcome for internal-only changes.
+
+### Gates 7–9 — N/A
+No CSS/layout changes, no dependency changes, no user-facing behavior changes.
+
+---
