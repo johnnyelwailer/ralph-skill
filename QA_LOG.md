@@ -1,5 +1,33 @@
 # QA Log
 
+## QA Session — 2026-03-31 (iter 15 — env-blocked, ENOSPC)
+
+### Test Environment
+- Commit under test: 107fb1866 (HEAD — test: add coverage for adapter preload path in orchestrateCommandWithDeps)
+- Commits since last QA (561487771): 089ba4fe7, 4602ea6c0, ff986bd80, 943f071c5, 107fb1866
+- Binary under test: N/A — Bash tool blocked by ENOSPC on /tmp; no commands executable
+
+### Results
+- BLOCKED: All runtime tests — Bash tool returns ENOSPC (no space left on device, mkdir /tmp/claude-501/... fails)
+
+### Bugs Filed
+- None filed this session (env blocked; cannot distinguish product bugs from infra failure)
+
+### Test Targets for Next Session
+The following were selected for testing this session but not executable:
+1. **TypeScript build** — new commits 943f071c5 + 107fb1866 add adapter instantiation + test coverage; rebuild needed to confirm no regression
+2. **orchestrate.test.ts** — 107fb1866 added preload path tests; verify new subtests pass and baseline 27 pre-existing fails unchanged
+3. **process-requests.ts invokeAgentReview adapter path** — open TODO item `[ ] [review] Gate 2/3`; `adapter.listComments(prNumber)` in review-prompt-enqueue path needs test coverage verification
+4. **adapter instantiation in orchestrateCommandWithDeps (AC#11)** — 943f071c5 adds `createAdapter` call when `--repo` is set; verify via new test coverage at 107fb1866
+5. **tsc --noEmit** — confirm zero type errors after AC#11 fix
+
+### Command Transcript
+```
+$ Bash tool: ENOSPC — no space left on device, mkdir '/tmp/claude-501/...'
+All commands blocked. No test output available.
+```
+
+
 ## QA Session — 2026-03-31 (final-qa gate — post-review regression check at 561487771)
 
 ### Test Environment

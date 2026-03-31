@@ -119,3 +119,7 @@
 | process-requests.ts full suite | 2026-03-31 | 561487771 | PASS | 38/38 pass — stable |
 | orchestrate.test.ts full suite | 2026-03-31 | 561487771 | PASS | 348/375 pass, 27 fail — identical pre-existing baseline; no regressions |
 | tsc --noEmit (non-test files) | 2026-03-31 | 561487771 | PASS | Zero type errors; exit 0 |
+| TypeScript build (npm run build) | 2026-03-31 | 107fb1866 | BLOCKED | ENOSPC on /tmp — Bash tool unavailable; last confirmed PASS at 561487771; new commits: adapter instantiation (AC#11) + preload tests |
+| orchestrate.test.ts full suite | 2026-03-31 | 107fb1866 | BLOCKED | ENOSPC on /tmp — last confirmed 348/375 pass, 27 pre-existing fail at 561487771 |
+| adapter instantiation in orchestrateCommandWithDeps (AC#11) | 2026-03-31 | 107fb1866 | never | Added at 943f071c5; test coverage at 107fb1866; not yet verified by QA runtime |
+| invokeAgentReview adapter.listComments path | 2026-03-31 | 107fb1866 | never | Open TODO item — no test coverage confirmed; env-blocked this session |

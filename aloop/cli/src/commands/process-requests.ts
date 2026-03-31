@@ -171,6 +171,78 @@ export function formatReviewCommentHistory(comments: ReviewCommentLike[]): strin
   return `${blocks.join('\n\n---\n\n')}\n`;
 }
 
+export interface InvokeAgentReviewDeps {
+  sessionDir: string;
+  requestsDir: string;
+  promptsDir: string;
+  reviewPendingUpdates: Map<number, number>;
+  existsSync: (path: string) => boolean;
+  readFile: (path: string, encoding: BufferEncoding) => Promise<string>;
+  writeFile: (path: string, data: string, encoding: BufferEncoding) => Promise<void>;
+  mkdir: (path: string, options?: { recursive?: boolean }) => Promise<void>;
+  unlink: (path: string) => Promise<void>;
+  adapter?: OrchestratorAdapter;
+}
+
+export function createInvokeAgentReview(deps: InvokeAgentReviewDeps) {
+  const { sessionDir, requestsDir, promptsDir, reviewPendingUpdates, existsSync, readFile, writeFile, mkdir, unlink, adapter } = deps;
+  return async (prNumber: number, _repo: string, diff: string) => {
+    const resultFile = path.join(requestsDir, `review-result-${prNumber}.json`);
+    const agentOutputFile = path.join(sessionDir, 'worktree', '.aloop', 'output', `review-result-${prNumber}.json`);
+    const actualResultFile = existsSync(resultFile) ? resultFile : existsSync(agentOutputFile) ? agentOutputFile : null;
+    if (actualResultFile) {
+      try {
+        const content = await readFile(actualResultFile, 'utf8');
+        const parsed = JSON.parse(content);
+        await unlink(actualResultFile);
+        return parsed;
+      } catch (e) {
+        return { pr_number: prNumber, verdict: 'flag-for-human', summary: `Parse error: ${e}` };
+      }
+    }
+
+    const queueFile = path.join(sessionDir, 'queue', `000-review-${prNumber}.md`);
+    const legacyQueueFile = path.join(sessionDir, 'queue', `review-${prNumber}.md`);
+    if (!existsSync(queueFile) && !existsSync(legacyQueueFile)) {
+      const reviewPath = path.join(promptsDir, 'PROMPT_orch_review.md');
+      if (existsSync(reviewPath)) {
+        const prompt = await readFile(reviewPath, 'utf8');
+        await mkdir(path.join(sessionDir, 'queue'), { recursive: true });
+        const outputInstr = `\n\n## Output — CRITICAL\n\nYou MUST use the Write tool to create this file:\n\n**Path:** \`.aloop/output/review-result-${prNumber}.json\`\n\n(This is relative to your working directory. Create the \`.aloop/output/\` directory if needed.)\n\n**Content (valid JSON):**\n\`\`\`json\n{"pr_number": ${prNumber}, "verdict": "approve", "summary": "one line reason"}\n\`\`\`\n\nValid verdicts: \`approve\`, \`request-changes\`, \`flag-for-human\`\n\n**Without this file, the pipeline is stuck. Do NOT just print the verdict — WRITE THE FILE.**\n`;
+
+        let commentHistory = '';
+        if (adapter) {
+          try {
+            const comments = await adapter.listComments(prNumber);
+            if (comments.length > 0) {
+              const bodies = comments.map(c => c.body).join('\n');
+              commentHistory = `\n\n## Previous Review Comments\n\nThe following comments have already been posted on this PR. Do NOT repeat the same feedback. Only comment on NEW issues or acknowledge fixes.\n\n${bodies}\n`;
+            }
+          } catch { /* ignore */ }
+        }
+
+        await writeFile(queueFile, `---\nagent: orch_review\npr_number: ${prNumber}\n---\n\n${prompt}\n${outputInstr}${commentHistory}\n## PR Diff\n\n\`\`\`diff\n${diff}\n\`\`\`\n`, 'utf8');
+      }
+    }
+    const prevCount = reviewPendingUpdates.get(prNumber) ?? 0;
+    const pendingCount = prevCount + 1;
+    reviewPendingUpdates.set(prNumber, pendingCount);
+    {
+      if (pendingCount === 4) {
+        const troubleshootFile = path.join(sessionDir, 'queue', `000-troubleshoot-review-${prNumber}.md`);
+        if (!existsSync(troubleshootFile)) {
+          await mkdir(path.join(sessionDir, 'queue'), { recursive: true });
+          await writeFile(troubleshootFile, `---\nagent: troubleshoot\nreasoning: high\n---\n\n# Troubleshoot: PR #${prNumber} Review Stuck\n\nThe review for PR #${prNumber} has returned "pending" ${pendingCount} times. The verdict extraction is failing.\n\n## Investigate\n1. Check if review-result-${prNumber}.json exists anywhere in the session\n2. Check recent agent output for verdict text mentioning PR #${prNumber}\n3. If verdict exists but wasn't parsed, write it to the correct location\n4. If no verdict was produced, determine why the review agent didn't generate one\n`, 'utf8');
+        }
+      }
+      if (pendingCount > 10) {
+        return { pr_number: prNumber, verdict: 'flag-for-human', summary: `Review stuck pending after ${pendingCount} attempts (troubleshoot agent failed) — needs manual review.` };
+      }
+    }
+    return { pr_number: prNumber, verdict: 'pending', summary: 'Review queued.' };
+  };
+}
+
 export async function getDirectorySizeBytes(dir: string): Promise<number> {
   if (!existsSync(dir)) return 0;
   let total = 0;
@@ -932,73 +1004,18 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
       now: () => new Date(),
       appendLog: (dir: string, entry: Record<string, unknown>) => { appendLog(dir, entry); },
       adapter,
-      invokeAgentReview: async (prNumber: number, _repo: string, diff: string) => {
-        // Check for result file — the ONLY source of truth for review verdicts.
-        // No fallback regex extraction. If the file doesn't exist, the review
-        // agent hasn't run yet — return pending and let the queue do its job.
-        const resultFile = path.join(requestsDir, `review-result-${prNumber}.json`);
-        const agentOutputFile = path.join(sessionDir, 'worktree', '.aloop', 'output', `review-result-${prNumber}.json`);
-        const actualResultFile = existsSync(resultFile) ? resultFile : existsSync(agentOutputFile) ? agentOutputFile : null;
-        if (actualResultFile) {
-          try {
-            const content = await readFile(actualResultFile, 'utf8');
-            const parsed = JSON.parse(content);
-            await unlink(actualResultFile);
-            return parsed;
-          } catch (e) {
-            return { pr_number: prNumber, verdict: 'flag-for-human', summary: `Parse error: ${e}` };
-          }
-        }
-
-        // Queue review prompt if not already queued
-        const queueFile = path.join(sessionDir, 'queue', `000-review-${prNumber}.md`);
-        const legacyQueueFile = path.join(sessionDir, 'queue', `review-${prNumber}.md`);
-        if (!existsSync(queueFile) && !existsSync(legacyQueueFile)) {
-          const reviewPath = path.join(promptsDir, 'PROMPT_orch_review.md');
-          if (existsSync(reviewPath)) {
-            const prompt = await readFile(reviewPath, 'utf8');
-            await mkdir(path.join(sessionDir, 'queue'), { recursive: true });
-            const outputInstr = `\n\n## Output — CRITICAL\n\nYou MUST use the Write tool to create this file:\n\n**Path:** \`.aloop/output/review-result-${prNumber}.json\`\n\n(This is relative to your working directory. Create the \`.aloop/output/\` directory if needed.)\n\n**Content (valid JSON):**\n\`\`\`json\n{"pr_number": ${prNumber}, "verdict": "approve", "summary": "one line reason"}\n\`\`\`\n\nValid verdicts: \`approve\`, \`request-changes\`, \`flag-for-human\`\n\n**Without this file, the pipeline is stuck. Do NOT just print the verdict — WRITE THE FILE.**\n`;
-
-            // Fetch existing PR comments for context
-            let commentHistory = '';
-            if (adapter) {
-              try {
-                const comments = await adapter.listComments(prNumber);
-                if (comments.length > 0) {
-                  const bodies = comments.map(c => c.body).join('\n');
-                  commentHistory = `\n\n## Previous Review Comments\n\nThe following comments have already been posted on this PR. Do NOT repeat the same feedback. Only comment on NEW issues or acknowledge fixes.\n\n${bodies}\n`;
-                }
-              } catch { /* ignore */ }
-            }
-
-            await writeFile(queueFile, `---\nagent: orch_review\npr_number: ${prNumber}\n---\n\n${prompt}\n${outputInstr}${commentHistory}\n## PR Diff\n\n\`\`\`diff\n${diff}\n\`\`\`\n`, 'utf8');
-          }
-        }
-        // Track pending cycles — retry → troubleshoot → escalate
-        // Note: we write to reviewPendingUpdates map (not state) because
-        // runOrchestratorScanPass has its own state copy that would overwrite ours
-        const prevCount = reviewPendingUpdates.get(prNumber) ?? 0;
-        const pendingCount = prevCount + 1;
-        reviewPendingUpdates.set(prNumber, pendingCount);
-        {
-
-          // 1-3: retry (move to back of queue — other PRs get a chance)
-          // 4-5: troubleshoot agent investigates
-          // 6+: escalate to human
-          if (pendingCount === 4) {
-            const troubleshootFile = path.join(sessionDir, 'queue', `000-troubleshoot-review-${prNumber}.md`);
-            if (!existsSync(troubleshootFile)) {
-              await mkdir(path.join(sessionDir, 'queue'), { recursive: true });
-              await writeFile(troubleshootFile, `---\nagent: troubleshoot\nreasoning: high\n---\n\n# Troubleshoot: PR #${prNumber} Review Stuck\n\nThe review for PR #${prNumber} has returned "pending" ${pendingCount} times. The verdict extraction is failing.\n\n## Investigate\n1. Check if review-result-${prNumber}.json exists anywhere in the session\n2. Check recent agent output for verdict text mentioning PR #${prNumber}\n3. If verdict exists but wasn't parsed, write it to the correct location\n4. If no verdict was produced, determine why the review agent didn't generate one\n`, 'utf8');
-            }
-          }
-          if (pendingCount > 10) {
-            return { pr_number: prNumber, verdict: 'flag-for-human', summary: `Review stuck pending after ${pendingCount} attempts (troubleshoot agent failed) — needs manual review.` };
-          }
-        }
-        return { pr_number: prNumber, verdict: 'pending', summary: 'Review queued.' };
-      },
+      invokeAgentReview: createInvokeAgentReview({
+        sessionDir,
+        requestsDir,
+        promptsDir,
+        reviewPendingUpdates,
+        existsSync,
+        readFile: (p: string, enc: BufferEncoding) => readFile(p, enc),
+        writeFile: (p: string, data: string, enc: BufferEncoding) => writeFile(p, data, enc),
+        mkdir: (p: string, o?: { recursive?: boolean }) => mkdir(p, o).then(() => undefined),
+        unlink,
+        adapter,
+      }),
     },
     dispatchDeps: {
       existsSync,

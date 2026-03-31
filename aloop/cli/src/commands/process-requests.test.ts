@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { existsSync } from 'node:fs';
 import { mkdtemp, mkdir, rm, writeFile, readFile } from 'node:fs/promises';
-import { formatReviewCommentHistory, getDirectorySizeBytes, pruneLargeV8CacheDir, syncMasterToTrunk, syncChildBranches, makeAdapterForRepo, updateIssueBodyViaAdapter, updateParentTasklist, applySubDecompositionResult, createGhIssuesForNewEntries, createPRViaAdapter, type ChildBranchSyncDeps } from './process-requests.js';
+import { formatReviewCommentHistory, getDirectorySizeBytes, pruneLargeV8CacheDir, syncMasterToTrunk, syncChildBranches, makeAdapterForRepo, updateIssueBodyViaAdapter, updateParentTasklist, applySubDecompositionResult, createGhIssuesForNewEntries, createPRViaAdapter, createInvokeAgentReview, type ChildBranchSyncDeps, type InvokeAgentReviewDeps } from './process-requests.js';
 import { GitHubAdapter } from '../lib/adapter.js';
 import { processCrResultFiles, type CrResultDeps } from './cr-pipeline.js';
 import type { OrchestratorIssue } from './orchestrate.js';
@@ -780,5 +780,99 @@ describe('createPRViaAdapter adapter path', () => {
     const changed = await createPRViaAdapter(issue, mockAdapter, 'agent/trunk');
 
     assert.equal(changed, false);
+  });
+});
+
+describe('createInvokeAgentReview', () => {
+  function createMockReviewDeps(overrides: Partial<InvokeAgentReviewDeps> = {}): InvokeAgentReviewDeps & { writtenFiles: Record<string, string>; createdDirs: string[] } {
+    const writtenFiles: Record<string, string> = {};
+    const createdDirs: string[] = [];
+    const deps: InvokeAgentReviewDeps & { writtenFiles: Record<string, string>; createdDirs: string[] } = {
+      sessionDir: '/tmp/session',
+      requestsDir: '/tmp/session/requests',
+      promptsDir: '/tmp/session/prompts',
+      reviewPendingUpdates: new Map(),
+      existsSync: (p: string) => p in writtenFiles || p.includes('PROMPT_orch_review'),
+      readFile: async (p: string, _enc: BufferEncoding) => {
+        if (p.includes('PROMPT_orch_review')) return '# Review Prompt';
+        if (p in writtenFiles) return writtenFiles[p];
+        throw new Error(`File not found: ${p}`);
+      },
+      writeFile: async (p: string, data: string, _enc: BufferEncoding) => { writtenFiles[p] = data; },
+      mkdir: async (p: string) => { createdDirs.push(p); },
+      unlink: async (p: string) => { delete writtenFiles[p]; },
+      ...overrides,
+      writtenFiles,
+      createdDirs,
+    };
+    return deps;
+  }
+
+  it('calls adapter.listComments when adapter is present and includes comments in queue file', async () => {
+    const listCalls: number[] = [];
+    const mockAdapter = {
+      listComments: async (prNumber: number) => {
+        listCalls.push(prNumber);
+        return [
+          { id: 1, body: 'Fix the types.', author: 'alice', created_at: '2026-03-14T10:00:00Z' },
+          { id: 2, body: 'LGTM now.', author: 'bob', created_at: '2026-03-14T11:00:00Z' },
+        ];
+      },
+    } as any;
+
+    const deps = createMockReviewDeps({ adapter: mockAdapter });
+    const invoke = createInvokeAgentReview(deps);
+    const result = await invoke(7, 'owner/repo', 'diff content');
+
+    assert.equal(result.verdict, 'pending');
+    assert.equal(listCalls.length, 1);
+    assert.equal(listCalls[0], 7);
+
+    const queueFile = deps.writtenFiles['/tmp/session/queue/000-review-7.md'];
+    assert.ok(queueFile, 'queue file should be written');
+    assert.ok(queueFile.includes('Fix the types.'), 'queue file should include first comment body');
+    assert.ok(queueFile.includes('LGTM now.'), 'queue file should include second comment body');
+    assert.ok(queueFile.includes('## Previous Review Comments'), 'queue file should have comment section heading');
+  });
+
+  it('does not call adapter.listComments when adapter is not provided', async () => {
+    const deps = createMockReviewDeps();
+    const invoke = createInvokeAgentReview(deps);
+    const result = await invoke(3, 'owner/repo', 'diff content');
+
+    assert.equal(result.verdict, 'pending');
+
+    const queueFile = deps.writtenFiles['/tmp/session/queue/000-review-3.md'];
+    assert.ok(queueFile, 'queue file should be written');
+    assert.ok(!queueFile.includes('## Previous Review Comments'), 'queue file should not have comment section');
+  });
+
+  it('writes queue file without comment section when adapter returns empty comments', async () => {
+    const mockAdapter = {
+      listComments: async () => [],
+    } as any;
+
+    const deps = createMockReviewDeps({ adapter: mockAdapter });
+    const invoke = createInvokeAgentReview(deps);
+    await invoke(5, 'owner/repo', 'diff content');
+
+    const queueFile = deps.writtenFiles['/tmp/session/queue/000-review-5.md'];
+    assert.ok(queueFile, 'queue file should be written');
+    assert.ok(!queueFile.includes('## Previous Review Comments'), 'queue file should not have comment section when no comments');
+  });
+
+  it('swallows adapter.listComments errors and still writes queue file', async () => {
+    const mockAdapter = {
+      listComments: async () => { throw new Error('API rate limit'); },
+    } as any;
+
+    const deps = createMockReviewDeps({ adapter: mockAdapter });
+    const invoke = createInvokeAgentReview(deps);
+    const result = await invoke(9, 'owner/repo', 'diff content');
+
+    assert.equal(result.verdict, 'pending');
+    const queueFile = deps.writtenFiles['/tmp/session/queue/000-review-9.md'];
+    assert.ok(queueFile, 'queue file should be written even when listComments throws');
+    assert.ok(!queueFile.includes('## Previous Review Comments'), 'queue file should not have comment section after error');
   });
 });

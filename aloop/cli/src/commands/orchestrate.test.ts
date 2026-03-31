@@ -387,11 +387,14 @@ describe('orchestrateCommandWithDeps', () => {
     assert.equal(result.state.issues.length, 1);
   });
 
-  it('preload skips when adapter is not provided', async () => {
-    const deps = createMockDeps({ existsSync: () => true });
-    const result = await orchestrateCommandWithDeps({ repo: 'owner/repo' }, deps);
+  it('preload skips when filterRepo is not set', async () => {
+    const adapter = createMockAdapter();
+    const deps = createMockDeps({ adapter, existsSync: () => true });
+    const result = await orchestrateCommandWithDeps({}, deps);
 
-    // No adapter → preload branch skipped, state stays empty
+    // No filterRepo → preload branch never entered even with adapter present
+    const listCalls = adapter.calls.filter((c) => c.method === 'listIssues');
+    assert.equal(listCalls.length, 0, 'listIssues should not be called when filterRepo is not set');
     assert.equal(result.state.issues.length, 0);
   });
 
