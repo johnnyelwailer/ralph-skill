@@ -22,6 +22,11 @@ spec-gap analysis: no discrepancies found — spec fully fulfilled
 - ✅ Sidebar toggle buttons have `aria-label="Expand sidebar"` / `"Collapse sidebar"` / `"Toggle sidebar"`
 - P3 [spec-gap]: SPEC-ADDENDUM.md line 245 requires "Lighthouse mobile accessibility score >= 90". Score cannot be measured without Chrome (jsdom limitation). All underlying a11y attributes are implemented and unit-tested; formal score measurement deferred to CI/local dev run. **Does not block completion** — all testable acceptance criteria are met.
 
+## Review Findings — 2026-03-31
+
+- [ ] [review] Gate 1/Gate 3: Close buttons missing mobile tap target classes — `AppView.tsx:985` (ArtifactComparisonDialog close) and `LogEntryRow.tsx:344` (ImageLightbox close) both have `aria-label="Close"` but neither has `min-h-[44px] min-w-[44px] md:min-h-0 md:min-w-0`. SPEC-ADDENDUM.md line 240 requires ALL tap targets ≥ 44×44px. Add the tap target classes, and add a test that verifies the close button className contains `min-h-[44px]`. (priority: high)
+- [ ] [review] Gate 4: Circular module dependency — `LogEntryRow.tsx` imports `ArtifactComparisonDialog`, `ElapsedTimer`, and `findBaselineIterations` from `'../AppView'`, while `AppView.tsx` imports `LogEntryRow` from `'@/components/LogEntryRow'`. These three exports were not moved to separate files during the lib extraction refactoring. Fix: move `ElapsedTimer` and `ArtifactComparisonDialog` to `@/components/shared/` or `@/components/artifacts/`, and move `findBaselineIterations` to `@/lib/types` or `@/lib/format`; then update `LogEntryRow` to import from those lib/component paths instead of `'../AppView'`. (priority: medium)
+
 ## Spec Review — 2026-03-31
 
 **Result: APPROVED** — all testable SPEC-ADDENDUM.md "Dashboard Responsiveness" acceptance criteria verified.
