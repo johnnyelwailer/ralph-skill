@@ -957,3 +957,46 @@ npx tsc --noEmit --skipLibCheck → exit 0, no output
 
 rm -rf /tmp/aloop-test-install-uLgWX8
 ```
+
+## QA Session — 2026-03-31 (final-qa gate — HEAD regression check at d8d2c45bd)
+
+### Test Environment
+- Working dir: /home/pj/.aloop/sessions/orchestrator-20260321-172932-issue-177-20260330-095024/worktree/aloop/cli
+- Binary under test: compiled TypeScript source (not packaged CLI — functional equivalence test)
+- Commit under test: d8d2c45bd (chore(review): PASS — gates 1-9 pass; docs-only commits since c9bcadf28)
+- Prior baseline: c9bcadf28 — 36/36 adapter, 38/38 process-requests, 348/375 orchestrate, 0 tsc errors
+- Features tested: 5 — TypeScript build, adapter.test.ts, process-requests.test.ts, orchestrate.test.ts, tsc type check
+
+### Results
+- PASS: TypeScript build (npm run build) — exit 0, all build steps complete
+- PASS: adapter.test.ts — 36/36 tests pass (stable)
+- PASS: process-requests.test.ts — 38/38 tests pass (stable)
+- PASS: orchestrate.test.ts — 348/375 pass, 27 fail (identical pre-existing baseline, no regressions)
+- PASS: tsc --noEmit (non-test files) — zero type errors, exit 0
+
+### Bugs Filed
+None — all tests match prior baseline. Intervening commits (3013ea666, 0685e00b4, 80b033e71, 6d4222074, d8d2c45bd) are docs/chore only.
+
+### Command Transcript
+
+```
+# TypeScript build
+$ npm run build
+> [all steps clean] exit 0
+
+# adapter.test.ts
+$ npx tsx --test src/lib/adapter.test.ts
+# tests 36 / # pass 36 / # fail 0 — exit 0
+
+# process-requests.test.ts
+$ npx tsx --test src/commands/process-requests.test.ts
+# tests 38 / # pass 38 / # fail 0 — exit 0
+
+# orchestrate.test.ts
+$ npx tsx --test src/commands/orchestrate.test.ts
+# tests 375 / # pass 348 / # fail 27 — same pre-existing baseline
+
+# tsc --noEmit
+$ npx tsc --noEmit --skipLibCheck (filtering test files)
+no output — exit 0
+```
