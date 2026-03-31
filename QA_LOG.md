@@ -1,5 +1,57 @@
 # QA Log
 
+## QA Session — 2026-03-31 (final-qa, triggered by final-review, commit 4502e83b0)
+
+### Test Environment
+- Binary under test: /tmp/aloop-test-install-nv85wo/bin/aloop (1.0.0)
+- Commit: 4502e83b0 (post-docs commit 6b3058ca7 — aloop gh subcommands documented)
+- Features tested: 5
+
+### Results
+- PASS: aloop gh start/watch/status/stop CLI flags and help
+- PASS: aloop gh subcommands documented in README
+- PASS: TypeScript type-check (tsc --noEmit exit 0)
+- PASS: npm test (51 files, 632 tests)
+- PASS: Storybook build (175 stories)
+
+### Bugs Filed
+(none)
+
+### Command Transcript
+
+```
+# Install from source
+ALOOP_BIN=$(npm --prefix aloop/cli run --silent test-install -- --keep 2>/dev/null | tail -1)
+# → /tmp/aloop-test-install-nv85wo/bin/aloop
+aloop --version → 1.0.0
+
+# gh subcommand help
+aloop gh --help → exit 0; shows start, watch, status, stop + policy-gated ops
+aloop gh start --help → exit 0; shows --issue, --spec, --provider, --max, --repo, --project-root, --home-dir, --output
+aloop gh watch --help → exit 0; shows --label, --assignee, --milestone, --max-concurrent, --interval, --repo, --provider, --max, --once, --output
+aloop gh status --help → exit 0; shows --home-dir, --output
+aloop gh stop --help → exit 0; shows --issue, --all, --home-dir, --output
+
+# Error paths
+aloop gh start (no --issue) → exit 1; "error: required option '--issue <number>' not specified"
+aloop gh stop (no --issue/--all) → exit 1; "Error: gh stop requires either --issue <number> or --all."
+
+# README verification
+grep "aloop gh" README.md → lines 212-243: all 4 subcommands in CLI table and usage section ✓
+
+# TypeScript type-check
+npm run type-check (in aloop/cli/dashboard) → tsc --noEmit exit 0
+
+# Unit tests
+npm test → 51 test files, 632 tests all pass
+
+# Storybook build
+npm run build-storybook → exit 0, 175 stories
+
+# Cleanup
+rm -rf /tmp/aloop-test-install-nv85wo → done
+```
+
 ## QA Session — 2026-03-31 (final-qa, triggered by final-review, commit 02f4faec1)
 
 ### Test Environment
