@@ -41,6 +41,9 @@ aloop start --provider round-robin
 
 # Resume a stopped session
 aloop start --launch resume <session-id>
+
+# Run in-place (skip worktree creation, use project root directly)
+aloop start --in-place --provider claude
 ```
 
 ### Orchestrator Mode (`aloop orchestrate`)
@@ -200,10 +203,10 @@ The installer deploys skill files to each harness directory and the Aloop runtim
 | `aloop start` | Launch a single-session loop |
 | `aloop orchestrate` | Multi-issue decomposition and parallel dispatch |
 | `aloop dashboard` | Real-time monitoring UI |
-| `aloop status` | List active sessions and provider health |
+| `aloop status` | List active sessions and provider health (`--watch` to auto-refresh) |
 | `aloop active` | Show only currently running sessions |
 | `aloop stop <id>` | Stop a running session |
-| `aloop setup` | Interactive project configuration |
+| `aloop setup` | Interactive project configuration (`--non-interactive` for CI) |
 | `aloop scaffold` | Scaffold workspace config files |
 | `aloop steer <instruction>` | Send live instruction to a running loop |
 | `aloop gh <op>` | Policy-enforced GitHub operations |
