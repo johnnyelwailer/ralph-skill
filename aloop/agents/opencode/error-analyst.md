@@ -2,7 +2,7 @@
 description: Parses error logs and stack traces to suggest fixes
 model: openrouter/google/gemini-3.1-flash-lite-preview
 reasoning: medium
-provider: openrouter
+provider: opencode
 mode: subagent
 tools:
   write: false
