@@ -1,74 +1,39 @@
 # Review Log
 
-## Review — 2026-04-13 — commit aff01407..33cfe894
+## Review — 2026-03-31 — commit c805d8db1..dad6a7107
 
-**Verdict: FAIL** (3 findings → written to TODO.md as [review] tasks)
-**Scope:** `.github/workflows/ci.yml`, `README.md`, `aloop/cli/src/commands/orchestrate.ts`, `aloop/cli/src/commands/orchestrate.test.ts`
+**Verdict: FAIL** (1 finding → written to TODO.md as [review] task)
+**Scope:** `aloop/bin/loop.sh`, `aloop/bin/loop_provider_health.tests.sh`, `aloop/bin/loop_provider_health_primitives.tests.sh`, `SPEC.md`
 
-### Gate 1: Spec Compliance — FAIL
+### Gate 1 — Spec Compliance: PASS
+Implementation matches spec intent: `flock -s` for reads, `flock -x` for writes, 5 retries with progressive backoff (50ms→250ms), graceful degradation with `health_lock_failed` log event. Stale `.lock` directory cleanup present in both `ensure_provider_health_dir()` and `acquire_provider_health_lock()`. Constitution rule 1 (no new functions without authorization) is satisfied — new `acquire_provider_health_lock` and `release_provider_health_lock` functions are directly required by the issue.
 
-The CI workflow (`ci.yml`) itself satisfies all 8 acceptance criteria from TASK_SPEC.md:
-- ✅ ci.yml exists
-- ✅ push + pull_request triggers on master, agent/*, aloop/*
-- ✅ CLI tests via `bun run test` (correctly changed from `bun test` — bun's native runner incompatible with node:test)
-- ✅ Dashboard tests via `npm test`
-- ✅ Type checks for both CLI and dashboard packages
-- ✅ Loop shell tests on Linux (7 suites including bats)
-- ✅ PowerShell tests on Windows
-- ✅ README CI badge at line 1
+### Gate 2 — Test Depth: PASS
+- `loop_provider_health_primitives.tests.sh` Test 4 (lines 114–132): asserts all 6 parsed JSON fields with exact values after reading a concrete health file — thorough.
+- Test 5 (lines 137–152): full round-trip write+read verifying all 6 fields — leaves no wiggle room.
+- Test 7 (lines 184–201): mocks `flock` to always fail, asserts return code 1 AND `health_lock_failed` log event — covers the error path.
+- `loop_provider_health.tests.sh`: flock mode tests assert exact `-s`/`-x` flag presence in captured args, not just truthy.
 
-**However**, commit `aec9e571` made substantial changes to `aloop/cli/src/commands/orchestrate.ts` and `orchestrate.test.ts` — both explicitly listed as **Out of Scope** in TASK_SPEC.md: "Runtime/orchestrator logic changes in `aloop/cli/src/**` (Constitution Rules 2 and 6)". This violates Constitution Rules 12 (one issue, one concern) and 18 (respect file ownership).
+### Gate 3 — Coverage: PASS
+All code paths in the new functions exercised: read path (shared lock), write path (exclusive lock), lock failure path (all retries exhausted), acquire-release-re-acquire cycle. `ensure_provider_health_dir` cleanup path covered implicitly by test setup.
 
-Five behavior changes were bundled into this CI issue:
-1. `validateDoR`: changed acceptance criteria detection regex
-2. `validateDoR`: removed criterion 5 (dor_validated circular check)
-3. `getDispatchableIssues`: added `dor_validated` guard
-4. `applyEstimateResults`: expanded status progression from `Needs refinement` to 3 statuses
-5. `checkPrGates`: changed 'pass' to 'pending' when CI workflows exist but no checks ran
-6. `reviewPrDiff`: changed 'flag-for-human' → 'approve' when no reviewer configured (**security regression**)
-7. `monitorChildSessions`: added `state='failed'`/`status='Blocked'` tracking for stopped children
-8. `launchChildLoop`: added SPEC.md seeding from issue body
+### Gate 4 — Code Quality: PASS
+No dead code, no unused imports, no copy-paste duplication. Dynamic FD allocation (`exec {fd}>`) is idiomatic bash — better than hardcoded FD 9. `release_provider_health_lock` correctly closes FD and clears `HEALTH_LOCK_FD`. No over-engineering.
 
-The `reviewPrDiff` auto-approve change (finding #6) is the most critical: it replaces the safe 'flag-for-human' default with silent auto-approval, enabling automated merges without any review when no reviewer is configured. This is a meaningful weakening of a security gate.
+### Gate 5 — Integration Sanity: PASS
+Both test suites run clean (12 tests total, all PASS). No TypeScript changes in this PR — CLI type-check not applicable.
 
-### Gate 2: Test Depth — Pass (conditional on Gate 1)
+### Gate 6 — Proof Verification: PASS
+`artifacts/iter-proof/proof-manifest.json` correctly skips with an empty artifacts array and a precise reason (internal shell locking refactor, no observable behavior change). This is the expected correct outcome for internal plumbing changes.
 
-The orchestrate.test.ts changes that accompany the production changes are technically coherent:
-- `dor_validated: false` additions in test fixtures fix a real regression (previously missing flag caused false positives)
-- `statusCheckRollup` mock format aligns with actual GitHub GraphQL response shape
-- `checkPrGates` test at line ~430: assertion updated to 'pass' on API error (tests gate behavior correctly, not arbitrary)
+### Gate 7 — Runtime Layout: N/A (no UI changes)
 
-If Gate 1 findings are resolved (revert out-of-scope changes), this gate passes on the remaining CI-only changes.
+### Gate 8 — Version Compliance: N/A (no dependency changes)
 
-### Gate 5: Integration — Conditional pass
+### Gate 9 — Documentation Freshness: FAIL
+SPEC.md line 160 (added in commit `d7949e9c7`) says:
+> "Exclusive lock via `flock -x` on a `.flock` sidecar file (FD 9)"
 
-On master: 2 pre-existing failures, 963 pass (966 total).
-On this branch (worktree context): 24 failures noted, but yaml.test.ts failures appear pre-existing to this branch (yaml.ts/yaml.test.ts not modified). The aec9e571 commit fixed 27 pre-existing orchestrate test failures; yaml failures are separate and pre-date this branch.
-
-### Gate 6: Proof — N/A
-
-No proof manifests found. ci.yml is a config file — CI workflow proof would require triggering an actual GitHub Actions run (impossible in the current environment). Proof skip is acceptable per Gate 6 rules for config-file work.
-
-### Gates 3, 4, 7, 8, 9
-
-- Gate 3: N/A (CI config has no branch coverage metric)
-- Gate 4: Out-of-scope changes aside, no dead code or quality issues in ci.yml itself
-- Gate 7: N/A (no UI changes)
-- Gate 8: No VERSIONS.md entries for GitHub Actions; `actions/checkout@v4`, `oven-sh/setup-bun@v2`, `actions/setup-node@v4`, `actions/upload-artifact@v4` — pinned to major versions (acceptable)
-- Gate 9: README line 1 has CI badge pointing to `johnnyelwailer/ralph-skill/actions/workflows/ci.yml/badge.svg` ✅
-
-## Review — 2026-04-13 — commit ef60dc7e..d0a300bf
-
-**Verdict: PASS** (prior findings resolved)
-**Scope:** `aloop/cli/src/commands/orchestrate.ts`, `aloop/cli/src/commands/orchestrate.test.ts`, `.github/workflows/ci.yml`, `README.md`
-
-- Gate 1: orchestrate.ts production code is now identical to master — the 8 out-of-scope behavior changes (including `reviewPrDiff` security regression) have been reverted. Remaining diff is orchestrate.test.ts fixture improvements only (statusCheckRollup format, dor_validated guards in failure-path tests) — no production behavior changes.
-- Gate 2: orchestrate.test.ts:2723-2813 — `statusCheckRollup` fixtures correctly match GitHub GraphQL API format; `dor_validated: false` in failure tests makes intent explicit. Thorough.
-- Gate 5: QA log confirms 452 CLI tests pass, 148 dashboard tests pass; 2 deferred pre-existing script exit-code bugs (out of scope).
-- Gates 3, 6, 7: N/A for CI config work.
-- Gate 8: Actions pinned to major versions — acceptable.
-- Gate 9: README CI badge present at line 1.
-
-All prior [review] tasks resolved.
+Actual implementation in `loop.sh:892`: `lock_file="${path}.lock"` (extension `.lock`, not `.flock`) and `exec {fd}>"$lock_file"` (dynamic FD, not hardcoded FD 9). The documentation doesn't match what was implemented. `[review]` task written to TODO.md.
 
 ---
