@@ -9,6 +9,11 @@
 ### Up Next
 _(none)_
 
+### QA Notes (2026-03-31)
+- All 9 acceptance criteria from SPEC-ADDENDUM.md L237–L244 PASS (158 unit tests pass, visual browser tests pass at 320/375/768/1440/1920px)
+- P3 observation: swipe gesture (spec body L226) not implemented — not in acceptance criteria, does not block completion
+- Pre-existing review findings still open (see In Progress above)
+
 ### Completed
 - [x] Implement as described in the issue
   - LogEntryRow uses `<button type="button">` with keyboard handler (Enter/Space)
