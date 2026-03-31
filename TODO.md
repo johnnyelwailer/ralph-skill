@@ -174,6 +174,17 @@ Re-verified after docs trigger (fourth spec-review pass):
 
 No new gaps found. Issue #38 implementation fully spec-compliant.
 
+### Spec Review — APPROVED (docs trigger re-run 5, 2026-03-31) [reviewed: all gates pass]
+
+Re-verified after docs commit `cea231924` (sync README with actual CLI flags and orchestrator behavior):
+
+- `aloop steer <instruction>`: SPEC line 3818 shows steer takes a positional instruction argument; CLI `index.ts:168` confirms `.command('steer <instruction>')` — README correction accurate ✓
+- `--auto-merge` flag: implemented in `orchestrate.ts` (line 37 `autoMerge?: boolean`); SPEC §"PR lifecycle" mentions "auto-merge configurable" — documentation accurate ✓
+- `agent/trunk` default with `--trunk` override: SPEC lines 1974–1975 confirm `agent/trunk` is default; SPEC line 2107 shows `--trunk` flag — README clarification accurate ✓
+- All Storybook AC (Issue #183 scope): Storybook 10 + `@storybook/react-vite` ✓; `npm run storybook` ✓; `build-storybook` ✓; 28 non-ui components have stories ✓; global decorator (dark mode + Tailwind) ✓; `ui/progress.tsx` covers ProgressBar AC ✓
+
+No new gaps found. Docs commit is spec-compliant.
+
 ### Spec Review — APPROVED (docs trigger re-run 4, 2026-03-31) [reviewed: all gates pass] [final-review: gates 1-9 pass]
 
 Re-verified after docs trigger (fifth spec-review pass):
