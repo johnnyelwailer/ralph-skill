@@ -1,5 +1,6 @@
 import { mkdir, readFile, readdir, unlink, writeFile } from 'node:fs/promises';
 import { existsSync, readdirSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 import { resolveHomeDir } from './session.js';
 import { getProjectHash, resolveProjectRoot } from './project.js';
@@ -15,7 +16,7 @@ import {
   detectIssueChanges,
   type BulkIssueState,
 } from '../lib/github-monitor.js';
-import type { OrchestratorAdapter } from '../lib/adapter.js';
+import { createAdapter, type OrchestratorAdapter } from '../lib/adapter.js';
 
 export interface OrchestrateCommandOptions {
   spec?: string;
@@ -989,6 +990,14 @@ export async function orchestrateCommandWithDeps(
   const filterIssues = parseIssueNumbers(options.issues);
   const filterLabel = options.label ?? null;
   const filterRepo = options.repo ?? null;
+  if (filterRepo && !deps.adapter) {
+    const execGh = deps.execGh ?? (async (args: string[]) => {
+      const r = spawnSync('gh', args, { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true, timeout: 30000 });
+      if (r.status === null && r.signal) throw new Error(`gh timed out (${r.signal})`);
+      return { stdout: r.stdout ?? '', stderr: r.stderr ?? '' };
+    });
+    deps = { ...deps, execGh, adapter: createAdapter({ type: 'github', repo: filterRepo }, execGh) };
+  }
   const planOnly = options.planOnly ?? false;
   const budgetCap = parseBudget(options.budget);
   const autonomyLevel = await resolveOrchestratorAutonomyLevel(options, homeDir, deps);
