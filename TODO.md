@@ -209,6 +209,17 @@ Re-verified after docs trigger (fourth spec-review pass):
 
 No new gaps found. Issue #38 implementation fully spec-compliant.
 
+### Spec Review — APPROVED (docs trigger re-run 9, 2026-03-31) [reviewed: all gates pass]
+
+Re-verified after docs commit `765558dcc` (correct auth failure behavior in provider health section):
+
+- Auth failure behavior: SPEC line 151 confirms auth errors → `degraded` (no auto-recover); SPEC line 191 AC: "Auth failures mark provider as `degraded` (no auto-recover)" — README now correctly states auth failures mark provider as `degraded`, skipped until credentials manually fixed ✓
+- Transient failure backoff: SPEC lines 129/132 define exponential backoff for cooldown states — README correctly distinguishes transient (backoff/auto-retry) from auth (degraded/manual fix) ✓
+- Docs agent AC (SPEC line 879): only README.md modified — no SPEC.md or code changes ✓
+- TypeScript: `npm run type-check` passes with zero errors ✓
+
+No new gaps found. Docs commit is spec-compliant.
+
 ### Spec Review — APPROVED (spec-review trigger re-run 15, 2026-03-31) [reviewed: gates 1-9 pass]
 
 No new changes since fourteenth review pass. All Issue #183 ACs remain satisfied and verified. `PR_DESCRIPTION.md` complete.
