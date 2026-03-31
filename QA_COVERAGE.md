@@ -31,3 +31,4 @@
 | npm test passes (post-docs commit 6b3058ca7) | 2026-03-31 | 4502e83b0 | PASS | 51 test files, 632 tests all pass |
 | Storybook build passes (post-docs commit 6b3058ca7) | 2026-03-31 | 4502e83b0 | PASS | build-storybook exit 0; 175 stories |
 | Full dynamic re-test (final-qa, triggered by final-review) | 2026-03-31 | cb2c2b8b5 | PASS | tsc --noEmit exit 0; npm test 51 files 632 tests all pass; storybook build exit 0 (178 entries); 30 .test.tsx + 41 .stories.tsx in components/ |
+| Full dynamic re-test (final-qa, triggered by final-review) | 2026-03-31 | 612415ca3 | PASS | tsc --noEmit exit 0; npm test 51 files 632 tests all pass; storybook build exit 0 (178 stories); 30 .test.tsx + 41 .stories.tsx in components/; README session-dir architecture additions accurate (loop-plan.json, queue/, requests/ verified); only doc commits since last QA pass — no regressions |

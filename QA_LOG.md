@@ -1,5 +1,31 @@
 # QA Log
 
+## QA Session — 2026-03-31 (final-qa, triggered by final-review, commit 612415ca3)
+
+### Test Environment
+- Commit: 612415ca3 (docs only since last QA pass at cb2c2b8b5)
+- Features tested: 4
+
+### Results
+- PASS: TypeScript type-check (tsc --noEmit exit 0)
+- PASS: npm test (51 files, 632 tests)
+- PASS: Storybook build (178 stories)
+- PASS: README session-dir docs additions accurate (loop-plan.json, queue/, requests/ match SPEC §architecture)
+
+### Bugs Filed
+(none)
+
+### Command Transcript
+```
+$ tsc --noEmit → exit 0
+$ npm test -- --run → 51 passed (51), 632 passed (632), exit 0
+$ npm run build-storybook → exit 0, 178 stories
+$ git diff cb2c2b8b5..HEAD --name-only → README.md, QA_COVERAGE.md, QA_LOG.md, REVIEW_LOG.md, TODO.md (docs/chore only)
+$ grep -n "requests/" SPEC.md → confirmed requests/ is agent-written; absence when empty is expected behavior
+```
+
+---
+
 ## QA Session — 2026-03-31 (final-qa, triggered by final-review, commit 4502e83b0)
 
 ### Test Environment
