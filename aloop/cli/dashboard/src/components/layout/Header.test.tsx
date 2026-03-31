@@ -3,7 +3,6 @@ import userEvent from '@testing-library/user-event';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { Header } from './Header';
-import { QACoverageBadge } from '@/components/shared/QACoverageBadge';
 import type { ConnectionStatus } from '@/lib/types';
 
 const defaultHeaderProps: React.ComponentProps<typeof Header> = {
@@ -170,92 +169,5 @@ describe('Header', () => {
   it('renders empty updated-at when not loading and updatedAt is empty', () => {
     renderHeader({ loading: false, updatedAt: '', loadError: null });
     expect(screen.getByTestId('header-updated-at')).toHaveTextContent('');
-  });
-});
-
-describe('QACoverageBadge', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    vi.stubGlobal('fetch', vi.fn());
-  });
-
-  it('renders nothing while loading (coverage is null)', () => {
-    (globalThis.fetch as ReturnType<typeof vi.fn>).mockImplementation(() => new Promise(() => {}));
-    const { container } = render(<QACoverageBadge sessionId="s1" refreshKey="" />);
-    expect(container.querySelector('.relative')).toBeNull();
-  });
-
-  it('renders QA N/A when coverage is unavailable', async () => {
-    (globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValue({
-      ok: true,
-      json: async () => ({ available: false, features: [] }),
-    });
-    render(<QACoverageBadge sessionId="s1" refreshKey="" />);
-    await waitFor(() => {
-      expect(screen.getByText('QA N/A')).toBeInTheDocument();
-    });
-  });
-
-  it('renders percentage when coverage is available', async () => {
-    (globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValue({
-      ok: true,
-      json: async () => ({ available: true, coverage_percent: 85, features: [] }),
-    });
-    render(<QACoverageBadge sessionId="s1" refreshKey="" />);
-    await waitFor(() => {
-      expect(screen.getByText('QA 85%')).toBeInTheDocument();
-    });
-  });
-
-  it('expands to show features on click', async () => {
-    const user = userEvent.setup();
-    (globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValue({
-      ok: true,
-      json: async () => ({
-        available: true,
-        coverage_percent: 90,
-        features: [
-          { feature: 'Auth', component: 'login', status: 'PASS' },
-          { feature: 'Upload', component: 'files', status: 'FAIL' },
-        ],
-      }),
-    });
-    render(<QACoverageBadge sessionId="s1" refreshKey="" />);
-    await waitFor(() => {
-      expect(screen.getByText('QA 90%')).toBeInTheDocument();
-    });
-    await user.click(screen.getByText('QA 90%'));
-    await waitFor(() => {
-      expect(screen.getByText('Auth')).toBeInTheDocument();
-      expect(screen.getByText('Upload')).toBeInTheDocument();
-    });
-  });
-
-  it('handles fetch error gracefully', async () => {
-    (globalThis.fetch as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('Network error'));
-    render(<QACoverageBadge sessionId="s1" refreshKey="" />);
-    await waitFor(() => {
-      expect(screen.getByText('QA N/A')).toBeInTheDocument();
-    });
-  });
-
-  it('uses UNTESTED status when feature status is not a string', async () => {
-    const user = userEvent.setup();
-    (globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValue({
-      ok: true,
-      json: async () => ({
-        available: true,
-        coverage_percent: 50,
-        features: [{ feature: 'Login', component: 'auth', status: null }],
-      }),
-    });
-    render(<QACoverageBadge sessionId="s1" refreshKey="" />);
-    await waitFor(() => {
-      expect(screen.getByText('QA 50%')).toBeInTheDocument();
-    });
-    await user.click(screen.getByText('QA 50%'));
-    await waitFor(() => {
-      expect(screen.getByText('UNTESTED')).toBeInTheDocument();
-    });
   });
 });

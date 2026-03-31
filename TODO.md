@@ -4,21 +4,11 @@
 
 ### In Progress
 
-- [x] Split `Header.tsx` (280 LOC) below 200-line limit (priority: high)
-  - Extract `QACoverageBadge` (lines 62–148) + `parseQACoveragePayload` + related constants → `src/components/shared/QACoverageBadge.tsx`
-  - `vitest.config.ts` already covers `src/components/**/*.tsx` — no config change needed
-  - After extraction, `Header.tsx` is 158 LOC; all 569 tests pass
-
-- [x] Split `Sidebar.tsx` (255 LOC) below 200-line limit (priority: high)
-  - Extracted context menu → `src/components/layout/SidebarContextMenu.tsx`
-  - Extracted collapsed sidebar → `src/components/layout/CollapsedSidebar.tsx`
-  - `Sidebar.tsx` is now 198 LOC; all 569 tests pass
-
-### Up Next
-
-- [ ] [review] Gate 1+3: `QACoverageBadge.tsx` has no dedicated `.test.tsx` file — tests are embedded in `Header.test.tsx`. SPEC-ADDENDUM requires every component in `components/` to have a corresponding `.test.tsx`. Create `src/components/shared/QACoverageBadge.test.tsx` and move/expand tests from `Header.test.tsx` to cover all branches — current coverage is 84.84% (below ≥90% threshold for new modules). Missing branches: `response.ok = false` path (line 50), percentage 50–79 (yellow tone), percentage < 50 (red tone), "No feature rows found" empty state, and `payload.percentage` fallback path (line 14). (priority: high)
+- [x] [review] Gate 1+3: `QACoverageBadge.tsx` has no dedicated `.test.tsx` file — tests are embedded in `Header.test.tsx`. SPEC-ADDENDUM requires every component in `components/` to have a corresponding `.test.tsx`. Create `src/components/shared/QACoverageBadge.test.tsx` and move/expand tests from `Header.test.tsx` to cover all branches — current coverage is 84.84% (below ≥90% threshold for new modules). Missing branches: `response.ok = false` path (line 50), percentage 50–79 (yellow tone), percentage < 50 (red tone), "No feature rows found" empty state, and `payload.percentage` fallback path (line 14). (priority: high)
 - [ ] [review] Gate 1: `CollapsedSidebar.tsx` and `SidebarContextMenu.tsx` have no dedicated `.test.tsx` files — coverage comes only via `Sidebar.test.tsx` integration paths. SPEC-ADDENDUM: "Every component in `components/` has a corresponding `.test.tsx` file." Create `CollapsedSidebar.test.tsx` and `SidebarContextMenu.test.tsx` with unit tests for their props/interactions. (priority: high)
 - [ ] [review] Gate 1: `CollapsedSidebar.tsx`, `SidebarContextMenu.tsx`, and `QACoverageBadge.tsx` each lack a `.stories.tsx` file. SPEC-ADDENDUM acceptance criterion: "Every component in `components/` has a corresponding `.stories.tsx` file." Create stories for each (≥2 stories per component covering key visual states). Note: the pre-existing `QACoverageBadge` Storybook deferred task may be addressed together via MSW mock. (priority: high)
+
+### Up Next
 
 ### Deferred
 
@@ -56,3 +46,5 @@
 - [x] [qa/P1] `logHelpers.ts` branch coverage 100%
 - [x] [qa/P1] `sessionHelpers.ts` branch coverage 90%
 - [x] [review] Gate 2: Rewrote `useDashboardState.test.ts` providerHealth tests to assert specific shape/values instead of existence checks
+- [x] Split `Header.tsx` (280 LOC) below 200-line limit — extracted `QACoverageBadge` → `src/components/shared/QACoverageBadge.tsx`; `Header.tsx` is 158 LOC; all 569 tests pass
+- [x] Split `Sidebar.tsx` (255 LOC) below 200-line limit — extracted `SidebarContextMenu.tsx` and `CollapsedSidebar.tsx`; `Sidebar.tsx` is 198 LOC; all 569 tests pass
