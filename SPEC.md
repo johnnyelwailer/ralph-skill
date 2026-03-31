@@ -157,7 +157,7 @@ Any successful call from ANY session resets `consecutive_failures` to 0 and stat
 Platform-specific locking with identical semantics:
 
 **Bash (`loop.sh`) — POSIX `flock`**:
-- **Writes**: Exclusive lock via `flock -x` on a `.flock` sidecar file (FD 9)
+- **Writes**: Exclusive lock via `flock -x` on a `.lock` sidecar file (dynamic FD via `exec {fd}>`)
 - **Reads**: Shared lock via `flock -s` (multiple loops can read simultaneously)
 - **Lock retry**: 5 attempts with progressive backoff (50ms, 100ms, 150ms, 200ms, 250ms) using non-blocking `flock -n`
 - **Stale lock cleanup**: `ensure_provider_health_dir()` removes leftover `.lock` directories from the old mkdir-based approach
