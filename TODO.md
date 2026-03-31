@@ -12,6 +12,7 @@ _(none)_
   1. `line 367`: `result.state.issues[1].priority` — `priority` is not declared on `OrchestratorIssue`; fix by adding `priority?: number` to the interface (already stored via `as any` at line 1211)
   2. `line 446`: `epic` is possibly `undefined` — add non-null assertion `epic!.status` or an assert guard after `.find()`
   3. `line 449`: `normal` is possibly `undefined` — same fix as line 446
+  [reviewed: gates 1-9 pass]
 
 ### Cancelled
 

@@ -1106,3 +1106,64 @@ The `[ ] [review] Gate 2/3: invokeAgentReview comment fetch` task from prior FAI
 - Gate 7: No UI changes
 - Gate 8: No new dependencies
 - Gate 9: No user-facing behavior changed; docs not required
+
+---
+
+## Review — 2026-03-31 — commits c78c95ef9..ccbffdc50 (build: Gate 4 fix + Gate 2/3 fixes + TypeScript fixes + docs)
+
+**Verdict: PASS** (1 observation)
+**Scope:** `aloop/cli/src/commands/orchestrate.ts`, `aloop/cli/src/commands/orchestrate.test.ts`, `aloop/cli/src/commands/process-requests.ts`, `aloop/cli/src/commands/process-requests.test.ts`, `README.md`
+**Commits reviewed:** `a45a51bc6` (extract createInvokeAgentReview + fix preload test), `8b552865b` (Gate 4: move bootstrap to orchestrateCommand), `9609d3098` (TypeScript non-null fixes), `3d83c926c` (README docs), plus chore/qa commits
+
+### Gate 1 — PASS (prior findings resolved)
+
+- Adapter bootstrap moved to `orchestrateCommand` (lines 1512–1525): DI boundary in `orchestrateCommandWithDeps` is now clean — function always receives fully-populated deps. ✓
+- Dead guard `&& deps.adapter` removed from preload condition (now `if (filterRepo && state.issues.length === 0)` with `deps.adapter!`). ✓
+- `createInvokeAgentReview` factory extracted and exported from `process-requests.ts` — testability pattern aligned with spec intent. ✓
+- `priority?: number` added to `OrchestratorIssue` — correct typing for value that was already stored via `as any`. ✓
+- README docs: `--trunk <branch>` confirmed at `src/index.ts:150` with default `'agent/trunk'`; `process-requests` command confirmed at `src/index.ts:178`. Both descriptions accurate. ✓
+
+### Gate 2 — PASS (prior findings resolved)
+
+- `orchestrate.test.ts`: "preload skips when filterRepo is not set" — calls `orchestrateCommandWithDeps({}, deps_with_adapter)` and asserts `listCalls.length === 0` (exact-count assertion; wrong invariant from prior review eliminated). ✓
+- 4 new `createInvokeAgentReview` tests use adversarial in-memory filesystem: Test 1 asserts `listCalls.length === 1`, `listCalls[0] === 7`, and exact comment body text (`'Fix the types.'`, `'LGTM now.'`) in queue file — a broken listComments integration would fail. Tests 2–4 cover adapter-absent, empty-comments, and error-swallow branches with exact `verdict` and presence/absence checks. ✓
+
+**Observation**: Gate 2 — `createInvokeAgentReview` Test 1 (`process-requests.test.ts:820`) is the strongest: it checks exact PR number forwarded to `listComments`, exact comment bodies appearing in the queue file, and the section heading `## Previous Review Comments`. The mock filesystem makes it impossible for a broken integration to produce a silently passing test.
+
+### Gate 3 — PASS
+
+All new branches covered:
+- `filterRepo` falsy branch (no preload even with adapter present) covered by renamed test. ✓
+- `createInvokeAgentReview`: adapter-present (Test 1), adapter-absent (Test 2), empty-comments (Test 3), listComments-throws (Test 4) — all 4 adapter branches covered. ✓
+
+### Gate 4 — PASS
+
+- Dead guard removed: `orchestrate.ts` preload condition is clean. ✓
+- DI bypass relocated to `orchestrateCommand` (the CLI entrypoint, appropriate owner of real I/O fallbacks) — `orchestrateCommandWithDeps` no longer injects real `spawnSync`. ✓
+- No dead code, no unused imports, no leftover TODOs in changed files. ✓
+- Non-null assertions (`epic!`, `normal!`) in test are sound — both `.find()` calls operate on a known 2-element array with distinct issue numbers. ✓
+
+### Gate 5 — PASS
+
+- `tsc --noEmit`: 0 errors (independently verified) ✓
+- `npm test`: 1161 pass, 34 fail — 34 confirmed pre-existing baseline (matches prior QA sessions: adapter.test.ts 36/36, process-requests.test.ts 42/42, orchestrate.test.ts 352/379 with 27 pre-existing; remaining 7 from other files, also pre-existing) ✓
+- `npm run build`: clean ✓
+
+### Gate 6 — PASS (N/A)
+
+Purely internal TypeScript plumbing and documentation — no observable output. Skip correct.
+
+### Gate 7 — N/A
+
+No UI changes.
+
+### Gate 8 — N/A
+
+No new dependencies.
+
+### Gate 9 — PASS
+
+- `--trunk <branch>` option: confirmed at `src/index.ts:150`, default `'agent/trunk'` matches README ✓
+- `aloop process-requests` in CLI table: confirmed at `src/index.ts:178`; "internal — called by loop.sh between iterations" is accurate ✓
+
+**Issue #177 is complete.** All non-deferred acceptance criteria satisfied. All prior review findings resolved. LocalAdapter deferred per spec.
