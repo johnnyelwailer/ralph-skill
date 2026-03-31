@@ -226,3 +226,62 @@ $ wc -l src/components/layout/Header.tsx src/components/layout/Sidebar.tsx
 280 Header.tsx  (FAIL — violates <200 SPEC rule, Up Next)
 255 Sidebar.tsx (FAIL — violates <200 SPEC rule, Up Next)
 ```
+
+## QA Session — 2026-03-31 (iteration 9)
+
+### Test Environment
+- Binary under test: /tmp/aloop-test-install-JjRVbU/bin/aloop
+- Version: 1.0.0
+- Dashboard dir: aloop/cli/dashboard/
+- Features tested: 5
+
+### Results
+- PASS: Header.tsx LOC <200 (158 LOC after QACoverageBadge extraction)
+- PASS: Sidebar.tsx LOC <200 (198 LOC after CollapsedSidebar + SidebarContextMenu extraction)
+- PASS: CollapsedSidebar.tsx and SidebarContextMenu.tsx extraction (both at 100% branch coverage)
+- PASS: All 569 tests pass (44 test files, 0 failures)
+- FAIL: QACoverageBadge.tsx branch coverage 84.84% — no dedicated .test.tsx file
+
+### Bugs Filed
+- [qa/P1] QACoverageBadge.tsx branch coverage 84.84% (below ≥90% threshold): no dedicated test file
+
+### Command Transcript
+
+```
+# Install from source
+$ ALOOP_BIN=$(npm --prefix aloop/cli run --silent test-install -- --keep 2>/dev/null | tail -1)
+Binary: /tmp/aloop-test-install-JjRVbU/bin/aloop
+$ aloop --version
+1.0.0
+
+# Feature 1: Header.tsx LOC
+$ wc -l aloop/cli/dashboard/src/components/layout/Header.tsx
+158 (PASS — target <200)
+
+# Feature 2: Sidebar.tsx LOC
+$ wc -l aloop/cli/dashboard/src/components/layout/Sidebar.tsx
+198 (PASS — target <200)
+
+# Feature 3: New extracted components exist
+$ ls aloop/cli/dashboard/src/components/shared/QACoverageBadge.tsx → exists (5883 bytes)
+$ ls aloop/cli/dashboard/src/components/layout/CollapsedSidebar.tsx → exists (1779 bytes)
+$ ls aloop/cli/dashboard/src/components/layout/SidebarContextMenu.tsx → exists (1978 bytes)
+
+# Feature 4: Run full test suite
+$ npm run test (vitest run)
+Test Files: 44 passed (44)
+Tests: 569 passed (569)
+Exit code: 0 (PASS)
+
+# Feature 5: Branch coverage on new components
+$ npm run test:coverage → coverage-summary.json
+CollapsedSidebar.tsx:  100% branch (PASS)
+SidebarContextMenu.tsx: 100% branch (PASS)
+Header.tsx:            97.87% branch (PASS)
+Sidebar.tsx:           94.54% branch (PASS)
+QACoverageBadge.tsx:   84.84% branch (FAIL — 10 uncovered branches, no dedicated .test.tsx)
+
+$ ls aloop/cli/dashboard/src/components/shared/ → QACoverageBadge.tsx has no .test.tsx
+  PhaseBadge.test.tsx ✓ | ElapsedTimer.test.tsx ✓ | CommandPalette.test.tsx ✓ | StatusDot.test.tsx ✓
+  QACoverageBadge.test.tsx ✗ MISSING
+```

@@ -17,3 +17,9 @@
 | useSSEConnection.test.ts state assertion anti-pattern | 2026-03-31 | 911184c87 | PASS | Line 111 uses toEqual with exact object {log,activeSessions,recentSessions} — no longer existence-check |
 | Split Header.tsx <200 LOC | 2026-03-31 | 911184c87 | FAIL | 280 LOC — violates <200 SPEC rule; tracked in TODO.md Up Next |
 | Split Sidebar.tsx <200 LOC | 2026-03-31 | 911184c87 | FAIL | 255 LOC — violates <200 SPEC rule; tracked in TODO.md Up Next |
+| Split Header.tsx <200 LOC | 2026-03-31 | 0913d4a6c | PASS | 158 LOC after QACoverageBadge extraction — bug fixed, re-verified at iter 9 |
+| Split Sidebar.tsx <200 LOC | 2026-03-31 | 2f39723b4 | PASS | 198 LOC after CollapsedSidebar + SidebarContextMenu extraction — bug fixed, re-verified at iter 9 |
+| CollapsedSidebar.tsx extraction | 2026-03-31 | 2f39723b4 | PASS | Exists at 100% branch coverage; covered via Sidebar.test.tsx integration |
+| SidebarContextMenu.tsx extraction | 2026-03-31 | 2f39723b4 | PASS | Exists at 100% branch coverage; covered via Sidebar.test.tsx integration |
+| QACoverageBadge.tsx branch coverage | 2026-03-31 | 0913d4a6c | FAIL | 84.84% branch — no dedicated .test.tsx file; 10 branches uncovered; bug filed [qa/P1] |
+| All 569 tests pass | 2026-03-31 | 2f39723b4 | PASS | 44 test files, 569 tests, 0 failures after Header + Sidebar splits |

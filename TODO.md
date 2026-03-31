@@ -16,6 +16,8 @@
 
 ### Up Next
 
+- [ ] [qa/P1] `QACoverageBadge.tsx` branch coverage 84.84% (below ≥90% threshold): Extracted from `Header.tsx` without a dedicated `.test.tsx` file. All other shared components (PhaseBadge, ElapsedTimer, CommandPalette, StatusDot) have dedicated test files; QACoverageBadge has none. Coverage comes only from `Header.test.tsx` integration paths, leaving 10 branches uncovered. Tested at iter 9. (priority: high)
+
 ### Deferred
 
 - [ ] Add `.stories.tsx` for sub-components missing them: `ActivityPanel`, `ArtifactComparisonDialog`, `ArtifactComparisonHeader`, `DiffOverlayView`, `ImageLightbox`, `LogEntryExpandedDetails`, `LogEntryRow`, `SideBySideView`, `SliderView`, `ResponsiveLayout` (priority: low)
