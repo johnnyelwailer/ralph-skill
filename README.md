@@ -29,7 +29,7 @@ aloop start --provider claude
 aloop start --provider round-robin
 
 # Resume a stopped session
-aloop start --launch-mode resume --session-dir ~/.aloop/sessions/<id>
+aloop start --launch resume <session-id>
 ```
 
 ### Orchestrator Mode (`aloop orchestrate`)
@@ -80,7 +80,10 @@ npm run storybook        # Start on port 6006
 npm run build-storybook  # Build static Storybook
 ```
 
-**Status**: Storybook is configured with Tailwind CSS decorators, dark-mode toggle, and TooltipProvider globals. Most UI primitive components (`ui/`) have stories. Several higher-level components (`ActivityPanel`, `ArtifactComparisonHeader`, `DiffOverlayView`, `LogEntryRow`, `SideBySideView`, `SliderView`, `ResponsiveLayout`) are missing stories — tracked in TODO.md.
+**Status**: Storybook is configured with Tailwind CSS decorators, dark-mode toggle, and TooltipProvider globals. Most UI primitive components (`ui/`) have stories. The following components are missing stories — tracked in TODO.md:
+- `session/`: `ActivityPanel`, `ArtifactComparisonHeader`, `ArtifactComparisonDialog`, `DiffOverlayView`, `ImageLightbox`, `LogEntryRow`, `LogEntryExpandedDetails`, `SideBySideView`, `SliderView`
+- `layout/`: `CollapsedSidebar`, `ResponsiveLayout`, `SidebarContextMenu`
+- `shared/`: `QACoverageBadge`
 
 ## Quality Gates
 
@@ -195,6 +198,7 @@ The installer deploys skill files to each harness directory and the Aloop runtim
 | `aloop process-requests` | Process pending orchestrator request files |
 | `aloop update` | Refresh runtime from repo |
 | `aloop devcontainer` | Generate .devcontainer config |
+| `aloop devcontainer-verify` | Verify devcontainer builds and passes checks |
 
 ### Slash commands (Claude Code / Codex / Copilot)
 
