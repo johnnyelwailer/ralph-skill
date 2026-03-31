@@ -1,6 +1,6 @@
 import { act, render, screen, fireEvent, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { Sidebar } from './Sidebar';
 import type { SessionSummary } from '@/lib/types';

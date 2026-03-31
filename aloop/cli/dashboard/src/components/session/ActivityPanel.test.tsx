@@ -11,6 +11,7 @@ const baseProps = {
   currentPhase: '',
   currentProvider: '',
   isRunning: false,
+  iterationStartedAt: undefined as string | undefined,
 };
 
 function renderActivityPanel(props: Partial<typeof baseProps> = {}) {
