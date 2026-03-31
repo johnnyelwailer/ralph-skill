@@ -4,7 +4,7 @@
 
 ### In Progress
 
-- [ ] [review] Gate 3 (persistent): Remove 3 redundant null-guards from `useSSEConnection.ts` to unlock ≥90% branch coverage. Required changes: (1) line 57 — remove `if (stateListener)` guard, call `eventSource.removeEventListener('state', stateListener)` directly (stateListener is always set when eventSource is non-null, since they're assigned together in connectSSE); (2) line 58 — remove `if (heartbeatListener)` guard, same reasoning; (3) line 70 — remove `if (cancelled) return` guard from connectSSE (reconnect timer is always cleared before connectSSE could run post-cancel). After removal, ≥90% branch coverage must pass. (priority: high)
+- [x] [review] Gate 3 (persistent): Remove 3 redundant null-guards from `useSSEConnection.ts` to unlock ≥90% branch coverage. Required changes: (1) line 57 — remove `if (stateListener)` guard, call `eventSource.removeEventListener('state', stateListener)` directly (stateListener is always set when eventSource is non-null, since they're assigned together in connectSSE); (2) line 58 — remove `if (heartbeatListener)` guard, same reasoning; (3) line 70 — remove `if (cancelled) return` guard from connectSSE (reconnect timer is always cleared before connectSSE could run post-cancel). After removal, ≥90% branch coverage must pass. (priority: high)
 - [x] [review] Gate 2: `useSSEConnection.test.ts` line 111 asserts `expect(result.current.state).not.toBeNull()` — existence-check anti-pattern. Rewrite to `expect(result.current.state).toEqual({ log: 'line1', activeSessions: [], recentSessions: [] })` (the exact stateData object emitted in that test). (priority: high)
 
 ### Up Next

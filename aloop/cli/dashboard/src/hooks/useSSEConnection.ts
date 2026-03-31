@@ -54,8 +54,8 @@ export function useSSEConnection(selectedSessionId: string | null): UseSSEConnec
 
     function cleanupEventSource() {
       if (!eventSource) return;
-      if (stateListener) eventSource.removeEventListener('state', stateListener);
-      if (heartbeatListener) eventSource.removeEventListener('heartbeat', heartbeatListener);
+      eventSource.removeEventListener('state', stateListener!);
+      eventSource.removeEventListener('heartbeat', heartbeatListener!);
       eventSource.onopen = null;
       eventSource.onerror = null;
       eventSource.close();
@@ -67,7 +67,6 @@ export function useSSEConnection(selectedSessionId: string | null): UseSSEConnec
     }
 
     function connectSSE() {
-      if (cancelled) return;
       setConnectionStatus('connecting');
       eventSource = new EventSource(`/events${sp}`);
       stateListener = (evt: Event) => {
