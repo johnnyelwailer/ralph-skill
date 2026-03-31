@@ -49,7 +49,7 @@ A coordination layer that breaks a spec into GitHub issues with dependency graph
 
 1. **Decompose** — Reads one or more spec files (including globs), creates GitHub issues with labels and dependency edges
 2. **Dispatch** — Launches child loops per issue, respecting concurrency caps and wave ordering
-3. **PR lifecycle** — Squash-merges completed PRs, rebases on conflict, runs agent review gates
+3. **PR lifecycle** — Squash-merges completed PRs into `agent/trunk` (override with `--trunk`), rebases on conflict, runs agent review gates
 4. **Budget tracking** — Aggregates cost across child sessions, pauses at 80% of cap
 
 ```bash
@@ -61,6 +61,9 @@ aloop orchestrate --spec "SPEC.md specs/*.md" --plan-only
 
 # Dispatch specific issues
 aloop orchestrate --issues 42,43,44 --concurrency 2
+
+# Merge trunk to main when all issues complete
+aloop orchestrate --spec SPEC.md --auto-merge
 
 # Resume a previously stopped orchestrator session
 aloop orchestrate --resume <session-id>
@@ -202,7 +205,7 @@ The installer deploys skill files to each harness directory and the Aloop runtim
 | `aloop stop <id>` | Stop a running session |
 | `aloop setup` | Interactive project configuration |
 | `aloop scaffold` | Scaffold workspace config files |
-| `aloop steer` | Send live instruction to a running loop |
+| `aloop steer <instruction>` | Send live instruction to a running loop |
 | `aloop gh <op>` | Policy-enforced GitHub operations |
 | `aloop discover` | Auto-detect project specs and validation |
 | `aloop resolve` | Print resolved project config for current directory |
