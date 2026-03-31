@@ -8,7 +8,9 @@
 
 ### Up Next
 
-*(none)*
+- [ ] [spec-gap][P2] Dead code `createGhIssue`/`makeGhIssueCreator` with raw `spawnSync('gh', ['issue', 'create', ...])` still exists at process-requests.ts:1076–1095 and 1092–1095 — never called in practice (adapter path always wins when repo is set) but violates TASK_SPEC acceptance criterion #13 ("No raw `spawnSync('gh', ...)` calls remain for issue/PR CRUD operations"). Also: `execGhIssueCreate` field remains in `OrchestrateDeps` (orchestrate.ts:207) and the fallback in `applyDecompositionPlan` (orchestrate.ts:679–680) despite TASK_SPEC Rule #13 saying to remove after all callers migrated. Fix: remove `createGhIssue`, `makeGhIssueCreator`, `execGhIssueCreate` field from `OrchestrateDeps`, and the fallback branch in `applyDecompositionPlan`.
+
+- [ ] [spec-gap][P3] `orchestrate.ts:1132` — raw `nodeSpawnSync('gh', ['issue', 'list', ...])` in `orchestrateCommandWithDeps` preload phase not migrated to adapter. Covered by acceptance criterion #13 but was NOT in TASK_SPEC's listed specific call-sites. `orchestrateCommandWithDeps` has no adapter in `defaultDeps` (no `createAdapter` call inside it, no execGh in defaultDeps either). Ongoing GH operations are handled by `process-requests.ts` (which has adapter). Suggested fix: either migrate this call to `deps.adapter.listIssues()` and create adapter inside `orchestrateCommandWithDeps` (requires execGh setup), or explicitly document as out of scope in a follow-up issue.
 
 ### Completed
 
