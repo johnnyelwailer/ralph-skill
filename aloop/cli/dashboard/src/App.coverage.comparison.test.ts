@@ -87,6 +87,22 @@ describe('App.tsx ArtifactComparisonDialog coverage', () => {
     expect(Number(slider.getAttribute('aria-valuenow'))).toBeGreaterThanOrEqual(0);
   });
 
+  it('close button has mobile tap target min-h-[44px] and min-w-[44px]', () => {
+    const artifact = { type: 'screenshot', path: 'dash.png', description: 'Dashboard' };
+    render(createElement(ArtifactComparisonDialog, {
+      artifact,
+      currentIteration: 1,
+      allManifests: [],
+      onClose: () => {},
+    }));
+
+    const closeBtn = screen.getByRole('button', { name: 'Close' });
+    expect(closeBtn.className).toContain('min-h-[44px]');
+    expect(closeBtn.className).toContain('min-w-[44px]');
+    expect(closeBtn.className).toContain('md:min-h-0');
+    expect(closeBtn.className).toContain('md:min-w-0');
+  });
+
   it('comparison-mode tab buttons have mobile tap target min-h-[44px]', () => {
     const artifact = { type: 'screenshot', path: 'dash.png', description: 'Dashboard' };
     const allManifests = [

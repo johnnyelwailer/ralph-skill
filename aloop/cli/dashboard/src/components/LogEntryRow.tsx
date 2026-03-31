@@ -4,23 +4,12 @@ import {
   FileText, GitCommit, Image, Loader2, Timer, XCircle, Zap,
 } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import type { ArtifactEntry, ManifestPayload } from '../AppView';
-import {
-  ArtifactComparisonDialog,
-  ElapsedTimer,
-  artifactUrl,
-  extractIterationUsage,
-  extractModelFromOutput,
-  findBaselineIterations,
-  formatDuration,
-  formatTimeShort,
-  formatTokenCount,
-  isImageArtifact,
-  renderAnsiToHtml,
-} from '../AppView';
-
-// Re-use the same type from AppView via import type — erased at runtime
-import type { LogEntry } from '../AppView';
+import type { ArtifactEntry, ManifestPayload, LogEntry } from '@/lib/types';
+import { artifactUrl, extractIterationUsage, isImageArtifact } from '@/lib/types';
+import { extractModelFromOutput, formatDuration, formatTimeShort, formatTokenCount } from '@/lib/format';
+import { renderAnsiToHtml } from '@/lib/ansi';
+import { ElapsedTimer } from '@/components/shared/ElapsedTimer';
+import { ArtifactComparisonDialog, findBaselineIterations } from '@/components/artifacts/ArtifactComparisonDialog';
 
 const phaseDotColors: Record<string, string> = {
   plan: 'text-purple-500', build: 'text-yellow-500', proof: 'text-amber-500', review: 'text-cyan-500',
@@ -341,7 +330,7 @@ function ImageLightbox({ src, alt, onClose }: { src: string; alt: string; onClos
   }, [onClose]);
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 animate-fade-in" onClick={onClose}>
-      <button type="button" aria-label="Close" className="absolute right-4 top-4 text-white text-2xl font-bold hover:text-gray-300" onClick={onClose}>&times;</button>
+      <button type="button" aria-label="Close" className="absolute right-4 top-4 min-h-[44px] min-w-[44px] md:min-h-0 md:min-w-0 text-white text-2xl font-bold hover:text-gray-300" onClick={onClose}>&times;</button>
       <img src={src} alt={alt} className="max-h-[90vh] max-w-[90vw] rounded-lg object-contain" onClick={(e) => e.stopPropagation()} />
     </div>
   );

@@ -130,6 +130,35 @@ describe('LogEntryRow accessibility', () => {
     expect(container.querySelector('.animate-fade-in')).not.toBeInTheDocument();
   });
 
+  it('ImageLightbox close button has mobile tap target min-h-[44px] and min-w-[44px]', () => {
+    const artifacts = {
+      iteration: 3,
+      phase: 'proof',
+      summary: 'test',
+      artifacts: [{ type: 'screenshot', path: 'dashboard.png', description: 'Dashboard' }],
+    };
+    const { container } = wrap(
+      <LogEntryRow
+        entry={makeEntry()}
+        artifacts={artifacts as any}
+        isCurrentIteration={false}
+        allManifests={[]}
+      />,
+    );
+    // Expand the row
+    fireEvent.click(screen.getByRole('button', { name: /build/i }));
+    // Click the image artifact link to open the lightbox
+    const imgBtn = container.querySelector('button.text-blue-600');
+    if (imgBtn) {
+      fireEvent.click(imgBtn);
+      const closeBtn = screen.getByRole('button', { name: 'Close' });
+      expect(closeBtn.className).toContain('min-h-[44px]');
+      expect(closeBtn.className).toContain('min-w-[44px]');
+      expect(closeBtn.className).toContain('md:min-h-0');
+      expect(closeBtn.className).toContain('md:min-w-0');
+    }
+  });
+
   it('does not expand for non-expandable entries (running)', () => {
     const { container } = wrap(
       <LogEntryRow
