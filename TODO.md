@@ -32,6 +32,8 @@
 
 **Spec-gap re-run (2026-03-31, post-final-qa):** No new gaps found. Issue #38 implementation verified complete and spec-compliant. The 3 pre-existing P2 gaps below remain open and unresolved.
 
+**Spec-gap re-run (2026-03-31, all-tasks-done trigger):** No new gaps found. All 28 non-ui components confirmed to have .test.tsx and .stories.tsx files; ci.yml confirmed present; TypeScript errors confirmed resolved. The 3 pre-existing P2 gaps remain open and unchanged — none relate to Issue #38 scope.
+
 **New spec-gap findings (2026-03-31):**
 
 - [spec-gap/P2] `aloop/bin/loop.sh` default claude model (`sonnet`) disagrees with `aloop/config.yml` and `aloop/bin/loop.ps1` (both default to `opus`). SPEC §"Global Configuration" says `config.yml` is the "single source of truth" for default model IDs and "Loop scripts and setup commands inherit from here." Files: `aloop/config.yml` line 21 (`claude: opus`), `aloop/bin/loop.sh` line 33 (`CLAUDE_MODEL="${ALOOP_CLAUDE_MODEL:-sonnet}"`), `aloop/bin/loop.ps1` line 34 (`ClaudeModel = 'opus'`). Fix: update `loop.sh` default to `opus` to match `config.yml` and `loop.ps1`.
