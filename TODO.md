@@ -12,6 +12,8 @@
 
 <!-- spec-review: PASS (re-verify 2026-03-31, triggered by P2 bug fix re-verification) — all 4 sub-requirements confirmed: (1) adapter.ts:82 `if (update.body)` guard prevents bare `gh issue edit` call for label-only updates; (2) labels_add test (adapter.test.ts:107) asserts calls.length === 2 (no spurious base call); (3) labels_remove test (adapter.test.ts:120) asserts calls.length === 1; (4) new "label-only update makes no base edit call" test at adapter.test.ts:125 verified. All requirements met. No spec violations found. Prior PASS gates stand. -->
 
+<!-- final-review: PASS (2026-03-31, commits 561487771..eaed1fd3f) — gates 1-9 pass; documentation-only changes (QA regression check + P2 spec-review re-confirmation). Gate 5: 36/36 adapter, 38/38 process-requests, 348/375 orchestrate, 0 type errors confirmed. Issue #177 complete. [reviewed: gates 1-9 pass] -->
+
 <!-- final-review: PASS (2026-03-31, commits d8d2c45bd..8d582d015) — gates 1-9 pass; documentation-only changes (QA re-verify + README OpenCode invocation fix). Gate 9: README `run --dir <workdir>` → `run` (stdin mode) verified against loop.sh:1374 and SPEC.md:2075. Issue #177 complete. [reviewed: gates 1-9 pass] -->
 
 <!-- spec-review: PASS (re-verify 2026-03-31, triggered by docs change 16b1ea05d — fix OpenCode autonomous flag: run (stdin mode) not run --dir) — README.md corrected OpenCode invocation flag from `run --dir <workdir>` to `run` (stdin mode, runs from workdir). Verified against: (1) loop.sh:1374 — `echo "$prompt_content" | ... opencode run` confirms stdin mode; (2) SPEC.md:2075 — references `opencode run` as correct invocation. No contradiction with SPEC.md found. No impact on issue #177 OrchestratorAdapter migration ACs. All prior PASS gates stand. -->

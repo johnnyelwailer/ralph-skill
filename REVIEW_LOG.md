@@ -950,3 +950,56 @@ No new dependencies.
 **Observation**: Gate 9 — README OpenCode invocation correction (`run --dir <workdir>` → `run` (stdin mode)) verified against `loop.sh:1374` (exact `opencode run` stdin invocation) and `SPEC.md:2075` (references `opencode run` as correct form). Correction is accurate and aligns all three sources.
 
 **Issue #177 is complete.** All non-deferred acceptance criteria satisfied. LocalAdapter deferred per spec.
+
+---
+
+## Review — 2026-03-31 — commits 561487771..eaed1fd3f (final-review: QA re-verify + P2 spec-review re-confirmation)
+
+**Verdict: PASS** (1 observation)
+**Scope:** `QA_LOG.md`, `QA_COVERAGE.md`, `TODO.md` (no production code changed)
+**Commits reviewed:** `b47568b98` (QA final-qa HEAD regression check at 561487771), `eaed1fd3f` (spec-review PASS note for P2 re-verification)
+
+### Gate 1 — PASS (spec compliance unchanged)
+
+No production code modified since prior PASS review (`561487771`). All issue #177 acceptance criteria remain satisfied. `eaed1fd3f` adds a spec-review PASS note confirming all 4 sub-requirements of the P2 fix: (1) `adapter.ts:82` `if (update.body)` guard, (2) labels_add test `calls.length === 2`, (3) labels_remove test `calls.length === 1`, (4) label-only test at `adapter.test.ts:125`. These match prior review findings (Review — 2026-03-31, commits 6261b512..283bd2df8, Gate 2). ✓
+
+### Gate 2 — PASS
+
+No new tests added or changed. Existing test suite unchanged.
+
+### Gate 3 — PASS
+
+No new production code branches introduced.
+
+### Gate 4 — PASS
+
+Documentation additions only — no dead code, no leftover TODOs, no duplication.
+
+### Gate 5 — PASS
+
+QA session `b47568b98` confirms at HEAD `561487771`:
+- `npm run build`: clean, exit 0 ✓
+- `adapter.test.ts`: 36/36 pass ✓
+- `process-requests.test.ts`: 38/38 pass ✓
+- `orchestrate.test.ts`: 348/375 pass, 27 fail (confirmed pre-existing baseline, unchanged) ✓
+- `tsc --noEmit`: 0 errors ✓
+
+**Observation**: Gate 5 — QA `b47568b98` command transcript matches all prior confirmed baselines (36/36, 38/38, 348/375, 0 type errors). Intervening commits are docs/chore only, so stability is expected and confirmed.
+
+### Gate 6 — PASS (N/A)
+
+Documentation-only changes — no observable output. Skip correct.
+
+### Gate 7 — N/A
+
+No UI changes.
+
+### Gate 8 — N/A
+
+No new dependencies.
+
+### Gate 9 — PASS
+
+The spec-review PASS comment in `eaed1fd3f` accurately describes the P2 fix state: all 4 sub-requirements cited match the production code (`adapter.ts:82`) and test code (`adapter.test.ts:107`, `adapter.test.ts:120`, `adapter.test.ts:125`). No stale or fabricated claims.
+
+**Issue #177 is complete.** All non-deferred acceptance criteria satisfied. LocalAdapter deferred per spec.
