@@ -101,6 +101,17 @@ TypeScript fixes verified in code — no further gaps:
 
 All requirements satisfied. No new findings.
 
+### Spec Review — APPROVED (docs trigger re-run 7, 2026-03-31) [reviewed: all gates pass]
+
+Re-verified after docs commit `1172bbeda` (fix pipeline description and OpenCode invocation):
+
+- OpenCode invocation: `loop.sh:1374` confirms `echo "$prompt_content" | opencode run` (stdin pipe); README update from `run --dir <workdir>` to `run (reads prompt from stdin)` is accurate ✓
+- ARCHITECTURE.md cycle: SPEC line 420 shows `plan → build × 5 → qa → review` (no proof in cycle); ARCHITECTURE.md now matches ✓
+- ARCHITECTURE.md finalizer: SPEC line 422 shows `spec-gap → docs → spec-review → final-review → final-qa → proof`; ARCHITECTURE.md now lists this correctly ✓
+- Docs agent AC (SPEC line 879): only documentation files modified (README.md, ARCHITECTURE.md) — no SPEC.md or code changes ✓
+
+No new gaps found. Docs commit is spec-compliant.
+
 ### Spec Review — APPROVED (docs trigger re-run 6, 2026-03-31) [reviewed: all gates pass] [final-review: tenth pass — gates 1-9 pass]
 
 Re-verified after docs commit `586afd444` (document --in-place, --watch, and --non-interactive flags):
