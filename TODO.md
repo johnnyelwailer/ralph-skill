@@ -3,7 +3,10 @@
 ## Current Phase: Implementation
 
 ### In Progress
-_(none)_
+
+- [ ] [review] Gate 1+3: `useDashboardState.ts` is 312 LOC — violates CONSTITUTION Rule 7 (target <150, split above 200) and SPEC-ADDENDUM ("300+ LOC is a code smell"). Additionally, it has ZERO test coverage: no test file exists and it is not in `vitest.config.ts` coverage include list. Required: (1) split into ≤2 smaller files (e.g. extract SSE logic to `useSSEConnection.ts` ~100 LOC, keep derived-state/actions in `useDashboardState.ts` ~200 LOC OR split further), (2) add test file `useDashboardState.test.ts` with ≥90% branch coverage — cover: initial state, `selectSession` URL mutation, `connectSSE` reconnect backoff, phase-change toast, `handleSteer`/`handleStop`/`handleResume` success+error paths, `commandOpen` toggle; (3) add `src/hooks/useDashboardState.ts` (and any split files) to the `coverage.include` array in `vitest.config.ts` (priority: high)
+- [ ] [review] Gate 3: `AppView.tsx` branch coverage is 60.46% — below the 80% threshold. Lines 54, 58–60, 72–78 are uncovered: keyboard shortcut `!isMobile` branch (line 54), `onTouchStart`/`onTouchEnd` gesture handlers (lines 58–60), and mobile sidebar overlay conditional rendering (lines 72–78). Add targeted tests to `App.coverage.integration-app.test.ts` for these branches (priority: high)
+- [ ] [review] Gate 3: `logHelpers.ts` and `sessionHelpers.ts` are new lib modules not included in `vitest.config.ts` coverage include — branch coverage is untracked. Add `src/lib/logHelpers.ts` and `src/lib/sessionHelpers.ts` to the `coverage.include` array, and verify they meet ≥90% branch coverage with the existing indirect tests (or add dedicated tests for uncovered branches such as `computeAvgDuration` with zero-count, `latestQaCoverageRefreshSignal` with no matching phase, `toSession` projectName derivation via `project_root`) (priority: high)
 
 ### Up Next
 
