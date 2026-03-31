@@ -443,10 +443,10 @@ describe('orchestrateCommandWithDeps', () => {
     assert.equal(result.state.issues.length, 2);
     // Epic with tasklist → "In progress" status
     const epic = result.state.issues.find((i) => i.number === 5);
-    assert.equal(epic.status, 'In progress');
+    assert.equal(epic!.status, 'In progress');
     // Normal issue → "Needs refinement"
     const normal = result.state.issues.find((i) => i.number === 6);
-    assert.equal(normal.status, 'Needs refinement');
+    assert.equal(normal!.status, 'Needs refinement');
   });
 });
 

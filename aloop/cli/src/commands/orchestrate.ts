@@ -92,6 +92,7 @@ export interface OrchestratorIssue {
   ci_failure_signature?: string;
   ci_failure_retries?: number;
   ci_failure_summary?: string;
+  priority?: number;
 }
 
 export interface OrchestratorState {
