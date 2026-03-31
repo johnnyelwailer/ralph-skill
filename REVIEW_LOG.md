@@ -318,3 +318,52 @@ README.md is the subject of this commit, and the commit leaves two inaccuracies:
 - Finalizer agent prose is 3 of 6 agents
 
 ---
+
+## Review — 2026-03-31 — uncommitted changes (final-review, spec-review trigger)
+
+**Verdict: PASS** (0 findings)
+**Scope:** `QA_COVERAGE.md` (+5 lines), `QA_LOG.md` (+67 lines, new QA session entry), `README.md` (+3 lines, `.aloop/` directory structure added)
+
+**Prior findings resolution:**
+- All prior findings resolved; README finalizer prose and template list confirmed complete in prior reviews.
+
+### Gate 1 (Spec Compliance) — PASS
+
+README.md adds `.aloop/` directory structure to project layout:
+- `pipeline.yml` — exists on disk at `.aloop/pipeline.yml`; SPEC §4078 confirms it as source of truth ✓
+- `agents/<name>.yml` — 5 files exist: build.yml, plan.yml, review.yml, proof.yml, steer.yml; format matches SPEC lines 3970–3988 ✓
+Description "Per-agent overrides (prompt, reasoning, timeout)" matches actual file fields (prompt, reasoning) with timeout as a SPEC-supported override (line 3681) ✓
+
+### Gate 2 (Test Depth) — N/A
+
+No test code changed.
+
+### Gate 3 (Coverage) — N/A
+
+No new code branches.
+
+### Gate 4 (Code Quality) — PASS
+
+QA_COVERAGE.md additions are 5 clean rows with dates, commit hashes, PASS statuses. QA_LOG.md documents static-only verification (ENOSPC blocked bash) — limitation is explicitly stated. README addition is 3 lines, minimal and accurate.
+
+### Gate 5 (Integration Sanity) — PASS
+
+Last dynamic test run at commit `6650dcf30`: `tsc --noEmit` exit 0, 632 tests pass. All changes since then are documentation/tracking files only — zero risk of regression.
+
+### Gate 6 (Proof) — N/A
+
+Internal documentation and tracking changes only. No observable output requiring proof.
+
+### Gate 7 (Runtime Layout) — N/A
+
+No CSS or layout changes.
+
+### Gate 8 (Version Compliance) — N/A
+
+No dependency changes.
+
+### Gate 9 (Documentation) — PASS
+
+README `.aloop/` directory addition accurately reflects real files on disk (confirmed by glob). All Issue #38 documentation requirements remain satisfied: finalizer prose (6 agents), template list (includes PROMPT_spec-review.md), CI workflow description unchanged.
+
+---

@@ -5,7 +5,7 @@
 ### In Progress
 
 - [x] [review] Gate 1/Gate 9: `README.md` template list (Architecture section, ~line 236–247) is missing `PROMPT_spec-review.md`. The file exists at `aloop/templates/PROMPT_spec-review.md` but is absent from the template listing. SPEC §\"Default pipeline update\" line 422 defines `spec-review` as a finalizer agent; its template file belongs in the README list between `PROMPT_docs.md` and `PROMPT_final-qa.md`. Fix: add `PROMPT_spec-review.md  # Spec-review agent (finalizer)` to the template list in README.md. (priority: high)
-- [x] [review] Gate 1/Gate 9: `README.md` finalizer prose (~lines 22–25) lists only 3 finalizer agents (Proof, Spec-gap, Docs) but SPEC line 422 defines 6: `spec-gap → docs → spec-review → final-review → final-qa → proof`. Missing from prose: spec-review, final-review, final-qa. Fix: add three bullet points for these missing agents under \"When all tasks are marked done, finalizer agents run once.\" (priority: high)
+- [x] [review] Gate 1/Gate 9: `README.md` finalizer prose (~lines 22–25) lists only 3 finalizer agents (Proof, Spec-gap, Docs) but SPEC line 422 defines 6: `spec-gap → docs → spec-review → final-review → final-qa → proof`. Missing from prose: spec-review, final-review, final-qa. Fix: add three bullet points for these missing agents under \"When all tasks are marked done, finalizer agents run once.\" (priority: high) [reviewed: gates 1-9 pass]
 
 ### Up Next
 
