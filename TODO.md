@@ -46,6 +46,26 @@ spec-gap analysis: 3 P3 (documentation-only) gaps found — no P1/P2 gaps — co
 
 - [spec-gap/P3] TASK_SPEC §"Specific call-sites to migrate" says label operations should use `adapter.addLabels()`, but the implementation correctly uses `adapter.updateIssue({ labels_add, labels_remove })` (consistent with TASK_SPEC ACs and the adapter interface). The call-site migration section was written before the adapter interface stabilized. Suggested fix: update migration section to say `adapter.updateIssue({ labels_add: [...] })` for label add/remove. (Files: `TASK_SPEC.md` vs `orchestrate.ts` lines 1901, 1914, 2279, etc.)
 
+### Spec-Review — 2026-03-31 (PASS)
+
+All 15 TASK_SPEC acceptance criteria verified against current implementation:
+
+- AC1 ✅ `OrchestrateDeps`, `TriageDeps`, `ScanLoopDeps`, `PrLifecycleDeps` each have `adapter?: OrchestratorAdapter` (lines 198, 210, 3526, 4760)
+- AC2 ✅ `DispatchDeps` has `adapter?: OrchestratorAdapter` (line 235)
+- AC3 ✅ `applyDecompositionPlan` uses `deps.adapter.createIssue()` when adapter present; falls back to plan-ID placeholder (lines 677–684)
+- AC4 ✅ `checkPrGates` uses `adapter.getPRStatus()` and `adapter.getPrChecks()` when adapter present (lines 3558–3608)
+- AC5 ✅ `mergePr` uses `adapter.mergePR()` when adapter present, falls back to `execGh` (lines 3706–3711)
+- AC6 ✅ `process-requests.ts` PR creation uses `adapter.createPR()` via `createPRViaAdapter()` (line 1181)
+- AC7 ✅ `updateParentTasklist` uses `adapter.getIssue()` + `adapter.updateIssue()` (lines 1101, 1105)
+- AC8 ✅ Issue body updates use `adapter.updateIssue()` via `updateIssueBodyViaAdapter()` (line 135)
+- AC9 ✅ GH project board GraphQL sync (`spawnSync('gh', ['api', 'graphql', ...])`) left unchanged (lines 874, 887, 908, 912, 924)
+- AC10 ✅ `git` calls (`spawnSync('git', ...)`) left unchanged
+- AC11 ✅ Adapter created once at `processRequests()` entry (line 426) and once at `orchestrateCommandWithDeps()` entry (line 1525)
+- AC12 ✅ `orchestrate.test.ts` has `createMockAdapter` factory + mock adapter injected in all targeted test fixtures; `process-requests.test.ts` has adapter path tests
+- AC13 ✅ No raw `spawnSync('gh', ...)` for issue/PR CRUD — only project-board GraphQL and the `execGh` transport closure remain
+- AC14 ✅ TypeScript compiles with no new errors (`tsc --noEmit` clean)
+- AC15 ✅ No new test regressions: 35 failures in full suite (down from 36 pre-existing documented baseline)
+
 ### Known pre-existing failures (out of scope — separate issue needed)
 36 tests failing in full test suite — all pre-existing, introduced by behavior changes in earlier commits unrelated to this issue:
 - 27 in `orchestrate.test.ts`: mock arg `args.includes('checks')` no longer matches after `0b700b62f` changed `pr checks` → `pr view --json statusCheckRollup`; test "auto-approves when no agent reviewer" wrong after `ea377a7c7` changed behavior to `flag-for-human`; launchChildLoop worktree test broken by different commit
