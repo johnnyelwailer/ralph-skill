@@ -127,3 +127,56 @@ Both changes directly implement the two `[review]` tasks. Scope is minimal and p
 No dead code. 569 dashboard tests pass. Build succeeds. No proof artifacts expected (pure internal change). No CSS, deps, or docs changed.
 
 ---
+
+## Review — 2026-03-31 — commits f2279c525..b8f1dc4cb
+
+**Verdict: FAIL** (3 findings → written to TODO.md as [review] tasks)
+**Scope:** `src/components/shared/QACoverageBadge.tsx`, `src/components/layout/CollapsedSidebar.tsx`, `src/components/layout/SidebarContextMenu.tsx`, `src/components/layout/Header.tsx`, `src/components/layout/Sidebar.tsx`, `src/components/layout/Header.test.tsx`
+
+**Prior finding resolved:** Gate 3 (`useSSEConnection.ts` 90% branch coverage) + Gate 2 (state assertion anti-pattern) — both confirmed resolved in the PASS review at f2279c525. ✓
+
+### Gate 1 (Spec Compliance) — FAIL (3 findings)
+
+1. **`QACoverageBadge.tsx` lacks a dedicated `.test.tsx` file.** Tests are embedded in `Header.test.tsx` as a `describe('QACoverageBadge')` block. SPEC-ADDENDUM acceptance criterion: "Every component in `components/` has a corresponding `.test.tsx` file." All other shared components (PhaseBadge, ElapsedTimer, CommandPalette, StatusDot) have their own dedicated test files — QACoverageBadge is inconsistent with the established pattern.
+
+2. **`CollapsedSidebar.tsx` and `SidebarContextMenu.tsx` each lack a dedicated `.test.tsx` file.** Coverage is provided only via `Sidebar.test.tsx` integration paths. Same spec violation as above.
+
+3. **`CollapsedSidebar.tsx`, `SidebarContextMenu.tsx`, and `QACoverageBadge.tsx` each lack a `.stories.tsx` file.** SPEC-ADDENDUM acceptance criterion: "Every component in `components/` has a corresponding `.stories.tsx` file." All three new components introduced by this build are missing stories.
+
+### Gate 2 (Test Depth) — PASS (with note)
+
+QACoverageBadge tests in `Header.test.tsx` lines 176–261 are structurally sound — concrete text assertions (`'QA N/A'`, `'QA 85%'`, `'QA 90%'`, `'UNTESTED'`), interaction test (expand on click shows feature names), error path (fetch rejection → 'QA N/A'). No existence-check anti-patterns. However, they are in the wrong file and incomplete (Gate 3 failure).
+
+### Gate 3 (Coverage) — FAIL
+
+`QACoverageBadge.tsx` branch coverage 84.84% — below ≥90% threshold for new modules. 10 uncovered branches include: `response.ok = false` path (line 50 — `if (!response.ok) return`), yellow tone (percentage 50–79), red tone (percentage < 50), empty features message ("No feature rows found"), and `payload.percentage` number fallback (line 14). Moving and expanding tests into a dedicated file is the natural fix.
+
+`CollapsedSidebar.tsx` and `SidebarContextMenu.tsx` both at 100% branch coverage (via Sidebar.test.tsx) — PASS.
+
+Header.tsx 97.87% branch, Sidebar.tsx 94.54% branch — both PASS.
+
+### Gate 4 (Code Quality) — PASS
+
+No dead code, no unused imports, no commented-out code in any of the three new files. `QACoverageBadge.tsx` (124 LOC), `CollapsedSidebar.tsx` (37 LOC), `SidebarContextMenu.tsx` (58 LOC) — all well within 150-LOC target. `Header.tsx` is 158 LOC, `Sidebar.tsx` is 198 LOC (marginal — above 150 target but below 200 hard limit).
+
+### Gate 5 (Integration) — PASS
+
+569 tests pass across 44 test files. No regressions.
+
+### Gate 6 (Proof) — PASS
+
+No proof-manifest.json. Pure refactoring with no visual output changes — per CONSTITUTION "purely internal refactoring … skipping proof … is the expected correct outcome."
+
+### Gate 7 (Runtime Layout) — PASS (marginal)
+
+CollapsedSidebar and SidebarContextMenu are layout components, but the extractions are verbatim JSX moves with no CSS or layout logic changes. 569 tests pass. Story screenshots were verified in prior iterations (iter 5–7 ran `npx playwright test --config playwright.stories.config.ts`). Passing with note that iter 9 QA did not re-run story screenshots — acceptable for a pure code-move refactor.
+
+### Gate 8 (Version Compliance) — N/A
+
+No dependency changes.
+
+### Gate 9 (Documentation) — N/A
+
+No user-facing behavior changed; no README/docs updates needed.
+
+---
