@@ -62,6 +62,16 @@
 
 **Spec-gap re-run (2026-03-31, all-tasks-done trigger — sixteenth pass):** No new gaps found. Verified via Glob: 30 .test.tsx files (28 non-ui ✓, 2 ui/); 41 .stories.tsx files (28 non-ui ✓, 13 ui/); ci.yml confirmed present at .github/workflows/ci.yml ✓. No code changes since fifteenth pass (only chore/QA commits). The 3 pre-existing P2 gaps (loop.sh model default, on_start config block, spec-gap periodic scheduling) remain open and out of scope for Issue #183. No P1 or P2 gaps exist within Issue #183 scope. spec-gap analysis: no discrepancies found — spec fully fulfilled (Issue #183 scope).
 
+### Spec Review — APPROVED (docs trigger re-run, 2026-03-31) [reviewed: gates 1-9 pass — twenty-second spec-review pass]
+
+Re-verified after docs PASS commit `39c041c33` (no file changes — documentation accurate):
+
+- Docs agent AC (SPEC line 879): no SPEC.md or code modifications in docs commit ✓
+- No code changes since twenty-first spec-review pass (only chore/QA/spec-gap commits) ✓
+- All previously verified items remain unchanged: 30 .test.tsx files, 41 .stories.tsx files, ci.yml present, README finalizer prose all 6 agents, README template list complete ✓
+
+No new gaps found. Docs commit is spec-compliant.
+
 **Spec-gap re-run (2026-03-31, all-tasks-done trigger — seventeenth pass):** No new gaps found. Verified via Glob: 30 .test.tsx files (28 non-ui ✓, 2 ui/); 41 .stories.tsx files (28 non-ui ✓, 13 ui/); ci.yml confirmed present at .github/workflows/ci.yml ✓. No code changes since sixteenth pass (only chore/QA commits per git log). The 3 pre-existing P2 gaps (loop.sh model default, on_start config block, spec-gap periodic scheduling) remain open and out of scope for Issue #183. No P1 or P2 gaps exist within Issue #183 scope. spec-gap analysis: no discrepancies found — spec fully fulfilled (Issue #183 scope).
 
 **Spec-gap re-run (2026-03-31, all-tasks-done trigger — eleventh pass):** No new gaps found. Verified: 30 .test.tsx files (28 non-ui ✓, 2 ui/); 41 .stories.tsx files (28 non-ui ✓, 13 ui/); ci.yml confirmed present at .github/workflows/ci.yml ✓; README finalizer prose all 6 agents ✓; README template list includes PROMPT_spec-review.md, PROMPT_final-qa.md, PROMPT_final-review.md ✓. Additional finding: `ProviderName` type union in `compile-loop-plan.ts` line 6 already includes `'opencode'` — the P3 gap noted in earlier passes is **resolved** (stale entry). The 3 pre-existing P2 gaps (loop.sh model default, on_start config block, spec-gap periodic scheduling) remain open and unchanged, out of scope for Issue #38. No P1 or P2 gaps within Issue #38 scope. spec-gap analysis: no discrepancies found — spec fully fulfilled (Issue #38 scope).
