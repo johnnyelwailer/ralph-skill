@@ -11,3 +11,4 @@ spec-review (2026-03-31): all flock locking requirements confirmed implemented �
 
 [reviewed: gates 1-9 pass — 2026-03-31]
 [final-review: gates 1-10 pass — 2026-03-31]
+[final-review: gates 1-10 pass (spec-review triggered) — 2026-03-31]

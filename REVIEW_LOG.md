@@ -109,3 +109,43 @@ No observable behavior changes. Documentation-only — empty proof artifacts is 
 `QA_COVERAGE.md`: 8/8 features PASS (all at commit `4e33972`). No `[qa/P1]` bugs in TODO.md.
 
 ---
+
+## Review — 2026-03-31 — commit a4ed87d2d..1e60bc905
+
+**Verdict: PASS** (all 10 gates pass, triggered by spec-review)
+**Scope:** `README.md`, `QA_COVERAGE.md`, `QA_LOG.md`
+
+### Prior Finding Resolution
+No open `[review]` tasks. All prior findings resolved.
+
+### Gate 1 — Spec Compliance: PASS
+Documentation-only changes. Flock implementation spec-compliant per all prior reviews.
+
+### Gate 2 — Test Depth: PASS (no test changes)
+
+### Gate 3 — Coverage: PASS (no code changes)
+
+### Gate 4 — Code Quality: PASS
+`QA_COVERAGE.md` commit reference updated from `4e33972` to `a4ed87d`; new `README CLI examples accuracy` row added. `QA_LOG.md` new session entry accurately records re-run scope. No dead code or duplication.
+
+### Gate 5 — Integration Sanity: PASS
+7/7 primitives tests + 5/5 flock tests pass at HEAD — verified directly in this review run.
+
+### Gate 6 — Proof Verification: PASS
+Documentation-only changes. Empty proof artifacts is the correct outcome.
+
+### Gate 7 — Runtime Layout: N/A
+
+### Gate 8 — Version Compliance: N/A
+
+### Gate 9 — Documentation Freshness: PASS
+Three README corrections verified against actual source files:
+- Model names `gemini-3.1-flash-lite-preview` ✓ matches `.opencode/agents/error-analyst.md` and `vision-reviewer.md`
+- `code-critic` fully read-only (bash: false, write: false, edit: false) ✓ matches `.opencode/agents/code-critic.md`
+- `error-analyst` + `vision-reviewer` have bash enabled, no write/edit ✓ verified in agent frontmatter
+- `aloop active` command: `aloop/cli/src/commands/active.ts` exists ✓
+
+### Gate 10 — QA Coverage: PASS
+`QA_COVERAGE.md`: 9 features PASS + 1 INFO at commit `a4ed87d`. No `[qa/P1]` bugs in TODO.md.
+
+---
