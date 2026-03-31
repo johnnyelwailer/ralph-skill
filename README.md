@@ -178,7 +178,7 @@ The installer deploys skill files to each harness directory and the Aloop runtim
 | `aloop stop <id>` | Stop a running session |
 | `aloop active` | List active sessions (JSON-friendly alias for status) |
 | `aloop setup` | Interactive project configuration |
-| `aloop steer` | Send live instruction to a running loop |
+| `aloop steer <instruction>` | Send live instruction to a running loop |
 | `aloop gh <op>` | Policy-enforced GitHub operations |
 | `aloop discover` | Auto-detect project specs and validation |
 | `aloop update` | Refresh runtime from repo |
@@ -187,13 +187,14 @@ The installer deploys skill files to each harness directory and the Aloop runtim
 ### Slash commands (Claude Code / Codex / Copilot)
 
 ```
-/aloop:setup       Configure Aloop for the current project
-/aloop:start       Launch a loop
-/aloop:status      Check running sessions
-/aloop:dashboard   Launch the dashboard
-/aloop:stop        Stop a loop
-/aloop:steer       Send a steering instruction
-/aloop:orchestrate Launch multi-issue orchestration
+/aloop:setup          Configure Aloop for the current project
+/aloop:start          Launch a loop
+/aloop:status         Check running sessions
+/aloop:dashboard      Launch the dashboard
+/aloop:stop           Stop a loop
+/aloop:steer          Send a steering instruction
+/aloop:orchestrate    Launch multi-issue orchestration
+/aloop:devcontainer   Generate and verify .devcontainer config
 ```
 
 ## Architecture
