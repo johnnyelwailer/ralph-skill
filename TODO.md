@@ -107,6 +107,17 @@ TypeScript fixes verified in code — no further gaps:
 
 All requirements satisfied. No new findings.
 
+### Spec Review — APPROVED (docs trigger re-run 10, 2026-03-31) [reviewed: all gates pass]
+
+Re-verified after docs commit `5c9765296` (add loop-plan.json, queue/, requests/ to session directory architecture):
+
+- `loop-plan.json`: README description "Compiled cycle + finalizer arrays, position state" — matches SPEC lines 39–40, 44, 67, 275 ✓
+- `queue/`: README description "Override prompts (processed before next iteration)" — matches SPEC lines 38, 70, 74 ✓
+- `requests/`: README description "Agent side-effect requests (GitHub ops, child dispatch)" — matches SPEC lines 46, 73–74, 93–94 ✓
+- Docs agent AC (SPEC line 879): only README.md modified (3 lines) — no SPEC.md or code changes ✓
+
+No new gaps found. Docs commit is spec-compliant.
+
 ### Spec Review — APPROVED (docs trigger re-run 7, 2026-03-31) [reviewed: all gates pass]
 
 Re-verified after docs commit `1172bbeda` (fix pipeline description and OpenCode invocation):
