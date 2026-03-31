@@ -6,7 +6,9 @@
 _(none)_
 
 ### Up Next
-_(none)_
+
+- [ ] [review] Gate 1: `CollapsedSidebar.tsx` and `SidebarContextMenu.tsx` in `components/layout/` have no dedicated `.test.tsx` files — SPEC-ADDENDUM §"Dashboard Component Architecture" AC: "Every component in `components/` has a corresponding `.test.tsx` file." Create `CollapsedSidebar.test.tsx` and `SidebarContextMenu.test.tsx` with unit tests covering props and interactions. Coverage is currently achieved only through `Sidebar.test.tsx` integration paths, leaving dedicated unit testing absent. (priority: high)
+- [ ] [review] Gate 1: `QACoverageBadge.tsx`, `CollapsedSidebar.tsx`, and `SidebarContextMenu.tsx` each lack a `.stories.tsx` file — SPEC-ADDENDUM AC: "Every component in `components/` has a corresponding `.stories.tsx` file." Create stories for each with ≥2 stories covering key visual states. (priority: high)
 
 ### Completed
 - [x] Create `.github/workflows/ci.yml` with Node.js setup, dependency install, and a dashboard unit test step that runs `npm test` in `aloop/cli/dashboard/`
