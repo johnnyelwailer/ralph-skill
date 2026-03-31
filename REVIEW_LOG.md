@@ -664,3 +664,58 @@ Concrete observation: `TODO.md` line 96 confirms the spec-gap re-run found no ne
 No code or documentation changed since last review. All gate conclusions from prior PASS reviews carry forward. `PR_DESCRIPTION.md` is present and complete.
 
 ---
+
+## Review — 2026-03-31 — commits b301ceccc..912611ad5 (final-review, spec-review trigger — sixteenth pass)
+
+**Verdict: PASS** (0 findings)
+**Scope:** `README.md` (commit `765558dcc` — correct auth failure behavior in provider health section); commit `912611ad5` is review bookkeeping only (TODO.md, +11 lines spec-review approval note).
+
+**Prior findings resolution:**
+- All prior findings remain resolved. Fifteenth pass reviewed `b301ceccc` and confirmed PASS. Nothing changed since beyond the docs fix in `765558dcc`.
+
+### Gate 1 (Spec Compliance) — PASS
+
+`README.md` commit `765558dcc` fixes auth failure documentation:
+- Old: "Auth failures use longer cooldowns (10min → 30min → 1hr) but still auto-retry" — **incorrect per SPEC**
+- New: "Auth failures mark the provider as `degraded` — skipped entirely until you manually fix the credentials. Transient failures use exponential backoff cooldowns (auto-retry)."
+- SPEC line 151: `Auth error (expired token, invalid key) | auth | degraded (no auto-recover)` ✓
+- SPEC line 130: "`degraded` — persistent failure (auth expired, quota exhausted), requires user action" ✓
+- SPEC line 191 (AC): "Auth failures mark provider as `degraded` (no auto-recover)" ✓
+
+Concrete observation: The old documentation was actively misleading (suggesting auth errors auto-retry via longer cooldowns). The fix correctly distinguishes between transient failures (backoff, auto-retry) and auth failures (degraded, manual fix). SPEC §"All providers in cooldown/degraded" sleep logic (line 170) correctly reflected in README.
+
+All Issue #183 ACs remain satisfied (unchanged since prior PASS reviews).
+
+### Gate 2 (Test Depth) — N/A
+
+No test changes.
+
+### Gate 3 (Coverage) — N/A
+
+No new code branches.
+
+### Gate 4 (Code Quality) — PASS
+
+One-line README edit. Clean, no dead content introduced.
+
+### Gate 5 (Integration Sanity) — PASS
+
+README-only change — zero regression risk. Last confirmed dynamic run at `6650dcf30` (tsc exit 0, 632 tests pass); no code changed since.
+
+### Gate 6 (Proof) — N/A
+
+Documentation-only change. Skipping is correct.
+
+### Gate 7 (Runtime Layout) — N/A
+
+No CSS or layout changes.
+
+### Gate 8 (Version Compliance) — N/A
+
+No dependency changes.
+
+### Gate 9 (Documentation) — PASS
+
+This IS the documentation fix. README line 160 now accurately describes SPEC-specified behavior (auth → degraded/manual, transient → backoff/auto-retry). Verified against SPEC lines 130, 151, 191. `PR_DESCRIPTION.md` remains present and complete.
+
+---
