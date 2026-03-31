@@ -114,3 +114,51 @@ No dependency changes.
 No docs changes needed for test/story additions.
 
 ---
+
+## Review — 2026-03-31 — commits a37348513..cc509515c (final review)
+
+**Verdict: PASS** (0 findings)
+**Scope:** `aloop/cli/dashboard/src/components/layout/Sidebar.test.tsx`, `aloop/cli/dashboard/src/components/session/ActivityPanel.test.tsx`, `README.md`, `TODO.md` (spec-gap docs)
+
+**Prior findings resolution:**
+- Gate 5 FAIL (TS2353 `iterationStartedAt` in ActivityPanel.test.tsx): ✅ RESOLVED — `iterationStartedAt: undefined as string | undefined` added to `baseProps` at line 14; `Partial<typeof baseProps>` now includes it.
+- Gate 5 FAIL (TS2304 `afterEach` in Sidebar.test.tsx:240): ✅ RESOLVED — `afterEach` added to vitest import on line 3.
+- `npm run type-check` in `aloop/cli` produces zero errors. ✅
+
+### Gate 1 (Spec Compliance) — PASS
+
+TypeScript fixes are directly required by SPEC-ADDENDUM (type-safe test suite). README correction (`gemini-3.1-flash-lite` → `gemini-3.1-flash-lite-preview`) matches actual agent file frontmatter at `.opencode/agents/error-analyst.md` and `vision-reviewer.md` (both declare `model: openrouter/google/gemini-3.1-flash-lite-preview`). Spec-gap TODO entries are documentation-only; they correctly identify P2 issues outside Issue #38's scope.
+
+### Gate 2 (Test Depth) — PASS
+
+No new tests introduced. Existing test logic unchanged — only an import addition and a baseProps property addition. No shallow tests introduced.
+
+### Gate 3 (Coverage) — PASS
+
+No new branches introduced. Coverage unchanged.
+
+### Gate 4 (Code Quality) — PASS
+
+`afterEach` added to imports and IS used (line 240 in Sidebar.test.tsx). `iterationStartedAt: undefined as string | undefined` in baseProps — minimal, no dead code. README diff is 2 lines, clean.
+
+### Gate 5 (Integration) — PASS
+
+`npm run type-check` in `aloop/cli`: exit 0, zero errors output. All 632 tests continue to pass per commit message.
+
+### Gate 6 (Proof) — PASS
+
+Purely internal: test import fix, baseProps fix, README model name correction. No observable output requiring proof. Empty artifacts array is correct outcome.
+
+### Gate 7 (Runtime Layout) — N/A
+
+No CSS or layout changes.
+
+### Gate 8 (Version Compliance) — N/A
+
+No dependency changes.
+
+### Gate 9 (Documentation) — PASS
+
+`README.md`: model IDs corrected from `gemini-3.1-flash-lite` to `gemini-3.1-flash-lite-preview` — verified against actual agent files. Spec-gap P2 items documented in TODO.md are accurate descriptions of known issues (loop.sh/loop.ps1 model mismatch, missing `on_start` config block, periodic spec-gap scheduling unimplemented) — each references correct file paths and line numbers.
+
+---

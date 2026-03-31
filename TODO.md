@@ -61,7 +61,7 @@ All in-scope requirements satisfied — verified against SPEC.md and SPEC-ADDEND
 
 No gaps found. Issue #38 implementation is complete and spec-compliant.
 
-### Spec Review — APPROVED (iter 3, 2026-03-31)
+### Spec Review — APPROVED (iter 3, 2026-03-31) [reviewed: gates 1-9 pass]
 
 TypeScript fixes verified in code — no further gaps:
 
