@@ -2,12 +2,15 @@
 
 ## Tasks
 
-### In Progress
+### Open
 
-- [x] [review] Gate 4 (b) + (a): `orchestrate.ts:993-999` — inline `spawnSync` fallback reintroduced. Move the adapter bootstrap (lines 993-999) into `orchestrateCommand` (the non-DI entry point) so `orchestrateCommandWithDeps` always receives a fully-populated `deps` and the spawnSync fallback stays outside the testable boundary. After this move, `&& deps.adapter` at line 1135 becomes genuinely dead code (CONSTITUTION rule 13 — no dead code) and must be removed: simplify to `if (filterRepo && state.issues.length === 0)`. Do both changes together. (priority: medium)
+- [ ] [spec-gap][P1] `loop.sh` Claude model default diverges from `config.yml`: `loop.sh:33` sets `CLAUDE_MODEL="${ALOOP_CLAUDE_MODEL:-sonnet}"` but `config.yml:21` declares `claude: opus` as the canonical default, and `loop.ps1:34` correctly uses `opus`. Fix: change `loop.sh:33` default from `sonnet` to `opus` to restore single-source-of-truth. (spec says config.yml is the source of truth; code in loop.sh overrides it incorrectly)
+
+- [ ] [spec-gap][P2] OpenCode has no model variable in loop scripts (asymmetrical): `loop.sh` and `loop.ps1` declare model variables for all other providers (claude, codex, gemini, copilot) but not for opencode — even though `config.yml:22` documents `opencode: null` explicitly. Minor consistency gap; opencode uses its own routing but the asymmetry makes the pattern confusing. Fix: add `OPENCODE_MODEL="${ALOOP_OPENCODE_MODEL:-}"` in loop.sh and `[string]$OpenCodeModel = ''` in loop.ps1 for symmetry.
 
 ### Completed
 
+- [x] [review] Gate 4 (b) + (a): `orchestrate.ts:993-999` — moved adapter bootstrap into `orchestrateCommand` (lines 1514-1525), removed dead `&& deps.adapter` guard so preload is simply `if (filterRepo && state.issues.length === 0)`.
 - [x] [review] Gate 2: `orchestrate.test.ts:390-396` — replaced wrong-invariant test with one that verifies when `repo` is NOT set, `listIssues` is never called. Test: `orchestrateCommandWithDeps({}, deps_with_adapter)` → `listCalls.length === 0`.
 - [x] [review] Gate 2/3: `invokeAgentReview` comment fetch (process-requests.ts:965) — extracted `createInvokeAgentReview` factory function (exported), replaced inline closure in `processRequests`. Added 4 tests: listComments called with correct PR number and comments included in queue file, no listComments call when adapter absent, empty comments produce no comment section, listComments errors are swallowed and queue file still written.
 - [x] [review][P2] AC#11 partial — `orchestrateCommandWithDeps()` now instantiates an adapter at lines 993-999 when `filterRepo` is set. Note: Gate 4 still requires moving this bootstrap to `orchestrateCommand` to keep the DI boundary clean.
