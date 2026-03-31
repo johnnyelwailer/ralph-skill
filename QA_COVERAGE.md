@@ -16,3 +16,10 @@
 | No horizontal scroll at 320px | 2026-03-31 | bcbff3f | PASS | bodyScrollWidth === windowWidth (320) at 320x568 |
 | Swipe gesture to open sidebar | 2026-03-31 | 6e97217 | FAIL | Spec body requires "swipe right from left edge opens sidebar" — not implemented; not in acceptance criteria (P3) |
 | E2E smoke: tap target menuitem visibility | 2026-03-31 | bcbff3f | FAIL | `npx playwright test e2e/smoke.spec.ts:162` — Stop after iteration menuitem not found; pre-existing failure (same at 6e97217); product tap targets PASS via custom Playwright at 390px |
+| Unit test suite | 2026-03-31 | 0fd8078 | PASS | 158 tests pass (21 test files); re-verified at final-qa commit — no regression |
+| TypeScript type-check | 2026-03-31 | 0fd8078 | PASS | tsc --noEmit clean; build succeeds (464KB bundle) |
+| No horizontal scroll at 320px | 2026-03-31 | 0fd8078 | PASS | bodyScrollWidth ≤ windowWidth at 320×568 and 375×667 |
+| Hamburger present on mobile | 2026-03-31 | 0fd8078 | PASS | aria-label*="sidebar" button found at 320px and 375px |
+| Steer input visible on mobile | 2026-03-31 | 0fd8078 | PASS | Textarea visible at 320×568 and 375×667 |
+| Tap targets ≥ 44px on mobile | 2026-03-31 | 0fd8078 | PASS | 0 small buttons at 320×568 and 375×667 |
+| Desktop two-column layout | 2026-03-31 | 0fd8078 | PASS | Sidebar present at 1440×900 |

@@ -143,3 +143,64 @@ node /tmp/qa-tap-320.cjs (preview http://localhost:4046)
 
 ### Assessment
 Gate 2 and Gate 4 fixes verified. No regressions. All 9 SPEC-ADDENDUM.md acceptance criteria remain PASS. Issue-114 complete.
+
+## QA Session — 2026-03-31 (post-final-qa re-verification)
+
+### Test Environment
+- Commit under test: 0fd80784a (chore(qa): final-qa PASS)
+- Dashboard: built from source (`npm run build` → `npx vite preview --port 4047`)
+- Playwright: dashboard/node_modules/playwright (chromium)
+- Viewports tested: 320×568, 375×667, 1440×900
+
+### Features Tested
+1. Unit test suite (158 tests, 21 files)
+2. TypeScript type-check (tsc --noEmit)
+3. Dashboard build (vite build)
+4. Mobile responsive layout: no horizontal scroll at 320px and 375px
+5. Hamburger presence on mobile (< 640px)
+6. Steer input visibility on mobile
+7. Tap targets ≥ 44px on mobile
+8. Desktop two-column layout at 1440px
+9. E2E smoke test suite (re-confirmation of pre-existing failure)
+
+### Results
+- PASS: 158 unit tests (21 files) — no regression
+- PASS: tsc --noEmit clean
+- PASS: vite build succeeds (464KB bundle)
+- PASS: No horizontal scroll at 320×568 and 375×667
+- PASS: Hamburger present at 320px and 375px
+- PASS: Steer textarea visible at 320px and 375px
+- PASS: 0 small tap targets (<44px) at 320px and 375px
+- PASS: Two-column layout confirmed at 1440×900
+- FAIL (pre-existing, unchanged): `npx playwright test e2e/smoke.spec.ts:162` — identical failure as at 6e97217 and bcbff3f
+
+### Bugs Filed
+None. No new bugs. Pre-existing E2E smoke failure confirmed unchanged.
+
+### Command Transcript
+```
+# Unit tests
+cd aloop/cli/dashboard && npm test -- --run
+→ 21 test files, 158 tests passed (3.15s)
+
+# TypeScript
+npx tsc --noEmit
+→ (no output — clean)
+
+# Build
+npm run build
+→ ✓ built in 1.32s (464.34 kB JS, 34.14 kB CSS)
+
+# E2E tests
+npx playwright test e2e/ --reporter=line
+→ 10 passed, 1 failed (smoke.spec.ts:162 — pre-existing)
+
+# Visual Playwright at 320px, 375px, 1440px
+node /tmp/qa-final-check.mjs
+→ 320×568: no horizontal scroll ✅, hamburger ✅, steer ✅, tap targets ✅
+→ 375×667: no horizontal scroll ✅, hamburger ✅, steer ✅, tap targets ✅
+→ 1440×900: two-column layout ✅, steer ✅
+```
+
+### Assessment
+All SPEC-ADDENDUM.md acceptance criteria verified PASS at final-qa commit. No regressions. Issue-114 complete.
