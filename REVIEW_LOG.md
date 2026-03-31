@@ -150,6 +150,45 @@ Three README corrections verified against actual source files:
 
 ---
 
+## Review — 2026-03-31 — commit dc75a3d92..421546387
+
+**Verdict: PASS** (all 10 gates pass — spec-review triggered)
+**Scope:** `README.md`, `QA_COVERAGE.md`, `QA_LOG.md`
+
+### Prior Finding Resolution
+No open `[review]` tasks. All prior findings resolved.
+
+### Gate 1 — Spec Compliance: PASS
+Documentation-only changes. README concurrent_cap description "short cooldown and automatically retried" ✓ matches SPEC line 152 (`cooldown (short — 2 min)`) and `loop.sh:1095-1096` (`cooldown_secs=120`). Flock/graceful degradation descriptions match SPEC lines 157-171.
+
+### Gate 2 — Test Depth: PASS (no test changes)
+
+### Gate 3 — Coverage: PASS (no code changes)
+
+### Gate 4 — Code Quality: PASS
+`QA_COVERAGE.md` commit refs updated from `16ebaddd` to `dc75a3d9` — accurate. `QA_LOG.md` new session entry correctly records scope. README additions concise with no duplication.
+
+### Gate 5 — Integration Sanity: PASS
+7/7 `loop_provider_health_primitives.tests.sh` + 5/5 `loop_provider_health.tests.sh` pass at HEAD — verified directly in this review run.
+
+### Gate 6 — Proof Verification: PASS
+Documentation-only changes. Empty proof artifacts is the correct outcome.
+
+### Gate 7 — Runtime Layout: N/A
+
+### Gate 8 — Version Compliance: N/A
+
+### Gate 9 — Documentation Freshness: PASS
+- README `.json.lock` sidecar ✓ matches `lock_file="${path}.lock"` (`loop.sh:892`)
+- README ".NET file locking (PowerShell)" ✓ verified against `loop.ps1:1274-1285` (`[System.IO.File]::Open()` with `FileShare.None` writes, `FileShare.Read` reads)
+- README `concurrent_cap` "short cooldown" ✓ confirmed `loop.sh:1095-1096` sets `cooldown_secs=120`
+- README "skipped silently" — acceptable user-facing simplification; impl does log `health_lock_failed` but loop doesn't fail visibly ✓
+
+### Gate 10 — QA Coverage: PASS
+`QA_COVERAGE.md`: 9 PASS + 1 INFO at HEAD. No `[qa/P1]` bugs in TODO.md.
+
+---
+
 ## Review — 2026-03-31 — commit 16ebaddd8..2ee390ca8
 
 **Verdict: PASS** (all 10 gates pass — final QA re-run)

@@ -13,3 +13,4 @@ spec-review (2026-03-31): all flock locking requirements confirmed implemented �
 [final-review: gates 1-10 pass — 2026-03-31]
 [final-review: gates 1-10 pass (spec-review triggered) — 2026-03-31]
 [final-review: gates 1-10 pass (final qa re-run) — 2026-03-31]
+[final-review: gates 1-10 pass (spec-review triggered, README flock/concurrent_cap docs) — 2026-03-31]
