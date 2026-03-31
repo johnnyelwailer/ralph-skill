@@ -8,3 +8,5 @@
 spec-gap analysis: no discrepancies found — spec fully fulfilled
 
 spec-review (2026-03-31): all flock locking requirements confirmed implemented — writes use flock -x, reads use flock -s, 5-attempt backoff (50–250ms), stale-dir cleanup, health_lock_failed logged on failure, all-providers-cooldown sleep — APPROVED
+
+[reviewed: gates 1-9 pass — 2026-03-31]

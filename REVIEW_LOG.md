@@ -37,3 +37,37 @@ SPEC.md line 160 (added in commit `d7949e9c7`) says:
 Actual implementation in `loop.sh:892`: `lock_file="${path}.lock"` (extension `.lock`, not `.flock`) and `exec {fd}>"$lock_file"` (dynamic FD, not hardcoded FD 9). The documentation doesn't match what was implemented. `[review]` task written to TODO.md.
 
 ---
+
+## Review — 2026-03-31 — commit ff3a74059..8b42f9e4c
+
+**Verdict: PASS** (prior Gate 9 finding resolved)
+**Scope:** `SPEC.md`, `README.md`, `QA_COVERAGE.md`, `QA_LOG.md`
+
+### Prior Finding Resolution
+Gate 9 FAIL from previous review: SPEC.md line 160 said `.flock` extension and FD 9. Now reads: "Exclusive lock via `flock -x` on a `.lock` sidecar file (dynamic FD via `exec {fd}>`)" — matches `loop.sh:892` (`lock_file="${path}.lock"`) and `loop.sh:904` (`exec {fd}>"$lock_file"`) exactly. ✓
+
+### Gate 1 — Spec Compliance: PASS
+SPEC.md now accurately documents the implementation. All previously-verified requirements (flock -s reads, flock -x writes, 5-attempt backoff, stale-dir cleanup, graceful degradation) remain correct.
+
+### Gate 2 — Test Depth: PASS (no test changes)
+
+### Gate 3 — Coverage: PASS (no code changes)
+
+### Gate 4 — Code Quality: PASS
+Documentation-only changes. No dead code introduced. One minor cosmetic note: `QA_COVERAGE.md` still contains a stale INFO row "SPEC says .flock/FD9, impl uses .lock/dynamic FD" that was the pre-fix state — not a blocking issue (internal QA log, not user-facing).
+
+### Gate 5 — Integration Sanity: PASS
+7/7 bash tests pass (`loop_provider_health_primitives.tests.sh`) — verified in this review run.
+
+### Gate 6 — Proof Verification: PASS
+`artifacts/iter-proof/proof-manifest.json` correctly skips with empty artifacts array. Documentation-only fixes have no observable behavior change — skipping proof is the correct outcome.
+
+### Gate 7 — Runtime Layout: N/A
+
+### Gate 8 — Version Compliance: N/A
+
+### Gate 9 — Documentation Freshness: PASS
+- `SPEC.md` flock sidecar description corrected: `.lock` extension + dynamic FD ✓
+- `README.md` auth failure description corrected: `degraded` (no auto-recover, requires user action) — matches `loop.sh:1092-1093` (`reason = "auth"` → `new_status = "degraded"`) ✓
+
+---
