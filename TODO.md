@@ -174,7 +174,7 @@ Re-verified after docs trigger (fourth spec-review pass):
 
 No new gaps found. Issue #38 implementation fully spec-compliant.
 
-### Spec Review — APPROVED (docs trigger re-run 5, 2026-03-31) [reviewed: all gates pass]
+### Spec Review — APPROVED (docs trigger re-run 5, 2026-03-31) [reviewed: all gates pass] [final-review: ninth pass — gates 1-9 pass]
 
 Re-verified after docs commit `cea231924` (sync README with actual CLI flags and orchestrator behavior):
 

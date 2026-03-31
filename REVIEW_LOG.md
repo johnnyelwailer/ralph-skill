@@ -466,3 +466,63 @@ No code changed since last review. All conclusions from prior PASS review (afbf4
 No code changes since last substantive review. All gate conclusions carry forward. Concrete observation: README architecture section (lines 284–289) now correctly lists `RESEARCH.md`, `REVIEW_LOG.md`, `docs/conventions/`, `.aloop/pipeline.yml`, and `agents/<name>.yml` — the directory listing matches actual file structure on disk.
 
 ---
+
+## Review — 2026-03-31 — commits 4e8918f9e..7d59ffa79 (final-review, spec-review trigger — ninth pass)
+
+**Verdict: PASS** (0 findings)
+**Scope:** `README.md` (commit `cea231924` — sync CLI flags and orchestrator behavior); commits `02f4faec1`, `3653cd767`, `063be9a50`, `7d59ffa79` are review/QA bookkeeping only (TODO.md, QA_COVERAGE.md, QA_LOG.md).
+
+**Prior findings resolution:**
+- All prior findings remain resolved. The eighth review (`7d59ffa79`) verified `cea231924` and updated TODO.md only (no REVIEW_LOG entry was written). This entry covers that scope.
+
+### Gate 1 (Spec Compliance) — PASS
+
+Three README corrections in `cea231924` verified against actual CLI source:
+- `aloop steer <instruction>`: `index.ts:168` confirms `.command('steer <instruction>')` — README correction accurate ✓
+- `--auto-merge` flag: `index.ts:160` has `.option('--auto-merge', 'Create a PR from trunk to main when all issues complete')` — README example accurate ✓
+- `agent/trunk` default with `--trunk` override: `index.ts:150` has `.option('--trunk <branch>', 'Target branch for merged PRs', 'agent/trunk')` — PR lifecycle description accurate ✓
+
+All Issue #38 ACs remain satisfied (unchanged since prior PASS reviews):
+- `.github/workflows/ci.yml`: triggers push+PR master/agent/trunk, Node 22, `npm ci` + `npm test` in `aloop/cli/dashboard` ✓
+- SPEC-ADDENDUM line 122: 28 non-ui components have `.test.tsx` ✓
+- SPEC-ADDENDUM line 123: 28 non-ui components have `.stories.tsx` ✓
+- README lines 22–28: all 6 finalizer agents listed (Spec-gap, Docs, Spec-review, Final-review, Final-qa, Proof) ✓
+- README line 246: `PROMPT_spec-review.md` in template list ✓
+- TypeScript fixes intact: `afterEach` at `Sidebar.test.tsx:3`; `iterationStartedAt` in `ActivityPanel.test.tsx:14` baseProps ✓
+
+### Gate 2 (Test Depth) — N/A
+
+No test code changed.
+
+### Gate 3 (Coverage) — N/A
+
+No code branches added.
+
+### Gate 4 (Code Quality) — PASS
+
+README changes are minimal (3 targeted corrections). No dead content, no duplication.
+
+### Gate 5 (Integration Sanity) — PASS
+
+No code changes since last confirmed dynamic run (`tsc --noEmit` exit 0, 632 tests pass at `6650dcf30`). Zero regression risk.
+
+### Gate 6 (Proof) — N/A
+
+Documentation-only change. Skipping proof is the correct outcome.
+
+### Gate 7 (Runtime Layout) — N/A
+
+No CSS or layout changes.
+
+### Gate 8 (Version Compliance) — N/A
+
+No dependency changes.
+
+### Gate 9 (Documentation) — PASS
+
+`cea231924` IS the documentation change. All three corrections verified against CLI source:
+- `README.md:205`: `aloop steer <instruction>` — accurate per `index.ts:168` ✓
+- `README.md:62–64`: `--auto-merge` example — accurate per `index.ts:160` ✓
+- `README.md:52`: `agent/trunk` default + `--trunk` override — accurate per `index.ts:150` ✓
+
+---
