@@ -125,7 +125,9 @@ opencode run --agent vision-reviewer
 
 These agents run via OpenRouter. `code-critic` is fully read-only (no file write/edit/bash). `error-analyst` and `vision-reviewer` have no file write/edit access but have bash enabled for log/screenshot analysis. Customize them by editing the markdown files in `.opencode/agents/`.
 
-Provider health is tracked automatically. Failed providers enter cooldown with exponential backoff and are skipped until recovery. Auth failures set the provider to `degraded` (no auto-recover) — requires user action (e.g. re-run provider login).
+Provider health is tracked automatically. Failed providers enter cooldown with exponential backoff and are skipped until recovery. Auth failures set the provider to `degraded` (no auto-recover) — requires user action (e.g. re-run provider login). "Cannot launch inside another session" errors (concurrent session cap) are treated as a short cooldown and automatically retried.
+
+Health files are protected by flock-based locking (bash) and .NET file locking (PowerShell) so concurrent loops reading and writing the same file don't corrupt state. If lock acquisition fails after retries, the health update is skipped silently and the loop continues.
 
 ## Prerequisites
 
@@ -200,6 +202,7 @@ The installer deploys skill files to each harness directory and the Aloop runtim
   config.yml                    # Global defaults (providers, models)
   active.json                   # Currently running sessions
   health/<provider>.json        # Per-provider health state
+  health/<provider>.json.lock   # Flock sidecar — prevents concurrent write corruption
   bin/
     loop.sh                     # Bash loop harness
     loop.ps1                    # PowerShell loop harness
