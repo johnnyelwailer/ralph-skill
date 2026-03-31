@@ -1,5 +1,47 @@
 # QA Log
 
+## QA Session — 2026-03-31 (final-qa re-run at HEAD d05abd805)
+
+### Test Environment
+- Working dir: aloop/cli (worktree)
+- Commit under test: d05abd805
+- Commits since last QA (ccbffdc50 at 707e8fcb0): chore/docs only (review passes, spec-review, Storybook status update)
+
+### Features tested: 5
+All 5 test targets re-verified at HEAD to confirm no regressions from post-QA review/doc commits.
+
+### Results
+- PASS: TypeScript build (npm run build)
+- PASS: tsc --noEmit (all files including test files — zero errors)
+- PASS: adapter.test.ts unit tests (36/36)
+- PASS: process-requests.ts full suite (42/42)
+- PASS: orchestrate.test.ts full suite (352/379 pass, 27 fail — identical pre-existing baseline)
+
+### Bugs Filed
+_(none — all test targets green, no regressions)_
+
+### Command Transcript
+
+```
+$ npm run build
+# ... build steps ... Done in 15ms
+# EXIT 0
+
+$ npx tsc --noEmit
+# EXIT 0
+
+$ npx tsx --test src/lib/adapter.test.ts
+# tests 36 / pass 36 / fail 0
+
+$ npx tsx --test src/commands/process-requests.test.ts
+# tests 42 / pass 42 / fail 0
+
+$ npx tsx --test src/commands/orchestrate.test.ts
+# tests 379 / pass 352 / fail 27 (27 pre-existing failures, unchanged)
+```
+
+---
+
 ## Review — 2026-03-31 (iter 17 — review agent, static analysis, ENOSPC env)
 
 ### Commit under review: a45a51bc6

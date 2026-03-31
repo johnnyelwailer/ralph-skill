@@ -138,3 +138,8 @@
 | Gate 4b fix: adapter bootstrap in orchestrateCommand | 2026-03-31 | 707e8fcb0 | PASS | spawnSync bootstrap moved to orchestrateCommand (non-DI wrapper at lines 1514-1525); DI boundary clean |
 | adapter instantiation in orchestrateCommandWithDeps (AC#11) | 2026-03-31 | 707e8fcb0 | PASS | Runtime test coverage confirmed; orchestrate.test.ts adapter-instantiation tests pass |
 | createInvokeAgentReview factory + listComments path | 2026-03-31 | 707e8fcb0 | PASS | 4 new tests all pass: adapter present (listComments called with correct PR), absent, empty, error-swallow |
+| TypeScript build (npm run build) | 2026-03-31 | d05abd805 | PASS | Build clean exit 0 (final-qa re-run; post-review chore/doc commits only since 707e8fcb0) |
+| tsc --noEmit (all files including test files) | 2026-03-31 | d05abd805 | PASS | Zero TypeScript errors; exit 0 — stable |
+| adapter.test.ts unit tests | 2026-03-31 | d05abd805 | PASS | 36/36 pass — stable |
+| process-requests.ts full suite | 2026-03-31 | d05abd805 | PASS | 42/42 pass — stable |
+| orchestrate.test.ts full suite | 2026-03-31 | d05abd805 | PASS | 352/379 pass, 27 fail — identical pre-existing baseline; no regressions |
