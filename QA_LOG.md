@@ -204,3 +204,51 @@ node /tmp/qa-final-check.mjs
 
 ### Assessment
 All SPEC-ADDENDUM.md acceptance criteria verified PASS at final-qa commit. No regressions. Issue-114 complete.
+
+## QA Session — 2026-03-31 (final-qa — post docs/review commits)
+
+### Test Environment
+- Binary under test: /tmp/aloop-test-install-BWuVSw/bin/aloop (version 1.0.0)
+- Dashboard: built from source (dist/index.html, 464KB bundle), served via local HTTP on port 9998
+- Playwright: chromium via dashboard node_modules
+- Commits since last QA (95201b0): d1566ef9e, f8ce4c4d3, 4738a8b16, 8f07f511c (all docs/chore — no code changes)
+
+### Features Tested (3)
+1. Responsive layout visual regression (5 Playwright checks)
+2. Dashboard unit test suite (158 vitest tests)
+3. TypeScript type-check (tsc --noEmit)
+
+### Results
+
+| Test | Result |
+|------|--------|
+| No horizontal scroll at 320px | PASS |
+| Hamburger button at 375px | PASS |
+| Steer textarea visible at 320px | PASS |
+| Tap targets >= 44px at 375px | PASS |
+| Desktop layout renders at 1440px | PASS |
+| Unit test suite (158 tests, 21 files) | PASS |
+| TypeScript type-check | PASS |
+
+### Bugs Filed
+None. No regressions detected.
+
+### Command Transcript
+```
+npm --prefix aloop/cli run test-install -- --keep  →  /tmp/aloop-test-install-BWuVSw/bin/aloop (exit 0)
+aloop --version  →  1.0.0 (exit 0)
+npm --prefix aloop/cli/dashboard run test  →  21 test files, 158 tests PASS (exit 0)
+npm --prefix aloop/cli/dashboard run type-check  →  clean (exit 0)
+node /tmp/qa-playwright-final.mjs  →  5/5 PASS (exit 0)
+  PASS: No horizontal scroll at 320px (bodyScrollWidth === windowWidth)
+  PASS: Hamburger button at 375px (aria-label*="sidebar" button found)
+  PASS: Steer textarea visible at 320px
+  PASS: Tap targets >= 44px at 375px (0 small buttons)
+  PASS: Desktop layout renders at 1440px (page content present)
+```
+
+### Assessment
+No code changes since last QA pass (95201b0). Docs-only commits verified:
+- f8ce4c4d3: README auth failure correction — accurate (degraded, no auto-retry)
+- 4738a8b16/8f07f511c: spec-review/review chore commits — no functional impact
+All SPEC-ADDENDUM.md acceptance criteria remain PASS. Issue-114 complete.

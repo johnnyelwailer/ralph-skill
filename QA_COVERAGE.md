@@ -23,3 +23,10 @@
 | Steer input visible on mobile | 2026-03-31 | 0fd8078 | PASS | Textarea visible at 320×568 and 375×667 |
 | Tap targets ≥ 44px on mobile | 2026-03-31 | 0fd8078 | PASS | 0 small buttons at 320×568 and 375×667 |
 | Desktop two-column layout | 2026-03-31 | 0fd8078 | PASS | Sidebar present at 1440×900 |
+| Unit test suite | 2026-03-31 | 8f07f511 | PASS | 158 tests pass (21 test files); no regression post docs-only commits |
+| TypeScript type-check | 2026-03-31 | 8f07f511 | PASS | tsc --noEmit clean; 464KB bundle |
+| No horizontal scroll at 320px | 2026-03-31 | 8f07f511 | PASS | bodyScrollWidth === windowWidth at 320×568 |
+| Hamburger present on mobile | 2026-03-31 | 8f07f511 | PASS | aria-label*="sidebar" button found at 375px |
+| Steer input visible on mobile | 2026-03-31 | 8f07f511 | PASS | Textarea visible at 320×568 |
+| Tap targets ≥ 44px on mobile | 2026-03-31 | 8f07f511 | PASS | 0 buttons < 44px at 375×667 |
+| Desktop two-column layout | 2026-03-31 | 8f07f511 | PASS | Page content present at 1440×900 |
