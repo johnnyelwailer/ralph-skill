@@ -692,3 +692,78 @@ cat .github/workflows/ci.yml
 # → working-directory: aloop/cli/dashboard
 # → npm ci then npm test
 ```
+
+## QA Session — 2026-03-31 (final-qa, triggered by final-review, commit 05fb34277)
+
+### Test Environment
+- Binary under test: tsx src/index.ts (installed CLI deps via npm ci; full pack/install skipped due to vite dashboard build dep requiring npm ci in dashboard first — using tsx for flag verification)
+- Commit: 05fb34277
+- /tmp disk: 13G total, 6.6G used — ample space (no ENOSPC)
+- Features tested: 5 (full dynamic run — npm test, tsc, storybook build, .test.tsx/.stories.tsx coverage, CLI flags)
+
+### Results
+- PASS: `npm test` — 51 test files, 632 tests all pass (dynamic run; disk space adequate)
+- PASS: `tsc --noEmit` — exit 0, no TypeScript errors
+- PASS: `npm run build-storybook` — exit 0; 178 stories in index.json; no errors
+- PASS: All 28 non-ui components have both `.test.tsx` AND `.stories.tsx` (verified per-file, zero missing)
+- PASS: Story exports ≥2 spot-checked: CollapsedSidebar (3), ActivityPanel (3), DiffOverlayView (2), QACoverageBadge (2)
+- PASS: CI workflow (`ci.yml`) — push+PR on master/agent/trunk, Node 22, npm ci + npm test in aloop/cli/dashboard
+- PASS: README lines 22–28 — all 6 finalizer agents present (Spec-gap, Docs, Spec-review, Final-review, Final-qa, Proof)
+- PASS: `aloop start --in-place` flag present in CLI help
+- PASS: `aloop status --watch` flag present in CLI help
+- PASS: `aloop setup --non-interactive` flag present in CLI help
+
+### Bugs Filed
+- None. All Issue #183 and Issue #38 requirements verified dynamically. No regressions.
+
+### Command Transcript
+
+```
+# Check disk space
+$ df -h /tmp && df -h /home
+tmpfs 13G 6.6G 6.0G 53% /tmp
+/dev/vdb1 361G 34G 328G 10% /home
+EXIT: 0
+
+# Run vitest
+$ cd aloop/cli/dashboard && npm test
+Test Files: 51 passed (51)
+Tests: 632 passed (632)
+Duration: 6.14s
+EXIT: 0
+
+# TypeScript type-check
+$ npm run type-check
+> tsc --noEmit
+EXIT: 0
+
+# Storybook build
+$ npm run build-storybook -- --output-dir /tmp/qa-storybook-build-<ts>
+→ Storybook build completed successfully
+EXIT: 0
+Total stories in build: 178 (Button stories: 8)
+
+# Per-file coverage check (28 non-ui components)
+$ for each .tsx in components/ (excluding ui/): check .test.tsx and .stories.tsx exist
+Missing .test.tsx: 0
+Missing .stories.tsx: 0
+
+# Story export count spot-check
+layout/CollapsedSidebar.stories.tsx: 3 exports PASS
+session/ActivityPanel.stories.tsx: 3 exports PASS
+session/DiffOverlayView.stories.tsx: 2 exports PASS
+shared/QACoverageBadge.stories.tsx: 2 exports PASS
+
+# CLI flag verification (via tsx src/index.ts)
+$ aloop start --help | grep in-place
+  --in-place   Run in project root instead of creating a git...  PASS
+
+$ aloop status --help | grep watch
+  --watch   Auto-refresh status display  PASS
+
+$ aloop setup --help | grep non-interactive
+  --non-interactive   Skip interactive prompts and use defaults  PASS
+
+# Cleanup
+$ rm -rf /tmp/qa-storybook-build-<ts>
+```
