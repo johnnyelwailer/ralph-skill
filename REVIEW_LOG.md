@@ -583,3 +583,57 @@ No dependency changes.
 This commit IS the documentation change. All three additions verified against SPEC and CLI source. Concrete observation: `start.ts:783` uses `!options.inPlace && worktreeDefault` — the README example `aloop start --in-place --provider claude` correctly describes skip-worktree behavior.
 
 ---
+
+## Review — 2026-03-31 — commit af4f65c56 (final-review, spec-review trigger — twelfth pass)
+
+**Verdict: PASS** (0 findings)
+**Scope:** Full Issue #183 implementation — no new code since last review (`af4f65c56` HEAD). Comprehensive final pass confirming readiness for PR.
+
+**Prior findings resolution:**
+- All prior findings from all iterations resolved. No regressions. Nothing new to fix.
+
+### Gate 1 (Spec Compliance) — PASS
+
+All Issue #183 ACs satisfied, verified by direct file inspection:
+- SPEC-ADDENDUM line 122: 28 non-ui components have `.test.tsx` (28 files confirmed by `find | grep -v ui/`) ✓
+- SPEC-ADDENDUM line 123: 28 non-ui components have `.stories.tsx` (28 files confirmed) ✓
+- `.github/workflows/ci.yml`: triggers push+PR to master/agent/trunk, Node 22, `npm ci` + `npm test` in `aloop/cli/dashboard` ✓
+- README finalizer prose (lines 22–28): all 6 agents (Spec-gap, Docs, Spec-review, Final-review, Final-qa, Proof) ✓
+- README template list: `PROMPT_spec-review.md`, `PROMPT_final-qa.md`, `PROMPT_final-review.md` all present ✓
+- TypeScript fixes intact: `afterEach` at `Sidebar.test.tsx:3`; `iterationStartedAt` in `ActivityPanel.test.tsx:14` ✓
+
+Concrete observation: `QACoverageBadge.test.tsx` tests `parseQACoveragePayload` with exact value assertions (`toEqual({ percentage: null, available: false, features: [] })`) and covers all 3 badge color branches (`green`/`yellow`/`red`) with concrete className checks — the most recently added module meets the ≥90% new-module branch coverage threshold.
+
+### Gate 2 (Test Depth) — PASS
+
+No tests changed in this final pass. All previously reviewed test files confirmed passing with concrete value assertions (no toBeDefined/truthy-only patterns). Marginal cases accepted in prior reviews (date regex in ActivityPanel, timer truthy in Header) remain unchanged.
+
+### Gate 3 (Coverage) — PASS
+
+No new code. Coverage stable. All branches covered per prior reviews.
+
+### Gate 4 (Code Quality) — PASS
+
+No dead code, no uncommitted changes. Working tree is clean.
+
+### Gate 5 (Integration Sanity) — PASS
+
+Last confirmed dynamic test run: `npm run type-check` exit 0 (zero errors), 632 tests pass. No code changed since that run.
+
+### Gate 6 (Proof) — PASS
+
+No proof artifacts required — this is a CI/test infrastructure + documentation change. PR_DESCRIPTION.md explicitly notes "No screenshots needed — purely internal test infrastructure and CI workflow changes." Correct outcome.
+
+### Gate 7 (Runtime Layout) — N/A
+
+No CSS or layout changes in the entire issue scope.
+
+### Gate 8 (Version Compliance) — N/A
+
+No dependency changes introduced in this issue.
+
+### Gate 9 (Documentation) — PASS
+
+README accurately reflects implementation state: CLI flags (`--in-place`, `--watch`, `--non-interactive`) verified against SPEC and source; Storybook component list correct (non-existent AppShell removed, real components ArtifactViewer/ProviderHealth/CostDisplay added); finalizer prose and template list complete. `PR_DESCRIPTION.md` present and accurate.
+
+---
