@@ -75,6 +75,14 @@ TypeScript fixes verified in code — no further gaps:
 
 All requirements satisfied. No new findings.
 
+### Spec Review — FAIL (docs trigger, 2026-03-31 re-run)
+
+Two gaps found in the docs commit (`06a97c3c2`):
+
+- [review] README template list missing `PROMPT_spec-review.md` — SPEC §"Default pipeline update" lines 462–466 lists it as a finalizer template and the file exists at `aloop/templates/PROMPT_spec-review.md`, but it is absent from the Architecture section template listing in `README.md`. Fix: add `PROMPT_spec-review.md` to the template list in README.md (between `PROMPT_docs.md` and `PROMPT_final-qa.md`).
+
+- [review] README finalizer prose incomplete — README lists only 3 finalizer agents (Proof, Spec-gap, Docs) but SPEC §"Default pipeline update" lines 462–466 defines 6 finalizer agents: spec-gap, docs, spec-review, final-review, final-qa, proof. Missing from README prose: spec-review, final-review, final-qa. Fix: add the missing three bullet points under "When all tasks are marked done, finalizer agents run once."
+
 ### Spec Review — APPROVED (docs trigger, 2026-03-31) [reviewed: all gates pass] [final-review: gates 1-9 pass]
 
 Re-verified against SPEC.md and SPEC-ADDENDUM.md after docs trigger:
