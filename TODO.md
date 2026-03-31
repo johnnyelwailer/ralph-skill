@@ -224,6 +224,16 @@ Re-verified after docs trigger (fourth spec-review pass):
 
 No new gaps found. Issue #38 implementation fully spec-compliant.
 
+### Spec Review — APPROVED (docs trigger re-run 10, 2026-03-31) [reviewed: gates 1-9 pass — twentieth spec-review pass]
+
+Re-verified after docs commit `45a82565c` (correct dashboard sidebar description to match implementation):
+
+- Sidebar description: SPEC line 1068 states "all sessions in a tree grouped by project"; SPEC line 1228 AC: "Dashboard sidebar shows sessions in tree view grouped by project, with Active/Older sections" — README now correctly reads "grouped by project, with active/recent session separation" ✓
+- No 4-level `repo > project > issue > session` hierarchy exists in the implementation or spec ✓
+- Docs agent AC (SPEC line 879): only README.md modified — no SPEC.md or code changes ✓
+
+No new gaps found. Docs commit is spec-compliant.
+
 ### Spec Review — APPROVED (spec-review trigger re-run 16, 2026-03-31) [reviewed: gates 1-9 pass]
 
 No new changes since sixteenth review pass. All Issue #183 ACs remain satisfied and verified. `PR_DESCRIPTION.md` complete.
