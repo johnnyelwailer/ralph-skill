@@ -1,17 +1,22 @@
-# Issue #38: CI: Add dashboard unit tests (vitest)
+# Issue #183: Storybook Integration (Component Iteration)
 
-## Current Phase: Implementation
+## Current Phase: Complete
 
 ### In Progress
 
-- [x] [review] Gate 1/Gate 9: `README.md` template list (Architecture section, ~line 236–247) is missing `PROMPT_spec-review.md`. The file exists at `aloop/templates/PROMPT_spec-review.md` but is absent from the template listing. SPEC §\"Default pipeline update\" line 422 defines `spec-review` as a finalizer agent; its template file belongs in the README list between `PROMPT_docs.md` and `PROMPT_final-qa.md`. Fix: add `PROMPT_spec-review.md  # Spec-review agent (finalizer)` to the template list in README.md. (priority: high) [reviewed: gates 1-9 pass]
-- [x] [review] Gate 1/Gate 9: `README.md` finalizer prose (~lines 22–25) lists only 3 finalizer agents (Proof, Spec-gap, Docs) but SPEC line 422 defines 6: `spec-gap → docs → spec-review → final-review → final-qa → proof`. Missing from prose: spec-review, final-review, final-qa. Fix: add three bullet points for these missing agents under \"When all tasks are marked done, finalizer agents run once.\" (priority: high) [reviewed: gates 1-9 pass]
+(none)
 
 ### Up Next
 
 (none)
 
 ### Completed
+- [x] Configure Storybook 10 with `@storybook/react-vite` in `aloop/cli/dashboard/.storybook/` — `main.ts` references `@storybook/react-vite` framework; `storybook` and `build-storybook` scripts present in `package.json` (priority: high)
+- [x] Add global decorator in `.storybook/preview.ts` wrapping all stories with `withThemeByClassName` (Tailwind dark mode via `.dark` class) and `TooltipProvider`; imports `src/index.css` for identical dashboard theming (priority: high)
+- [x] Ensure all 28 non-ui components have `*.stories.tsx` files colocated with their components, each exporting ≥2 named stories — verified via file listing: exact 1:1 match (priority: high)
+- [x] Core component stories confirmed: SessionCard, ProviderHealth, SteerInput, ActivityLog, ProgressBar (`ui/progress.stories.tsx`) — all exist with ≥2 stories (priority: high)
+- [x] TypeScript clean — `npm run type-check` passes with zero errors across all story and component files (priority: high)
+- [x] README finalizer prose and template list updated to include all 6 finalizer agents and all PROMPT_*.md templates (spec-review, final-qa, final-review) (priority: high)
 - [x] Create `.github/workflows/ci.yml` with Node.js setup, dependency install, and a dashboard unit test step that runs `npm test` in `aloop/cli/dashboard/`
 - [x] Verify the workflow file is valid YAML and the test step references the correct working directory (`aloop/cli/dashboard`)
 - [x] Create `.test.tsx` files for 6 components missing unit tests: `layout/CollapsedSidebar.tsx`, `layout/SidebarContextMenu.tsx`, `session/ActivityPanel.tsx`, `session/ArtifactComparisonHeader.tsx`, `session/DiffOverlayView.tsx`, `session/SideBySideView.tsx` — SPEC-ADDENDUM §\"Dashboard Component Architecture\" AC: \"Every component in `components/` has a corresponding `.test.tsx` file.\" Each test file must cover props and key interactions using Testing Library. Confirmed missing by direct file listing. (priority: high)
@@ -46,6 +51,8 @@
 **Spec-gap re-run (2026-03-31, all-tasks-done trigger — ninth pass):** No new gaps found. Verified: ci.yml present at .github/workflows/ci.yml (triggers push+PR master/agent/trunk, Node 22, npm ci + npm test) ✓; 30 .test.tsx files (28 non-ui ✓, 2 ui/); 41 .stories.tsx files (28 non-ui ✓, 13 ui/); README lines 22–28 all 6 finalizer agents present; README lines 246–248 PROMPT_spec-review.md, PROMPT_final-qa.md, PROMPT_final-review.md all present; both [review] items confirmed [x]. The 3 pre-existing P2 gaps (loop.sh model default, on_start config block, spec-gap periodic scheduling) and 1 P3 gap (ProviderName union missing opencode) remain unchanged and out of scope for Issue #38. spec-gap analysis: no discrepancies found — spec fully fulfilled (Issue #38 scope).
 
 **Spec-gap re-run (2026-03-31, all-tasks-done trigger — tenth pass):** No new gaps found. Verified via Glob: 30 .test.tsx files (28 non-ui ✓, 2 ui/); 41 .stories.tsx files (28 non-ui ✓, 13 ui/); ci.yml present at .github/workflows/ci.yml ✓. The 3 pre-existing P2 gaps (loop.sh model default, on_start config block, spec-gap periodic scheduling) and 1 P3 gap (ProviderName union missing opencode) remain unchanged and out of scope for Issue #38. No P1 or P2 gaps exist within Issue #38 scope. spec-gap analysis: no discrepancies found — spec fully fulfilled (Issue #38 scope).
+
+**Spec-gap re-run (2026-03-31, all-tasks-done trigger — twelfth pass):** No new gaps found. Verified: 30 .test.tsx files (28 non-ui ✓, 2 ui/); 41 .stories.tsx files (28 non-ui ✓, 13 ui/); ci.yml confirmed present at .github/workflows/ci.yml ✓. No code changes since eleventh pass (only chore/QA commits). The 3 pre-existing P2 gaps (loop.sh model default, on_start config block, spec-gap periodic scheduling) remain open and out of scope for Issue #183. spec-gap analysis: no discrepancies found — spec fully fulfilled (Issue #183 scope).
 
 **Spec-gap re-run (2026-03-31, all-tasks-done trigger — eleventh pass):** No new gaps found. Verified: 30 .test.tsx files (28 non-ui ✓, 2 ui/); 41 .stories.tsx files (28 non-ui ✓, 13 ui/); ci.yml confirmed present at .github/workflows/ci.yml ✓; README finalizer prose all 6 agents ✓; README template list includes PROMPT_spec-review.md, PROMPT_final-qa.md, PROMPT_final-review.md ✓. Additional finding: `ProviderName` type union in `compile-loop-plan.ts` line 6 already includes `'opencode'` — the P3 gap noted in earlier passes is **resolved** (stale entry). The 3 pre-existing P2 gaps (loop.sh model default, on_start config block, spec-gap periodic scheduling) remain open and unchanged, out of scope for Issue #38. No P1 or P2 gaps within Issue #38 scope. spec-gap analysis: no discrepancies found — spec fully fulfilled (Issue #38 scope).
 
