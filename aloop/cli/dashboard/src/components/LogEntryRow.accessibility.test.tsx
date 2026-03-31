@@ -149,14 +149,13 @@ describe('LogEntryRow accessibility', () => {
     fireEvent.click(screen.getByRole('button', { name: /build/i }));
     // Click the image artifact link to open the lightbox
     const imgBtn = container.querySelector('button.text-blue-600');
-    if (imgBtn) {
-      fireEvent.click(imgBtn);
-      const closeBtn = screen.getByRole('button', { name: 'Close' });
-      expect(closeBtn.className).toContain('min-h-[44px]');
-      expect(closeBtn.className).toContain('min-w-[44px]');
-      expect(closeBtn.className).toContain('md:min-h-0');
-      expect(closeBtn.className).toContain('md:min-w-0');
-    }
+    expect(imgBtn).not.toBeNull();
+    fireEvent.click(imgBtn!);
+    const closeBtn = screen.getByRole('button', { name: 'Close' });
+    expect(closeBtn.className).toContain('min-h-[44px]');
+    expect(closeBtn.className).toContain('min-w-[44px]');
+    expect(closeBtn.className).toContain('md:min-h-0');
+    expect(closeBtn.className).toContain('md:min-w-0');
   });
 
   it('does not expand for non-expandable entries (running)', () => {

@@ -3,7 +3,7 @@
 ## Current Phase: Review
 
 ### In Progress
-- [ ] [review] Gate 2: `LogEntryRow.accessibility.test.tsx:346` — `if (imgBtn)` guard silently skips all 4 tap-target assertions if `container.querySelector('button.text-blue-600')` returns null (selector change or rendering issue). Test passes vacuously in that case. Replace the conditional with `expect(imgBtn).not.toBeNull()` + unconditional body to ensure the assertion actually runs. (priority: high)
+- [x] [review] Gate 2: `LogEntryRow.accessibility.test.tsx:152` — `if (imgBtn)` guard silently skips all 4 tap-target assertions if `container.querySelector('button.text-blue-600')` returns null (selector change or rendering issue). Test passes vacuously in that case. Replace the conditional with `expect(imgBtn).not.toBeNull()` + unconditional body to ensure the assertion actually runs. (priority: high)
 - [ ] [review] Gate 4: `AppView.tsx:854` — `import { findBaselineIterations, ArtifactComparisonDialog }` creates local bindings never used in AppView's own code (grep confirms only 2 matches in file: lines 853-854). The re-export on line 853 (`export { ... } from '@/components/artifacts/ArtifactComparisonDialog'`) is self-contained and requires no companion import. Remove line 854. (priority: medium)
 
 ### Up Next
