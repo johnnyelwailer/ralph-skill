@@ -34,3 +34,5 @@
 | TypeScript type-check | 2026-03-31 | 804b347c | PASS | tsc --noEmit clean; 464KB bundle built |
 | Unit test suite | 2026-03-31 | 1b2603f | PASS | 158 tests pass (21 test files); no regression post E2E fixture refresh + OpenCode docs commits |
 | TypeScript type-check | 2026-03-31 | 1b2603f | PASS | tsc --noEmit clean; no regression |
+| Unit test suite | 2026-03-31 | 60952f7 | PASS | 158 tests pass (21 test files); no regression — chore/docs-only commits since 1b2603f |
+| TypeScript type-check | 2026-03-31 | 60952f7 | PASS | tsc --noEmit clean; no regression |
