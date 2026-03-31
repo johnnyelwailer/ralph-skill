@@ -41,9 +41,11 @@ describe('App.tsx ActivityPanel, DocContent and HealthPanel coverage', () => {
     })));
     const row = screen.getByText('built something').closest('button');
     if (row) fireEvent.click(row);
-    const imgArtifact = await screen.findByRole('img', { name: 'a.png' });
-    expect(imgArtifact).toBeInTheDocument();
-    fireEvent.click(imgArtifact.closest('button')!);
+    // LogEntryRow renders artifact paths as text (button for images, span for files)
+    const imgBtn = await screen.findByText('a.png');
+    expect(imgBtn).toBeInTheDocument();
+    fireEvent.click(imgBtn);
+    // After clicking image artifact, verify the expanded artifact section also shows b.txt
     expect(await screen.findByText('b.txt')).toBeInTheDocument();
   });
 
