@@ -1,5 +1,29 @@
 # QA Log
 
+## QA Session — 2026-03-31 (final-qa, triggered by final-review, commit 4bdc643d9)
+
+### Test Environment
+- Commit: 4bdc643d9 (docs fix + chore/review commits only since last dynamic QA at f03537f9c)
+- Features tested: 3 (regression checks — only docs commit 4b2ac4a28 changed README steering-history → STEERING.md)
+
+### Results
+- PASS: TypeScript type-check (tsc --noEmit exit 0)
+- PASS: npm test (51 files, 632 tests all pass)
+- PASS: Storybook build (exit 0, 175 stories)
+
+### Bugs Filed
+(none)
+
+### Command Transcript
+```
+$ cd aloop/cli/dashboard && npm run type-check → tsc --noEmit exit 0
+$ npm test -- --run → 51 passed (51), 632 passed (632), exit 0
+$ npm run build-storybook → "Storybook build completed successfully", 175 stories in index.json
+$ git show 4b2ac4a28 → README.md: steering-history/ → STEERING.md (docs-only fix; STEERING.md confirmed present in e2e fixtures)
+```
+
+---
+
 ## QA Session — 2026-03-31 (final-qa, triggered by final-review, commit f03537f9c)
 
 ### Test Environment
