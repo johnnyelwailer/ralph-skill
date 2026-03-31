@@ -30,6 +30,8 @@
 **Pre-existing P2 spec-internal inconsistency (does not block this issue, spec doc needs updating):**
 - [spec-gap/P2] SPEC lines 717 and 775 (acceptance criteria in Proof and QA sections) reference a "9-step" default pipeline including proof in the cycle: `plan → build × 5 → proof → qa → review`. However, the SPEC body at lines 407–409 and 420–422 explicitly states "Proof does NOT run in the cycle — it's expensive and only meaningful as final evidence" and shows proof only in the finalizer. The `pipeline.yml` correctly implements the body text (proof in finalizer only). Fix: update SPEC ACs at lines 717 and 775 to remove proof from the cycle description and note proof runs in the finalizer only. (Spec is wrong, code is correct.)
 
+**Spec-gap re-run (2026-03-31, post-final-qa):** No new gaps found. Issue #38 implementation verified complete and spec-compliant. The 3 pre-existing P2 gaps below remain open and unresolved.
+
 **New spec-gap findings (2026-03-31):**
 
 - [spec-gap/P2] `aloop/bin/loop.sh` default claude model (`sonnet`) disagrees with `aloop/config.yml` and `aloop/bin/loop.ps1` (both default to `opus`). SPEC §"Global Configuration" says `config.yml` is the "single source of truth" for default model IDs and "Loop scripts and setup commands inherit from here." Files: `aloop/config.yml` line 21 (`claude: opus`), `aloop/bin/loop.sh` line 33 (`CLAUDE_MODEL="${ALOOP_CLAUDE_MODEL:-sonnet}"`), `aloop/bin/loop.ps1` line 34 (`ClaudeModel = 'opus'`). Fix: update `loop.sh` default to `opus` to match `config.yml` and `loop.ps1`.
