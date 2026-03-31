@@ -24,8 +24,8 @@ spec-gap analysis: no discrepancies found — spec fully fulfilled
 
 ## Review Findings — 2026-03-31
 
-- [ ] [review] Gate 1/Gate 3: Close buttons missing mobile tap target classes — `AppView.tsx:985` (ArtifactComparisonDialog close) and `LogEntryRow.tsx:344` (ImageLightbox close) both have `aria-label="Close"` but neither has `min-h-[44px] min-w-[44px] md:min-h-0 md:min-w-0`. SPEC-ADDENDUM.md line 240 requires ALL tap targets ≥ 44×44px. Add the tap target classes, and add a test that verifies the close button className contains `min-h-[44px]`. (priority: high)
-- [ ] [review] Gate 4: Circular module dependency — `LogEntryRow.tsx` imports `ArtifactComparisonDialog`, `ElapsedTimer`, and `findBaselineIterations` from `'../AppView'`, while `AppView.tsx` imports `LogEntryRow` from `'@/components/LogEntryRow'`. These three exports were not moved to separate files during the lib extraction refactoring. Fix: move `ElapsedTimer` and `ArtifactComparisonDialog` to `@/components/shared/` or `@/components/artifacts/`, and move `findBaselineIterations` to `@/lib/types` or `@/lib/format`; then update `LogEntryRow` to import from those lib/component paths instead of `'../AppView'`. (priority: medium)
+- [x] [review] Gate 1/Gate 3: Close buttons missing mobile tap target classes — FIXED in commit 71d90e4. Added `min-h-[44px] min-w-[44px] md:min-h-0 md:min-w-0` to both ArtifactComparisonDialog close (ArtifactComparisonDialog.tsx) and ImageLightbox close (LogEntryRow.tsx). Tests added.
+- [x] [review] Gate 4: Circular module dependency — FIXED in commit 71d90e4. Moved `ElapsedTimer` to `@/components/shared/ElapsedTimer.tsx`, moved `ArtifactComparisonDialog` + `findBaselineIterations` to `@/components/artifacts/ArtifactComparisonDialog.tsx`. LogEntryRow now imports from lib files, no longer from AppView.
 
 ## Spec Review — 2026-03-31
 
