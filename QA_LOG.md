@@ -684,3 +684,42 @@ npx tsc --noEmit --skipLibCheck → exit 0, no output
 
 rm -rf /tmp/aloop-test-install-4KIU9r
 ```
+
+---
+
+## QA Session — 2026-03-31 (Issue #177 — iter 15, final-qa triggered by final-review)
+
+### Test Environment
+- Binary under test: /tmp/aloop-test-install-YtHEKL/bin/aloop (version 1.0.0)
+- Head commit: 8b825a886 chore(review): PASS — gates 1-9 pass
+- Changes since iter 14 (419c7dd87): chore/docs only — iter 14 QA log (419c7dd87), spec-gap third pass (7457ae392), spec-review chore-log trigger (b24b8e7eb), review gates 1-9 pass (8b825a886); no code changes
+- Features tested: 5 (build, adapter.test.ts, process-requests.test.ts, orchestrate.test.ts, tsc)
+
+### Results
+- PASS: TypeScript build (npm run build) — exit 0
+- PASS: adapter.test.ts — 36/36 pass
+- PASS: process-requests.test.ts — 42/42 pass
+- PASS: orchestrate.test.ts — 352/379 pass, 27 fail (same pre-existing baseline; no regressions)
+- PASS: tsc --noEmit --skipLibCheck — exit 0, zero errors
+
+### Bugs Filed
+None — chore/docs-only changes since iter 14; all suites stable.
+
+### Regression Analysis
+- Iter 14 (28a1ca40a): 27 failures, 352 pass, 379 total
+- Iter 15 (8b825a886): 27 failures, 352 pass, 379 total — IDENTICAL, stable
+
+### Command Transcript
+```
+ALOOP_BIN=$(npm run --silent test-install -- --keep 2>/dev/null | tail -1)
+# → /tmp/aloop-test-install-YtHEKL/bin/aloop
+$ALOOP_BIN --version → 1.0.0
+
+npm run build → BUILD_EXIT:0
+npx tsx --test src/lib/adapter.test.ts → 36/36 pass, exit 0
+npx tsx --test src/commands/process-requests.test.ts → 42/42 pass, exit 0
+npx tsx --test src/commands/orchestrate.test.ts → 379 tests / 352 pass / 27 fail
+npx tsc --noEmit --skipLibCheck → exit 0, no output
+
+rm -rf /tmp/aloop-test-install-YtHEKL
+```

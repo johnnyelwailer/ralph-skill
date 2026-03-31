@@ -83,3 +83,8 @@
 | process-requests.ts full suite | 2026-03-31 | 28a1ca40a | PASS | 42/42 pass — stable |
 | orchestrate.test.ts full suite | 2026-03-31 | 28a1ca40a | PASS | 352/379 pass, 27 fail — identical pre-existing baseline; no regressions |
 | tsc --noEmit (non-test files) | 2026-03-31 | 28a1ca40a | PASS | Zero type errors; exit 0 |
+| TypeScript build (npm run build) | 2026-03-31 | 8b825a886 | PASS | Build clean exit 0 (final-qa iter 15) |
+| adapter.test.ts unit tests | 2026-03-31 | 8b825a886 | PASS | 36/36 pass — stable |
+| process-requests.ts full suite | 2026-03-31 | 8b825a886 | PASS | 42/42 pass — stable |
+| orchestrate.test.ts full suite | 2026-03-31 | 8b825a886 | PASS | 352/379 pass, 27 fail — identical pre-existing baseline; no regressions |
+| tsc --noEmit (non-test files) | 2026-03-31 | 8b825a886 | PASS | Zero type errors; exit 0 |
