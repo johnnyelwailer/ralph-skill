@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ChevronDown, ChevronRight, GitCommit, PanelLeftClose, PanelLeftOpen, Square, Zap } from 'lucide-react';
+import { ChevronDown, ChevronRight, PanelLeftClose } from 'lucide-react';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { SessionCard } from '@/components/session/SessionCard';
-import { StatusDot } from '@/components/shared/StatusDot';
+import { CollapsedSidebar } from './CollapsedSidebar';
+import { SidebarContextMenu } from './SidebarContextMenu';
 import type { CostSessionResponse, SessionSummary } from '@/lib/types';
 
 export interface SidebarProps {
@@ -107,32 +108,7 @@ export function Sidebar({
     };
   }, [contextMenuSessionId]);
 
-  if (collapsed) {
-    return (
-      <aside className="flex flex-col items-center border-r border-border bg-sidebar py-2 px-1 w-10 shrink-0">
-        <Tooltip>
-          <TooltipTrigger asChild>
-              <button type="button" aria-label="Expand sidebar" className="p-1 min-h-[44px] min-w-[44px] md:min-h-0 md:min-w-0 rounded hover:bg-accent text-muted-foreground hover:text-foreground transition-colors flex items-center justify-center" onClick={onToggle}>
-                <PanelLeftOpen className="h-4 w-4" />
-              </button>
-          </TooltipTrigger>
-          <TooltipContent side="right"><p>Expand sidebar (Ctrl+B)</p></TooltipContent>
-        </Tooltip>
-        <div className="mt-3 space-y-2">
-          {sessions.slice(0, 8).map((s) => (
-            <Tooltip key={s.id}>
-              <TooltipTrigger asChild>
-                <button type="button" className="block min-h-[44px] min-w-[44px] md:min-h-0 md:min-w-0 flex items-center justify-center" onClick={() => onSelectSession(s.id === 'current' ? null : s.id)}>
-                  <StatusDot status={s.isActive && s.status === 'running' ? 'running' : s.status} />
-                </button>
-              </TooltipTrigger>
-              <TooltipContent side="right"><p>{s.name} ({s.status})</p></TooltipContent>
-            </Tooltip>
-          ))}
-        </div>
-      </aside>
-    );
-  }
+  if (collapsed) return <CollapsedSidebar sessions={sessions} onSelectSession={onSelectSession} onToggle={onToggle} />;
 
   const isSelected = (s: SessionSummary) =>
     selectedSessionId === null ? sessions.indexOf(s) === 0 : s.id === selectedSessionId;
@@ -208,47 +184,14 @@ export function Sidebar({
         </div>
       </ScrollArea>
       {contextMenuSessionId && (
-        <div
-          role="menu"
-          className="fixed z-50 min-w-[170px] rounded-md border bg-popover p-1 text-popover-foreground shadow-md"
-          style={{ left: contextMenuPos.x, top: contextMenuPos.y }}
-          onPointerDown={(event) => event.stopPropagation()}
-        >
-          <button
-            type="button"
-            className="w-full flex items-center gap-2 rounded-sm px-2 py-1.5 min-h-[44px] md:min-h-0 text-sm text-left hover:bg-accent"
-            onClick={() => {
-              const selectId = contextMenuSessionId === 'current' ? null : contextMenuSessionId;
-              onSelectSession(selectId);
-              onStopSession?.(selectId, false);
-              setContextMenuSessionId(null);
-            }}
-          >
-            <Square className="h-3.5 w-3.5" /> Stop after iteration
-          </button>
-          <button
-            type="button"
-            className="w-full flex items-center gap-2 rounded-sm px-2 py-1.5 min-h-[44px] md:min-h-0 text-sm text-left text-destructive hover:bg-accent"
-            onClick={() => {
-              const selectId = contextMenuSessionId === 'current' ? null : contextMenuSessionId;
-              onSelectSession(selectId);
-              onStopSession?.(selectId, true);
-              setContextMenuSessionId(null);
-            }}
-          >
-            <Zap className="h-3.5 w-3.5" /> Kill immediately
-          </button>
-          <button
-            type="button"
-            className="w-full flex items-center gap-2 rounded-sm px-2 py-1.5 min-h-[44px] md:min-h-0 text-sm text-left hover:bg-accent"
-            onClick={() => {
-              onCopySessionId?.(contextMenuSessionId);
-              setContextMenuSessionId(null);
-            }}
-          >
-            <GitCommit className="h-3.5 w-3.5" /> Copy session ID
-          </button>
-        </div>
+        <SidebarContextMenu
+          sessionId={contextMenuSessionId}
+          position={contextMenuPos}
+          onSelectSession={onSelectSession}
+          onStopSession={onStopSession}
+          onCopySessionId={onCopySessionId}
+          onClose={() => setContextMenuSessionId(null)}
+        />
       )}
     </aside>
   );

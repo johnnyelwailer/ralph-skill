@@ -9,10 +9,10 @@
   - `vitest.config.ts` already covers `src/components/**/*.tsx` — no config change needed
   - After extraction, `Header.tsx` is 158 LOC; all 569 tests pass
 
-- [ ] Split `Sidebar.tsx` (255 LOC) below 200-line limit (priority: high)
-  - Extract context menu (lines 210–252) → `src/components/layout/SidebarContextMenu.tsx`
-  - Extract collapsed sidebar panel (lines 111–135) → `src/components/layout/CollapsedSidebar.tsx`, or combine both into one extraction if needed
-  - `Sidebar.tsx` must stay <200 LOC after extraction; update imports; verify tests pass
+- [x] Split `Sidebar.tsx` (255 LOC) below 200-line limit (priority: high)
+  - Extracted context menu → `src/components/layout/SidebarContextMenu.tsx`
+  - Extracted collapsed sidebar → `src/components/layout/CollapsedSidebar.tsx`
+  - `Sidebar.tsx` is now 198 LOC; all 569 tests pass
 
 ### Up Next
 
