@@ -94,7 +94,7 @@ TypeScript fixes verified in code — no further gaps:
 
 All requirements satisfied. No new findings.
 
-### Spec Review — APPROVED (docs trigger re-run 6, 2026-03-31) [reviewed: all gates pass]
+### Spec Review — APPROVED (docs trigger re-run 6, 2026-03-31) [reviewed: all gates pass] [final-review: tenth pass — gates 1-9 pass]
 
 Re-verified after docs commit `586afd444` (document --in-place, --watch, and --non-interactive flags):
 

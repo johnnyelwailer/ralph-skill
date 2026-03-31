@@ -526,3 +526,60 @@ No dependency changes.
 - `README.md:52`: `agent/trunk` default + `--trunk` override — accurate per `index.ts:150` ✓
 
 ---
+
+## Review — 2026-03-31 — commits 7d59ffa79..bc1b12b5a (final-review, spec-review trigger — tenth pass)
+
+**Verdict: PASS** (0 findings)
+**Scope:** `README.md` (commit `586afd444` — document --in-place, --watch, and --non-interactive flags); commits `be1188dc8` and `bc1b12b5a` are spec-gap/review bookkeeping only (TODO.md).
+
+**Prior findings resolution:**
+- All prior findings remain resolved. No regressions introduced.
+
+### Gate 1 (Spec Compliance) — PASS
+
+Three README documentation additions verified against SPEC and implementation:
+- `--in-place`: SPEC line 913 defines it; `start.ts:783` implements `!options.inPlace && worktreeDefault` — README code example accurate ✓
+- `--watch`: SPEC line 1243 AC defines it; `status.ts:87,102` implements with `setInterval` — README table entry accurate ✓
+- `--non-interactive`: SPEC line 946 defines it; `setup.ts:127-128` implements it — README table entry accurate ✓
+
+All Issue #38 ACs remain satisfied (unchanged since prior PASS reviews):
+- `.github/workflows/ci.yml`: triggers push+PR master/agent/trunk, Node 22, `npm ci` + `npm test` in `aloop/cli/dashboard` ✓
+- SPEC-ADDENDUM line 122: 28 non-ui components have `.test.tsx` ✓
+- SPEC-ADDENDUM line 123: 28 non-ui components have `.stories.tsx` ✓
+- README lines 22–28: all 6 finalizer agents listed (Spec-gap, Docs, Spec-review, Final-review, Final-qa, Proof) ✓
+- README line 246: `PROMPT_spec-review.md` in template list ✓
+- TypeScript fixes intact: `afterEach` at `Sidebar.test.tsx:3`; `iterationStartedAt` in `ActivityPanel.test.tsx:14` baseProps ✓
+
+### Gate 2 (Test Depth) — N/A
+
+No test code changed.
+
+### Gate 3 (Coverage) — N/A
+
+No code branches added.
+
+### Gate 4 (Code Quality) — PASS
+
+Three targeted README additions — minimal, non-redundant, accurate. No dead content.
+
+### Gate 5 (Integration Sanity) — PASS
+
+Documentation-only change. No code paths affected. Last confirmed dynamic run at `6650dcf30` (tsc exit 0, 632 tests pass); no code changed since.
+
+### Gate 6 (Proof) — N/A
+
+Documentation-only. Skipping proof is the correct outcome.
+
+### Gate 7 (Runtime Layout) — N/A
+
+No CSS or layout changes.
+
+### Gate 8 (Version Compliance) — N/A
+
+No dependency changes.
+
+### Gate 9 (Documentation) — PASS
+
+This commit IS the documentation change. All three additions verified against SPEC and CLI source. Concrete observation: `start.ts:783` uses `!options.inPlace && worktreeDefault` — the README example `aloop start --in-place --provider claude` correctly describes skip-worktree behavior.
+
+---

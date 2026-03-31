@@ -4,6 +4,7 @@
 - Creates 6 missing `.test.tsx` files for dashboard components (CollapsedSidebar, SidebarContextMenu, ActivityPanel, ArtifactComparisonHeader, DiffOverlayView, SideBySideView)
 - Creates 13 missing `.stories.tsx` files for dashboard components (all export ≥2 named stories)
 - Fixes TypeScript errors in ActivityPanel.test.tsx and Sidebar.test.tsx so `npm run type-check` passes clean
+- Documents three previously undocumented CLI flags: `aloop start --in-place`, `aloop status --watch`, `aloop setup --non-interactive`
 
 ## Files Changed
 
@@ -41,6 +42,7 @@
 - [x] No browser install required (jsdom configured, no Playwright in CI) — verified by reading ci.yml and vitest.config.ts
 - [x] README finalizer prose lists all 6 agents (Spec-gap, Docs, Spec-review, Final-review, Final-qa, Proof) — verified at lines 22–28
 - [x] README template list includes PROMPT_spec-review.md, PROMPT_final-qa.md, PROMPT_final-review.md — verified at lines 246–248
+- [x] `--in-place`, `--watch`, `--non-interactive` flags documented — verified against SPEC lines 913, 1243, 946 and CLI source `start.ts:783`, `status.ts:102`, `setup.ts:127-128`
 
 ## Proof Artifacts
 
