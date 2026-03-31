@@ -609,3 +609,36 @@ No UI changes, no new dependencies, no user-facing behavior changed, no docs req
 **Issue #177 is complete.** All 15 TASK_SPEC ACs satisfied. Spec-review PASS at `09f40e7e8`. Pipeline clear for merge.
 
 ---
+
+## Review — 2026-03-31 — commits 57f728a68..cce6f2855 (final-review, triggered by spec-review)
+
+**Verdict: PASS** (0 findings)
+**Scope:** `README.md` (single-line docs correction — only change since last review)
+
+### Gate 1 — PASS (spec compliance unchanged)
+
+Sole change: `e7f44d93b` corrects README.md description of auth failure behavior. Old text claimed auth failures "still auto-retry with longer cooldowns (10min → 30min → 1hr)"; new text correctly states auth failures set the provider to **degraded** status with no automatic recovery. This aligns README with actual `loop.sh` implementation and SPEC.md. All 15 TASK_SPEC ACs remain satisfied — confirmed by spec-review at `cce6f2855`.
+
+### Gates 2–4 — PASS
+
+No production code or test changes. No dead code introduced.
+
+### Gate 5 — PASS
+
+No code changes; test baseline unchanged (1160 pass, 35 pre-existing fail at `57f728a68`).
+
+### Gate 6 — PASS
+
+Documentation-only change — no observable output to prove; skip correct.
+
+### Gate 7 — N/A (no UI changes)
+
+### Gate 8 — N/A (no dependency changes)
+
+### Gate 9 — PASS
+
+**Observation**: Gate 9 — `README.md` auth failure description corrected at `e7f44d93b:133`. New text accurately describes degraded status with no auto-recovery, which matches the `loop.sh` implementation. This is the improvement Gate 9 checks for.
+
+**Issue #177 is complete.** Pipeline clear for merge.
+
+---
