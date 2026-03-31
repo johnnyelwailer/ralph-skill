@@ -30,7 +30,7 @@
 - `aloop/cli/dashboard/src/components/shared/QACoverageBadge.test.tsx` — new unit tests (93.93% branch coverage)
 - `aloop/cli/dashboard/src/components/shared/QACoverageBadge.stories.tsx` — new Storybook stories
 - `aloop/cli/dashboard/src/components/layout/Sidebar.test.tsx` — TS fix: add `afterEach` to vitest imports
-- `README.md` — correct CLI flag example, add missing stories list, fix OpenCode agent model IDs, fix Storybook component list (remove non-existent AppShell, add ArtifactViewer/ProviderHealth/CostDisplay), complete finalizer agent prose to all 6 agents, add PROMPT_spec-review.md/PROMPT_final-qa.md/PROMPT_final-review.md to template list, add loop-plan.json/queue//requests/ to session directory architecture
+- `README.md` — correct CLI flag example, add missing stories list, fix OpenCode agent model IDs, fix Storybook component list (remove non-existent AppShell, add ArtifactViewer/ProviderHealth/CostDisplay), complete finalizer agent prose to all 6 agents, add PROMPT_spec-review.md/PROMPT_final-qa.md/PROMPT_final-review.md to template list, add loop-plan.json/queue//requests/ to session directory architecture, correct sidebar description (grouped by project with active/recent separation, not a 4-level hierarchy)
 
 ## Verification
 

@@ -767,3 +767,64 @@ No dependency changes.
 This IS the documentation change. The three additions fill a real gap: these runtime files/dirs are central to the inner loop protocol but were previously absent from the README architecture diagram. Content verified accurate per SPEC.
 
 ---
+
+## Review — 2026-03-31 — commits 612415ca3..95b69712f (final-review, spec-review trigger — twenty-first pass)
+
+**Verdict: PASS** (0 findings)
+**Scope:** `README.md` (commit `45a82565c` — corrects sidebar description from 4-level hierarchy to "grouped by project, with active/recent session separation"); commit `95b69712f` is review bookkeeping only (TODO.md, +10 lines spec-gap re-run note).
+
+**Prior findings resolution:**
+- All prior findings remain resolved. No regressions introduced.
+- Process note: The 20th review (95b69712f) correctly judged `45a82565c` as PASS but failed to append a REVIEW_LOG.md entry — only TODO.md was updated. This entry retroactively covers that scope.
+
+### Gate 1 (Spec Compliance) — PASS
+
+README change verified against `Sidebar.tsx` implementation:
+- Old: "Session sidebar with hierarchy (repo > project > issue > session)" — inaccurate, no such 4-level hierarchy exists in the code
+- New: "Session sidebar grouped by project, with active/recent session separation"
+- `Sidebar.tsx:43–47`: groups `active` sessions by `s.projectName` — "grouped by project" accurate ✓
+- `Sidebar.tsx:30–41`: splits sessions into `active` (running or within 24h) vs `older` — "active/recent session separation" accurate ✓
+
+Concrete observation: `Sidebar.tsx:36` uses `s.isActive || s.status === 'running' || age < cutoff` (24h cutoff) to define active/recent sessions. The new README description matches this logic precisely.
+
+All Issue #183 ACs remain satisfied (unchanged since prior PASS reviews):
+- `.github/workflows/ci.yml`: triggers push+PR master/agent/trunk, Node 22, `npm ci` + `npm test` in `aloop/cli/dashboard` ✓
+- SPEC-ADDENDUM line 122: 28 non-ui components have `.test.tsx` ✓
+- SPEC-ADDENDUM line 123: 28 non-ui components have `.stories.tsx` ✓
+- README lines 22–28: all 6 finalizer agents listed ✓
+- README line 246: `PROMPT_spec-review.md` in template list ✓
+- TypeScript fixes intact ✓
+
+### Gate 2 (Test Depth) — N/A
+
+No tests changed.
+
+### Gate 3 (Coverage) — N/A
+
+No code branches added.
+
+### Gate 4 (Code Quality) — PASS
+
+One-line README edit. Clean, no dead content introduced.
+
+### Gate 5 (Integration Sanity) — PASS
+
+Documentation-only change — zero regression risk. Last confirmed dynamic run: `tsc --noEmit` exit 0, 632 tests pass. No code changed since.
+
+### Gate 6 (Proof) — N/A
+
+Documentation-only change. Skipping is the correct outcome.
+
+### Gate 7 (Runtime Layout) — N/A
+
+No CSS or layout changes.
+
+### Gate 8 (Version Compliance) — N/A
+
+No dependency changes.
+
+### Gate 9 (Documentation) — PASS
+
+This IS the documentation fix. Sidebar description corrected from non-existent 4-level hierarchy to accurate project-grouping description. Verified against `Sidebar.tsx` lines 27–49. `PR_DESCRIPTION.md` updated to include this correction.
+
+---

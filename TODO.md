@@ -291,6 +291,15 @@ Re-verified after docs trigger (fifth spec-review pass):
 
 No new gaps found. Issue #38 implementation fully spec-compliant.
 
+### Spec Review — APPROVED (spec-review trigger, 2026-03-31 — twenty-first pass) [reviewed: gates 1-9 pass]
+
+Re-verified after docs commit `45a82565c` (correct sidebar description to match implementation):
+
+- `README.md` sidebar description: "Session sidebar grouped by project, with active/recent session separation" — verified accurate against `Sidebar.tsx:27–49` (groups by projectName, active/older split with 24h cutoff) ✓
+- All Issue #183 ACs remain satisfied (CI, .test.tsx, .stories.tsx, TypeScript, README) ✓
+
+No new gaps found. Docs commit is spec-compliant.
+
 ### Notes
 - No `.github/workflows/` directory or `ci.yml` exists on master or this branch
 - The spec says \"Dashboard deps should already be installed from the core workflow\" but that core workflow hasn't been created yet — we need to include basic setup (checkout + Node + npm ci) so the dashboard test step can run
