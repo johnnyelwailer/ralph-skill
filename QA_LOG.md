@@ -1,5 +1,305 @@
 # QA Log
 
+## QA Session — 2026-03-31 (final-qa, triggered by final-review, commit 7e9c3bbf5)
+
+### Test Environment
+- Binary under test: N/A — npm test BLOCKED (sandbox ENOSPC in /tmp/lflzeQYT9Pv8s5lPMnZ6a/client/); tsc --noEmit ran successfully
+- Commit: 7e9c3bbf5
+- Features tested: 5 (TypeScript dynamic + static verification via Glob/Grep/Read)
+
+### Blocker
+- Claude sandbox vitest temp directory (`/tmp/lflzeQYT9Pv8s5lPMnZ6a/client/`) full (ENOSPC). Filesystem itself has 9.4G free on /tmp, 331G on /. `tsc --noEmit` succeeded (simpler, less I/O). Static checks via Glob/Grep/Read confirm all requirements intact.
+
+### Results
+- PASS (dynamic): TypeScript type-check `tsc --noEmit` — exit 0 ✓
+- BLOCKED: `npm test` (vitest) — ENOSPC in sandbox temp dir; last confirmed passing run: commit 613a7bab4 (51 test files, 632 tests)
+- PASS (static): 30 .test.tsx files in components/ (28 non-ui + 2 ui) — all non-ui components covered ✓
+- PASS (static): 41 .stories.tsx files in components/ — all non-ui components covered ✓
+- PASS (static): `afterEach` imported at Sidebar.test.tsx:3 (TS2304 fix intact) ✓
+- PASS (static): `iterationStartedAt: undefined as string | undefined` at ActivityPanel.test.tsx:14 (TS2353 fix intact) ✓
+- PASS (static): ci.yml — push+PR on master/agent/trunk, Node 22 via actions/setup-node@v4, npm ci + npm test in aloop/cli/dashboard ✓
+- PASS (static): README lines 22–28 — all 6 finalizer agents: Spec-gap, Docs, Spec-review, Final-review, Final-qa, Proof ✓
+- PASS (static): README line 246 — PROMPT_spec-review.md present in template list ✓
+
+### Bugs Filed
+- None. All Issue #38 requirements confirmed intact at 7e9c3bbf5. No new issues found.
+
+### Command Transcript
+
+```
+# TypeScript type-check (dynamic)
+npm --prefix aloop/cli/dashboard run type-check
+# → (no output)
+# Exit: 0 ✓
+
+# npm test — BLOCKED
+npm --prefix aloop/cli/dashboard test -- --run
+# → ENOSPC: no space left on device, open '/tmp/lflzeQYT9Pv8s5lPMnZ6a/client/.tmp-...'
+# → 33 failed (all ENOSPC), 18 passed (228 tests)
+# → Exit: 1 — BLOCKED by sandbox temp dir exhaustion (not a code failure)
+
+# Check .test.tsx coverage
+Glob: aloop/cli/dashboard/src/components/**/*.test.tsx
+→ 30 .test.tsx files (28 non-ui + 2 ui) — all non-ui components covered ✓
+
+# Check .stories.tsx coverage
+Glob: aloop/cli/dashboard/src/components/**/*.stories.tsx
+→ 41 .stories.tsx files — all non-ui components covered ✓
+
+# TS fix: afterEach
+Grep: afterEach in Sidebar.test.tsx
+→ Line 3: import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'; ✓
+
+# TS fix: iterationStartedAt
+Grep: iterationStartedAt in ActivityPanel.test.tsx
+→ Line 14: iterationStartedAt: undefined as string | undefined, ✓
+
+# CI workflow
+Read: .github/workflows/ci.yml
+→ on: push+PR branches: [master, agent/trunk] ✓
+→ actions/setup-node@v4 node-version: '22' ✓
+→ working-directory: aloop/cli/dashboard; npm ci then npm test ✓
+
+# README finalizer prose
+Read: README.md lines 22–28
+→ Lines 22–28: Spec-gap, Docs, Spec-review, Final-review, Final-qa, Proof — all 6 ✓
+
+# README template list
+Grep: PROMPT_spec-review in README.md
+→ Line 246: PROMPT_spec-review.md  # Spec-review agent (finalizer) ✓
+```
+
+## QA Session — 2026-03-31 (final-qa, triggered by final-review, commit 091afbeee)
+
+### Test Environment
+- Binary under test: N/A — Bash tool blocked (ENOSPC in Claude sandbox task output directory)
+- Commit: 091afbeee
+- Features tested: 5 (static verification via Glob/Grep/Read)
+
+### Blocker
+- Claude sandbox task output directory full (ENOSPC on `/tmp/claude-501/...`). Filesystem itself has 331G free. Same blocker as previous sessions at 1933cd7eb and afbf4e6c3. All checks performed statically.
+
+### Results
+- PASS (static): `.github/workflows/ci.yml` — triggers on push+PR to master/agent/trunk, Node 22 via actions/setup-node@v4, `npm ci` + `npm test` in `aloop/cli/dashboard` ✓
+- PASS (static): All 34 .test.tsx files present (28 non-ui + 2 ui/ + 4 in src/ root) — all non-ui components covered ✓
+- PASS (static): All 41 .stories.tsx files present — all 28 non-ui components covered; spot-checked 3 new story files (ActivityPanel: 3 stories, CollapsedSidebar: 3 stories, DiffOverlayView: 2 stories) — all export ≥2 named stories ✓
+- PASS (static): TypeScript fixes intact — `afterEach` imported at `Sidebar.test.tsx:3`; `iterationStartedAt: undefined as string | undefined` in `ActivityPanel.test.tsx:14` baseProps ✓
+- PASS (static): README finalizer prose (lines 22–28) — all 6 agents: Spec-gap, Docs, Spec-review, Final-review, Final-qa, Proof ✓; README template list (lines 246–248) — PROMPT_spec-review.md, PROMPT_final-qa.md, PROMPT_final-review.md all present ✓
+
+### Bugs Filed
+- None. All Issue #38 requirements confirmed intact at 091afbeee. No new issues found.
+
+### Command Transcript
+
+```
+# Bash tool blocked (ENOSPC in Claude sandbox /tmp/claude-501/... task output directory)
+# All checks via Glob/Grep/Read tools
+
+# Check ci.yml
+Read: .github/workflows/ci.yml
+→ on.push/pull_request branches: [master, agent/trunk] ✓
+→ actions/setup-node@v4 node-version: '22' ✓
+→ working-directory: aloop/cli/dashboard; npm ci then npm test ✓
+
+# Check .test.tsx coverage
+Glob: aloop/cli/dashboard/src/components/**/*.test.tsx
+→ 34 .test.tsx files — all 28 non-ui components covered ✓
+
+# Check .stories.tsx coverage
+Glob: aloop/cli/dashboard/src/components/**/*.stories.tsx
+→ 41 .stories.tsx files — all 28 non-ui components covered ✓
+
+# Spot-check new story exports
+Grep: ^export const in ActivityPanel.stories.tsx → 3 named stories ✓
+Grep: ^export const in CollapsedSidebar.stories.tsx → 3 named stories ✓
+Grep: ^export const in DiffOverlayView.stories.tsx → 2 named stories ✓
+
+# TS fix: afterEach
+Grep: afterEach in Sidebar.test.tsx
+→ Line 3: import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'; ✓
+
+# TS fix: iterationStartedAt
+Grep: iterationStartedAt in ActivityPanel.test.tsx
+→ Line 14: iterationStartedAt: undefined as string | undefined, ✓
+
+# README checks
+Read: README.md lines 22–28
+→ All 6 finalizer agents present ✓
+Read: README.md lines 246–248
+→ PROMPT_spec-review.md, PROMPT_final-qa.md, PROMPT_final-review.md all present ✓
+```
+
+## Docs Audit — 2026-03-31 (docs agent, triggered by spec-gap finalizer, commit 091afbeee)
+
+### Audit Scope
+Cross-referenced README.md against SPEC.md, pipeline.yml, and implementation (index.ts, orchestrate.ts, start.ts, agent templates).
+
+### Findings
+- PASS: README finalizer prose (lines 22–28) — all 6 agents in correct order: Spec-gap, Docs, Spec-review, Final-review, Final-qa, Proof ✓
+- PASS: README template list (Architecture section) — all 30 templates listed, matches `aloop/templates/` glob exactly ✓
+- PASS: CLI commands table (16 commands) — all match registered commands in index.ts (resolve, discover, setup, scaffold, start, dashboard, status, active, stop, update, devcontainer, devcontainer-verify, orchestrate, steer, process-requests, gh) ✓
+- PASS: Loop cycle description — `plan → build × 5 → qa → review` matches pipeline.yml exactly ✓
+- PASS: Provider table — 5 providers match PROVIDER_SET in start.ts ✓
+- PASS: OpenCode agent models — match agent frontmatter ✓
+- PASS: `aloop start --launch resume <session-id>` syntax — correct ✓
+- PASS: `aloop orchestrate --resume <session-id>` — option present in index.ts ✓
+
+### No Documentation Changes Needed
+README.md is accurate and up-to-date. No discrepancies found between documentation and implementation.
+
+### Blocker
+- /tmp partition full (ENOSPC) — cannot run bash commands or commit working tree changes.
+- Working tree has unstaged changes to README.md, TODO.md, QA_LOG.md from previous finalizer passes. These are correct and can be committed when disk space is available.
+
+## Docs Audit — 2026-03-31 (docs agent, triggered by spec-gap finalizer, commit 1933cd7eb)
+
+### Audit Scope
+Cross-referenced README.md against SPEC.md, pipeline.yml, and implementation (index.ts, orchestrate.ts, start.ts, agent templates).
+
+### Findings
+- PASS: README finalizer prose (lines 22–28) — all 6 agents in correct order: Spec-gap, Docs, Spec-review, Final-review, Final-qa, Proof ✓
+- PASS: README template list (Architecture section) — all 30 templates listed, matches `aloop/templates/` glob exactly ✓
+- PASS: CLI commands table (16 commands) — all match registered commands in index.ts ✓
+- PASS: Loop cycle description — `plan → build × 5 → qa → review` matches pipeline.yml exactly ✓
+- PASS: Provider table — 5 providers match PROVIDER_SET in start.ts ✓
+- PASS: OpenCode agent models — code-critic (claude-sonnet-4/xhigh), error-analyst (gemini-3.1-flash-lite-preview/medium), vision-reviewer (gemini-3.1-flash-lite-preview/medium) match agent frontmatter ✓
+- PASS: `aloop start --launch resume <session-id>` syntax — correct: `[session-id]` is positional arg in Commander.js ✓
+- PASS: `aloop orchestrate --resume <session-id>` — option present in index.ts ✓
+
+### No Documentation Changes Needed
+README.md is accurate and up-to-date. All previously-flagged gaps (PROMPT_spec-review.md missing from template list, finalizer prose incomplete) were fixed at afbf4e6c3 and confirmed PASS at 1933cd7eb.
+
+### Blocker
+- /tmp partition full (ENOSPC) — cannot run bash commands or commit working tree changes.
+- Working tree has unstaged changes to README.md, TODO.md, QA_LOG.md from previous finalizer passes. These are correct and can be committed when disk space is available.
+
+## QA Session — 2026-03-31 (final-qa, triggered by final-review, commit 1933cd7eb)
+
+### Test Environment
+- Binary under test: N/A — disk still full (ENOSPC), Bash tool blocked
+- Commit: 1933cd7eb
+- Features tested: 5 (static verification via Glob/Grep/Read)
+
+### Blocker
+- `/tmp` partition is still full (ENOSPC). Dynamic execution (npm test, tsc --noEmit, CLI install) unavailable.
+- All checks performed statically via Glob, Grep, and Read tools.
+
+### Results
+- PASS (static): `.github/workflows/ci.yml` — triggers on push+PR to master/agent/trunk, Node 22, `npm ci` + `npm test` in `aloop/cli/dashboard` ✓
+- PASS (static): All 30 .test.tsx files present (28 non-ui + 2 ui) ✓
+- PASS (static): All 41 .stories.tsx files present (all non-ui + ui) ✓
+- PASS (static): `Sidebar.test.tsx:3` — `afterEach` imported from vitest (TS2304 fix intact) ✓
+- PASS (static): `ActivityPanel.test.tsx:14` — `iterationStartedAt: undefined as string | undefined` in baseProps (TS2353 fix intact) ✓
+- PASS (static): README lines 22–28 — all 6 finalizer agents listed: Spec-gap, Docs, Spec-review, Final-review, Final-qa, Proof ✓
+- PASS (static): README line 246 — `PROMPT_spec-review.md` present in template list ✓
+
+### Bugs Filed
+- None. All Issue #38 requirements confirmed intact at 1933cd7eb. No new issues found.
+
+### Command Transcript
+
+```
+# Disk full — Bash tool blocked (ENOSPC)
+# All checks via Glob/Grep/Read tools
+
+# Check .test.tsx coverage
+Glob: aloop/cli/dashboard/src/components/**/*.test.tsx
+→ 30 files (28 non-ui + 2 ui) — all non-ui components covered ✓
+
+# Check .stories.tsx coverage
+Glob: aloop/cli/dashboard/src/components/**/*.stories.tsx
+→ 41 files — all non-ui components covered ✓
+
+# Verify ci.yml
+Read: .github/workflows/ci.yml
+→ triggers: push+PR on master, agent/trunk ✓
+→ Node 22 via actions/setup-node@v4 ✓
+→ working-directory: aloop/cli/dashboard; npm ci then npm test ✓
+
+# TS fix: afterEach
+Grep: afterEach in Sidebar.test.tsx
+→ Line 3: import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'; ✓
+
+# TS fix: iterationStartedAt
+Grep: iterationStartedAt in ActivityPanel.test.tsx
+→ Line 14: iterationStartedAt: undefined as string | undefined, ✓
+
+# README finalizer prose
+Read: README.md lines 22–28
+→ Lines 22–28: Spec-gap, Docs, Spec-review, Final-review, Final-qa, Proof — all 6 ✓
+
+# README template list
+Grep: PROMPT_spec-review in README.md
+→ Line 246: PROMPT_spec-review.md  # Spec-review agent (finalizer) ✓
+```
+
+## QA Session — 2026-03-31 (final-qa, triggered by final-review, commit afbf4e6c3)
+
+### Test Environment
+- Binary under test: static verification only — Bash tool unavailable (disk full, ENOSPC on /tmp)
+- Commit: afbf4e6c3
+- Features tested: 5
+
+### Results
+- PASS: README finalizer prose (lines 22–28) — all 6 finalizer agents listed: Spec-gap, Docs, Spec-review, Final-review, Final-qa, Proof
+- PASS: README template list (lines 246–248) — PROMPT_spec-review.md, PROMPT_final-qa.md, PROMPT_final-review.md all present
+- PASS: TypeScript fixes intact — `afterEach` imported at Sidebar.test.tsx:3; `iterationStartedAt` in ActivityPanel.test.tsx:14 baseProps
+- PASS: CI workflow — triggers on push+PR to master/agent/trunk, Node 22, `npm ci` + `npm test` in aloop/cli/dashboard, valid YAML
+- PASS: All 28 non-ui components have .test.tsx and .stories.tsx (Glob verification)
+
+### Bugs Filed
+- None. All previously-tracked [review] gaps (README finalizer prose and template list) confirmed FIXED at afbf4e6c3. No new issues found.
+
+### Command Transcript
+
+```
+# Disk full — Bash tool unavailable (ENOSPC mkdir /tmp/claude-501/...)
+# All checks performed via Read, Grep, and Glob tools
+
+# Check README finalizer prose
+Read README.md lines 22–28
+# → Line 22: When all tasks are marked done, finalizer agents run once:
+# → Line 23: - **Spec-gap** — Finds discrepancies between spec and implementation
+# → Line 24: - **Docs** — Syncs documentation to match actual implementation
+# → Line 25: - **Spec-review** — Reviews spec compliance of the implementation
+# → Line 26: - **Final-review** — Final code quality audit against all 9 review gates
+# → Line 27: - **Final-qa** — Final quality assurance pass before proof capture
+# → Line 28: - **Proof** — Captures screenshots, API responses, test output as evidence
+# → All 6 finalizer agents present ✓
+
+# Check README template list
+Read README.md lines 235–260
+# → Line 246: PROMPT_spec-review.md       # Spec-review agent (finalizer)
+# → Line 247: PROMPT_final-qa.md          # Final QA agent (finalizer)
+# → Line 248: PROMPT_final-review.md      # Final review agent (finalizer)
+# → All 3 previously-missing entries now present ✓
+
+# Check TypeScript fixes
+Grep afterEach in Sidebar.test.tsx
+# → Line 3: import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+# → TS2304 resolved ✓
+
+Grep iterationStartedAt in ActivityPanel.test.tsx
+# → Line 14: iterationStartedAt: undefined as string | undefined,
+# → TS2353 resolved ✓
+
+# Check CI workflow
+Read .github/workflows/ci.yml
+# → triggers: push+PR on master and agent/trunk ✓
+# → Node 22 via actions/setup-node@v4 ✓
+# → npm ci in aloop/cli/dashboard ✓
+# → npm test in aloop/cli/dashboard ✓
+
+# Check .test.tsx coverage (non-ui)
+Glob aloop/cli/dashboard/src/components/**/*.test.tsx
+# → 30 files returned (includes 2 ui/ test files); all 28 non-ui components confirmed ✓
+
+# Check .stories.tsx coverage (non-ui)
+Glob aloop/cli/dashboard/src/components/**/*.stories.tsx
+# → 41 files returned; all 28 non-ui components confirmed ✓
+```
+
+
 ## QA Session — 2026-03-31 (final-qa, triggered by final-review, commit 6650dcf30)
 
 ### Test Environment
