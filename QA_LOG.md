@@ -58,6 +58,52 @@ $ grep -rn "github\.com" src/commands/orchestrate.ts src/commands/process-reques
 
 ---
 
+## QA Session — 2026-03-31 (iteration 13 / final-qa)
+
+### Test Environment
+- Working dir: aloop/cli
+- Commit under test: 57f728a68
+- New commits since iter 12: runTriageMonitorCycle regression fix, spec-gap analysis, spec-review (2nd pass), review gates 1-9 pass
+- Features tested: 5 test targets (re-verification at current HEAD)
+
+### Results
+- PASS: TypeScript build (npm run build) — exit 0
+- PASS: adapter.test.ts — 36/36 pass (+1 new test vs iter 12)
+- PASS: process-requests.ts full suite — 42/42 pass (+19 new tests vs iter 12)
+- PASS: orchestrate.test.ts — 352/379 pass, 27 fail — pre-existing baseline restored; iter 12 regression fixed
+- PASS: tsc --noEmit — zero type errors; exit 0
+
+### Bugs Filed
+(none — all previously filed bugs resolved; no new issues found)
+
+### Regression Verification
+- iter 12 regression: runTriageMonitorCycle adapter.listComments subtests 3+4 now PASS at 57f728a68
+- Pre-existing baseline: 27 failures confirmed unchanged (orchestrate.test.ts); same failing suites as iter 11
+
+### Command Transcript
+```
+$ npm run build
+→ EXIT: 0 (full build: dashboard vite, esbuild server, shebang, templates, bin, agents)
+
+$ npx tsx --test src/lib/adapter.test.ts
+# tests 36 / pass 36 / fail 0
+
+$ npx tsx --test src/commands/process-requests.test.ts
+# tests 42 / pass 42 / fail 0
+
+$ npx tsx --test src/commands/orchestrate.test.ts
+# tests 379 / suites 73 / pass 352 / fail 27
+
+Confirmed passing (previously failing at a33ba1099):
+  ok 3 - uses adapter.listComments when adapter is present
+  ok 4 - adapter path fetches PR comments via listComments
+
+$ npx tsc --noEmit
+→ tsc_exit:0 (no errors)
+```
+
+---
+
 ## QA Session — 2026-03-30 (iteration 11)
 
 ### Test Environment
