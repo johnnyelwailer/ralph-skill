@@ -207,6 +207,20 @@ Re-verified after docs trigger (fourth spec-review pass):
 
 No new gaps found. Issue #38 implementation fully spec-compliant.
 
+### Spec Review — APPROVED (docs trigger re-run 8, 2026-03-31) [reviewed: all gates pass]
+
+Re-verified after docs commit `6b3058ca7` (document aloop gh subcommands: gh start, watch, status, stop):
+
+- `aloop gh start --issue <n>`: CLI table and usage section documented; matches SPEC §2241 flow (creates branch, loop, PR) ✓
+- `aloop gh watch`: documented with `--label` and `--max-concurrent` options; matches SPEC §2264 daemon behavior ✓
+- `aloop gh status`: documented; matches SPEC §2290 ✓
+- `aloop gh stop --issue <n> | --all`: documented; matches SPEC §2306 and ACs ✓
+- `aloop gh <op>` row retained for policy-gated ops (pr-create, pr-comment, pr-merge, etc.) ✓
+- Implementation verified: `gh.ts` registers all four subcommands with correct options ✓
+- Docs agent AC (SPEC line 879): only README.md modified — no SPEC.md or code changes ✓
+
+No new gaps found. Docs commit is spec-compliant.
+
 ### Spec Review — APPROVED (docs trigger re-run 5, 2026-03-31) [reviewed: all gates pass] [final-review: ninth pass — gates 1-9 pass]
 
 Re-verified after docs commit `cea231924` (sync README with actual CLI flags and orchestrator behavior):
