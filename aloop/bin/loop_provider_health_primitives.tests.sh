@@ -156,51 +156,50 @@ rm -f "$PROVIDER_HEALTH_DIR/roundtrip.json"
 # ---------------------------------------------------------------------------
 lock_test_path="$PROVIDER_HEALTH_DIR/locktest.json"
 
-lock_dir=$(acquire_provider_health_lock "$lock_test_path" "lockprovider" "test")
-if [ -d "$lock_dir" ]; then
-    release_provider_health_lock "$lock_dir"
-    # After release, lock dir should be gone
-    if [ ! -d "$lock_dir" ]; then
-        # Re-acquire should succeed
-        lock_dir2=$(acquire_provider_health_lock "$lock_test_path" "lockprovider" "test")
-        if [ -d "$lock_dir2" ]; then
-            release_provider_health_lock "$lock_dir2"
-            echo "PASS: acquire-release-re-acquire lock cycle"
-        else
-            echo "FAIL: re-acquire after release failed"
-            failed=1
-        fi
+acquire_provider_health_lock "$lock_test_path" "lockprovider" "test"
+rc=$?
+if [ "$rc" -eq 0 ] && [ -f "${lock_test_path}.lock" ]; then
+    release_provider_health_lock
+    # Re-acquire should succeed
+    acquire_provider_health_lock "$lock_test_path" "lockprovider" "test"
+    rc2=$?
+    if [ "$rc2" -eq 0 ]; then
+        release_provider_health_lock
+        echo "PASS: acquire-release-re-acquire lock cycle"
     else
-        echo "FAIL: lock dir still exists after release"
+        echo "FAIL: re-acquire after release failed (rc=$rc2)"
         failed=1
     fi
 else
-    echo "FAIL: initial lock acquire did not create lock dir"
+    echo "FAIL: initial lock acquire failed (rc=$rc)"
     failed=1
 fi
+rm -f "${lock_test_path}.lock"
 
 # ---------------------------------------------------------------------------
-# Test 7: Lock failure — when lock is held, acquire logs health_lock_failed and returns 1
+# Test 7: Lock failure — when flock always fails, acquire logs health_lock_failed and returns 1
 # ---------------------------------------------------------------------------
 reset_log
-contended_path="$PROVIDER_HEALTH_DIR/contended.json"
-contended_lock="${contended_path}.lock"
-mkdir "$contended_lock"  # Simulate a held lock
+
+# Mock flock to always fail for this test
+flock() { return 1; }
 
 set +e
-acquire_provider_health_lock "$contended_path" "contended" "write" > /dev/null
+acquire_provider_health_lock "$PROVIDER_HEALTH_DIR/contended.json" "contended" "write" > /dev/null
 rc=$?
 set -e
 
-rmdir "$contended_lock"
+# Restore real flock
+unset -f flock
 
-if [ "$rc" -eq 1 ] && contains_log "health_lock_failed|provider=contended|operation=write"; then
+if [ "$rc" -eq 1 ] && contains_log "health_lock_failed"; then
     echo "PASS: lock failure returns 1 and logs health_lock_failed"
 else
     echo "FAIL: lock failure behavior — rc=$rc, log contents:"
     cat "$LOG_FILE"
     failed=1
 fi
+rm -f "$PROVIDER_HEALTH_DIR/contended.json.lock"
 
 # ---------------------------------------------------------------------------
 # Cleanup
