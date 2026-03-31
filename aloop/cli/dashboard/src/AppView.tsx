@@ -851,7 +851,6 @@ export function ActivityPanel({ log, artifacts, currentIteration, currentPhase, 
 
 // ── Artifact Comparison ──
 export { findBaselineIterations, ArtifactComparisonDialog } from '@/components/artifacts/ArtifactComparisonDialog';
-import { findBaselineIterations, ArtifactComparisonDialog } from '@/components/artifacts/ArtifactComparisonDialog';
 
 // ── Footer ──
 
