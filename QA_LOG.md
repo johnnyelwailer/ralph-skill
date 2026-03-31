@@ -1,5 +1,114 @@
 # QA Log
 
+## Review — 2026-03-31 (iter 17 — review agent, static analysis, ENOSPC env)
+
+### Commit under review: a45a51bc6
+### Commits since last review (36bf318cc): a45a51bc6
+
+### Verdict: FAIL — 2 findings (Gate 4: dead guard + DI bypass, carried forward)
+
+---
+
+#### Gate 2 — ✅ PASS: Preload invariant test corrected
+
+**orchestrate.test.ts:390** — `'preload skips when filterRepo is not set'`
+
+Old test `'preload skips when adapter is not provided'` removed. Replacement test passes `adapter` in deps but omits `repo`. Verifies the real invariant: without `filterRepo`, `listIssues` is never called even when adapter is present. Correct — line 1135 gates on `filterRepo` first, so without `filterRepo` the whole preload branch is skipped.
+
+---
+
+#### Gate 3 — ✅ PASS: createInvokeAgentReview factory extracted
+
+- `InvokeAgentReviewDeps` interface exported at process-requests.ts:174 with `adapter?: OrchestratorAdapter`
+- `createInvokeAgentReview(deps)` factory exported at process-requests.ts:187
+- Factory used internally at process-requests.ts:1007 (`invokeAgentReview: createInvokeAgentReview({...})`)
+- 4 tests at process-requests.test.ts:786-878:
+  1. `'calls adapter.listComments when adapter is present and includes comments in queue file'` (line 811) — verifies PR#7, 2 comments, section heading, comment bodies
+  2. `'does not call adapter.listComments when adapter is not provided'` (line 838) — no comment section when adapter absent
+  3. `'writes queue file without comment section when adapter returns empty comments'` (line 850) — empty array → no section heading
+  4. `'swallows adapter.listComments errors and still writes queue file'` (line 864) — API error → still writes queue file, no comment section
+
+Implementation at process-requests.ts:214-222 matches spec (SPEC-ADDENDUM.md line 1219): fetches `adapter.listComments(prNumber)`, appends `## Previous Review Comments` section with instruction to not repeat feedback, errors swallowed silently.
+
+---
+
+#### Gate 4 — ❌ FAIL: DI bypass + dead guard (both sub-issues still open)
+
+**Finding 4a — Dead code at orchestrate.ts:1135** (Constitution Rule 13: No dead code)
+
+```typescript
+if (filterRepo && state.issues.length === 0 && deps.adapter) {
+```
+
+The `&& deps.adapter` guard is unreachable dead code. Lines 993-999 guarantee:
+```typescript
+if (filterRepo && !deps.adapter) {
+  // ... creates execGh and adapter ...
+  deps = { ...deps, execGh, adapter: createAdapter(...) };
+}
+```
+After this block, whenever `filterRepo` is truthy, `deps.adapter` is guaranteed to be set. So `&& deps.adapter` at line 1135 is always true when `filterRepo` is true. **Fix**: Remove `&& deps.adapter` from line 1135.
+
+**Finding 4b — spawnSync inside orchestrateCommandWithDeps at orchestrate.ts:993-999** (DI violation)
+
+`orchestrateCommandWithDeps` is the dependency-injected, testable function. But it contains a hard-coded `spawnSync('gh', ...)` call inside the body — not behind a dep. This violates the DI contract: the function should only use what's in `deps`.
+
+The correct pattern: move the `spawnSync` bootstrapping to `orchestrateCommand` (line 1364, the non-DI wrapper). Before calling `orchestrateCommandWithDeps`, `orchestrateCommand` should build `execGh` and `adapter` from `options.repo` and pass them in.
+
+**Fix**:
+- In `orchestrateCommand` (line 1522 area): if `options.repo && !passedDeps?.adapter`, create `execGh` + adapter before calling `orchestrateCommandWithDeps`
+- In `orchestrateCommandWithDeps`: remove the `if (filterRepo && !deps.adapter)` bootstrapping block entirely
+
+---
+
+### No runtime tests available
+Bash tool blocked by ENOSPC on /tmp. Cannot verify that new tests (Gate 2/3) actually pass at runtime. Last confirmed runtime baseline: `561487771` (36/36 adapter, 38/38 process-requests, 348/375 orchestrate). Both Gate 2/3 changes look statically correct.
+
+---
+
+## QA Session — 2026-03-31 (iter 16 — env-blocked ENOSPC, static analysis)
+
+### Test Environment
+- Commit under test: a45a51bc6 (HEAD — test(gate3): extract createInvokeAgentReview factory and add listComments tests)
+- Commits since last session (107fb1866): 36bf318cc, a45a51bc6
+- Binary under test: N/A — Bash tool blocked by ENOSPC on /tmp; static analysis only
+- Features tested: 3 (static code inspection)
+
+### Results
+- PASS (static): createInvokeAgentReview factory extraction (Gate 3)
+- PASS (static): Gate 2 invariant fix — 'preload skips when filterRepo not set' (replaces wrong test)
+- FAIL (static): Gate 4 — inline spawnSync + dead deps.adapter guard still present
+
+### Bugs Filed
+- None new (Gate 4 already tracked as open TODO item `[ ] [review] Gate 4`)
+
+### Static Analysis Findings
+
+**Gate 2 (PASS):** Old test `'preload skips when adapter is not provided'` is GONE. Replacement test at orchestrate.test.ts:390 — `'preload skips when filterRepo is not set'` — passes `adapter` in deps but omits `repo`. Verifies the real invariant: without `filterRepo`, `listIssues` is never called. This is the correct invariant since line 993-999 ensures `deps.adapter` is always set when `filterRepo` is truthy.
+
+**Gate 3 (PASS):** `createInvokeAgentReview` exported from process-requests.ts (confirmed via import at process-requests.test.ts:7). `InvokeAgentReviewDeps` type exported. 4 tests at process-requests.test.ts:786-878:
+1. `'calls adapter.listComments when adapter is present'` (line 811) — verifies PR#7, 2 comments, section heading, comment bodies
+2. `'does not call adapter.listComments when adapter is not provided'` (line 838) — no comment section
+3. `'writes queue file without comment section when adapter returns empty comments'` (line 850) — empty → no section
+4. `'swallows adapter.listComments errors and still writes queue file'` (line 864) — API error → still writes, no section
+
+**Gate 4 (FAIL):** Still open:
+- orchestrate.ts:993-995: `spawnSync('gh', ...)` inline fallback inside `orchestrateCommandWithDeps` — this is the DI-testable boundary; spawnSync should be in `orchestrateCommand` (non-DI wrapper)
+- orchestrate.ts:1135: `if (filterRepo && state.issues.length === 0 && deps.adapter)` — `&& deps.adapter` is dead code because line 993-999 guarantees `deps.adapter` is set whenever `filterRepo` is set
+
+### Command Transcript
+```
+$ Bash tool: ENOSPC — no space left on device, mkdir '/tmp/claude-501/...'
+All commands blocked. Static analysis via Read/Grep only.
+
+Read orchestrate.ts:993-999 — confirmed spawnSync inline at line 995
+Read orchestrate.ts:1135 — confirmed && deps.adapter dead guard
+Grep process-requests.test.ts:786-878 — confirmed 4 createInvokeAgentReview tests
+Grep orchestrate.test.ts:390 — confirmed corrected Gate 2 invariant test
+```
+
+---
+
 ## QA Session — 2026-03-31 (iter 15 — env-blocked, ENOSPC)
 
 ### Test Environment
