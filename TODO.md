@@ -4,7 +4,11 @@
 
 ### In Progress
 
-*(none)*
+- [ ] [review] Gate 2: `orchestrate.test.ts:390-396` — test `'preload skips when adapter is not provided'` tests the wrong invariant and passes for the wrong reason. When `repo: 'owner/repo'` is passed, `orchestrate.ts:993-999` ALWAYS creates an adapter before reaching the preload check, so `deps.adapter` is never undefined at line 1135. The test passes only because real `spawnSync('gh', ...)` is invoked (createMockDeps has no execGh) and the error is silently swallowed by the `catch` block at line 1228. Replace this test with one that verifies the genuine invariant: when `repo` is NOT set (no filterRepo), listIssues is never called. Example: `orchestrateCommandWithDeps({}, deps_with_adapter)` → `listCalls.length === 0`. (priority: high)
+
+- [ ] [review] Gate 4 (a): `orchestrate.ts:1135` — `&& deps.adapter` is dead code. After lines 993-999, whenever `filterRepo` is truthy, `deps.adapter` is always set. The guard is unreachable in any meaningful state. Remove it: simplify to `if (filterRepo && state.issues.length === 0)`. (CONSTITUTION rule 13 — no dead code) (priority: medium)
+
+- [ ] [review] Gate 4 (b): `orchestrate.ts:993-999` — inline `spawnSync` fallback reintroduced. This is the same DI bypass flagged in the 2026-03-27 review (Gate 4) and previously fixed for `runTriageMonitorCycle`. In test contexts that pass `repo` without an `execGh` (like the now-broken test 3), real `gh` CLI invocations are silently triggered. Consider moving the adapter bootstrap into `orchestrateCommand` (the non-DI entry point) so `orchestrateCommandWithDeps` always receives a fully-populated `deps` and the spawnSync fallback stays outside the testable boundary. (priority: medium)
 
 ### Up Next
 

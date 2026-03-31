@@ -1003,3 +1003,106 @@ No new dependencies.
 The spec-review PASS comment in `eaed1fd3f` accurately describes the P2 fix state: all 4 sub-requirements cited match the production code (`adapter.ts:82`) and test code (`adapter.test.ts:107`, `adapter.test.ts:120`, `adapter.test.ts:125`). No stale or fabricated claims.
 
 **Issue #177 is complete.** All non-deferred acceptance criteria satisfied. LocalAdapter deferred per spec.
+
+---
+
+## Review — 2026-03-31 — commits ddfc72942..ff986bd80 (build: P2/P3 spec-gap fixes + invokeAgentReview migration)
+
+**Verdict: FAIL** (2 findings → written to TODO.md as [review] tasks)
+**Scope:** `aloop/cli/src/commands/orchestrate.ts`, `aloop/cli/src/commands/orchestrate.test.ts`, `aloop/cli/src/commands/process-requests.ts`, `README.md`
+**Commits reviewed:** `a9fe4afcd` (invokeAgentReview comment fetch → adapter), `da3997931` (spec-gap analysis), `be5eb9050` (README dashboard note), `089ba4fe7` (migrate preload + remove execGhIssueCreate dead code), `4602ea6c0` (spec-gap no discrepancies), `ff986bd80` (spec-review: AC#11 gap → [review] task)
+
+### Gate 1 — PASS
+
+P2 fix verified:
+- `createGhIssue` and `makeGhIssueCreator` removed from `process-requests.ts` ✓ (were dead code; adapter path always wins when repo set)
+- `execGhIssueCreate` field removed from `OrchestrateDeps` ✓
+- Fallback `else if (deps.execGhIssueCreate && repo)` removed from `applyDecompositionPlan` ✓
+- `applyDecompositionPlan` now: adapter path → plan-ID placeholder (no execGhIssueCreate branch) ✓
+
+P3 fix verified:
+- Preload at `orchestrate.ts:1126` migrated from raw `nodeSpawnSync('gh', ['issue', 'list', ...])` to `deps.adapter.listIssues()` + `deps.adapter.getIssue()`, guarded by `deps.adapter` ✓
+- Project status GraphQL calls now use `deps.execGh` (not nodeSpawnSync) ✓
+
+Open [review][P2] task (AC#11: adapter not instantiated in `orchestrateCommandWithDeps`) written by spec-review at `ff986bd80` — expected; will be addressed in next build. ✓
+
+### Gate 2 — FAIL — Two untested new adapter branches
+
+**Finding 1** — `orchestrateCommandWithDeps` preload (`orchestrate.ts:1126–1226`): `if (filterRepo && state.issues.length === 0 && deps.adapter)` — the adapter-truthy branch invoking `deps.adapter.listIssues()` and `deps.adapter.getIssue()` has no test. No test in `orchestrate.test.ts` calls `orchestrateCommandWithDeps` with a mock adapter and verifies that `state.issues` is populated from the adapter results. Written as `[review]` task in TODO.md.
+
+**Finding 2** — `invokeAgentReview` comment fetch (`process-requests.ts:965`): `if (adapter) { adapter.listComments(prNumber) }` has no test coverage. The behavior changed from `if (repo)` to `if (adapter)` — comment history is now silently omitted when `repo` is set but `adapter` is not. No test in `process-requests.test.ts` exercises this path. Written as `[review]` task in TODO.md.
+
+### Gate 3 — FAIL (same as Gate 2)
+
+Both branches flagged above are at 0% coverage.
+
+### Gate 4 — PASS
+
+Dead code cleanly removed. No unused imports or leftover TODOs in changed files. `nodeSpawnSync` dynamic import removed entirely. The remaining `execGhIssueCreate` references in `applyDoRCheckDeps` (`orchestrate.ts:2463`) and `applyDoRCheck` (`orchestrate.ts:2565`) are live code for spec-question issue creation — not part of the P2 removal scope, correctly untouched.
+
+### Gate 5 — PARTIAL
+
+`tsc --noEmit`: 0 errors ✓ (no output = clean pass). `npm test` (all files): 358 failures observed; per-file verification blocked by ENOSPC in test environment. Based on test names in failure list (`compileLoopPlan`, `processAgentRequests`), failures appear consistent with pre-existing unrelated failures. Two orchestrate failures noted (`not ok 341 — orchestrateCommandWithDeps with --plan`, `not ok 387 — orchestrateCommandWithDeps multi-file spec`) — likely within the pre-existing 27 baseline, but cannot confirm without per-file run. Gate 5 cannot be marked PASS; environment issue flagged.
+
+### Gate 6 — PASS (N/A)
+
+Internal TypeScript plumbing and dead-code removal — no observable output. Skip correct.
+
+### Gate 7 — N/A
+
+No UI changes.
+
+### Gate 8 — N/A
+
+No new dependencies.
+
+### Gate 9 — PASS
+
+README dashboard note update (`be5eb9050`): expanded to list remaining planned components (`SessionCard`, `ProviderHealth`, `ActivityLog`, `SteerInput`) and explicitly states Storybook integration is not yet started. Accurate and honest.
+
+---
+
+## Review — 2026-03-31 — commits ff986bd80..107fb1866 (build: AC#11 adapter instantiation + preload tests)
+
+**Verdict: FAIL** (3 findings → written to TODO.md as [review] tasks)
+**Scope:** `aloop/cli/src/commands/orchestrate.ts`, `aloop/cli/src/commands/orchestrate.test.ts`
+**Commits reviewed:** `943f071c5` (fix: instantiate adapter in orchestrateCommandWithDeps when --repo is set), `107fb1866` (test: add coverage for adapter preload path in orchestrateCommandWithDeps)
+
+### Gate 1 — PASS (prior finding resolved)
+
+AC#11 is now implemented: `orchestrateCommandWithDeps()` creates an adapter at line 993–999 when `filterRepo` is set and `deps.adapter` is not already populated. `createAdapter` is imported at the top of `orchestrate.ts` (line 19). The adapter is threaded into `deps` via spread (`deps = { ...deps, execGh, adapter: ... }`), satisfying "adapter created once in orchestrateCommandWithDeps(), passed through deps." ✓
+
+Prior `[review][P2]` task (`[x]` in TODO.md) is resolved in production behavior.
+
+### Gate 2 — FAIL — Test 3 verifies wrong invariant
+
+`orchestrate.test.ts:390–396`, test `'preload skips when adapter is not provided'`, is incorrect:
+
+1. **Wrong name, wrong behavior**: When `repo: 'owner/repo'` is passed, `orchestrate.ts:993–999` fires and creates an adapter — so `deps.adapter` is NOT absent at the preload check (line 1135). The preload IS invoked, not skipped.
+
+2. **Passes for wrong reason**: `createMockDeps()` provides no `execGh`. The adapter creation at line 994 falls back to the inline `spawnSync('gh', ...)` wrapper. When `deps.adapter.listIssues()` is called, it internally invokes real `spawnSync('gh', ['issue', 'list', ...])`. This either fails or returns empty. The outer `catch` at line 1228 silently swallows the result, leaving `state.issues.length === 0`. The test passes by coincidence, not by design.
+
+3. **The meaningful invariant is untested**: The genuine "preload skips" scenario is when `repo` is NOT set (no `filterRepo`). That branch is completely uncovered: no test calls `orchestrateCommandWithDeps({}, deps_with_adapter)` and asserts `listIssues` is never called.
+
+Prior `[review]` task from last FAIL (Gate 2 Finding 1) claimed this was addressed: "Added 5 tests: preload populates state via adapter, preload skips when state has issues, preload skips without adapter, preload handles empty listIssues, preload infers status from labels without project status." Test 3 ("without adapter") is the one that is wrong — the finding is only partially resolved.
+
+### Gate 3 — FAIL (carry-forward)
+
+The `[ ] [review] Gate 2/3: invokeAgentReview comment fetch` task from prior FAIL is still open (`process-requests.ts:965-973`). Neither `943f071c5` nor `107fb1866` touch `process-requests.ts`. The adapter-truthy branch (`if (adapter) { adapter.listComments(prNumber) }`) remains at 0% test coverage.
+
+### Gate 4 — FAIL — Dead guard + DI bypass
+
+**Finding (a) — Dead code at line 1135:** `&& deps.adapter` in `if (filterRepo && state.issues.length === 0 && deps.adapter)` is unreachable in any meaningful sense. When `filterRepo` is truthy, lines 993-999 always ensure `deps.adapter` is set before reaching line 1135. The check is dead. (CONSTITUTION rule 13.)
+
+**Finding (b) — Inline spawnSync fallback (DI bypass):** `orchestrate.ts:994–999` injects a real `spawnSync('gh', ...)` closure when `deps.execGh` is absent. This is the same pattern flagged in the 2026-03-27 review (Gate 4) and since fixed for `runTriageMonitorCycle`. In test contexts using bare `createMockDeps()` (no execGh), this causes real `gh` CLI invocations — silently tolerated by the surrounding catch block. This makes test 3 pass for the wrong reason and could cause unpredictable failures in clean CI environments where `gh` is absent or unauthenticated.
+
+### Gate 5 — BLOCKED (ENOSPC)
+
+`QA_LOG.md` iter 15 documents ENOSPC blocking all Bash commands. Cannot independently verify `tsc --noEmit`, `npm run build`, or test suite results for `943f071c5`/`107fb1866`. Prior QA baseline (36/36 adapter, 38/38 process-requests, 348/375 orchestrate, 27 pre-existing failures) is from an older commit (`561487771`) in a different worktree session. Not independently re-verified for HEAD in this session.
+
+### Gates 6–9 — Pass / N/A
+
+- Gate 6: Internal TypeScript changes only — skip correct
+- Gate 7: No UI changes
+- Gate 8: No new dependencies
+- Gate 9: No user-facing behavior changed; docs not required
