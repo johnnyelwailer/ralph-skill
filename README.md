@@ -309,7 +309,7 @@ Child loops use `aloop gh pr-create`, `aloop gh issue-comment`, etc. for policy-
     requests/                   # Agent side-effect requests (GitHub ops, child dispatch)
     artifacts/iter-<N>/         # Proof artifacts per iteration
     worktree/                   # Isolated git worktree
-    steering-history/           # Archived steering instructions
+    STEERING.md                 # Active steering instruction (consumed by queue)
 
 <project>/
   SPEC.md                       # Project specification (contract)
