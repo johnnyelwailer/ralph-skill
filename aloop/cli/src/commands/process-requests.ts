@@ -963,11 +963,12 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
 
             // Fetch existing PR comments for context
             let commentHistory = '';
-            if (repo) {
+            if (adapter) {
               try {
-                const commentsResult = spawnSync('gh', ['pr', 'view', String(prNumber), '--repo', repo, '--json', 'comments', '--jq', '.comments[].body'], { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] });
-                if (commentsResult.status === 0 && commentsResult.stdout?.trim()) {
-                  commentHistory = `\n\n## Previous Review Comments\n\nThe following comments have already been posted on this PR. Do NOT repeat the same feedback. Only comment on NEW issues or acknowledge fixes.\n\n${commentsResult.stdout.trim()}\n`;
+                const comments = await adapter.listComments(prNumber);
+                if (comments.length > 0) {
+                  const bodies = comments.map(c => c.body).join('\n');
+                  commentHistory = `\n\n## Previous Review Comments\n\nThe following comments have already been posted on this PR. Do NOT repeat the same feedback. Only comment on NEW issues or acknowledge fixes.\n\n${bodies}\n`;
                 }
               } catch { /* ignore */ }
             }

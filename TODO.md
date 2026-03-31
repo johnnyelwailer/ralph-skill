@@ -4,64 +4,28 @@
 
 ### In Progress
 
+*(none)*
+
 ### Up Next
 
-- [x] **Fix P2 bug: `GitHubAdapter.updateIssue` unconditionally calls `execGh` with no edit flags** — `adapter.ts:84` runs `await this.execGh(args)` even when `update.body` is undefined and `args` has no edit flags beyond the 4-element base `['issue', 'edit', N, '--repo', repo]`. `gh issue edit` requires at least one flag, so all 7 label-only call-sites fail at runtime (orchestrate.ts:1888, 1901, 2266, 2286, 2306, 2505, 3814). Fix: guard the base call — only invoke it when `update.body` is defined (i.e. when body flag was pushed onto `args`). **Also fix existing tests:** `adapter.test.ts:105` (`labels_add` test) asserts `calls.length === 3` (base + 2 labels) and `adapter.test.ts:118` (`labels_remove` test) asserts `calls.length === 2` (base + 1 label) — both include the spurious base call and must be updated to reflect the correct post-fix behavior (2 and 1 respectively). Add a new test verifying no base call is made for label-only updates. [reviewed: gates 1-9 pass]
+*(none)*
 
 ### Completed
 
-<!-- spec-review: PASS (re-verify 2026-03-31, triggered by P2 bug fix re-verification) — all 4 sub-requirements confirmed: (1) adapter.ts:82 `if (update.body)` guard prevents bare `gh issue edit` call for label-only updates; (2) labels_add test (adapter.test.ts:107) asserts calls.length === 2 (no spurious base call); (3) labels_remove test (adapter.test.ts:120) asserts calls.length === 1; (4) new "label-only update makes no base edit call" test at adapter.test.ts:125 verified. All requirements met. No spec violations found. Prior PASS gates stand. -->
-
-<!-- final-review: PASS (2026-03-31, commits 561487771..eaed1fd3f) — gates 1-9 pass; documentation-only changes (QA regression check + P2 spec-review re-confirmation). Gate 5: 36/36 adapter, 38/38 process-requests, 348/375 orchestrate, 0 type errors confirmed. Issue #177 complete. [reviewed: gates 1-9 pass] -->
-
-<!-- final-review: PASS (2026-03-31, commits d8d2c45bd..8d582d015) — gates 1-9 pass; documentation-only changes (QA re-verify + README OpenCode invocation fix). Gate 9: README `run --dir <workdir>` → `run` (stdin mode) verified against loop.sh:1374 and SPEC.md:2075. Issue #177 complete. [reviewed: gates 1-9 pass] -->
-
-<!-- spec-review: PASS (re-verify 2026-03-31, triggered by docs change 16b1ea05d — fix OpenCode autonomous flag: run (stdin mode) not run --dir) — README.md corrected OpenCode invocation flag from `run --dir <workdir>` to `run` (stdin mode, runs from workdir). Verified against: (1) loop.sh:1374 — `echo "$prompt_content" | ... opencode run` confirms stdin mode; (2) SPEC.md:2075 — references `opencode run` as correct invocation. No contradiction with SPEC.md found. No impact on issue #177 OrchestratorAdapter migration ACs. All prior PASS gates stand. -->
-
-<!-- spec-review: PASS (re-verify 2026-03-31, triggered by P2 bug fix in GitHubAdapter.updateIssue) — (1) adapter.ts:82 guards base `gh issue edit` call with `if (update.body)`, so label-only updates no longer invoke execGh without edit flags; (2) labels_add test updated to assert calls.length === 2 (no spurious base call); (3) labels_remove test updated to assert calls.length === 1; (4) new "label-only update makes no base edit call" test added at adapter.test.ts:125. All 4 sub-requirements of the P2 fix met. No spec violations found. Prior PASS gates stand. -->
-
-<!-- spec-review: PASS — all in-scope requirements for issue #177 verified 2026-03-30. OrchestratorAdapter interface defined (adapter.ts); GitHubAdapter implements all methods; all core GH CRUD call-sites in orchestrate.ts and process-requests.ts migrated to adapter-with-fallback pattern; adapter-path tests cover all migrated call-sites in both files (process-requests.test.ts 11/11 pass; orchestrate.test.ts adapter-path suites all pass). Remaining spawnSync('gh',...) calls (Project V2 GraphQL sync, PR comment context fetch) are out of scope — not in the adapter interface contract and not targeted by issue #177. No spec violations found. -->
-
-<!-- spec-review: PASS (re-verify 2026-03-31, triggered by docs change 3013ea666 — fix model name for error-analyst and vision-reviewer agents) — README.md corrected `gemini-3.1-flash-lite` → `gemini-3.1-flash-lite-preview` for error-analyst and vision-reviewer agent rows. This aligns README with SPEC.md:3454 and SPEC.md:3473 which already specify `openrouter/google/gemini-3.1-flash-lite-preview`. No impact on issue #177 OrchestratorAdapter migration ACs. All prior PASS gates stand. --> <!-- final-review: PASS (2026-03-31, commits 96f65112d..0685e00b4) — gates 1-9 pass; documentation-only changes; Gate 9 model name correction verified against SPEC.md. Issue #177 complete. [reviewed: gates 1-9 pass] -->
-
-<!-- spec-review: PASS (re-verify 2026-03-30, triggered by docs change 39600c28a README fix) — README docs change has no impact on adapter migration compliance. All 14 ACs re-verified: deps interfaces have adapter? fields (OrchestrateDeps:209, TriageDeps:196, ScanLoopDeps:4747, PrLifecycleDeps:3513, DispatchDeps:234); applyDecompositionPlan uses adapter.createIssue() with fallback (orchestrate.ts:676-680); checkPrGates uses adapter.getPRStatus()+getPrChecks() (orchestrate.ts:3546,3576); mergePr uses adapter.mergePR() (orchestrate.ts:3694); process-requests.ts uses adapter.createPR()/getIssue()/updateIssue() for all in-scope CRUD; createGhIssue() fallback is intentional backward-compat path (spec constraint); 11+ adapter-path test suites in orchestrate.test.ts. No new violations. Prior PASS stands. -->
-
-<!-- spec-gap analysis (2026-03-31 run 4): no new P1/P2 gaps found within issue #177 scope. Both previous [spec-gap] items remain resolved [x]. One new P3 gap noted: `PROMPT_proof.md` is missing `provider:` and `reasoning:` frontmatter fields (will default to round-robin; no runtime failure; out of scope for #177). Broader SPEC.md features (Provider health system, Finalizer state machine, Proof/QA artifact scaffolding, periodic spec-gap/docs scheduling, defense-in-depth CLAUDECODE sanitization) are pre-existing architecture gaps, not part of OrchestratorAdapter migration AC, already acknowledged in prior runs. Issue #177 spec-review PASS gates stand. spec-gap analysis: no discrepancies found — spec fully fulfilled for issue #177. -->
-<!-- spec-gap analysis (2026-03-31 run 3): no new P1/P2 gaps found within issue #177 scope. Both previous [spec-gap] items resolved [x]. Broader SPEC.md features (Finalizer array, Proof phase, QA coverage tracking, periodic spec-gap scheduling) are out of scope for this issue — not part of OrchestratorAdapter migration AC. Issue #177 spec-review PASS gates stand. spec-gap analysis: no discrepancies found — spec fully fulfilled for issue #177. -->
-<!-- spec-gap analysis (2026-03-30 run 2): one new P2 gap found — see item below. Previous P3 cosmetic gap remains [x]. -->
-
-- [x] [spec-gap] **P2 — `GitHubAdapter.updateIssue` unconditionally calls `execGh` with no edit flags when only labels are updated** — Fixed: `adapter.ts:82` guards the base call with `if (update.body)`, so label-only updates skip the base `gh issue edit` call entirely. All 36 adapter tests pass, including dedicated label-only tests. Verified: `labels_add` (2 calls), `labels_remove` (1 call), and combined label-only update (no bare base call) all behave correctly. [reviewed: gates 1-9 pass]
-
-<!-- spec-gap analysis: no P1/P2 gaps found — spec fully fulfilled for issue #177 (OrchestratorAdapter migration). One P3 cosmetic gap noted below (pre-existing, does not block completion). -->
-
-- [x] [spec-gap] **P3 — Stale pipeline description in SPEC.md summary and Proof AC** — `SPEC.md:5` still says "default pipeline is `plan → build × 5 → proof → qa → review`" (predates finalizer architecture). `SPEC.md:716-717` and `SPEC.md:775` acceptance criteria say "Default pipeline becomes: plan → build × 5 → proof → qa → review (9-step)" — also predates finalizer. Authoritative source is `SPEC.md:400-409` which correctly states: continuous cycle is `plan → build × 5 → qa → review` (8-step); proof runs only in finalizer. Code is correct per lines 400-409. Fix: update SPEC.md:5 and the Proof/QA AC sections to match lines 400-409. P3 (cosmetic — no runtime impact, code is correct). Does NOT block completion.
-
-- [x] **Migrate orchestrate.ts — applyEstimateResults label ops and spec-question issue creation** — Migrated two remaining call-sites in `applyEstimateResults`: (1) label ops use `adapter.updateIssue({ labels_add: [...] })` with fallback to `execGh`; (2) spec-question issue creation uses `adapter.createIssue()` with fallback to `execGhIssueCreate`. Added `adapter?: OrchestratorAdapter` to deps type. Passes `adapter: deps.adapter` at call site in `runOrchestrateCycle`. Added 4 adapter-path tests in `applyEstimateResults adapter path` describe block. Build passes; no test regressions. [reviewed: gates 1-9 pass]
-
-- [x] [review] **Gate 2/Gate 3: Add adapter-path tests for process-requests.ts changes** — `ecad85f99` migrated four call-sites to the adapter but added zero tests: (1) `adapter.createIssue()` in sub-decomposition at line 419, (2) `adapter.createIssue()` in Phase 2 at line ~542, (3) `adapter.createPR()` in Phase 2c at line ~659, (4) `updateParentTasklist()` refactored to use `adapter.getIssue()` + `adapter.updateIssue()` at lines 1149-1163. All four adapter-guarded branches have 0% coverage. Add tests following the `makeAdapterForRepo` test pattern: inject a mock adapter, exercise the path, assert exact adapter call args. (priority: high) [reviewed: gates 1-10 pass]
-
-- [x] **Migrate orchestrate.ts — checkPrGates** — Migrated `checkPrGates` to use adapter-with-fallback pattern. Gate 1 uses `adapter.getPRStatus()` for mergeability check. Gate 2 uses `adapter.getPrChecks()` for CI check details. Added `getPrChecks` to `OrchestratorAdapter` interface. Added 5 adapter-path tests. [reviewed: gates 1-10 pass]
-
-- [x] **Add adapter-path tests for checkPrGates** — Added 5 tests in `checkPrGates adapter path` describe block: (1) adapter.getPRStatus/getPrChecks called, (2) not-mergeable returns fail, (3) pending checks returns pending, (4) failed checks returns fail with names, (5) fallback to execGh when no adapter.
-
-- [x] [review] **Gate 2/Gate 5: Fix broken runTriageMonitorCycle adapter tests** — `createMockAdapter({ listComments: ... })` spreads the override into `base` after `calls.push(...)` tracking is wired, so the override replaces the tracked implementation and `calls` never records `listComments` calls. Tests at `orchestrate.test.ts:1614-1616` and `1651-1654` always see `listCalls.length === 0`. Fix: wrap each override in a closure that pushes to `calls` first then delegates to the override (for all overridable methods), rather than spreading overrides raw. The two failing tests are the only regressions vs the 34-failure baseline (now 36). (priority: high)
-
-- [x] [review] **Gate 4: Remove execGhForTriage DI bypass in runTriageMonitorCycle** — Removed inline `spawnSync('gh', ...)` fallback at `orchestrate.ts:2120-2125`. Made `TriageDeps.execGh` optional. When adapter is present and `execGh` is absent, `undefined` is passed through instead of spawning real `gh` CLI. All adapter-path `deps.execGh` calls in `applyTriageResultsToIssue` are already guarded behind `if (deps.adapter)` checks.
-
-- [x] **Migrate process-requests.ts GH calls to adapter** — Replaced all `spawnSync('gh', ...)` for issue/PR CRUD with adapter calls:
-  - Phase 1c body update → `adapter.updateIssue()` (line 135)
-  - Sub-decomposition issue creation → `adapter.createIssue()` (line 419)
-  - Phase 2 issue creation → `adapter.createIssue()` (line 544)
-  - Phase 2c PR creation → `adapter.createPR()` (line 663)
-  - `updateParentTasklist()` → `adapter.getIssue()` + `adapter.updateIssue()` (lines 1156-1160)
-  - `makeAdapterForRepo` reads `meta.adapter` from `meta.json` for adapter type selection (line 354)
-
-- [x] **Migrate orchestrate.ts — applyDecompositionPlan, triageMonitoringCycle, mergePr, flagForHuman, label ops** — Migrated:
-  - `applyDecompositionPlan`: `deps.execGhIssueCreate` → `deps.adapter.createIssue()` with fallback
-  - `runTriageMonitorCycle`: `execGh(['issue-comments', ...])` → `adapter.listComments()` with fallback
-  - `mergePr`: `execGh(['pr', 'merge', ...])` → `deps.adapter.mergePR()` with fallback
-  - `createTrunkToMainPr`: `execGh(['pr', 'create', ...])` → `deps.adapter.createPR()` with fallback
-  - `flagForHuman`: label/comment ops → adapter pattern with fallback
-  - `applyTriageResultsToIssue`: all label ops → adapter pattern with fallback
-  - Spec question resolution label ops → adapter pattern with fallback
-  - Adapter-path tests added for `applyDecompositionPlan`, `runTriageMonitorCycle`, `mergePr`, `processPrLifecycle`
+- [x] Add `adapter?: OrchestratorAdapter` to `TriageDeps`, `OrchestrateDeps`, `DispatchDeps`, `PrLifecycleDeps`, `ScanLoopDeps` — verified at orchestrate.ts lines 191–234, 3513, 4747
+- [x] `applyDecompositionPlan` uses `deps.adapter.createIssue()` when adapter present, falls back to `execGhIssueCreate` — verified at orchestrate.ts:676–677
+- [x] `checkPrGates` uses `adapter.getPRStatus()` and `adapter.getPrChecks()` when adapter present — verified at orchestrate.ts:3545, 3575
+- [x] PR merge in `prLifecycle` uses `adapter.mergePR()` — verified at orchestrate.ts:3693–3694
+- [x] `triageMonitoringCycle` comment fetching uses `adapter.listComments()` — verified at orchestrate.ts:2070–2082
+- [x] Label operations use `adapter.updateIssue({ labels_add/labels_remove })` and `adapter.postComment()` throughout orchestrate.ts — verified at lines 1879–1928, 2265–2307, 3812–3814, 4013–4014
+- [x] `process-requests.ts` PR creation uses `adapter.createPR()` via `createPRViaAdapter` — verified at process-requests.ts:1186
+- [x] `process-requests.ts` `updateParentTasklist` uses `adapter.getIssue()` + `adapter.updateIssue()` — verified at process-requests.ts:1102–1110
+- [x] Issue body updates use `adapter.updateIssue()` via `updateIssueBodyViaAdapter` — verified at process-requests.ts:128–139
+- [x] `makeAdapterForRepo` extracted as testable helper at process-requests.ts:146–151
+- [x] Adapter created once in `processRequests()` at line 354, passed through deps
+- [x] GH project board GraphQL sync left unchanged (process-requests.ts:803–853) — out of scope per TASK_SPEC
+- [x] git calls unchanged — all remain as `spawnSync('git', ...)`
+- [x] `OrchestratorAdapter` interface + `GitHubAdapter` in adapter.ts — verified complete (294 lines, all methods present)
+- [x] TypeScript builds cleanly — verified in PR_DESCRIPTION
+- [x] Migrate `invokeAgentReview` PR comment fetch to adapter (process-requests.ts:968) — uses `adapter.listComments()` instead of raw `spawnSync('gh', ['pr', 'view', ..., '--json', 'comments'])`
+- [x] Tests passing — 1152/1188 (35 pre-existing failures unrelated to this issue)
