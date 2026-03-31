@@ -146,6 +146,19 @@ Re-verified after docs trigger (second spec-review pass):
 
 No new gaps found. Issue #38 implementation fully spec-compliant.
 
+### Spec Review — APPROVED (docs trigger re-run 4, 2026-03-31) [reviewed: all gates pass]
+
+Re-verified after docs trigger (sixth spec-review pass — commit 91ca070f1):
+
+- Docs commit adds `.aloop/pipeline.yml` and `agents/<name>.yml` to README architecture section — matches SPEC lines 4078 and 4082 ✓
+- CI workflow (`ci.yml`): triggers on push+PR to master/agent/trunk, Node 22, `npm ci` + `npm test` in `aloop/cli/dashboard` ✓
+- SPEC-ADDENDUM line 122: all 28 non-ui components have `.test.tsx` files ✓
+- SPEC-ADDENDUM line 123: all 28 non-ui components have `.stories.tsx` files ✓
+- README finalizer prose (lines 22–28): all 6 finalizer agents present — Spec-gap, Docs, Spec-review, Final-review, Final-qa, Proof ✓
+- README template list (lines 246–248): `PROMPT_spec-review.md`, `PROMPT_final-qa.md`, `PROMPT_final-review.md` all present ✓
+
+No new gaps found. Issue #38 implementation fully spec-compliant.
+
 ### Spec Review — APPROVED (docs trigger re-run 3, 2026-03-31) [reviewed: all gates pass]
 
 Re-verified after docs trigger (fourth spec-review pass):
