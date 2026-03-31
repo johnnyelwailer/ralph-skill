@@ -50,6 +50,9 @@ aloop orchestrate --spec "SPEC.md specs/*.md" --plan-only
 
 # Dispatch specific issues
 aloop orchestrate --issues 42,43,44 --concurrency 2
+
+# Resume a previously stopped orchestrator session
+aloop orchestrate --resume <session-id>
 ```
 
 The orchestrator enforces role-based GitHub policies — child loops can create PRs and comment, but only the orchestrator can merge PRs and close issues.
@@ -70,7 +73,7 @@ aloop dashboard --port 3000 --session-dir ~/.aloop/sessions/<id>
 - **Live steering** — send instructions to the running loop from the dashboard
 - **Stop controls** — graceful (SIGTERM) or force (SIGKILL)
 
-## Storybook (Partial)
+## Storybook
 
 The dashboard includes a Storybook 10 setup for component development and visual testing.
 
@@ -80,10 +83,7 @@ npm run storybook        # Start on port 6006
 npm run build-storybook  # Build static Storybook
 ```
 
-**Status**: Storybook is configured with Tailwind CSS decorators, dark-mode toggle, and TooltipProvider globals. Most UI primitive components (`ui/`) have stories. The following components are missing stories — tracked in TODO.md:
-- `session/`: `ActivityPanel`, `ArtifactComparisonHeader`, `ArtifactComparisonDialog`, `DiffOverlayView`, `ImageLightbox`, `LogEntryRow`, `LogEntryExpandedDetails`, `SideBySideView`, `SliderView`
-- `layout/`: `CollapsedSidebar`, `ResponsiveLayout`, `SidebarContextMenu`
-- `shared/`: `QACoverageBadge`
+**Status**: Storybook is configured with Tailwind CSS decorators, dark-mode toggle, and TooltipProvider globals. All components have stories, including layout (`AppShell`, `Sidebar`, `MainPanel`, `DocsPanel`, `Header`, `CollapsedSidebar`, `ResponsiveLayout`, `SidebarContextMenu`), session (`ActivityLog`, `ActivityPanel`, `SessionCard`, `SessionDetail`, `SteerInput`, `ArtifactComparisonDialog`, `ArtifactComparisonHeader`, `DiffOverlayView`, `ImageLightbox`, `LogEntryRow`, `LogEntryExpandedDetails`, `SideBySideView`, `SliderView`), shared primitives (`CommandPalette`, `ElapsedTimer`, `PhaseBadge`, `QACoverageBadge`, `StatusDot`), and all `ui/` primitives.
 
 ## Quality Gates
 
