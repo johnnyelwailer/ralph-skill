@@ -204,7 +204,6 @@ export interface OrchestrateDeps {
   unlink?: (path: string) => Promise<void>;
   readdirSync?: (path: string) => string[];
   now: () => Date;
-  execGhIssueCreate?: (repo: string, sessionId: string, title: string, body: string, labels: string[]) => Promise<number>;
   execGh?: (args: string[]) => Promise<{ stdout: string; stderr: string }>;
   adapter?: OrchestratorAdapter;
 }
@@ -676,10 +675,8 @@ export async function applyDecompositionPlan(
     if (deps.adapter && repo) {
       const created = await deps.adapter.createIssue(planIssue.title, enrichedBody, labels);
       ghNumber = created.number;
-    } else if (deps.execGhIssueCreate && repo) {
-      ghNumber = await deps.execGhIssueCreate(repo, path.basename(sessionDir), planIssue.title, enrichedBody, labels);
     } else {
-      // When no GH executor is available (plan-only without repo, or no executor),
+      // When no adapter is available (plan-only without repo, or no adapter),
       // use the plan ID as a placeholder number
       ghNumber = planIssue.id;
     }
@@ -1126,45 +1123,48 @@ export async function orchestrateCommandWithDeps(
   }
 
   // Preload existing GitHub issues into state (dedup on restart/resume)
-  if (filterRepo && state.issues.length === 0) {
+  if (filterRepo && state.issues.length === 0 && deps.adapter) {
     try {
-      const { spawnSync: nodeSpawnSync } = await import('node:child_process');
-      const listResult = nodeSpawnSync('gh', ['issue', 'list', '--repo', filterRepo, '--label', 'aloop/auto', '--state', 'open', '--limit', '200', '--json', 'number,title,body,labels'], { encoding: 'utf8' });
-      if (listResult.status !== 0) throw new Error(listResult.stderr ?? 'gh failed');
-      const ghIssues = JSON.parse(listResult.stdout ?? '[]');
-      if (Array.isArray(ghIssues) && ghIssues.length > 0) {
+      const issueSummaries = await deps.adapter.listIssues({ labels: ['aloop/auto'], state: 'open' });
+      if (issueSummaries.length > 0) {
+        // Fetch full issue details (body + labels) via adapter
+        const ghIssues = await Promise.all(
+          issueSummaries.map(async (s) => {
+            const full = await deps.adapter!.getIssue(s.number);
+            return { number: full.number, title: full.title, body: full.body, labels: full.labels };
+          }),
+        );
+
         // Fetch project status for each issue to avoid re-estimating
         const projectStatusMap = new Map<number, string>();
-        try {
-          const owner = filterRepo.split('/')[0];
-          // Find aloop project number dynamically
-          let projNumber = 0;
-          const projListResult = nodeSpawnSync('gh', ['project', 'list', '--owner', owner, '--format', 'json'], { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] });
-          if (projListResult.status === 0) {
+        const ghExec = deps.execGh;
+        if (ghExec) {
+          try {
+            const owner = filterRepo.split('/')[0];
+            // Find aloop project number dynamically
+            let projNumber = 0;
+            const projListResult = await ghExec(['project', 'list', '--owner', owner, '--format', 'json']);
             try {
               const projects = JSON.parse(projListResult.stdout ?? '{}').projects ?? [];
               const aloopProj = projects.find((p: any) => p.title?.toLowerCase().includes('aloop'));
               if (aloopProj) projNumber = aloopProj.number;
             } catch { /* ignore */ }
-          }
-          if (projNumber === 0) throw new Error('No aloop project found');
-          state.gh_project_number = projNumber;
-          const gqlQuery = `{ user(login: "${owner}") { projectV2(number: ${projNumber}) { items(first: 100) { nodes { content { ... on Issue { number } } fieldValueByName(name: "Status") { ... on ProjectV2ItemFieldSingleSelectValue { name } } } } } } }`;
-          const projResult = nodeSpawnSync('gh', ['api', 'graphql', '-f', `query=${gqlQuery}`], { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] });
-          if (projResult.status !== 0) {
-            console.error(`[orchestrate] Project status query failed (exit ${projResult.status}): ${projResult.stderr?.substring(0, 200)}`);
-          }
-          if (projResult.status === 0 && projResult.stdout) {
-            const projData = JSON.parse(projResult.stdout);
-            console.log(`[orchestrate] Project status query returned ${projResult.stdout.length} bytes`);
-            const items = projData?.data?.user?.projectV2?.items?.nodes ?? [];
-            for (const item of items) {
-              const num = item?.content?.number;
-              const status = item?.fieldValueByName?.name;
-              if (num && status) projectStatusMap.set(num, status);
+            if (projNumber === 0) throw new Error('No aloop project found');
+            state.gh_project_number = projNumber;
+            const gqlQuery = `{ user(login: "${owner}") { projectV2(number: ${projNumber}) { items(first: 100) { nodes { content { ... on Issue { number } } fieldValueByName(name: "Status") { ... on ProjectV2ItemFieldSingleSelectValue { name } } } } } } }`;
+            const projResult = await ghExec(['api', 'graphql', '-f', `query=${gqlQuery}`]);
+            if (projResult.stdout) {
+              const projData = JSON.parse(projResult.stdout);
+              console.log(`[orchestrate] Project status query returned ${projResult.stdout.length} bytes`);
+              const items = projData?.data?.user?.projectV2?.items?.nodes ?? [];
+              for (const item of items) {
+                const num = item?.content?.number;
+                const status = item?.fieldValueByName?.name;
+                if (num && status) projectStatusMap.set(num, status);
+              }
             }
-          }
-        } catch (e) { console.error(`[orchestrate] Project status fetch failed: ${e}`); }
+          } catch (e) { console.error(`[orchestrate] Project status fetch failed: ${e}`); }
+        }
 
         for (const gi of ghIssues) {
           const isEpic = gi.labels?.some((l: any) => (l.name ?? l) === 'aloop/epic');
@@ -1311,7 +1311,6 @@ export async function orchestrateCommandWithDeps(
     try {
       const estimateResults = JSON.parse(responseContent) as EstimateResult[];
       await applyEstimateResults(state, estimateResults, {
-        execGhIssueCreate: deps.execGhIssueCreate,
         execGh: deps.execGh,
         now: deps.now,
         repo: filterRepo ?? undefined,

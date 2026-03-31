@@ -619,11 +619,14 @@ describe('applyDecompositionPlan', () => {
     }
   });
 
-  it('maps depends_on to GH issue numbers when GH executor is provided', async () => {
+  it('maps depends_on to GH issue numbers when adapter is provided', async () => {
     let nextNumber = 100;
+    const adapter = createMockAdapter({
+      createIssue: async () => ({ number: nextNumber++, url: '' }),
+    });
     const deps: OrchestrateDeps = {
       ...baseDeps(),
-      execGhIssueCreate: async () => nextNumber++,
+      adapter,
     };
     const plan: DecompositionPlan = {
       issues: [planIssue(1, 'A'), planIssue(2, 'B', [1])],
@@ -635,25 +638,23 @@ describe('applyDecompositionPlan', () => {
     assert.deepStrictEqual(result.issues[1].depends_on, [100]);
   });
 
-  it('calls execGhIssueCreate with correct labels (aloop + wave)', async () => {
-    const calls: { title: string; labels: string[] }[] = [];
+  it('calls adapter.createIssue with correct labels (aloop + wave)', async () => {
+    const adapter = createMockAdapter();
     const deps: OrchestrateDeps = {
       ...baseDeps(),
-      execGhIssueCreate: async (_repo, _sid, title, _body, labels) => {
-        calls.push({ title, labels });
-        return calls.length;
-      },
+      adapter,
     };
     const plan: DecompositionPlan = {
       issues: [planIssue(1, 'Wave1'), planIssue(2, 'Wave2', [1])],
     };
     await applyDecompositionPlan(plan, baseState(), '/sessions/orch-1', 'owner/repo', deps);
 
-    assert.equal(calls.length, 2);
-    assert.deepStrictEqual(calls[0].labels, ['aloop', 'aloop/wave-1', 'wave/1']);
-    assert.deepStrictEqual(calls[1].labels, ['aloop', 'aloop/wave-2', 'wave/2']);
-    assert.equal(calls[0].title, 'Wave1');
-    assert.equal(calls[1].title, 'Wave2');
+    const createCalls = adapter.calls.filter((c) => c.method === 'createIssue');
+    assert.equal(createCalls.length, 2);
+    assert.deepStrictEqual(createCalls[0].args[2], ['aloop', 'aloop/wave-1', 'wave/1']);
+    assert.deepStrictEqual(createCalls[1].args[2], ['aloop', 'aloop/wave-2', 'wave/2']);
+    assert.equal(createCalls[0].args[0], 'Wave1');
+    assert.equal(createCalls[1].args[0], 'Wave2');
   });
 
   it('updates updated_at timestamp', async () => {
@@ -675,14 +676,10 @@ describe('applyDecompositionPlan', () => {
   });
 
   it('uses plan IDs as placeholders when no repo is provided', async () => {
-    const deps: OrchestrateDeps = {
-      ...baseDeps(),
-      execGhIssueCreate: async () => 999, // should NOT be called without repo
-    };
     const plan: DecompositionPlan = {
       issues: [planIssue(5, 'A'), planIssue(10, 'B', [5])],
     };
-    const result = await applyDecompositionPlan(plan, baseState(), '/sessions/orch-1', null, deps);
+    const result = await applyDecompositionPlan(plan, baseState(), '/sessions/orch-1', null, baseDeps());
 
     assert.equal(result.issues[0].number, 5);
     assert.equal(result.issues[1].number, 10);
@@ -694,7 +691,6 @@ describe('applyDecompositionPlan', () => {
     const deps: OrchestrateDeps = {
       ...baseDeps(),
       adapter,
-      execGhIssueCreate: async () => { throw new Error('execGhIssueCreate should not be called'); },
     };
     const plan: DecompositionPlan = {
       issues: [planIssue(1, 'A'), planIssue(2, 'B', [1])],
@@ -710,22 +706,8 @@ describe('applyDecompositionPlan', () => {
     assert.equal(createCalls[1].args[0], 'B');
   });
 
-  it('prefers adapter over execGhIssueCreate when both present', async () => {
-    const adapter = createMockAdapter();
-    const deps: OrchestrateDeps = {
-      ...baseDeps(),
-      adapter,
-      execGhIssueCreate: async () => { throw new Error('should not be called'); },
-    };
-    const plan: DecompositionPlan = {
-      issues: [planIssue(1, 'X')],
-    };
-    const result = await applyDecompositionPlan(plan, baseState(), '/sessions/orch-1', 'owner/repo', deps);
-    assert.equal(result.issues[0].number, 1); // mock adapter returns number: 1
-    const createCalls = adapter.calls.filter((c) => c.method === 'createIssue');
-    assert.equal(createCalls.length, 1);
-  });
 });
+
 
 describe('orchestrateCommandWithDeps with --plan', () => {
   const samplePlan = JSON.stringify({
@@ -858,19 +840,20 @@ describe('orchestrateCommandWithDeps with --plan', () => {
     );
   });
 
-  it('calls execGhIssueCreate when repo is provided', async () => {
-    const calls: string[] = [];
+  it('calls adapter.createIssue when repo is provided', async () => {
+    let nextNumber = 50;
+    const adapter = createMockAdapter({
+      createIssue: async () => ({ number: ++nextNumber, url: '' }),
+    });
     const deps = createMockDeps({
       existsSync: (p: string) => p.includes('SPEC.md') || p.endsWith('plan.json'),
       readFile: async () => samplePlan,
-      execGhIssueCreate: async (_repo, _sid, title) => {
-        calls.push(title);
-        return 50 + calls.length;
-      },
+      adapter,
     });
     const result = await orchestrateCommandWithDeps({ plan: 'plan.json', repo: 'owner/repo' }, deps);
 
-    assert.equal(calls.length, 2);
+    const createCalls = adapter.calls.filter((c) => c.method === 'createIssue');
+    assert.equal(createCalls.length, 2);
     assert.equal(result.state.issues[0].number, 51);
     assert.equal(result.state.issues[1].number, 52);
   });
@@ -6317,13 +6300,10 @@ describe('applyDecompositionPlan label enrichment', () => {
   }
 
   it('includes wave/N label alongside aloop/wave-N at creation', async () => {
-    const calls: { labels: string[] }[] = [];
+    const adapter = createMockAdapter();
     const deps: OrchestrateDeps = {
       ...baseDeps(),
-      execGhIssueCreate: async (_repo, _sid, _title, _body, labels) => {
-        calls.push({ labels });
-        return calls.length;
-      },
+      adapter,
     };
     const plan: DecompositionPlan = {
       issues: [
@@ -6333,25 +6313,23 @@ describe('applyDecompositionPlan label enrichment', () => {
     };
     await applyDecompositionPlan(plan, baseState(), '/sessions/orch-1', 'owner/repo', deps);
 
-    assert.equal(calls.length, 2);
+    const createCalls = adapter.calls.filter((c) => c.method === 'createIssue');
+    assert.equal(createCalls.length, 2);
     // Wave 1 issue: has aloop, aloop/wave-1, wave/1
-    assert.ok(calls[0].labels.includes('aloop'));
-    assert.ok(calls[0].labels.includes('aloop/wave-1'));
-    assert.ok(calls[0].labels.includes('wave/1'));
+    assert.ok((createCalls[0].args[2] as string[]).includes('aloop'));
+    assert.ok((createCalls[0].args[2] as string[]).includes('aloop/wave-1'));
+    assert.ok((createCalls[0].args[2] as string[]).includes('wave/1'));
     // Wave 2 issue: has aloop, aloop/wave-2, wave/2
-    assert.ok(calls[1].labels.includes('aloop'));
-    assert.ok(calls[1].labels.includes('aloop/wave-2'));
-    assert.ok(calls[1].labels.includes('wave/2'));
+    assert.ok((createCalls[1].args[2] as string[]).includes('aloop'));
+    assert.ok((createCalls[1].args[2] as string[]).includes('aloop/wave-2'));
+    assert.ok((createCalls[1].args[2] as string[]).includes('wave/2'));
   });
 
   it('includes component labels derived from file_hints', async () => {
-    const calls: { labels: string[] }[] = [];
+    const adapter = createMockAdapter();
     const deps: OrchestrateDeps = {
       ...baseDeps(),
-      execGhIssueCreate: async (_repo, _sid, _title, _body, labels) => {
-        calls.push({ labels });
-        return calls.length;
-      },
+      adapter,
     };
     const plan: DecompositionPlan = {
       issues: [
@@ -6362,60 +6340,54 @@ describe('applyDecompositionPlan label enrichment', () => {
     };
     await applyDecompositionPlan(plan, baseState(), '/sessions/orch-1', 'owner/repo', deps);
 
-    assert.ok(calls[0].labels.includes('component/dashboard'));
-    assert.ok(calls[1].labels.includes('component/loop'));
-    assert.ok(calls[2].labels.includes('component/orchestrator'));
+    const createCalls = adapter.calls.filter((c) => c.method === 'createIssue');
+    assert.ok((createCalls[0].args[2] as string[]).includes('component/dashboard'));
+    assert.ok((createCalls[1].args[2] as string[]).includes('component/loop'));
+    assert.ok((createCalls[2].args[2] as string[]).includes('component/orchestrator'));
   });
 
   it('preserves aloop/epic and aloop/auto alongside new labels', async () => {
-    const calls: { labels: string[] }[] = [];
+    const adapter = createMockAdapter();
     const deps: OrchestrateDeps = {
       ...baseDeps(),
-      execGhIssueCreate: async (_repo, _sid, _title, _body, labels) => {
-        calls.push({ labels });
-        return calls.length;
-      },
+      adapter,
     };
     const plan: DecompositionPlan = {
       issues: [planIssue(1, 'Task', [], ['aloop/cli/src/lib/plan.ts'])],
     };
     await applyDecompositionPlan(plan, baseState(), '/sessions/orch-1', 'owner/repo', deps);
 
+    const createCalls = adapter.calls.filter((c) => c.method === 'createIssue');
     // aloop label is always present
-    assert.ok(calls[0].labels.includes('aloop'));
+    assert.ok((createCalls[0].args[2] as string[]).includes('aloop'));
     // wave labels are present
-    assert.ok(calls[0].labels.includes('aloop/wave-1'));
-    assert.ok(calls[0].labels.includes('wave/1'));
+    assert.ok((createCalls[0].args[2] as string[]).includes('aloop/wave-1'));
+    assert.ok((createCalls[0].args[2] as string[]).includes('wave/1'));
     // component label is present
-    assert.ok(calls[0].labels.includes('component/cli'));
+    assert.ok((createCalls[0].args[2] as string[]).includes('component/cli'));
   });
 
   it('does not add component labels when file_hints is empty', async () => {
-    const calls: { labels: string[] }[] = [];
+    const adapter = createMockAdapter();
     const deps: OrchestrateDeps = {
       ...baseDeps(),
-      execGhIssueCreate: async (_repo, _sid, _title, _body, labels) => {
-        calls.push({ labels });
-        return calls.length;
-      },
+      adapter,
     };
     const plan: DecompositionPlan = {
       issues: [planIssue(1, 'Task no hints', [])],
     };
     await applyDecompositionPlan(plan, baseState(), '/sessions/orch-1', 'owner/repo', deps);
 
-    assert.ok(calls[0].labels.includes('wave/1'));
-    assert.ok(!calls[0].labels.some(l => l.startsWith('component/')));
+    const createCalls = adapter.calls.filter((c) => c.method === 'createIssue');
+    assert.ok((createCalls[0].args[2] as string[]).includes('wave/1'));
+    assert.ok(!(createCalls[0].args[2] as string[]).some((l: string) => l.startsWith('component/')));
   });
 
   it('includes "Depends on #X, #Y" in issue body when dependencies exist (AC 6)', async () => {
-    const calls: { body: string }[] = [];
+    const adapter = createMockAdapter();
     const deps: OrchestrateDeps = {
       ...baseDeps(),
-      execGhIssueCreate: async (_repo, _sid, _title, body, _labels) => {
-        calls.push({ body });
-        return calls.length;
-      },
+      adapter,
     };
     const plan: DecompositionPlan = {
       issues: [
@@ -6425,19 +6397,20 @@ describe('applyDecompositionPlan label enrichment', () => {
     };
     await applyDecompositionPlan(plan, baseState(), '/sessions/orch-1', 'owner/repo', deps);
 
-    assert.equal(calls.length, 2);
-    assert.ok(!calls[0].body.includes('Depends on'), 'First issue should not have Depends on');
-    assert.ok(calls[1].body.includes('Depends on #1'), 'Second issue should reference Depends on #1');
+    const createCalls = adapter.calls.filter((c) => c.method === 'createIssue');
+    assert.equal(createCalls.length, 2);
+    assert.ok(!(createCalls[0].args[1] as string).includes('Depends on'), 'First issue should not have Depends on');
+    assert.ok((createCalls[1].args[1] as string).includes('Depends on #1'), 'Second issue should reference Depends on #1');
   });
 
   it('includes multiple dependency references in issue body', async () => {
-    const calls: { body: string }[] = [];
+    let nextNumber = 0;
+    const adapter = createMockAdapter({
+      createIssue: async () => ({ number: ++nextNumber, url: '' }),
+    });
     const deps: OrchestrateDeps = {
       ...baseDeps(),
-      execGhIssueCreate: async (_repo, _sid, _title, body, _labels) => {
-        calls.push({ body });
-        return calls.length;
-      },
+      adapter,
     };
     const plan: DecompositionPlan = {
       issues: [
@@ -6448,17 +6421,15 @@ describe('applyDecompositionPlan label enrichment', () => {
     };
     await applyDecompositionPlan(plan, baseState(), '/sessions/orch-1', 'owner/repo', deps);
 
-    assert.ok(calls[2].body.includes('Depends on #1, #2'), 'Third issue should reference both dependencies');
+    const createCalls = adapter.calls.filter((c) => c.method === 'createIssue');
+    assert.ok((createCalls[2].args[1] as string).includes('Depends on #1, #2'), 'Third issue should reference both dependencies');
   });
 
   it('does not duplicate Depends on if body already contains it', async () => {
-    const calls: { body: string }[] = [];
+    const adapter = createMockAdapter();
     const deps: OrchestrateDeps = {
       ...baseDeps(),
-      execGhIssueCreate: async (_repo, _sid, _title, body, _labels) => {
-        calls.push({ body });
-        return calls.length;
-      },
+      adapter,
     };
     const plan: DecompositionPlan = {
       issues: [
@@ -6468,15 +6439,16 @@ describe('applyDecompositionPlan label enrichment', () => {
     };
     await applyDecompositionPlan(plan, baseState(), '/sessions/orch-1', 'owner/repo', deps);
 
-    const count = (calls[1].body.match(/Depends on/g) || []).length;
+    const createCalls = adapter.calls.filter((c) => c.method === 'createIssue');
+    const count = ((createCalls[1].args[1] as string).match(/Depends on/g) || []).length;
     assert.equal(count, 1, 'Should not duplicate Depends on text');
   });
 
   it('stores enriched body in state when dependencies exist', async () => {
-    const calls: unknown[] = [];
+    const adapter = createMockAdapter();
     const deps: OrchestrateDeps = {
       ...baseDeps(),
-      execGhIssueCreate: async (_repo, _sid, _title, _body, _labels) => { calls.push(1); return calls.length; },
+      adapter,
     };
     const plan: DecompositionPlan = {
       issues: [

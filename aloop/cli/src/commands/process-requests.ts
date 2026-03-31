@@ -387,11 +387,10 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
         file_hints: issue.file_hints,
       }));
       if (normalizedIssues.length > 0) {
-        const ghIssueCreator = repo ? makeGhIssueCreator(requestsDir) : undefined;
         state = await applyDecompositionPlan(
           { issues: normalizedIssues } as DecompositionPlan,
           state, sessionDir, repo,
-          { existsSync, readFile: (p: string, e: BufferEncoding) => readFile(p, e), writeFile: (p: string, d: string, e: BufferEncoding) => writeFile(p, d, e), mkdir: (p: string, o?: { recursive?: boolean }) => mkdir(p, o).then(() => undefined), now: () => new Date(), execGhIssueCreate: ghIssueCreator, adapter },
+          { existsSync, readFile: (p: string, e: BufferEncoding) => readFile(p, e), writeFile: (p: string, d: string, e: BufferEncoding) => writeFile(p, d, e), mkdir: (p: string, o?: { recursive?: boolean }) => mkdir(p, o).then(() => undefined), now: () => new Date(), adapter },
         );
         stateChanged = true;
         console.log(`[process-requests] Applied epic decomposition: ${state.issues.length} issues`);
@@ -1071,28 +1070,6 @@ async function archiveRequestFile(requestsDir: string, filePath: string): Promis
   await mkdir(processedDir, { recursive: true });
   await writeFile(path.join(processedDir, path.basename(filePath)), await readFile(filePath, 'utf8'), 'utf8');
   await unlink(filePath);
-}
-
-async function createGhIssue(repo: string, title: string, body: string, labels: string[], requestsDir: string): Promise<number> {
-  const bodyFile = path.join(requestsDir, `gh-issue-body-${Date.now()}.md`);
-  await writeFile(bodyFile, body, 'utf8');
-  try {
-    const result = spawnSync('gh', ['issue', 'create', '--repo', repo, '--title', title, '--body-file', bodyFile, ...labels.flatMap(l => ['--label', l])], { encoding: 'utf8' });
-    if (result.status === 0 && result.stdout) {
-      const urlMatch = result.stdout.match(/\/issues\/(\d+)/);
-      if (urlMatch) return parseInt(urlMatch[1], 10);
-    }
-    console.error(`[process-requests] gh issue create failed: ${result.stderr?.trim()}`);
-    return 0;
-  } finally {
-    try { await unlink(bodyFile); } catch {}
-  }
-}
-
-function makeGhIssueCreator(requestsDir: string) {
-  return async (_repo: string, _sid: string, title: string, body: string, labels: string[]): Promise<number> => {
-    return createGhIssue(_repo, title, body, labels, requestsDir);
-  };
 }
 
 /**
