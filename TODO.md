@@ -3,7 +3,8 @@
 ## Current Phase: Implementation
 
 ### In Progress
-_(none)_
+
+- [ ] [review] Gate 5: `ActivityPanel.test.tsx:72` introduces a new TypeScript type error — `iterationStartedAt` is passed to `renderActivityPanel()` but is absent from `baseProps`, so `Partial<typeof baseProps>` doesn't include it. Fix: add `iterationStartedAt?: string` to the `baseProps` object in `ActivityPanel.test.tsx` so the helper accepts it without a type error. `npm run type-check` currently reports: `error TS2353: Object literal may only specify known properties, and 'iterationStartedAt' does not exist in type 'Partial<...>'` at line 72. (priority: high)
 
 ### Up Next
 

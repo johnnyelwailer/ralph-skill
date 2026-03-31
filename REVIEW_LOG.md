@@ -58,3 +58,59 @@ No dependency changes.
 `README.md` updated correctly: `--launch-mode resume` → `--launch resume <session-id>` fix is accurate per CLI behavior. `devcontainer-verify` added to CLI table. Missing stories list expanded with all 13 components lacking stories, grouped by directory — accurate reflection of current state.
 
 ---
+
+## Review — 2026-03-31 — commits b0b690d61..9f02c3ba4
+
+**Verdict: FAIL** (1 finding → written to TODO.md as [review] task)
+**Scope:** `ActivityPanel.test.tsx` (new), `ArtifactComparisonHeader.test.tsx` (new), `CollapsedSidebar.test.tsx` (new), `CollapsedSidebar.stories.tsx` (new), `SidebarContextMenu.test.tsx` (new), `SidebarContextMenu.stories.tsx` (new), `DiffOverlayView.test.tsx` (new), `DiffOverlayView.stories.tsx` (new), `SideBySideView.test.tsx` (new), `SideBySideView.stories.tsx` (new), `ActivityPanel.stories.tsx` (new), plus 8 additional new story files
+
+**Prior findings from b0b690d61 FAIL review:**
+- Finding 2 (Gate 1: CollapsedSidebar/SidebarContextMenu need .test.tsx files): ✅ RESOLVED — both files created with Testing Library tests using concrete value assertions.
+- Finding 3 (Gate 1: All three need .stories.tsx files + 10 more): ✅ RESOLVED — all 13 missing story files created, all export ≥2 named stories.
+
+### Gate 1 (Spec Compliance) — PASS
+
+All prior FAIL findings resolved. All 28 non-ui components now have `.test.tsx` and `.stories.tsx` files (SPEC-ADDENDUM line 122–123). CI workflow unchanged and still compliant. 632 tests pass.
+
+### Gate 2 (Test Depth) — PASS
+
+New test files use concrete value assertions throughout:
+- `CollapsedSidebar.test.tsx`: asserts specific session IDs, 8-session limit boundary, null ID mapping — concrete.
+- `SidebarContextMenu.test.tsx`: asserts exact callback arguments (null vs raw ID), boolean flags, pixel positioning — concrete.
+- `ArtifactComparisonHeader.test.tsx`: asserts specific metadata values, tab states, iteration labels — concrete.
+- `DiffOverlayView.test.tsx`: asserts default 50% opacity, specific slider values, iteration labels — concrete.
+- `SideBySideView.test.tsx`: asserts specific image `src` values, alt text generation — concrete.
+- `ActivityPanel.test.tsx` line 82: date header regex `/\d{4}-\d{2}-\d{2}|\w+ \d+/` is marginal (vague shape check) but acceptable by same precedent as `Header.test.tsx` timer truthy check (prior review, accepted due to date format non-determinism). Not blocking.
+
+### Gate 3 (Coverage) — PASS
+
+632 tests pass; all newly tested components had ≥90% branch coverage per prior QA session and spec-review verification.
+
+### Gate 4 (Code Quality) — PASS
+
+No dead code, no unused imports in any of the 19 new files. Story files cleanly export named stories using proper Storybook CSF3 format.
+
+### Gate 5 (Integration) — FAIL
+
+`npm run type-check` reports a new error introduced by this build:
+- `src/components/session/ActivityPanel.test.tsx(72,70): error TS2353: Object literal may only specify known properties, and 'iterationStartedAt' does not exist in type 'Partial<{...}>'`
+- `ActivityPanel` accepts `iterationStartedAt?: string` but `baseProps` in the test file omits it, so `Partial<typeof baseProps>` doesn't include it. Line 72 passes `iterationStartedAt: undefined` to `renderActivityPanel`, which TypeScript rejects.
+- Pre-existing: `Sidebar.test.tsx:240` (`afterEach` not found) — unchanged from prior iterations, not introduced by this build.
+
+### Gate 6 (Proof) — PASS
+
+Purely internal test and story file additions — no observable output requiring proof artifacts. Skipping is correct.
+
+### Gate 7 (Runtime Layout) — N/A
+
+No CSS or layout changes.
+
+### Gate 8 (Version Compliance) — N/A
+
+No dependency changes.
+
+### Gate 9 (Documentation) — PASS
+
+No docs changes needed for test/story additions.
+
+---
