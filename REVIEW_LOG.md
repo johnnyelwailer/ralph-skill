@@ -1,5 +1,32 @@
 # Review Log
 
+## Review — 2026-03-31 18:20 — commit a2e75cbab..065b10da6
+
+**Verdict: FAIL** (2 findings → written to TODO.md as [review] tasks)
+**Scope:** AppView.tsx (re-export pattern), LogEntryRow.accessibility.test.tsx (new close-btn tap test), App.coverage.comparison.test.ts (new close-btn tap test), ArtifactComparisonDialog.tsx (new file), ElapsedTimer.tsx (new file), LogEntryRow.tsx (circular dep fix), README.md (docs)
+
+**Prior findings resolved:**
+- Gate 1: ArtifactComparisonDialog close button (`ArtifactComparisonDialog.tsx:530`) — `min-h-[44px] min-w-[44px] md:min-h-0 md:min-w-0` present ✓
+- Gate 1: ImageLightbox close button (`LogEntryRow.tsx:399`) — `min-h-[44px] min-w-[44px] md:min-h-0 md:min-w-0` present ✓
+- Gate 4: Circular dep broken — LogEntryRow no longer imports from AppView; ArtifactComparisonDialog → its own file, ElapsedTimer → its own file ✓
+
+**New findings from the fix:**
+- Gate 2: `LogEntryRow.accessibility.test.tsx:346` — `if (imgBtn)` guard silently skips all 4 tap-target assertions if `querySelector('button.text-blue-600')` misses. Test passes vacuously.
+- Gate 4: `AppView.tsx:854` — dead import (`import { findBaselineIterations, ArtifactComparisonDialog } from ...`). These local bindings are never used in AppView's own code (grep: 2 matches, both on lines 853-854). Line 853's re-export is sufficient alone.
+
+**Gate results:**
+- Gate 1 (Spec Compliance): PASS — both close buttons have correct tap target classes; prior Gate 1 findings resolved
+- Gate 2 (Test Depth): FAIL — `LogEntryRow.accessibility.test.tsx:346` conditional if-guard makes tap-target assertions skippable
+- Gate 3 (Coverage): PASS — 158 tests pass; new close-btn tests in both comparison and accessibility suites
+- Gate 4 (Code Quality): FAIL — `AppView.tsx:854` dead import (never used locally)
+- Gate 5 (Integration Sanity): PASS — 158 tests, `tsc --noEmit` clean
+- Gate 6 (Proof Verification): PASS — bug fix / refactor, no observable UI output requiring proof
+- Gate 7 (Runtime Layout): PASS — no new layout components; CSS-only tap target fix; prior smoke.spec.ts Playwright assertions cover tap target verification
+- Gate 8 (Version Compliance): PASS — no dependency changes
+- Gate 9 (Documentation Freshness): PASS — README updated with responsive layout feature bullet
+
+---
+
 ## Review — 2026-03-31 18:00 — commit bfc70e270..31eae70f6
 
 **Verdict: FAIL** (2 findings → written to TODO.md as [review] tasks)
