@@ -212,3 +212,58 @@ No dependency changes.
 This iteration IS a documentation fix. README Storybook status now correctly lists component names that actually exist in the codebase, verified against directory listing.
 
 ---
+
+## Review — 2026-03-31 — commits a43e2b433..0b102ba24 (final-review, spec-review trigger)
+
+**Verdict: FAIL** (2 findings → written to TODO.md as [review] tasks)
+**Scope:** `README.md` (commit 06a97c3c2 — loop pipeline description and template list update); commits 16ae0c502 (spec-gap bookkeeping, TODO.md only) and 0b102ba24 (prior FAIL review, TODO.md only) are internal bookkeeping with no code/doc impact.
+
+**Prior findings resolution:**
+- All prior Gate 5 FAIL findings (TS2353, TS2304) remain resolved. No regressions.
+- The Storybook component list fix (119006048) remains accurate — confirmed in prior review.
+
+### Gate 1 (Spec Compliance) — FAIL
+
+`README.md` commit 06a97c3c2 corrects the loop pipeline description but introduces two spec-compliance gaps:
+
+1. **Template list missing `PROMPT_spec-review.md`** — file exists at `aloop/templates/PROMPT_spec-review.md` (confirmed by directory listing). The README Architecture section lists 8 templates (PROMPT_plan, PROMPT_build, PROMPT_review, PROMPT_qa, PROMPT_proof, PROMPT_spec-gap, PROMPT_docs, PROMPT_final-qa, PROMPT_final-review, PROMPT_steer, PROMPT_setup, PROMPT_single) but omits `PROMPT_spec-review.md`. SPEC line 422 lists `spec-review` as a finalizer agent with its own prompt file.
+
+2. **Finalizer prose incomplete** — README lines 22–25 lists only 3 finalizer agents (Proof, Spec-gap, Docs). SPEC line 422 defines 6: `spec-gap → docs → spec-review → final-review → final-qa → proof`. Missing: spec-review, final-review, final-qa.
+
+Note: both findings were independently identified by the prior spec-review FAIL commit (0b102ba24). Independent verification confirms they are real and unresolved.
+
+### Gate 2 (Test Depth) — N/A
+
+No test changes in this scope.
+
+### Gate 3 (Coverage) — N/A
+
+No code changes; docs-only commit.
+
+### Gate 4 (Code Quality) — PASS
+
+The docs corrections in 06a97c3c2 are accurate and clean. The loop pipeline description (plan → build ×5 → qa → review; proof in finalizer only) matches SPEC lines 407–409 and 420–422. No dead content introduced.
+
+### Gate 5 (Integration Sanity) — PASS
+
+No code changes; no regression risk. Prior review confirmed `npm run type-check` exits 0 and 632 tests pass — nothing in this scope changes that.
+
+### Gate 6 (Proof) — N/A
+
+Purely internal docs change. Skipping is correct.
+
+### Gate 7 (Runtime Layout) — N/A
+
+No CSS or layout changes.
+
+### Gate 8 (Version Compliance) — N/A
+
+No dependency changes.
+
+### Gate 9 (Documentation) — FAIL
+
+README.md is the subject of this commit, and the commit leaves two inaccuracies:
+- Template list omits `PROMPT_spec-review.md` which exists on disk
+- Finalizer agent prose is 3 of 6 agents
+
+---
