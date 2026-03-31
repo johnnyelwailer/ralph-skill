@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { App } from './App';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import '@testing-library/jest-dom/vitest';
 import { createElement } from 'react';
 import { MockEventSource, baseState } from './App.coverage.test-utils';
@@ -158,5 +158,86 @@ describe('App.tsx AppView integration coverage - app controls', () => {
       expect(window.history.replaceState).toHaveBeenCalled();
       expect(fetchMock).toHaveBeenCalledWith('/api/state?session=sess-1', expect.any(Object));
     });
+  });
+
+  it('covers mobile viewport: Ctrl+B no-op, touch gestures, and overlay inner click', async () => {
+    // Set mobile viewport (< 640px) so isMobile = true
+    Object.defineProperty(window, 'innerWidth', { writable: true, configurable: true, value: 375 });
+
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.startsWith('/api/state')) {
+        return new Response(JSON.stringify(baseState), { status: 200, headers: { 'content-type': 'application/json' } });
+      }
+      return new Response(JSON.stringify({}), { status: 200, headers: { 'content-type': 'application/json' } });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { container } = render(createElement(App));
+    await screen.findByRole('button', { name: /stop loop options/i });
+
+    // Ctrl+B on mobile: !isMobile is false → toggleSidebar NOT called (line 45 false branch)
+    fireEvent.keyDown(document, { key: 'b', ctrlKey: true });
+
+    const rootDiv = container.querySelector('.h-screen') as HTMLElement;
+
+    // onTouchStart on mobile: isMobile true → captures X (line 54 true branch)
+    // jsdom Event constructor ignores non-standard properties; set directly
+    const touchStartEvt = new Event('touchstart', { bubbles: true });
+    (touchStartEvt as any).touches = [{ clientX: 10 }];
+    act(() => { rootDiv.dispatchEvent(touchStartEvt); });
+
+    // onTouchEnd gesture path: sx=10 (<=20), endX=100 (diff=90 >=50) → openSidebar (lines 59-60)
+    const touchEndEvt = new Event('touchend', { bubbles: true });
+    (touchEndEvt as any).changedTouches = [{ clientX: 100 }];
+    act(() => { rootDiv.dispatchEvent(touchEndEvt); });
+
+    // Mobile sidebar overlay should be visible
+    const mobileOverlay = container.querySelector('.fixed.inset-0.z-40') as HTMLDivElement | null;
+    expect(mobileOverlay).not.toBeNull();
+
+    // Click inner sidebar panel to test e.stopPropagation (line 72)
+    const innerPanel = mobileOverlay!.querySelector('.animate-slide-in-left') as HTMLElement | null;
+    expect(innerPanel).not.toBeNull();
+    fireEvent.click(innerPanel!);
+
+    // Overlay should still be open (stopPropagation prevented closeSidebar)
+    expect(container.querySelector('.fixed.inset-0.z-40')).not.toBeNull();
+
+    // Now close via backdrop click
+    fireEvent.click(mobileOverlay!);
+    expect(container.querySelector('.fixed.inset-0.z-40')).toBeNull();
+  });
+
+  it('covers non-mobile touch gesture: touchEnd early return and swipe open', async () => {
+    // Tablet viewport (640-1023px) so isMobile = false
+    Object.defineProperty(window, 'innerWidth', { writable: true, configurable: true, value: 800 });
+
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.startsWith('/api/state')) {
+        return new Response(JSON.stringify(baseState), { status: 200, headers: { 'content-type': 'application/json' } });
+      }
+      return new Response(JSON.stringify({}), { status: 200, headers: { 'content-type': 'application/json' } });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { container } = render(createElement(App));
+    await screen.findByRole('button', { name: /stop loop options/i });
+
+    // Close sidebar first so overlay isn't shown
+    const collapseBtn = container.querySelector('button .lucide-panel-left-close')?.closest('button') as HTMLButtonElement | null;
+    if (collapseBtn) fireEvent.click(collapseBtn);
+
+    const rootDiv = container.querySelector('.h-screen') as HTMLElement;
+
+    // onTouchStart at tablet: isMobile false → skip capture (line 53-54 false branch)
+    fireEvent.touchStart(rootDiv, { touches: [{ clientX: 10 }] });
+
+    // onTouchEnd at tablet: !isMobile is true → early return (line 58 first arm)
+    fireEvent.touchEnd(rootDiv, { changedTouches: [{ clientX: 100 }] });
+
+    // Sidebar should remain closed (touchEnd returned early on non-mobile)
+    expect(container.querySelector('.fixed.inset-0.z-40')).toBeNull();
   });
 });
