@@ -36,3 +36,5 @@
 | TypeScript type-check | 2026-03-31 | 1b2603f | PASS | tsc --noEmit clean; no regression |
 | Unit test suite | 2026-03-31 | 60952f7 | PASS | 158 tests pass (21 test files); no regression — chore/docs-only commits since 1b2603f |
 | TypeScript type-check | 2026-03-31 | 60952f7 | PASS | tsc --noEmit clean; no regression |
+| Unit test suite | 2026-03-31 | 9db0a33 | PASS | 158 tests pass (21 test files); no regression — chore-only commit since 60952f7 |
+| TypeScript type-check | 2026-03-31 | 9db0a33 | PASS | tsc --noEmit clean; no regression |
