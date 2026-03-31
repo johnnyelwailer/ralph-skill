@@ -73,7 +73,7 @@ aloop dashboard --port 3000 --session-dir ~/.aloop/sessions/<id>
 - **Live steering** — send instructions to the running loop from the dashboard
 - **Stop controls** — graceful (SIGTERM) or force (SIGKILL)
 
-> **Note:** Dashboard component decomposition is in progress. The core `AppView.tsx` is being split into focused sub-components (see SPEC-ADDENDUM). Currently extracted: `ArtifactViewer`, `ResponsiveLayout`, `CostDisplay`.
+> **Note (Partial):** Dashboard component decomposition is in progress. The core `AppView.tsx` (2536 lines) is being split into focused sub-components. Extracted so far: `ArtifactViewer`, `ResponsiveLayout`, `CostDisplay`. Remaining planned components include `SessionCard`, `ProviderHealth`, `ActivityLog`, `SteerInput`, and others (see SPEC-ADDENDUM). Storybook integration — required per SPEC-ADDENDUM for component stories and visual proof capture — is **not yet started** (spec only).
 
 ## Quality Gates
 
