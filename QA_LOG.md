@@ -75,3 +75,62 @@ NO STORY: ./session/SideBySideView.tsx
 NO STORY: ./session/SliderView.tsx
 NO STORY: ./shared/QACoverageBadge.tsx
 ```
+
+## QA Session — 2026-03-31 (iteration 3)
+
+### Test Environment
+- Binary under test: /tmp/aloop-test-install-w1lqjx/bin/aloop (version 1.0.0)
+- Commit: 2d02591e7b0cd07ef37591448efca8099defb23e
+- Features tested: 5
+
+### Results
+- PASS: ci.yml exists and is valid YAML
+- PASS: CI workflow Node 22 + npm ci setup
+- PASS: npm test (vitest) runs in dashboard — 51 test files, 632 tests
+- PASS: Every non-ui component has .test.tsx (previously FAIL — all 6 missing files now present)
+- PASS: Every non-ui component has .stories.tsx (previously FAIL — all 13 missing files now present)
+- FAIL: TypeScript type-check — 2 errors remain
+
+### Bugs Filed
+- [qa/P1] Sidebar.test.tsx:240 TS2304: `afterEach` not found (new)
+- [review] ActivityPanel.test.tsx:72 TS2353: `iterationStartedAt` type error (pre-existing, tracked as [review] gate item)
+
+### Command Transcript
+
+```
+# Install CLI from packaged source
+npm --prefix aloop/cli install --silent
+npm --prefix aloop/cli run test-install -- --keep
+# → Binary: /tmp/aloop-test-install-w1lqjx/bin/aloop
+/tmp/aloop-test-install-w1lqjx/bin/aloop --version
+# → 1.0.0
+
+# Run dashboard test suite
+npm --prefix aloop/cli/dashboard test -- --run
+# → Test Files: 51 passed (51)
+# → Tests: 632 passed (632)
+# → Duration: 4.70s
+# (Note: error logged for useResponsiveLayout outside context but does not fail tests)
+
+# Check .test.tsx coverage (non-ui components)
+find src/components -name "*.tsx" ! -name "*.test.tsx" ! -name "*.stories.tsx" ! -path "*/ui/*"
+# → All have corresponding .test.tsx — no missing files
+
+# Check .stories.tsx coverage (non-ui components)
+find src/components -name "*.tsx" ! -name "*.test.tsx" ! -name "*.stories.tsx" ! -path "*/ui/*"
+# → All have corresponding .stories.tsx — no missing files
+# (ui/sonner.stories.tsx has only 1 story but ui/ is excluded per SPEC-ADDENDUM)
+
+# TypeScript type-check
+npm --prefix aloop/cli/dashboard run type-check
+# → src/components/layout/Sidebar.test.tsx(240,5): error TS2304: Cannot find name 'afterEach'.
+# → src/components/session/ActivityPanel.test.tsx(72,70): error TS2353: ...iterationStartedAt...
+# Exit: non-zero (2 errors)
+
+# Check ci.yml
+cat .github/workflows/ci.yml
+# → Triggers on push+PR to master, agent/trunk
+# → Node 22 via actions/setup-node@v4
+# → working-directory: aloop/cli/dashboard
+# → npm ci then npm test
+```
