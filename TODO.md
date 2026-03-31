@@ -12,6 +12,12 @@
 
 - [x] [spec-gap][P3] `orchestrate.ts:1132` — raw `nodeSpawnSync('gh', ['issue', 'list', ...])` in `orchestrateCommandWithDeps` preload phase not migrated to adapter. Migrated to `deps.adapter.listIssues()` + `deps.adapter.getIssue()` pattern; project status GraphQL calls use `deps.execGh` when available.
 
+### Spec-Gap Analysis
+
+spec-gap analysis: no discrepancies found — spec fully fulfilled
+
+All acceptance criteria for Issue #177 (adapter refactoring) are implemented. Both previously identified `[spec-gap]` items (P2 dead code removal, P3 raw `gh issue list` migration) are resolved and marked `[x]`.
+
 ### Completed
 
 - [x] Add `adapter?: OrchestratorAdapter` to `TriageDeps`, `OrchestrateDeps`, `DispatchDeps`, `PrLifecycleDeps`, `ScanLoopDeps` — verified at orchestrate.ts lines 191–234, 3513, 4747
