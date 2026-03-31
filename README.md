@@ -20,9 +20,12 @@ plan → build × 5 → qa → review → (repeat)
 4. **Review** — Audits the build against 9 quality gates, writes fix tasks or approves
 
 When all tasks are marked done, finalizer agents run once:
-- **Proof** — Captures screenshots, API responses, test output as evidence
 - **Spec-gap** — Finds discrepancies between spec and implementation
 - **Docs** — Syncs documentation to match actual implementation
+- **Spec-review** — Reviews spec compliance of the implementation
+- **Final-review** — Final code quality audit against all 9 review gates
+- **Final-qa** — Final quality assurance pass before proof capture
+- **Proof** — Captures screenshots, API responses, test output as evidence
 
 On-demand:
 - **Steer** — Applies live direction changes queued from the dashboard
@@ -240,11 +243,29 @@ The installer deploys skill files to each harness directory and the Aloop runtim
     PROMPT_proof.md             # Proof agent (finalizer)
     PROMPT_spec-gap.md          # Spec-gap analysis agent (finalizer)
     PROMPT_docs.md              # Documentation sync agent (finalizer)
+    PROMPT_spec-review.md       # Spec-review agent (finalizer)
     PROMPT_final-qa.md          # Final QA agent (finalizer)
     PROMPT_final-review.md      # Final review agent (finalizer)
     PROMPT_steer.md             # Steering agent template
     PROMPT_setup.md             # Setup/discovery agent
     PROMPT_single.md            # Single-shot agent template
+    PROMPT_merge.md             # PR squash-merge agent (orchestrator)
+    PROMPT_orch_scan.md         # Orchestrator scan loop (polls issue/PR state)
+    PROMPT_orch_decompose.md    # Epic decomposition (spec → issues)
+    PROMPT_orch_sub_decompose.md # Sub-task decomposition within an epic
+    PROMPT_orch_planner_fullstack.md  # Fullstack issue planner
+    PROMPT_orch_planner_frontend.md   # Frontend issue planner
+    PROMPT_orch_planner_backend.md    # Backend issue planner
+    PROMPT_orch_planner_infra.md      # Infrastructure issue planner
+    PROMPT_orch_arch_analyst.md  # Architecture analysis sub-agent
+    PROMPT_orch_product_analyst.md # Product requirements analysis
+    PROMPT_orch_estimate.md     # Issue effort estimation
+    PROMPT_orch_refine.md       # Issue refinement and acceptance criteria
+    PROMPT_orch_replan.md       # Replan after conflict or failure
+    PROMPT_orch_review.md       # Orchestrator-level PR review gate
+    PROMPT_orch_resolver.md     # Conflict resolution sub-agent
+    PROMPT_orch_spec_consistency.md # Cross-issue spec consistency check
+    PROMPT_orch_cr_analysis.md  # Change request analysis
     conventions/                # Code quality, testing, git conventions
   sessions/<session-id>/
     meta.json                   # Session metadata

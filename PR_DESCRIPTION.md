@@ -29,7 +29,7 @@
 - `aloop/cli/dashboard/src/components/shared/QACoverageBadge.test.tsx` — new unit tests (93.93% branch coverage)
 - `aloop/cli/dashboard/src/components/shared/QACoverageBadge.stories.tsx` — new Storybook stories
 - `aloop/cli/dashboard/src/components/layout/Sidebar.test.tsx` — TS fix: add `afterEach` to vitest imports
-- `README.md` — correct CLI flag example, add missing stories list, fix OpenCode agent model IDs, fix Storybook component list (remove non-existent AppShell, add ArtifactViewer/ProviderHealth/CostDisplay)
+- `README.md` — correct CLI flag example, add missing stories list, fix OpenCode agent model IDs, fix Storybook component list (remove non-existent AppShell, add ArtifactViewer/ProviderHealth/CostDisplay), complete finalizer agent prose to all 6 agents, add PROMPT_spec-review.md/PROMPT_final-qa.md/PROMPT_final-review.md to template list
 
 ## Verification
 
@@ -39,6 +39,8 @@
 - [x] `npm run type-check` passes with zero errors — verified by running in `aloop/cli`
 - [x] All 632 tests pass — verified per build commit message and QA session
 - [x] No browser install required (jsdom configured, no Playwright in CI) — verified by reading ci.yml and vitest.config.ts
+- [x] README finalizer prose lists all 6 agents (Spec-gap, Docs, Spec-review, Final-review, Final-qa, Proof) — verified at lines 22–28
+- [x] README template list includes PROMPT_spec-review.md, PROMPT_final-qa.md, PROMPT_final-review.md — verified at lines 246–248
 
 ## Proof Artifacts
 

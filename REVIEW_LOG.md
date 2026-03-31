@@ -213,6 +213,57 @@ This iteration IS a documentation fix. README Storybook status now correctly lis
 
 ---
 
+## Review — 2026-03-31 — commits 0b102ba24..f9623d907 + staged README.md (final-review, spec-review trigger)
+
+**Verdict: PASS** (0 findings)
+**Scope:** `README.md` (staged uncommitted fix — adds PROMPT_spec-review.md to template list and completes finalizer prose to all 6 agents); commits `6650dcf30` and `f9623d907` are TODO.md/bookkeeping only.
+
+**Prior findings resolution:**
+- Gate 1/Gate 9 FAIL (README template list missing `PROMPT_spec-review.md`): ✅ RESOLVED — README line 246 now lists `PROMPT_spec-review.md  # Spec-review agent (finalizer)`.
+- Gate 1/Gate 9 FAIL (README finalizer prose listed 3 of 6 agents): ✅ RESOLVED — README lines 22–28 now list all 6 finalizer agents: Spec-gap, Docs, Spec-review, Final-review, Final-qa, Proof.
+
+### Gate 1 (Spec Compliance) — PASS
+
+Both prior findings now resolved:
+- SPEC §"Default pipeline update" line 422 defines 6 finalizer agents (`spec-gap → docs → spec-review → final-review → final-qa → proof`); README lines 22–28 accurately list all 6 ✓
+- `aloop/templates/PROMPT_spec-review.md` exists on disk (confirmed by glob); README line 246 lists it in the Architecture template table ✓
+
+### Gate 2 (Test Depth) — N/A
+
+No tests changed.
+
+### Gate 3 (Coverage) — N/A
+
+No code changed.
+
+### Gate 4 (Code Quality) — PASS
+
+README additions are minimal (3 new bullet points in prose, 3 new template list entries). Content is accurate and non-redundant. No dead content introduced.
+
+### Gate 5 (Integration Sanity) — PASS
+
+README-only changes cannot affect tests or type-checking. Prior review (a37348513..cc509515c) confirmed `npm run type-check` exits 0 and 632 tests pass; no code was changed since. Note: ENOSPC on host prevented re-running test suite directly — disk full error in bash tool. Risk is zero for docs-only changes.
+
+### Gate 6 (Proof) — N/A
+
+Internal documentation fix only. No observable output requiring proof.
+
+### Gate 7 (Runtime Layout) — N/A
+
+No CSS or layout changes.
+
+### Gate 8 (Version Compliance) — N/A
+
+No dependency changes.
+
+### Gate 9 (Documentation) — PASS
+
+The fix is the documentation change itself:
+- Template list (lines 244–248): `PROMPT_spec-review.md` (line 246), `PROMPT_final-qa.md` (line 247), `PROMPT_final-review.md` (line 248) — all three present and correctly described as finalizer agents ✓
+- Finalizer prose (lines 22–28): Spec-gap, Docs, Spec-review, Final-review, Final-qa, Proof — complete, matches SPEC ✓
+
+---
+
 ## Review — 2026-03-31 — commits a43e2b433..0b102ba24 (final-review, spec-review trigger)
 
 **Verdict: FAIL** (2 findings → written to TODO.md as [review] tasks)
