@@ -108,9 +108,9 @@ When OpenCode is enabled, `aloop setup` installs three specialist agents to `.op
 
 | Agent | Description | Model |
 |-------|-------------|-------|
-| `code-critic` | Deep code review for subtle bugs and security issues | `claude-sonnet-4` (reasoning: xhigh) |
-| `error-analyst` | Parses error logs and stack traces to suggest fixes | `gemini-3.1-flash-lite-preview` (reasoning: medium) |
-| `vision-reviewer` | Analyzes screenshots for layout and visual issues | `gemini-3.1-flash-lite-preview` (reasoning: medium) |
+| `code-critic` | Deep code review for subtle bugs and security issues | `openrouter/anthropic/claude-sonnet-4` (reasoning: xhigh) |
+| `error-analyst` | Parses error logs and stack traces to suggest fixes | `openrouter/google/gemini-3.1-flash-lite-preview` (reasoning: medium) |
+| `vision-reviewer` | Analyzes screenshots for layout and visual issues | `openrouter/google/gemini-3.1-flash-lite-preview` (reasoning: medium) |
 
 ```bash
 # Run the code critic on your working directory
