@@ -21,6 +21,20 @@ _(none)_
 **Pre-existing P2 spec-internal inconsistency (does not block this issue, spec doc needs updating):**
 - [spec-gap/P2] SPEC lines 717 and 775 (acceptance criteria in Proof and QA sections) reference a "9-step" default pipeline including proof in the cycle: `plan → build × 5 → proof → qa → review`. However, the SPEC body at lines 407–409 and 420–422 explicitly states "Proof does NOT run in the cycle — it's expensive and only meaningful as final evidence" and shows proof only in the finalizer. The `pipeline.yml` correctly implements the body text (proof in finalizer only). Fix: update SPEC ACs at lines 717 and 775 to remove proof from the cycle description and note proof runs in the finalizer only. (Spec is wrong, code is correct.)
 
+### Spec Review — APPROVED
+
+All in-scope requirements satisfied:
+- [SPEC line 1781] `.github/workflows/ci.yml` created — GitHub Actions CI now exists ✓
+- [SPEC line 1898] Workflow discoverable at `.github/workflows/*.yml` for orchestrator detection ✓
+- Triggers on push + PR to `master` and `agent/trunk` ✓
+- Node 22 via `actions/setup-node@v4` ✓
+- `npm ci` installs deps in `aloop/cli/dashboard` before tests ✓
+- `npm test` runs `vitest run` in `aloop/cli/dashboard` ✓
+- No Playwright/e2e tests included; vitest config excludes `e2e/**` ✓
+- jsdom configured in `vitest.config.ts` — no browser install required ✓
+
+No gaps found. Issue #38 implementation is complete and spec-compliant.
+
 ### Notes
 - No `.github/workflows/` directory or `ci.yml` exists on master or this branch
 - The spec says "Dashboard deps should already be installed from the core workflow" but that core workflow hasn't been created yet — we need to include basic setup (checkout + Node + npm ci) so the dashboard test step can run
