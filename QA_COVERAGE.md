@@ -78,3 +78,8 @@
 | orchestrate.test.ts full suite | 2026-03-31 | 57f728a68 | PASS | 352/379 pass, 27 fail — regression from iter 12 fixed; back to pre-existing baseline |
 | runTriageMonitorCycle adapter path (listComments) | 2026-03-31 | 57f728a68 | PASS | Re-test: subtests 3+4 now pass (ok 3, ok 4 confirmed); regression from a33ba1099 fixed |
 | tsc --noEmit (non-test files) | 2026-03-31 | 57f728a68 | PASS | Zero type errors; exit 0 |
+| TypeScript build (npm run build) | 2026-03-31 | 28a1ca40a | PASS | Build clean exit 0 (final-qa iter 14 — docs-only changes since iter 13) |
+| adapter.test.ts unit tests | 2026-03-31 | 28a1ca40a | PASS | 36/36 pass — stable |
+| process-requests.ts full suite | 2026-03-31 | 28a1ca40a | PASS | 42/42 pass — stable |
+| orchestrate.test.ts full suite | 2026-03-31 | 28a1ca40a | PASS | 352/379 pass, 27 fail — identical pre-existing baseline; no regressions |
+| tsc --noEmit (non-test files) | 2026-03-31 | 28a1ca40a | PASS | Zero type errors; exit 0 |

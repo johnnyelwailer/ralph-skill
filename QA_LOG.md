@@ -645,3 +645,42 @@ npx tsc --noEmit --skipLibCheck → exit 0, no output
 
 rm -rf /tmp/aloop-test-install-uLgWX8
 ```
+
+---
+
+## QA Session — 2026-03-31 (Issue #177 — iter 14, final-qa triggered by final-review)
+
+### Test Environment
+- Binary under test: /tmp/aloop-test-install-4KIU9r/bin/aloop (version 1.0.0)
+- Head commit: 28a1ca40a chore(review): PASS — gates 1-9 pass
+- Changes since iter 13 (fe63875c2): documentation only — README.md auth failure description fix (e7f44d93b), spec-gap second pass (210ad135f), spec-review docs trigger (cce6f2855), review gates 1-9 pass (28a1ca40a); no code changes
+- Features tested: 5 (build, adapter.test.ts, process-requests.test.ts, orchestrate.test.ts, tsc)
+
+### Results
+- PASS: TypeScript build (npm run build) — exit 0
+- PASS: adapter.test.ts — 36/36 pass
+- PASS: process-requests.test.ts — 42/42 pass
+- PASS: orchestrate.test.ts — 352/379 pass, 27 fail (same pre-existing baseline; no regressions)
+- PASS: tsc --noEmit --skipLibCheck — exit 0, zero errors
+
+### Bugs Filed
+None — documentation-only changes since iter 13; all suites stable.
+
+### Regression Analysis
+- Iter 13 (57f728a68): 27 failures, 352 pass, 379 total
+- Iter 14 (28a1ca40a): 27 failures, 352 pass, 379 total — IDENTICAL, stable
+
+### Command Transcript
+```
+ALOOP_BIN=$(npm run --silent test-install -- --keep 2>/dev/null | tail -1)
+# → /tmp/aloop-test-install-4KIU9r/bin/aloop
+$ALOOP_BIN --version → 1.0.0
+
+npm run build → BUILD_EXIT:0
+npx tsx --test src/lib/adapter.test.ts → 36/36 pass, exit 0
+npx tsx --test src/commands/process-requests.test.ts → 42/42 pass, exit 0
+npx tsx --test src/commands/orchestrate.test.ts → 379 tests / 352 pass / 27 fail
+npx tsc --noEmit --skipLibCheck → exit 0, no output
+
+rm -rf /tmp/aloop-test-install-4KIU9r
+```
