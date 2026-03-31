@@ -1,5 +1,76 @@
 # QA Log
 
+## QA Session — 2026-03-31 (final-qa re-run at HEAD 004c130, issue-172)
+
+### Test Environment
+- Binary under test: /tmp/aloop-test-install-EcV3IL/bin/aloop (cleaned up)
+- Version: 1.0.0
+- Install method: npm pack + isolated temp prefix (test-install script)
+- Commit: 004c130 (only REVIEW_LOG.md, TODO.md, README.md, QA_COVERAGE.md, QA_LOG.md, PR_DESCRIPTION.md changed since last QA at c55f0c8 — no functional code changes)
+- Features tested: 5 (flock core, installed binary, stale cleanup, README steer arg, devcontainer cmd)
+
+### Scope Note
+Only changes since prior QA (c55f0c8): docs: fix steer argument syntax and add missing devcontainer slash command; docs(spec-review) review notes; chore(review) pass markers. No functional code changes. Re-ran full test suite plus verified README doc accuracy.
+
+### Results
+- PASS: loop_provider_health_primitives.tests.sh — 7/7 tests pass (source)
+- PASS: loop_provider_health.tests.sh — 5/5 tests pass (source)
+- PASS: aloop.test.mjs — 8/8 tests pass
+- PASS: flock references in installed binary = 5 (correct)
+- PASS: mkdir in installed loop.sh = 2 lines (cleanup-only comments, not acquisition)
+- PASS: README `aloop steer <instruction>` — CLI --help confirms `<instruction>` positional arg
+- PASS: README `/aloop:devcontainer` slash cmd — `aloop devcontainer` exists in installed binary
+
+### Bugs Filed
+None — all tests pass at HEAD.
+
+### Command Transcript
+
+```
+# Install from source (pack → isolated temp prefix)
+ALOOP_BIN=$(npm --prefix aloop/cli run --silent test-install -- --keep 2>/dev/null | tail -1)
+# → /tmp/aloop-test-install-EcV3IL/bin/aloop
+$ALOOP_BIN --version
+# → 1.0.0
+
+# Flock primitives unit tests (source)
+bash aloop/bin/loop_provider_health_primitives.tests.sh
+# → All tests passed! (7/7)
+
+# Provider health integration tests (source)
+bash aloop/bin/loop_provider_health.tests.sh
+# → All tests passed! (5/5)
+
+# aloop.test.mjs
+node --test aloop/cli/aloop.test.mjs
+# → 8/8 pass (0 fail, 0 cancelled, 0 skipped)
+
+# flock count in installed binary
+grep -c "flock" installed loop.sh
+# → 5
+
+# mkdir refs (cleanup-only)
+grep -n "mkdir.*lock" installed loop.sh
+# → line 872: # Clean up stale .lock directories from the old mkdir-based locking approach
+# → line 899: # Clean up stale .lock directory from old mkdir-based locking approach
+# PASS: no mkdir used for lock acquisition
+
+# README steer argument syntax
+aloop steer --help
+# → Usage: aloop steer [options] <instruction>
+# PASS: <instruction> positional arg confirmed
+
+# README devcontainer slash command
+aloop devcontainer --help
+# → Usage: aloop devcontainer [options]
+# PASS: command exists in installed binary
+
+# Cleanup
+rm -rf /tmp/aloop-test-install-EcV3IL
+```
+
+---
+
 ## QA Session — 2026-03-31 (final-qa re-run at HEAD c55f0c8, issue-172)
 
 ### Test Environment
