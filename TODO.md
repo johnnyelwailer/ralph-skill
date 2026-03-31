@@ -4,39 +4,20 @@
 
 ### In Progress
 
-- [x] [review] Gate 1+3: `useDashboardState.ts` is 312 LOC — violates CONSTITUTION Rule 7 (target <150, split above 200) and SPEC-ADDENDUM ("300+ LOC is a code smell"). Additionally, it has ZERO test coverage: no test file exists and it is not in `vitest.config.ts` coverage include list. Required: (1) split into ≤2 smaller files (e.g. extract SSE logic to `useSSEConnection.ts` ~100 LOC, keep derived-state/actions in `useDashboardState.ts` ~200 LOC OR split further), (2) add test file `useDashboardState.test.ts` with ≥90% branch coverage — cover: initial state, `selectSession` URL mutation, `connectSSE` reconnect backoff, phase-change toast, `handleSteer`/`handleStop`/`handleResume` success+error paths, `commandOpen` toggle; (3) add `src/hooks/useDashboardState.ts` (and any split files) to the `coverage.include` array in `vitest.config.ts` (priority: high)
-- [x] [review] Gate 3: `AppView.tsx` branch coverage is 88.37% — above 80% threshold. Lines 54, 58–60 covered by mobile viewport and touch gesture tests. Lines 73–78 (JSX elements in mobile overlay) remain partially uncovered but branch requirement met.
-- [x] [review] Gate 3: `logHelpers.ts` and `sessionHelpers.ts` — added `logHelpers.test.ts` and `sessionHelpers.test.ts`. `logHelpers.ts` at 100% branch, `sessionHelpers.ts` at 90% branch. (priority: high)
-
-- [x] [qa/P1] `logHelpers.ts` branch coverage 100% — was 82.14%, added tests for empty string log, non-record JSON (`null`, numbers, booleans), string iteration values, zero-count durations, alternate field names. (priority: high)
-- [x] [qa/P1] `sessionHelpers.ts` branch coverage 90% — was 70%, added tests for `toSession` with `project_root` path derivation (trailing slash, backslash, no root), alternate keys, stuckCount, fallback projectName. (priority: high)
-- [ ] [qa/P1] `useSSEConnection.ts` branch coverage 80.76% — was 65.38%, added `useSSEConnection.test.ts` with 12 tests covering fetch errors, SSE state events, malformed JSON, reconnection, cleanup, session switching. 5 uncovered branches remain (lines 46, 57-58, 70, 90) — all are redundant defensive guards in cleanup/reconnect logic that cannot be triggered from tests without source refactoring (e.g. `if (stateListener)` always true because listeners are set synchronously before cleanup runs). Spec requires ≥90% but achievable coverage is ~81% without changing production code. Re-tested iter 7: still 80.76%, no change. (priority: high)
-- [x] [review] Gate 2: `useDashboardState.test.ts` lines 322, 330, 337 — three tests in the `configuredProviders (via providerHealth)` group assert only `expect(result.current.providerHealth).toBeDefined()`. This is the existence-check anti-pattern: passes even if `deriveProviderHealth` returns garbage. Rewrite each test to assert the specific shape/values returned by `deriveProviderHealth`: e.g., for null meta → `expect(result.current.providerHealth).toEqual([])` (or whatever the actual empty result is); for `enabled_providers: ['claude', 'openai']` → assert providerHealth includes entries for those two providers; for `round_robin_order` → assert the fallback is used. (priority: high)
-- [ ] [review] Gate 3 (persistent): `useSSEConnection.ts` at 80.76% branch — below ≥90% threshold for new modules. Remaining uncovered branches are: (a) line 46 `if (!cancelled)` false branch in load() success path, (b) lines 57-58 false branches of `if (stateListener)` and `if (heartbeatListener)` null-guards in `cleanupEventSource` — these guards are structurally unreachable because stateListener/heartbeatListener are only ever nulled INSIDE cleanupEventSource itself; removing them would eliminate the uncoverable branches without changing behavior, (c) line 70 `if (cancelled) return` true branch inside connectSSE — the reconnect timer is always cleared on cancel so this guard is also dead, (d) line 90 `if (!cancelled)` false branch in errorListener — unreachable because onerror is cleared before cleanup. Required: remove the 3 redundant null-guards (lines 57-58 stateListener/heartbeatListener checks, line 70 cancelled check in connectSSE) from useSSEConnection.ts; these protect against impossible states and create dead branches that cannot be tested. After removal, ≥90% branch coverage must pass. (priority: high)
-- [ ] [review] Gate 2: `useSSEConnection.test.ts` "processes valid SSE state events" test (~line 96) asserts `expect(result.current.state).not.toBeNull()` — this is the existence-check anti-pattern. The stateData object `{ log: '', activeSessions: [], recentSessions: [] }` is emitted via SSE and the test only checks state is non-null. A broken setState that sets state to `{}` or `{ garbage: true }` would still pass. Rewrite to `expect(result.current.state).toEqual({ log: '', activeSessions: [], recentSessions: [] })`. (priority: high)
+- [ ] [review] Gate 3 (persistent): Remove 3 redundant null-guards from `useSSEConnection.ts` to unlock ≥90% branch coverage. Required changes: (1) line 57 — remove `if (stateListener)` guard, call `eventSource.removeEventListener('state', stateListener)` directly (stateListener is always set when eventSource is non-null, since they're assigned together in connectSSE); (2) line 58 — remove `if (heartbeatListener)` guard, same reasoning; (3) line 70 — remove `if (cancelled) return` guard from connectSSE (reconnect timer is always cleared before connectSSE could run post-cancel). After removal, ≥90% branch coverage must pass. (priority: high)
+- [x] [review] Gate 2: `useSSEConnection.test.ts` line 111 asserts `expect(result.current.state).not.toBeNull()` — existence-check anti-pattern. Rewrite to `expect(result.current.state).toEqual({ log: 'line1', activeSessions: [], recentSessions: [] })` (the exact stateData object emitted in that test). (priority: high)
 
 ### Up Next
 
-- [x] Extract helper functions from `AppView.tsx` to `lib/` modules (priority: critical)
-  - Move `deriveProviderHealth` → `src/lib/deriveProviderHealth.ts`; update `deriveProviderHealth.test.tsx` import
-  - Move `toSession` → `src/lib/sessionHelpers.ts`
-  - Move `computeAvgDuration` + `latestQaCoverageRefreshSignal` → `src/lib/logHelpers.ts`
-  - Update all imports in `AppView.tsx` and consumers; verify all tests still pass (`npm test`)
-
-- [x] Extract `CommandPalette` + SSE hook to collapse `AppView.tsx` to <100 LOC (priority: critical)
-  - Extract `CommandPalette` component → `src/components/shared/CommandPalette.tsx` (with `.test.tsx` and `.stories.tsx`)
-  - Extract SSE + state-fetch logic from `AppInner` → `src/hooks/useDashboardState.ts`
-  - Make `AppView.tsx` a thin shell: only imports/re-exports + `App` component (<100 LOC)
-  - Verify `npm test` passes; verify `parseLogLine.test.tsx` and `deriveProviderHealth.test.tsx` still resolve
-
 - [ ] Split `Header.tsx` (280 LOC) below 200-line limit (priority: high)
-  - Extract `QACoverageBadge` → `src/components/shared/QACoverageBadge.tsx`
-  - Extract `ConnectionIndicator` if still in Header (already in StatusDot — confirm)
-  - `Header.tsx` must stay <200 LOC after extraction; verify tests pass
+  - Extract `QACoverageBadge` (lines 62–148) + `parseQACoveragePayload` + related constants → `src/components/shared/QACoverageBadge.tsx`
+  - Also move `QACoverageBadge` to the `coverage.include` array in `vitest.config.ts` if not present
+  - After extraction, `Header.tsx` should be ~140 LOC; verify tests pass (`npm test`)
 
 - [ ] Split `Sidebar.tsx` (255 LOC) below 200-line limit (priority: high)
-  - Identify self-contained sub-component(s) to extract (e.g. collapsed sidebar panel, session list item header)
-  - `Sidebar.tsx` must stay <200 LOC; update tests as needed
+  - Extract context menu (lines 210–252) → `src/components/layout/SidebarContextMenu.tsx`
+  - Extract collapsed sidebar panel (lines 111–135) → `src/components/layout/CollapsedSidebar.tsx`, or combine both into one extraction if needed
+  - `Sidebar.tsx` must stay <200 LOC after extraction; update imports; verify tests pass
 
 ### Deferred
 
@@ -59,3 +40,16 @@
 - [x] Skip `qa-badge-default` story in `story-screenshots.spec.ts` (P2 bug: needs MSW mock)
 - [x] story-screenshots.spec.ts: all non-skipped stories render and screenshot successfully (30 stories)
 - [x] proof.spec.ts: responsive layout tests (mobile hamburger, tablet, desktop) all pass
+- [x] Extract helper functions from `AppView.tsx` to `lib/` modules
+  - Moved `deriveProviderHealth` → `src/lib/deriveProviderHealth.ts`
+  - Moved `toSession` → `src/lib/sessionHelpers.ts`
+  - Moved `computeAvgDuration` + `latestQaCoverageRefreshSignal` → `src/lib/logHelpers.ts`
+- [x] Extract `CommandPalette` component → `src/components/shared/CommandPalette.tsx`
+- [x] Extract SSE + state-fetch logic from `AppInner` → `src/hooks/useDashboardState.ts` + `src/hooks/useSSEConnection.ts`
+- [x] Make `AppView.tsx` a thin shell (<100 LOC, currently 96 LOC)
+- [x] [review] Gate 1+3: Split `useDashboardState.ts` (was 312 LOC, now 226 LOC with SSE extracted) and add `useDashboardState.test.ts` with ≥90% branch coverage
+- [x] [review] Gate 3: `AppView.tsx` branch coverage ≥88% — above 80% threshold
+- [x] [review] Gate 3: `logHelpers.ts` at 100% branch, `sessionHelpers.ts` at 90% branch
+- [x] [qa/P1] `logHelpers.ts` branch coverage 100%
+- [x] [qa/P1] `sessionHelpers.ts` branch coverage 90%
+- [x] [review] Gate 2: Rewrote `useDashboardState.test.ts` providerHealth tests to assert specific shape/values instead of existence checks

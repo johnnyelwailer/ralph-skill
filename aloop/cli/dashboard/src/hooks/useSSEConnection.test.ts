@@ -108,7 +108,7 @@ describe('useSSEConnection', () => {
     es.emit('state', JSON.stringify(stateData));
 
     await waitFor(() => {
-      expect(result.current.state).not.toBeNull();
+      expect(result.current.state).toEqual({ log: 'line1', activeSessions: [], recentSessions: [] });
     });
   });
 
