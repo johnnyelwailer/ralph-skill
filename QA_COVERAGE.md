@@ -2,19 +2,12 @@
 
 | Feature | Last Tested | Commit | Result | Notes |
 |---------|-------------|--------|--------|-------|
-| CI workflow file exists | 2026-04-13 | aloop/issue-22 | PASS | .github/workflows/ci.yml exists with 7 jobs, all referenced test files verified present |
-| CI branch triggers (agent/*, aloop/*) | 2026-04-13 | aloop/issue-200 | PASS | Both push and pull_request have master, agent/*, aloop/* branches |
-| CI 4 independent jobs (no needs) | 2026-04-13 | aloop/issue-200 | PASS | type-check, cli-tests, dashboard-tests, loop-script-tests all present, no needs: |
-| CI workflow name=CI (badge stable) | 2026-04-13 | aloop/issue-200 | PASS | name: CI on line 1 |
-| CI cli-tests build excludes dashboard | 2026-04-13 | aloop/issue-200 | PASS | Explicit sub-commands: build:server, build:shebang, build:templates, build:bin, build:agents (no build:dashboard) |
-| CI no dashboard-e2e job | 2026-04-13 | aloop/issue-200 | PASS | dashboard-e2e job absent; loop-script-tests has only 3 steps (checkout, install bats, run bats) |
-| README CI badge URL | 2026-04-13 | aloop/issue-200 | PASS | Badge targets ci.yml/badge.svg for johnnyelwailer/ralph-skill |
-| aloop CLI install from source | 2026-04-13 | aloop/issue-22 | PASS | npm test-install succeeds, binary runs, `aloop --version` = 1.0.0 |
-| CI cli-tests job (`bun run test`) | 2026-04-13 | aloop/issue-22 | PASS | iter 4 static re-check: ci.yml now uses `bun run test` (not `bun test`); fix confirmed. Previously filed [qa/P1] resolved. |
-| Dashboard unit tests (`npm test`) | 2026-04-13 | 0e6ea585 | PASS | 148 tests, 20 test files, all pass via vitest run |
-| Loop bash script tests (from repo root) | 2026-04-13 | 0e6ea585 | PASS | loop.bats (15/15), json_escape, provider_health, branch_coverage all pass; provenance/path_hardening/finalizer have internal FAILs but exit 0 (pre-existing) |
-| Dashboard E2E tests | 2026-04-13 | — | never | Requires Playwright; skipped this session |
-| CLI type-check (`bun run type-check`) | 2026-04-13 | 0e6ea585 | FAIL | tsc --noEmit exits code 2: 2 errors in process-requests.ts (TS2367, TS2304). Bug filed [qa/P1] |
-| Dashboard type-check (`npm run type-check`) | 2026-04-13 | 0e6ea585 | FAIL | tsc exits code 2: missing Vitest globals in App.coverage.test.ts, ArtifactEntry shape mismatch in App.test.tsx. Bug filed [qa/P1] |
-| CLI tests (`bun run test`) | 2026-04-13 | 0e6ea585 | FAIL | 27 failures out of 922 tests via tsx --test; pre-existing test failures in codebase |
-| Loop script tests (Windows/Pester) | 2026-04-13 | — | never | Requires Windows; skipped this session |
+| flock-based lock acquire/release | 2026-03-31 | dad6a71 | PASS | All 7 unit tests pass (source + installed binary) |
+| Stale .lock directory cleanup | 2026-03-31 | dad6a71 | PASS | ensure_provider_health_dir() removes old mkdir dirs |
+| Concurrent shared reads compatible | 2026-03-31 | dad6a71 | PASS | flock -s allows multiple simultaneous readers |
+| Exclusive lock blocks shared | 2026-03-31 | dad6a71 | PASS | flock -x blocks concurrent shared lock attempts |
+| Progressive backoff on contention | 2026-03-31 | dad6a71 | PASS | 5 retries with 50/100/150/200/250ms delays |
+| Graceful degradation on lock failure | 2026-03-31 | dad6a71 | PASS | Returns 1, logs health_lock_failed, no crash |
+| loop.sh bundled in npm package | 2026-03-31 | dad6a71 | PASS | dist/bin/loop.sh present with all flock functions |
+| No mkdir-based lock acquisition | 2026-03-31 | dad6a71 | PASS | mkdir only for cleanup of stale dirs, not for locking |
+| SPEC.md vs implementation discrepancy | 2026-03-31 | ff3a740 | INFO | SPEC says .flock/FD9, impl uses .lock/dynamic FD — tracked in TODO.md as low priority |
