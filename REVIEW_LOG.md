@@ -1167,3 +1167,49 @@ No new dependencies.
 - `aloop process-requests` in CLI table: confirmed at `src/index.ts:178`; "internal — called by loop.sh between iterations" is accurate ✓
 
 **Issue #177 is complete.** All non-deferred acceptance criteria satisfied. All prior review findings resolved. LocalAdapter deferred per spec.
+
+---
+
+## Review — 2026-03-31 — commits ff945de24..ac546ecae (final-review: Storybook README fix + spec-review note)
+
+**Verdict: PASS** (1 observation)
+**Scope:** `README.md`, `TODO.md` (no production code changed)
+**Commits reviewed:** `b4a586a7c` (README: update Storybook status to 'configured, no stories'), `ac546ecae` (spec-review PASS note — all 15 TASK_SPEC ACs verified)
+
+### Gate 1 — PASS (spec compliance unchanged)
+
+No production code modified since prior PASS review (`ff945de24`). All issue #177 acceptance criteria remain satisfied. The spec-review note in `ac546ecae` re-confirms all 15 ACs: adapter interfaces, createIssue/getPRStatus/mergePR/createPR call-sites, adapter instantiation, TypeScript clean build, test counts.
+
+### Gate 2 — PASS
+
+No new tests added or changed.
+
+### Gate 3 — PASS
+
+No new production code branches introduced.
+
+### Gate 4 — PASS
+
+Documentation-only changes. No dead code, no leftover TODOs, no duplication.
+
+### Gate 5 — PASS
+
+No production code changed since `ff945de24`. Prior confirmed baseline stands: adapter.test.ts 36/36, process-requests.test.ts 42/42, orchestrate.test.ts 352/379 (27 pre-existing failures unchanged), tsc 0 errors, npm run build clean.
+
+### Gate 6 — PASS (N/A)
+
+Documentation-only changes — no observable output to prove. Skip correct.
+
+### Gate 7 — N/A
+
+No UI changes.
+
+### Gate 8 — N/A
+
+No new dependencies.
+
+### Gate 9 — PASS
+
+**Observation**: Gate 9 — README Storybook status update (`b4a586a7c`) is accurate: `.storybook/main.ts` and `.storybook/preview.tsx` exist (verified), no `*.stories.tsx` files present (verified via glob). Old text "not yet started (spec only)" was stale; new text "Storybook 8 is installed and configured…, but no component story files (*.stories.tsx) have been written yet" matches actual filesystem state exactly.
+
+**Issue #177 is complete.** All non-deferred acceptance criteria satisfied. LocalAdapter deferred per spec.
