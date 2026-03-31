@@ -8,16 +8,24 @@ Aloop runs autonomous AI coding agents in two modes: a **single-session loop** f
 
 ### Loop Mode (`aloop start`)
 
-A single autonomous coding session. The agent cycles through three phases until all tasks are done:
+A single autonomous coding session. The default cycle repeats until all tasks are done:
+
+```
+plan → build × 5 → qa → review → (repeat)
+```
 
 1. **Plan** — Gap analysis between spec and code, outputs prioritized `TODO.md`
-2. **Build** — Picks one task, implements, validates (types/tests/lint), commits
-3. **Review** — Audits the build against 9 quality gates, writes fix tasks or approves
+2. **Build** — Picks one task, implements, validates (types/tests/lint), commits (runs 5× per cycle)
+3. **QA** — Tests features as a real user (never reads source code)
+4. **Review** — Audits the build against 9 quality gates, writes fix tasks or approves
 
-Additional agents run between cycles:
+When all tasks are marked done, finalizer agents run once:
 - **Proof** — Captures screenshots, API responses, test output as evidence
-- **Steer** — Applies live direction changes from the dashboard mid-flight
-- **QA** — Tests features as a real user (never reads source code)
+- **Spec-gap** — Finds discrepancies between spec and implementation
+- **Docs** — Syncs documentation to match actual implementation
+
+On-demand:
+- **Steer** — Applies live direction changes queued from the dashboard
 
 Each iteration gets fresh context. The loop handles stuck detection, provider failover, and worktree isolation automatically.
 
@@ -228,9 +236,15 @@ The installer deploys skill files to each harness directory and the Aloop runtim
     PROMPT_plan.md              # Plan agent template
     PROMPT_build.md             # Build agent template
     PROMPT_review.md            # Review agent (9 gates)
-    PROMPT_proof.md             # Proof agent template
+    PROMPT_qa.md                # QA agent template
+    PROMPT_proof.md             # Proof agent (finalizer)
+    PROMPT_spec-gap.md          # Spec-gap analysis agent (finalizer)
+    PROMPT_docs.md              # Documentation sync agent (finalizer)
+    PROMPT_final-qa.md          # Final QA agent (finalizer)
+    PROMPT_final-review.md      # Final review agent (finalizer)
     PROMPT_steer.md             # Steering agent template
     PROMPT_setup.md             # Setup/discovery agent
+    PROMPT_single.md            # Single-shot agent template
     conventions/                # Code quality, testing, git conventions
   sessions/<session-id>/
     meta.json                   # Session metadata
