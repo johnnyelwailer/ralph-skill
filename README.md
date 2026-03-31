@@ -53,6 +53,9 @@ aloop orchestrate --issues 42,43,44 --concurrency 2
 
 # Resume a stopped orchestrator session
 aloop orchestrate --resume <session-id>
+
+# Set trunk branch (default: agent/trunk) — PRs from child loops merge here
+aloop orchestrate --spec "SPEC.md" --trunk main
 ```
 
 The orchestrator enforces role-based GitHub policies — child loops can create PRs and comment, but only the orchestrator can merge PRs and close issues.
@@ -188,6 +191,7 @@ The installer deploys skill files to each harness directory and the Aloop runtim
 | `aloop devcontainer-verify` | Verify devcontainer builds and passes checks |
 | `aloop scaffold` | Scaffold project workdir and prompt templates |
 | `aloop active` | List active session IDs (machine-readable) |
+| `aloop process-requests` | Process pending orchestrator requests (internal — called by loop.sh between iterations) |
 
 ### Slash commands (Claude Code / Codex / Copilot)
 
