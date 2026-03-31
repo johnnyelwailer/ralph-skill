@@ -18,7 +18,12 @@ _(none)_
 
 **Issue #38 implementation verified — no gaps for CI/vitest work:**
 - CI workflow (`ci.yml`) correctly runs `npm test` (vitest) in `aloop/cli/dashboard/`, triggers on PRs to master/agent/trunk, uses Node 22, runs `npm ci` first ✓
-- Component refactoring (QACoverageBadge, CollapsedSidebar, SidebarContextMenu) is internal dashboard improvement within spec scope ✓
+- All 6 previously missing `.test.tsx` files created: CollapsedSidebar, SidebarContextMenu, ActivityPanel, ArtifactComparisonHeader, DiffOverlayView, SideBySideView — all use Testing Library, verified by file listing ✓
+- All 13 previously missing `.stories.tsx` files created — all export ≥2 named stories, verified by grep ✓
+- `ui/` primitives correctly excluded from per-component test requirement per SPEC-ADDENDUM line 85: "(existing Radix primitives — keep as-is)" ✓
+- QA_COVERAGE.md shows stale FAIL entries (at commit b0b690d61) for items now PASS — code is correct, doc lags; not a spec-gap
+
+**spec-gap analysis: no new discrepancies found — Issue #38 implementation spec-compliant**
 
 **Pre-existing P2 spec-internal inconsistency (does not block this issue, spec doc needs updating):**
 - [spec-gap/P2] SPEC lines 717 and 775 (acceptance criteria in Proof and QA sections) reference a "9-step" default pipeline including proof in the cycle: `plan → build × 5 → proof → qa → review`. However, the SPEC body at lines 407–409 and 420–422 explicitly states "Proof does NOT run in the cycle — it's expensive and only meaningful as final evidence" and shows proof only in the finalizer. The `pipeline.yml` correctly implements the body text (proof in finalizer only). Fix: update SPEC ACs at lines 717 and 775 to remove proof from the cycle description and note proof runs in the finalizer only. (Spec is wrong, code is correct.)
