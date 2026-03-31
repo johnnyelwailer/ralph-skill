@@ -327,3 +327,69 @@ npm --prefix aloop/cli test
 # Cleanup
 rm -rf /tmp/aloop-test-install-P5t7nI
 ```
+
+## QA Session — 2026-03-31 (final-qa triggered by final-review at ab85cf7b)
+
+### Test Environment
+- Binary under test: /tmp/aloop-test-install-LZJtqb/bin/aloop (v1.0.0)
+- Installed loop.sh: /tmp/aloop-test-install-LZJtqb/lib/node_modules/aloop-cli/dist/bin/loop.sh
+- Commit: ab85cf7b1 (only QA_COVERAGE.md, QA_LOG.md, README.md, REVIEW_LOG.md, TODO.md changed since last QA at dc75a3d9 — no code changes)
+- Features tested: 5 (flock core, stale cleanup, installed binary, README accuracy, aloop.test.mjs)
+
+### Results
+- PASS: loop_provider_health_primitives.tests.sh — 7/7 tests pass
+- PASS: loop_provider_health.tests.sh — 5/5 tests pass
+- PASS: flock references in installed binary = 5 (correct)
+- PASS: mkdir in installed loop.sh = 2 lines (cleanup-only, not acquisition)
+- PASS: aloop.test.mjs — 8/8 tests pass
+- PASS: README flock/concurrent_cap docs — concurrent_cap in loop.sh at line 1053, .lock sidecar at line 892, silent degradation confirmed
+
+### Bugs Filed
+None — all tests pass at HEAD.
+
+### Command Transcript
+
+```
+# Install from source
+ALOOP_BIN=$(npm --prefix aloop/cli run --silent test-install -- --keep 2>/dev/null | tail -1)
+# → /tmp/aloop-test-install-LZJtqb/bin/aloop
+
+# Version check
+/tmp/aloop-test-install-LZJtqb/bin/aloop --version
+# → 1.0.0
+
+# Flock primitives unit tests (source loop.sh)
+bash aloop/bin/loop_provider_health_primitives.tests.sh
+# → All tests passed! (7/7)
+
+# Provider health integration tests (source loop.sh)
+bash aloop/bin/loop_provider_health.tests.sh
+# → All tests passed! (5/5)
+
+# Verify installed binary has 5 flock references
+grep -c "flock" /tmp/aloop-test-install-LZJtqb/lib/node_modules/aloop-cli/dist/bin/loop.sh
+# → 5
+
+# Verify mkdir is cleanup-only (not acquisition)
+grep -n "mkdir.*lock" installed loop.sh
+# → line 872: comment about stale .lock dir cleanup
+# → line 899: comment about stale .lock dir cleanup
+
+# README accuracy: verify concurrent_cap in loop.sh
+grep -n "concurrent_cap\|Cannot launch inside" aloop/bin/loop.sh
+# → line 1053: grep -Eq 'cannot launch inside another session'; then echo "concurrent_cap"
+# → line 1095: if [ "$reason" = "concurrent_cap" ]
+# PASS: README claim verified
+
+# README accuracy: verify .lock sidecar path
+grep -n '\.lock' aloop/bin/loop.sh | grep "lock_file="
+# → line 892: local lock_file="${path}.lock"
+# PASS: health/<provider>.json.lock is correct
+
+# aloop.test.mjs
+node --test aloop/cli/aloop.test.mjs
+# → 8/8 pass
+
+# Cleanup
+rm -rf /tmp/aloop-test-install-LZJtqb
+```
