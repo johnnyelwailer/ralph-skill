@@ -56,3 +56,14 @@ spec-gap analysis: no discrepancies found — spec fully fulfilled
 ## Spec Re-Review — 2026-03-31 (docs trigger)
 
 **Result: APPROVED** — docs commit 8fb3500e2 reviewed. README updates accurately document the verified implementation; no new spec requirements introduced. Prior approval stands.
+
+## Spec Re-Review — 2026-03-31 (review gates closed)
+
+**Result: APPROVED** — Gate 2 and Gate 4 review findings verified closed.
+
+| Gate | Finding | Fix | Spec Impact |
+|------|---------|-----|-------------|
+| Gate 2 | `LogEntryRow.accessibility.test.tsx:152` — vacuous `if (imgBtn)` guard | Replaced with `expect(imgBtn).not.toBeNull()` + unconditional assertions (commit 162aad5ef) | ✅ SPEC-ADDENDUM L240 tap-target assertions now enforced, cannot pass vacuously |
+| Gate 4 | `AppView.tsx:854` — unused companion import of `findBaselineIterations, ArtifactComparisonDialog` | Removed dead import; re-export on line 853 is unaffected (commit cb2eaeed2) | ✅ No spec impact — code quality only |
+
+All 9 SPEC-ADDENDUM.md "Dashboard Responsiveness" acceptance criteria remain APPROVED. No new spec gaps introduced.
