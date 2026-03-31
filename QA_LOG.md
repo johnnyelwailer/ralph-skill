@@ -1,5 +1,41 @@
 # QA Log
 
+## QA Session — 2026-03-31 (final-qa re-run at HEAD c55f0c8, issue-172)
+
+### Test Environment
+- Binary under test: /tmp/aloop-test-install-vb4LBQ/bin/aloop (cleaned up)
+- Version: 1.0.0
+- Install method: npm pack + isolated temp prefix (test-install script)
+- Commit: c55f0c8 (HEAD — only doc/review commits since prior QA at ab85cf7b)
+- Features tested: 3 (re-verification of previously passing features)
+
+### Results
+- PASS: flock primitives unit tests (7/7)
+- PASS: provider health integration tests (5/5)
+- PASS: aloop CLI test suite (8/8)
+- PASS: README flock/util-linux prereq verified accurate (flock present in 5 places in loop.sh)
+
+### Bugs Filed
+None — all tests pass at HEAD.
+
+### Command Transcript
+
+```
+ALOOP_BIN=$(npm --prefix aloop/cli run --silent test-install -- --keep 2>/dev/null | tail -1)
+# → /tmp/aloop-test-install-vb4LBQ/bin/aloop
+$ALOOP_BIN --version  # → 1.0.0
+
+bash aloop/bin/loop_provider_health_primitives.tests.sh  # → All tests passed! (7/7)
+bash aloop/bin/loop_provider_health.tests.sh              # → All tests passed! (5/5)
+node --test aloop/cli/aloop.test.mjs                      # → 8/8 pass
+
+# README prereq accuracy
+grep -c "flock" aloop/bin/loop.sh  # → 5 (flock calls present; README prereq accurate)
+grep -c "flock" /tmp/aloop-test-install-vb4LBQ/lib/node_modules/aloop-cli/dist/bin/loop.sh  # → 5
+
+rm -rf /tmp/aloop-test-install-vb4LBQ
+```
+
 ## QA Session — 2026-03-31 (final-qa post-docs-fix, issue-172)
 
 ### Test Environment
