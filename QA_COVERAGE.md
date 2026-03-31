@@ -7,4 +7,4 @@
 | `npm test` runs vitest in dashboard | 2026-03-31 | 2d02591e7 | PASS | 51 test files, 632 tests all pass; jsdom configured; e2e excluded |
 | Every component has .test.tsx | 2026-03-31 | 2d02591e7 | PASS | All non-ui components verified — previously 6 missing, now fixed |
 | Every component has .stories.tsx | 2026-03-31 | 2d02591e7 | PASS | All non-ui components verified — previously 13 missing, now fixed; ui/sonner.stories.tsx has 1 story but ui/ is excluded per spec |
-| TypeScript type-check passes | 2026-03-31 | 2d02591e7 | FAIL | 2 errors: ActivityPanel.test.tsx:72 TS2353 (tracked in [review]), Sidebar.test.tsx:240 TS2304 `afterEach` not found (new [qa/P1] filed) |
+| TypeScript type-check passes | 2026-03-31 | 613a7bab4 | PASS | Both errors resolved: `afterEach` import added to Sidebar.test.tsx, `iterationStartedAt` added to ActivityPanel.test.tsx baseProps; `tsc --noEmit` exits 0 |

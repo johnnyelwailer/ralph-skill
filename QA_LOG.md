@@ -76,6 +76,58 @@ NO STORY: ./session/SliderView.tsx
 NO STORY: ./shared/QACoverageBadge.tsx
 ```
 
+## QA Session — 2026-03-31 (iteration final-qa)
+
+### Test Environment
+- Binary under test: /tmp/aloop-test-install-JskkRK/bin/aloop (version 1.0.0)
+- Commit: 613a7bab4
+- Features tested: 5 (re-tests of all previously tracked items)
+
+### Results
+- PASS: `.github/workflows/ci.yml` exists and is valid YAML — correct triggers, Node 22, npm ci + npm test
+- PASS: CI workflow Node 22 + npm ci setup — confirmed via `cat ci.yml`
+- PASS: `npm test` (vitest) in dashboard — 51 test files, 632 tests, exit 0
+- PASS: Every non-ui component has `.test.tsx` — no missing files
+- PASS: Every non-ui component has `.stories.tsx` — no missing files
+- PASS: TypeScript type-check (`tsc --noEmit`) — **previously FAIL, now PASS** — both errors resolved
+
+### Bugs Filed
+- None. All previously filed bugs are resolved.
+
+### Command Transcript
+
+```
+# Install CLI from packaged source
+ALOOP_BIN=$(npm --prefix aloop/cli run --silent test-install -- --keep 2>/dev/null | tail -1)
+echo "Binary under test: $ALOOP_BIN"
+# → Binary under test: /tmp/aloop-test-install-JskkRK/bin/aloop
+$ALOOP_BIN --version
+# → 1.0.0
+
+# Run TypeScript type-check (was FAIL in iter 3 with 2 errors)
+npm --prefix aloop/cli/dashboard run type-check
+# → (no output)
+# Exit: 0  ← PASS (previously non-zero)
+
+# Run full vitest suite
+npm --prefix aloop/cli/dashboard test -- --run
+# → Test Files  51 passed (51)
+# → Tests       632 passed (632)
+# → Duration    5.11s
+# Exit: 0
+
+# Check .test.tsx coverage (non-ui components)
+find aloop/cli/dashboard/src/components -name "*.tsx" ! -name "*.test.tsx" ! -name "*.stories.tsx" ! -path "*/ui/*" | while read f; do base="${f%.tsx}"; [ ! -f "${base}.test.tsx" ] && echo "NO TEST: $f"; done
+# → (no output — all components have test files)
+
+# Check .stories.tsx coverage (non-ui components)
+find aloop/cli/dashboard/src/components -name "*.tsx" ! -name "*.test.tsx" ! -name "*.stories.tsx" ! -path "*/ui/*" | while read f; do base="${f%.tsx}"; [ ! -f "${base}.stories.tsx" ] && echo "NO STORY: $f"; done
+# → (no output — all components have story files)
+
+# Verify ci.yml
+cat .github/workflows/ci.yml
+# → name: CI; on: push+PR to master,agent/trunk; Node 22 via actions/setup-node@v4; working-directory: aloop/cli/dashboard; npm ci then npm test
+```
 ## QA Session — 2026-03-31 (iteration 3)
 
 ### Test Environment
