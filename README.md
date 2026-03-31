@@ -105,7 +105,7 @@ Five AI coding agents supported — use one, or round-robin across multiple:
 
 > **Note:** OpenCode is not selectable via `aloop start --provider opencode` (the CLI only accepts `claude`, `codex`, `gemini`, `copilot`, or `round-robin`). OpenCode participates in round-robin when included in `round_robin_order` in `config.yml`, or by invoking `loop.sh` directly.
 
-Provider health is tracked automatically. Failed providers enter cooldown with exponential backoff and are skipped until recovery. Auth failures use longer cooldowns (10min → 30min → 1hr) but still auto-retry.
+Provider health is tracked automatically. Failed providers enter cooldown with exponential backoff and are skipped until recovery. Auth failures mark the provider as `degraded` (skipped permanently until the user fixes authentication — no auto-retry).
 
 ## Prerequisites
 
