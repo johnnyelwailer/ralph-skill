@@ -51,10 +51,10 @@ Pipelines are defined in YAML agent configs and compiled to `loop-plan.json`:
 YAML config → aloop compile → loop-plan.json → loop.sh executes
 ```
 
-The default pipeline: `plan → build x5 → proof → qa → review`
+The default pipeline cycle: `plan → build x5 → qa → review`
 
 - **Cycle** — repeating sequence while tasks remain in TODO.md
-- **Finalizer** — sequential post-completion steps (proof, qa, review). If any creates new TODOs, abort finalizer, resume cycle.
+- **Finalizer** — sequential post-completion steps (spec-gap → docs → spec-review → final-review → final-qa → proof). Runs once when all tasks are done. If any creates new TODOs, abort finalizer, resume cycle.
 - **Queue** — priority overrides that interrupt the cycle (steering, triggered prompts)
 
 ## Multi-Provider Agent Configs

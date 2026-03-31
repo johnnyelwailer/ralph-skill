@@ -130,7 +130,7 @@ Five AI coding agents supported — use one, or round-robin across multiple:
 | OpenAI Codex | `codex` | `--dangerously-bypass-approvals-and-sandbox` |
 | GitHub Copilot | `copilot` | `--yolo` |
 | Gemini CLI | `gemini` | `--yolo` |
-| OpenCode | `opencode` | `run --dir <workdir>` |
+| OpenCode | `opencode` | `run` (reads prompt from stdin) |
 
 **Round-robin mode** cycles providers each iteration — e.g., Claude plans, Codex builds, Gemini reviews, OpenCode builds.
 
