@@ -1,5 +1,71 @@
 # QA Log
 
+## QA Session — 2026-03-31 (final-qa re-run, issue-172)
+
+### Test Environment
+- Binary under test: /tmp/aloop-test-install-DmNGep/bin/aloop (cleaned up)
+- Version: 1.0.0
+- Install method: npm pack + isolated temp prefix (test-install script)
+- Commit: 4e33972 (HEAD — only docs/review changes since prior QA at 6d5a314)
+- Features tested: 4
+
+### Scope Note
+No code changes since the prior QA session (6d5a314). Changes between sessions: PR_DESCRIPTION.md, README.md, REVIEW_LOG.md, SPEC.md, TODO.md (docs/review only). Re-ran to confirm nothing regressed.
+
+### Results
+- PASS: All 7 unit tests in loop_provider_health_primitives.tests.sh (source)
+- PASS: All 7 unit tests against installed loop.sh binary (LOOP_OVERRIDE)
+- PASS: flock -s shared locks are concurrent-compatible
+- PASS: flock -x exclusive blocks shared (rc=1 as expected)
+- PASS: Stale .lock dir cleanup in installed binary (extract_func + direct call)
+- PASS: mkdir in installed loop.sh only in cleanup comments, not acquisition path
+- PASS: flock keywords present in installed binary (flock_mode -s/-x, flock -n)
+
+### Bugs Filed
+None — no regressions, no new bugs.
+
+### Command Transcript
+
+```
+# Install from source (pack → isolated temp prefix)
+ALOOP_BIN=$(npm --prefix aloop/cli run --silent test-install -- --keep 2>/dev/null | tail -1)
+# → /tmp/aloop-test-install-DmNGep/bin/aloop
+
+# Verify binary
+/tmp/aloop-test-install-DmNGep/bin/aloop --version
+# → 1.0.0
+
+# Unit tests (source)
+bash aloop/bin/loop_provider_health_primitives.tests.sh
+# → All tests passed! (7/7)
+
+# Unit tests (installed binary via LOOP_OVERRIDE)
+LOOP_OVERRIDE=...dist/bin/loop.sh bash loop_provider_health_primitives.tests.sh
+# → All tests passed! (7/7)
+
+# flock -s + flock -s: concurrent shared locks
+exec 20>"$LOCK_FILE"; flock -s 20; exec 21>"$LOCK_FILE"; flock -n -s 21
+# → PASS: shared+shared concurrent
+
+# flock -x + flock -s: exclusive blocks shared
+exec 22>"$LOCK_FILE"; flock -x 22; exec 23>"$LOCK_FILE"; flock -n -s 23
+# → PASS: exclusive blocks shared (rc=1)
+
+# Stale .lock dir cleanup (installed binary)
+mkdir -p "$PROVIDER_HEALTH_DIR/claude.json.lock"
+ensure_provider_health_dir (extracted from installed loop.sh)
+# → PASS: stale .lock dir cleaned up
+
+# No mkdir in lock acquisition path
+grep -n "mkdir" installed_loop.sh | grep -i lock
+# → only 2 lines: cleanup comments in ensure_provider_health_dir, not acquire
+
+# Cleanup
+rm -rf /tmp/aloop-test-install-DmNGep
+```
+
+---
+
 ## QA Session — 2026-03-31 (final-qa, issue-172)
 
 ### Test Environment
