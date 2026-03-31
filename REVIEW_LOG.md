@@ -897,3 +897,56 @@ No new dependencies.
 **Observation**: Gate 9 — README model name correction (`gemini-3.1-flash-lite` → `gemini-3.1-flash-lite-preview`) verified against SPEC.md:3454 and SPEC.md:3473 — exact match with spec-defined model IDs for error-analyst and vision-reviewer agents.
 
 **Issue #177 is complete.** All non-deferred acceptance criteria satisfied. LocalAdapter deferred per spec.
+
+---
+
+## Review — 2026-03-31 — commits d8d2c45bd..8d582d015 (final-review: QA re-verify + OpenCode README fix)
+
+**Verdict: PASS** (1 observation)
+**Scope:** `QA_COVERAGE.md`, `QA_LOG.md`, `README.md`, `TODO.md`
+**Commits reviewed:** `3ccd3457c` (QA final-qa HEAD regression check), `16b1ea05d` (README: fix OpenCode invocation), `8d582d015` (TODO.md: spec-review note)
+
+### Gate 1 — PASS (spec compliance unchanged)
+
+No production code modified since prior PASS review (`d8d2c45bd`). All issue #177 acceptance criteria remain satisfied.
+
+`16b1ea05d` fixes a docs inaccuracy: README stated OpenCode autonomous flag as `run --dir <workdir>` but the actual invocation is `opencode run` (stdin mode). Verified against `loop.sh:1374` — `echo "$prompt_content" | ... opencode run "${opencode_args[@]}"` confirms stdin mode; no `--dir` flag exists. Also confirmed by `SPEC.md:2075` — references `opencode run` as correct invocation form. Fix is accurate. ✓
+
+### Gate 2 — PASS
+
+No new tests added or changed.
+
+### Gate 3 — PASS
+
+No new production code branches introduced.
+
+### Gate 4 — PASS
+
+Documentation and QA logging only — no dead code, no issues.
+
+### Gate 5 — PASS
+
+QA session `3ccd3457c` (HEAD regression check at `d8d2c45bd`) confirms:
+- `npm run build`: clean, exit 0 ✓
+- `adapter.test.ts`: 36/36 pass ✓
+- `process-requests.test.ts`: 38/38 pass ✓
+- `orchestrate.test.ts`: 348/375 pass, 27 fail (confirmed pre-existing baseline unchanged) ✓
+- `tsc --noEmit` (non-test files): 0 errors ✓
+
+### Gate 6 — PASS (N/A)
+
+Documentation-only changes — no observable output to prove. Skip correct.
+
+### Gate 7 — N/A
+
+No UI changes.
+
+### Gate 8 — N/A
+
+No new dependencies.
+
+### Gate 9 — PASS
+
+**Observation**: Gate 9 — README OpenCode invocation correction (`run --dir <workdir>` → `run` (stdin mode)) verified against `loop.sh:1374` (exact `opencode run` stdin invocation) and `SPEC.md:2075` (references `opencode run` as correct form). Correction is accurate and aligns all three sources.
+
+**Issue #177 is complete.** All non-deferred acceptance criteria satisfied. LocalAdapter deferred per spec.

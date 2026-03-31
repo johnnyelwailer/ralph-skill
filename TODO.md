@@ -10,6 +10,8 @@
 
 ### Completed
 
+<!-- final-review: PASS (2026-03-31, commits d8d2c45bd..8d582d015) — gates 1-9 pass; documentation-only changes (QA re-verify + README OpenCode invocation fix). Gate 9: README `run --dir <workdir>` → `run` (stdin mode) verified against loop.sh:1374 and SPEC.md:2075. Issue #177 complete. [reviewed: gates 1-9 pass] -->
+
 <!-- spec-review: PASS (re-verify 2026-03-31, triggered by docs change 16b1ea05d — fix OpenCode autonomous flag: run (stdin mode) not run --dir) — README.md corrected OpenCode invocation flag from `run --dir <workdir>` to `run` (stdin mode, runs from workdir). Verified against: (1) loop.sh:1374 — `echo "$prompt_content" | ... opencode run` confirms stdin mode; (2) SPEC.md:2075 — references `opencode run` as correct invocation. No contradiction with SPEC.md found. No impact on issue #177 OrchestratorAdapter migration ACs. All prior PASS gates stand. -->
 
 <!-- spec-review: PASS (re-verify 2026-03-31, triggered by P2 bug fix in GitHubAdapter.updateIssue) — (1) adapter.ts:82 guards base `gh issue edit` call with `if (update.body)`, so label-only updates no longer invoke execGh without edit flags; (2) labels_add test updated to assert calls.length === 2 (no spurious base call); (3) labels_remove test updated to assert calls.length === 1; (4) new "label-only update makes no base edit call" test added at adapter.test.ts:125. All 4 sub-requirements of the P2 fix met. No spec violations found. Prior PASS gates stand. -->
