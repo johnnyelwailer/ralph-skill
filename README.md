@@ -83,7 +83,7 @@ npm run storybook        # Start on port 6006
 npm run build-storybook  # Build static Storybook
 ```
 
-**Status**: Storybook is configured with Tailwind CSS decorators, dark-mode toggle, and TooltipProvider globals. All components have stories, including layout (`AppShell`, `Sidebar`, `MainPanel`, `DocsPanel`, `Header`, `CollapsedSidebar`, `ResponsiveLayout`, `SidebarContextMenu`), session (`ActivityLog`, `ActivityPanel`, `SessionCard`, `SessionDetail`, `SteerInput`, `ArtifactComparisonDialog`, `ArtifactComparisonHeader`, `DiffOverlayView`, `ImageLightbox`, `LogEntryRow`, `LogEntryExpandedDetails`, `SideBySideView`, `SliderView`), shared primitives (`CommandPalette`, `ElapsedTimer`, `PhaseBadge`, `QACoverageBadge`, `StatusDot`), and all `ui/` primitives.
+**Status**: Storybook is configured with Tailwind CSS decorators, dark-mode toggle, and TooltipProvider globals. All components have stories, including layout (`Sidebar`, `MainPanel`, `DocsPanel`, `Header`, `CollapsedSidebar`, `ResponsiveLayout`, `SidebarContextMenu`), session (`ActivityLog`, `ActivityPanel`, `SessionCard`, `SessionDetail`, `SteerInput`, `ArtifactComparisonDialog`, `ArtifactComparisonHeader`, `DiffOverlayView`, `ImageLightbox`, `LogEntryRow`, `LogEntryExpandedDetails`, `SideBySideView`, `SliderView`), shared primitives (`CommandPalette`, `ElapsedTimer`, `PhaseBadge`, `QACoverageBadge`, `StatusDot`), data display (`ArtifactViewer`, `ProviderHealth`, `CostDisplay`), and all `ui/` primitives.
 
 ## Quality Gates
 
