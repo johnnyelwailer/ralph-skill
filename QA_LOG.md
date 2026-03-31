@@ -879,3 +879,63 @@ $ cat .github/workflows/ci.yml
 # Cleanup
 $ rm -rf /tmp/sb-qa-final-build
 ```
+
+## QA Session — 2026-03-31 (triggered by final-review, post-review-17)
+
+### Test Environment
+- Working dir: aloop/cli/dashboard (in worktree)
+- Binary: packaged build tested via npm scripts (tsc, vitest, storybook)
+- Commit under test: cb2c2b8b5
+- Code delta since last QA: 765558dcc (README one-liner: auth failure docs correction)
+
+### Features Tested
+1. TypeScript type-check (tsc --noEmit)
+2. Vitest unit tests (npm test)
+3. Storybook build (npm run build-storybook)
+4. Component .test.tsx / .stories.tsx file coverage
+5. README auth failure docs correction (765558dcc)
+
+### Results
+- PASS: `tsc --noEmit` — exit 0 ✓
+- PASS: `npm test` — 51 test files, 632 tests all pass ✓
+- PASS: `npm run build-storybook` — "Storybook build completed successfully"; 178 entries in index.json ✓
+- PASS: 30 .test.tsx files in components/ (28 non-ui + 2 ui) ✓
+- PASS: 41 .stories.tsx files in components/ (28 non-ui + 13 ui) ✓
+- PASS: README auth failure correction — no regressions introduced
+
+### Bugs Filed
+- None. All Issue #183 requirements verified. No regressions.
+
+### Command Transcript
+
+```
+# TypeScript type-check
+$ cd aloop/cli/dashboard && npm run type-check
+> tsc --noEmit
+EXIT: 0
+
+# Vitest
+$ npm test
+Test Files: 51 passed (51)
+Tests:      632 passed (632)
+EXIT: 0
+
+# Storybook build
+$ npm run build-storybook -- --output-dir /tmp/sb-qa-final-build-2
+→ Storybook build completed successfully
+EXIT: 0
+
+# Stories count
+$ python3 -c "import json; d=json.load(open('/tmp/sb-qa-final-build-2/index.json')); print('Total entries:', len(d['entries']))"
+Total entries: 178
+EXIT: 0
+
+# Component file counts
+$ find src/components -name "*.test.tsx" | wc -l
+30
+$ find src/components -name "*.stories.tsx" | wc -l
+41
+
+# Cleanup
+$ rm -rf /tmp/sb-qa-final-build-2
+```
