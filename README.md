@@ -83,7 +83,7 @@ aloop dashboard
 aloop dashboard --port 3000 --session-dir ~/.aloop/sessions/<id>
 ```
 
-- Session sidebar with hierarchy (repo > project > issue > session)
+- Session sidebar grouped by project, with active/recent session separation
 - Live activity log with phase transitions, provider info, and commit history
 - Document viewer for TODO.md, SPEC.md, RESEARCH.md, REVIEW_LOG.md
 - Proof artifact gallery (screenshots, test output, layout assertions)
