@@ -367,6 +367,22 @@ Re-verified after docs commit `45a82565c` (correct sidebar description to match 
 
 No new gaps found. Docs commit is spec-compliant.
 
+### Spec-Gap Analysis — PASS (spec-gap trigger, 2026-04-01 — twenty-second spec-gap pass)
+
+spec-gap analysis: no discrepancies found — spec fully fulfilled
+
+Verified:
+- Config providers (claude, opencode, codex, gemini, copilot) match loop.sh/loop.ps1 round-robin order ✓
+- All template files in `aloop/templates/` present and referenced ✓
+- `ProviderName` type union in `compile-loop-plan.ts:5` includes all 5 providers including `opencode` ✓
+- `pipeline.yml` cycle and finalizer match SPEC definitions ✓
+- Provider health system correctly implements `~/.aloop/health/<provider>.json` with exponential backoff ✓
+- Finalizer state machine (`allTasksMarkedDone`, `finalizerPosition`, `finalizer[]`) correctly implemented ✓
+- Phase advancement only on success (cyclePosition preserved on failure) ✓
+- CLAUDECODE environment variable sanitization present in both loop.sh and loop.ps1 ✓
+- Three pre-existing P2 gaps (loop.sh model default, missing on_start config block, periodic spec-gap scheduling) remain unchanged and out-of-scope for Issue #183 ✓
+- No new gaps introduced by Issue #183 Storybook Integration work ✓
+
 ### Spec-Gap Analysis — PASS (spec-gap trigger, 2026-03-31 — nineteenth spec-gap pass)
 
 spec-gap analysis: no discrepancies found — spec fully fulfilled
