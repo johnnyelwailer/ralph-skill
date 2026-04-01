@@ -255,3 +255,37 @@ PR_DESCRIPTION.md remains accurate.
 2. Gate 4: `LogEntryRow.tsx:8-20` — imports 3 runtime values from `'../AppView'` (ArtifactComparisonDialog, ElapsedTimer, findBaselineIterations) creating circular dep with AppView's `import { LogEntryRow }` at line 27
 
 ---
+
+---
+
+## Review — 2026-04-01 17:58 — commit f75187790..HEAD
+
+**Verdict: PASS** (prior 2 findings resolved; gates 1-9 pass)
+**Scope:** `aloop/bin/loop.sh` (revert `d38ccab86`), `QA_COVERAGE.md` + `QA_LOG.md` (gates 6+7 proof `ce703290b`), `docs/conventions/FRONTEND.md` (`840b77ea6`), `TODO.md` (chore commits)
+
+**Commits since last review (`f75187790`):**
+- `d38ccab86` — Revert "fix: align loop.sh default Claude model with config.yml (opus)" — **resolves Gate 1**
+- `ce703290b` — chore(qa): PASS — Gates 6+7 visual proof + all 5 proof.spec.ts tests pass
+- `b021a35fe` — chore(review): RESOLVED Gate 1 — TODO.md update only
+- `725156b38` — chore(spec-gap): no P1/P2 gaps — TODO.md update only
+- `840b77ea6` — docs: update FRONTEND.md to reflect issue #114 implementation state
+- `2002bfbd5` — chore(review): spec-review PASS re-confirmed — TODO.md update only
+
+**Prior findings resolved:**
+- Gate 1: `bb8fce584` out-of-scope loop.sh change — reverted at `d38ccab86`; issue #284 filed. `loop.sh:33` now correctly reads `CLAUDE_MODEL="${ALOOP_CLAUDE_MODEL:-sonnet}"`. ✓
+- Gates 6+7: `ce703290b` QA documents bounding-box proof: hamburger 44×44px visible at 768×1024; desktop sidebar null (hidden); screenshot `proof-artifacts/tablet-768x1024-layout.png` confirmed present in repo; `e2e/proof.spec.ts` 5/5 PASS. ✓
+
+**Gate results:**
+- Gate 1 (Spec Compliance): PASS — loop.sh reverted to `sonnet` default (in-scope); FRONTEND.md update is documentation-only, no spec deviation
+- Gate 2 (Test Depth): PASS — no test changes; 158 tests unchanged
+- Gate 3 (Coverage): PASS — no new code; same coverage level
+- Gate 4 (Code Quality): PASS — single-line revert in loop.sh; FRONTEND.md file structure claims verified against actual filesystem (`hooks/`, `components/session/`, `components/shared/`, `lib/` — all confirmed present)
+- Gate 5 (Integration Sanity): PASS — no dashboard code changes since 158-test pass confirmed in QA_LOG
+- Gate 6 (Proof Verification): PASS — `proof-artifacts/tablet-768x1024-layout.png` confirmed present; QA_LOG documents bounding-box verification at 768×1024; docs-only changes require no proof
+- Gate 7 (Runtime Layout): PASS — no new layout changes; prior bounding-box verification at `ce703290b` satisfies gate (hamburger 44×44px visible, desktop sidebar null at 768×1024)
+- Gate 8 (Version Compliance): PASS — no dependency changes
+- Gate 9 (Documentation Freshness): PASS — FRONTEND.md accurately reflects SSE/EventSource (not WebSocket), correct `hooks/` structure, correct `components/session/` and `components/shared/` paths, tap target conventions. PR_DESCRIPTION.md updated: AC2/AC6 class names corrected (`md:hidden` → `lg:hidden`), component paths corrected (`components/session/SessionCard.tsx` etc.), AC9 marked `[x]` (Lighthouse 94/100 confirmed).
+
+**Concrete observation:** Gate 4 — `FRONTEND.md:107-142` file tree was cross-checked against `find dashboard/src -type f`. Every path listed exists on disk: `hooks/useLongPress.ts`, `hooks/useIsTouchDevice.ts`, `hooks/useBreakpoint.ts`, `hooks/useCost.ts`, all `components/` subdirectories, all `lib/` modules. Zero phantom files.
+
+**Updated PR_DESCRIPTION.md:** Corrected AC2/AC6 breakpoint class names, fixed component paths (SessionCard/StatusDot/PhaseBadge to their correct subdirectory paths), marked AC9 `[x]` with Lighthouse 94/100, added FRONTEND.md to Files Changed, added swipe gesture to summary, updated Proof Artifacts with all 5 screenshots.
