@@ -5,6 +5,7 @@
 ### Up Next
 
 - [x] [spec-gap] **P3** — Unit test suite not re-verified at HEAD (`11c26afe6`). Last passing entry in `QA_COVERAGE.md` is at `9db0a33` (several commits prior). Intervening commits are docs/chore-only — low regression risk, but verification chain is incomplete. Fixed: ran `npm test` at HEAD — 158 tests pass (21 test files); QA_COVERAGE.md updated.
+- [x] [spec-gap] **P3** — `SPEC-ADDENDUM.md` §Dashboard Responsiveness acceptance criteria checkboxes (lines 237-245) are all still `[ ]` unchecked, but all 9 criteria are verified PASS in `QA_COVERAGE.md` (Lighthouse 94/100, all layout/tap-target/hover tests PASS). Cosmetic only — code is correct, spec docs are stale. No P1/P2 blockers. spec-gap analysis: no P1/P2 discrepancies found — spec fully fulfilled for issue #114 scope.
 
 ### Completed
 - [x] [spec-gap] **P2 (in-scope)** — Fix tablet breakpoint to match spec. SPEC-ADDENDUM.md §Dashboard Responsiveness (line 214) defines tablet (640-1024px) as "Sidebar is collapsible (hidden by default, toggled via Ctrl+B / hamburger)". Fixed:
