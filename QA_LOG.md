@@ -1,5 +1,57 @@
 # QA Log
 
+## QA Session — 2026-04-01 (final re-verify at e74597f1f, issue #101)
+
+### Test Environment
+- HEAD: `e74597f1f` — "chore(review): PASS — gates 1-10 pass"
+- Delta from last QA (`eb38cca26`): doc-only (QA_COVERAGE.md, QA_LOG.md, REVIEW_LOG.md, TODO.md) — no source code changes
+- Installed runtime: `~/.aloop/bin/loop.sh` (no update needed — no source changes since eb38cca26)
+
+### Results
+
+- PASS: `bash -n loop.sh` — installed and worktree copies both exit 0
+- PASS: `loop.ps1` PowerShell parser — 0 parse errors
+- PASS: `aloop orchestrate --plan-only` — exits 0, pipeline.yml parses cleanly
+- PASS: `pipeline.yml` finalizer has 6 entries [spec-gap,docs,spec-review,final-review,final-qa,proof] — no cleanup entry
+- PASS: `proof_manifest_found`/`proof_manifest_missing` events present at loop.sh lines 2085,2090,2264,2269
+- PASS: `pipeline.yml` cr_analysis block present with all required fields
+- PASS: `PROMPT_cleanup.md` not present in worktree
+
+No regressions. All acceptance criteria still hold at HEAD. Issue #101 implementation confirmed complete.
+
+### Bugs Filed
+None.
+
+### Command Transcript
+
+```
+bash -n /home/pj/.aloop/bin/loop.sh
+# exit 0
+
+bash -n worktree/aloop/bin/loop.sh
+# exit 0
+
+pwsh -NoProfile -Command "ParseFile loop.ps1"
+# PASS: 0 parse errors
+
+grep proof_manifest_found/missing /home/pj/.aloop/bin/loop.sh
+# lines 2085,2090,2264,2269 — both paths covered
+
+grep "cleanup" .aloop/pipeline.yml
+# exit 1 — no cleanup entry
+
+grep -A 10 cr_analysis .aloop/pipeline.yml
+# cr_analysis block with prompt, batch, filter (is_change_request+cr_spec_updated), result_pattern — all required fields present
+
+ls aloop/templates/PROMPT_cleanup.md
+# No such file — deleted as required
+
+aloop orchestrate --plan-only (isolated /tmp dir with SPEC.md + .aloop/pipeline.yml)
+# exit 0 — finalizer=[spec-gap,docs,spec-review,final-review,final-qa,proof], cr_analysis block present
+```
+
+---
+
 ## QA Session — 2026-04-01 (final re-verify at eb38cca26, issue #101)
 
 ### Test Environment
