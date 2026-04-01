@@ -152,10 +152,13 @@ The installer deploys skill files to each harness directory and the Aloop runtim
 | `aloop orchestrate` | Multi-issue decomposition and parallel dispatch |
 | `aloop dashboard` | Real-time monitoring UI |
 | `aloop status` | List active sessions and provider health |
+| `aloop active` | List active sessions (terse output) |
 | `aloop stop <id>` | Stop a running session |
 | `aloop setup` | Interactive project configuration |
+| `aloop scaffold` | Scaffold project workdir and prompt templates (non-interactive; called by setup) |
 | `aloop steer <instruction>` | Send live instruction to a running loop |
 | `aloop gh <op>` | Policy-enforced GitHub operations |
+| `aloop resolve` | Resolve project workspace and configuration |
 | `aloop discover` | Auto-detect project specs and validation |
 | `aloop update` | Refresh runtime from repo |
 | `aloop devcontainer` | Generate or augment .devcontainer config |
