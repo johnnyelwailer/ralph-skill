@@ -66,3 +66,7 @@
 | Hamburger visible at tablet 768px | 2026-04-01 | 7f18cd586 | PASS | 44×44px box at 768×1024; desktop sidebar width=0 (hidden) |
 | Session list scroll at 375px | 2026-04-01 | 7f18cd586 | PASS | ScrollArea found in mobile drawer after hamburger click |
 | E2E smoke: tap target menuitem visibility | 2026-04-01 | 7f18cd586 | FAIL | Pre-existing failure (same as bcbff3f, 6e97217): Stop after iteration menuitem not found in smoke.spec.ts:162. Not a regression. |
+| Unit test suite | 2026-04-01 | a866696bd | PASS | 158 tests pass (21 test files); no regression post docs/review-only commits since 7f18cd586 |
+| TypeScript type-check | 2026-04-01 | a866696bd | PASS | tsc --noEmit clean (exit 0); no type errors |
+| Dashboard build | 2026-04-01 | a866696bd | PASS | 464KB bundle built in 1.73s |
+| e2e/proof.spec.ts (all 5) | 2026-04-01 | a866696bd | PASS | 5/5 pass: mobile hamburger, mobile drawer, swipe gesture, tablet 768×1024, desktop 1280×800 |
