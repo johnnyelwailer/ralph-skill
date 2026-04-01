@@ -1279,4 +1279,51 @@ EXIT: 0
 
 # Cleanup
 $ rm -rf /tmp/aloop-test-install-Czjxnm
+
+## QA Session — 2026-04-01 (final-qa, triggered by final-review — commit 8784d8ccf)
+
+### Test Environment
+- Static + dynamic checks in worktree (disk available)
+- Changes since last QA pass (ac92bc79c): docs commit 360d69041 (add /aloop:devcontainer to README), chore/spec-gap 9d2910da4, chore/review ab9f574fa + 097a21ef5 + 8784d8ccf — no code changes
+
+### Features Tested
+1. TypeScript type-check
+2. Unit tests (vitest)
+3. Storybook build
+4. README /aloop:devcontainer entry (new in this pass)
+
+### Results
+- PASS: tsc --noEmit (exit 0, no errors)
+- PASS: npm test (51 files, 632 tests all pass)
+- PASS: storybook build (exit 0, 178 entries)
+- PASS: README line 255 `/aloop:devcontainer` present; CLI table line 221 `aloop devcontainer` present
+
+### Bugs Filed
+(none)
+
+### Command Transcript
+```
+# TypeScript type-check
+$ cd aloop/cli/dashboard && npm run type-check
+> tsc --noEmit
+EXIT: 0
+
+# Unit tests
+$ npm test
+Test Files: 51 passed (51)
+Tests: 632 passed (632)
+EXIT: 0
+
+# Storybook build
+$ npm run build-storybook
+Storybook build completed successfully
+index.json: 178 entries
+EXIT: 0
+
+# README devcontainer verification
+$ grep devcontainer README.md
+line 221: | `aloop devcontainer` | Generate .devcontainer config |
+line 255: /aloop:devcontainer   Generate .devcontainer config for isolated agent execution
+EXIT: PASS
+```
 ```
