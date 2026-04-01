@@ -23,6 +23,8 @@ Non-AC spec body requirements also satisfied: swipe-right gesture (`AppView.tsx:
 
 **Re-confirmed 2026-04-01 (spec-review agent):** Independent re-verification of all 9 ACs against implementation and QA evidence. All criteria remain PASS. Implementation cross-checked: swipe handler at `AppView.tsx:1009-1028`, long-press at `SessionCard.tsx:31-41`, hamburger breakpoint `lg:hidden` at `AppView.tsx:366`, desktop sidebar `hidden lg:flex` at `AppView.tsx:1329`. Lighthouse 94/100 in QA_LOG.md. No new gaps found.
 
+**Re-confirmed 2026-04-01 (spec-review agent, triggered by docs event):** Post-docs-sync re-verification. Most recent commit `37fe49717` is docs-only (README + FRONTEND.md sync); no implementation changes since last review. SPEC-ADDENDUM.md §Dashboard Responsiveness AC checkboxes (lines 237-245) now all `[x]` — previously P3 cosmetic, now resolved. All 9 ACs still PASS. No new gaps found. Issue #114 complete.
+
 ### Completed
 - [x] [spec-gap] **spec-gap analysis: no P1/P2 discrepancies found — spec fully fulfilled** (2026-04-01). All 9 SPEC-ADDENDUM.md §Dashboard Responsiveness ACs verified PASS in spec doc and QA_COVERAGE.md. All previous `[spec-gap]` items resolved. One P3 cosmetic: `QA_COVERAGE.md:48` has stale entry referencing loop.sh `opus` default that was reverted (`d38ccab86`) — out-of-scope for issue #114, already tracked in Gate 1 RESOLVED. No action needed.
 - [x] [spec-gap] **P3** — Unit test suite not re-verified at HEAD (`11c26afe6`). Last passing entry in `QA_COVERAGE.md` is at `9db0a33` (several commits prior). Intervening commits are docs/chore-only — low regression risk, but verification chain is incomplete. Fixed: ran `npm test` at HEAD — 158 tests pass (21 test files); QA_COVERAGE.md updated.
