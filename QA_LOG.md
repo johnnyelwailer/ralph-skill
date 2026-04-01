@@ -1,5 +1,51 @@
 # QA Log
 
+## QA Session — 2026-04-01 (final-qa triggered by final-review, HEAD 566e236b6)
+
+### Test Environment
+- Binary under test: /tmp/aloop-test-install-zny9yg/bin/aloop (1.0.0) — cleaned up after session
+- HEAD commit: 566e236b6 (chore/review-only; no implementation changes since a551553fd)
+- Features tested: 4 (Gate 9 README fix, unit tests, TypeScript, e2e proof)
+
+### Results
+- PASS: Gate 9 README extra .md claim reverted (44c116dd5 fix confirmed)
+- PASS: Unit test suite (158 tests / 21 files)
+- PASS: TypeScript type-check (tsc --noEmit exit 0)
+- PASS: Dashboard build (464KB bundle, 1.36s)
+- PASS: e2e/proof.spec.ts all 5 tests
+
+### Bugs Filed
+- None. No new bugs found. Previous Gate 9 README inaccuracy (FAIL at a551553fd) is resolved by commit 44c116dd5.
+
+### Command Transcript
+```
+# Install
+ALOOP_BIN=$(npm --prefix aloop/cli run --silent test-install -- --keep 2>/dev/null | tail -1)
+# → /tmp/aloop-test-install-zny9yg/bin/aloop
+$ALOOP_BIN --version
+# → 1.0.0
+
+# Unit tests
+npm test --prefix aloop/cli/dashboard
+# → 21 passed (21), 158 passed (158), Duration 3.79s
+
+# TypeScript check
+npx tsc --noEmit  (from aloop/cli/dashboard)
+# → exit 0 (clean)
+
+# Build
+npm run build  (from aloop/cli/dashboard)
+# → ✓ built in 1.36s, 464.34 kB
+
+# e2e proof tests
+npx playwright test e2e/proof.spec.ts
+# → 5 passed (4.0s)
+
+# Gate 9 README verification
+grep "extra.*\.md" README.md
+# → (no match) — CLEAN, extra .md claim removed
+```
+
 ## QA Session — 2026-04-01 (final-qa triggered by final-review, HEAD 8bbab8cde)
 
 ### Test Environment

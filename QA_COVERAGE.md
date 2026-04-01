@@ -87,3 +87,8 @@
 | Dashboard build | 2026-04-01 | a551553fd | PASS | 464KB bundle built in 1.52s |
 | e2e/proof.spec.ts (all 5) | 2026-04-01 | a551553fd | PASS | 5/5 pass: mobile hamburger, mobile drawer, swipe gesture, tablet 768×1024, desktop 1280×800 |
 | Extra .md tabs (README claim) | 2026-04-01 | a551553fd | FAIL | README claims "plus any extra `.md` files present in the workdir" — EXTRA.md is in fixtures/workdir but dashboard shows only fixed tabs: ["TODO","SPEC","RESEARCH","REVIEW LOG","Health"]. No EXTRA tab. README inaccuracy confirmed. Already tracked as Gate 9 TODO.md review item. |
+| Gate 9: README extra .md claim reverted | 2026-04-01 | 44c116dd5 | PASS | README line 68 now reads "Document viewer for TODO.md, SPEC.md, RESEARCH.md, REVIEW_LOG.md, STEERING.md" — extra .md claim removed. grep confirms no mention of "extra.*\.md" in README. |
+| Unit test suite | 2026-04-01 | 566e236b6 | PASS | 158 tests pass (21 test files); no regression — chore/review-only commits since a551553fd |
+| TypeScript type-check | 2026-04-01 | 566e236b6 | PASS | tsc --noEmit clean (exit 0); no type errors |
+| Dashboard build | 2026-04-01 | 566e236b6 | PASS | 464KB bundle built in 1.36s |
+| e2e/proof.spec.ts (all 5) | 2026-04-01 | 566e236b6 | PASS | 5/5 pass: mobile hamburger, mobile drawer, swipe gesture, tablet 768×1024, desktop 1280×800 |
