@@ -1,5 +1,31 @@
 # Review Log
 
+## Review — 2026-04-01 — commit 8bbab8cde..41adb23d9
+
+**Verdict: FAIL** (1 finding → written to TODO.md as [review] task)
+**Scope:** `README.md` (`0451a1638` docs fix), chore commits (`41adb23d9` spec-review re-confirmation)
+
+**Commits since last final-review (`8bbab8cde`):**
+- `0451a1638` — docs: fix README inaccuracies in dashboard section (README.md, 7 lines)
+- `41adb23d9` — chore(review): PASS — spec-review re-confirmed post-docs-0451a1638 (TODO.md only)
+
+**Prior findings from last final-review (`8bbab8cde`):** None — all gates were PASS; no carry-over items.
+
+**Gate results:**
+- Gate 1 (Spec Compliance): PASS — docs-only change; no implementation changes; all 9 SPEC-ADDENDUM.md ACs unchanged
+- Gate 2 (Test Depth): PASS — no test changes; 158 tests unchanged
+- Gate 3 (Coverage): PASS — no new code
+- Gate 4 (Code Quality): PASS — only README.md updated; no dead code introduced
+- Gate 5 (Integration Sanity): PASS — no code changes; last verified QA (158 tests, tsc clean, 5/5 e2e) stands
+- Gate 6 (Proof Verification): PASS — docs-only change; skip with empty artifacts is correct
+- Gate 7 (Runtime Layout): PASS — no layout changes
+- Gate 8 (Version Compliance): PASS — no dependency changes
+- Gate 9 (Documentation Freshness): **FAIL** — `0451a1638` adds "plus any extra `.md` files present in the workdir" to README document-viewer description. This claim is inaccurate. `dashboard.ts:61` defines `DOC_FILES` = 5 fixed files; `loadStateForContext` lines 294-299 loads only those 5 via `DOC_FILES.map(async (docFile) => ...)`. The `/api/state` response `docs` object never contains keys beyond these 5 files. `AppView.tsx:559` has `extraDocs` frontend filtering logic but it is dead code — `docs` will never have extra keys. `smoke.spec.ts:54` creates `EXTRA.md` in the fixture workdir but has zero assertions about it appearing as a tab. The other 3 README claims in this commit ARE accurate: project-grouping sidebar (`AppView.tsx:130-152`), `--workdir` flag (`dashboard.ts:543`), and `process-requests` command (`index.ts:17,178,183`).
+
+**Finding written to TODO.md:** 1 `[review]` task — revert the extra .md claim or implement server-side discovery + smoke test assertion.
+
+---
+
 ## Review — 2026-04-01 — commit d462e2390..acab7d00c
 
 **Verdict: PASS** (chore-only commits; no implementation changes since last final-review)
