@@ -40,3 +40,4 @@
 | Unit test suite | 2026-03-31 | 9db0a33 | PASS | 158 tests pass (21 test files); no regression — chore-only commit since 60952f7 |
 | TypeScript type-check | 2026-03-31 | 9db0a33 | PASS | tsc --noEmit clean; no regression |
 | Tablet breakpoint: hamburger visible at 768px | 2026-04-01 | 98e474ce | PASS | `AppView.tsx:366` changed `md:hidden` → `lg:hidden`; hamburger now persists through 1023px. `e2e/proof.spec.ts:136-147` asserts hamburger IS visible and sidebar hidden at 768px. Desktop sidebar at `hidden lg:flex` (1024px+) per SPEC-ADDENDUM.md §Dashboard Responsiveness. |
+| Unit test suite | 2026-04-01 | 11c26afe6 | PASS | 158 tests pass (21 test files); re-verified at HEAD — no regression post docs/chore commits since 9db0a33. |
