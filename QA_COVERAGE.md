@@ -78,3 +78,7 @@
 | TypeScript type-check | 2026-04-01 | d462e239 | PASS | tsc --noEmit clean (exit 0); no type errors |
 | Dashboard build | 2026-04-01 | d462e239 | PASS | 464KB bundle built in 1.43s |
 | e2e/proof.spec.ts (all 5) | 2026-04-01 | d462e239 | PASS | 5/5 pass: mobile hamburger, mobile drawer, swipe gesture, tablet 768×1024, desktop 1280×800 |
+| Unit test suite | 2026-04-01 | 8bbab8cde | PASS | 158 tests pass (21 test files); no regression — chore/review-only commits since d462e239 |
+| TypeScript type-check | 2026-04-01 | 8bbab8cde | PASS | tsc --noEmit clean (exit 0); no type errors |
+| Dashboard build | 2026-04-01 | 8bbab8cde | PASS | 464KB bundle built in 1.38s |
+| e2e/proof.spec.ts (all 5) | 2026-04-01 | 8bbab8cde | PASS | 5/5 pass: mobile hamburger, mobile drawer, swipe gesture, tablet 768×1024, desktop 1280×800 |

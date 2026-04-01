@@ -1,5 +1,47 @@
 # QA Log
 
+## QA Session — 2026-04-01 (final-qa triggered by final-review, HEAD 8bbab8cde)
+
+### Test Environment
+- Dashboard: built from source (`npm run build`)
+- Playwright: e2e/proof.spec.ts (built-in webServer)
+- Commits since last QA: chore/review-only (d462e239 → 8bbab8cde), no implementation changes
+
+### Features Tested
+1. Unit test suite (158 tests)
+2. TypeScript type-check
+3. Dashboard build
+4. e2e/proof.spec.ts — all 5 responsive layout tests
+
+### Results
+- PASS: Unit test suite — 158 tests, 21 files
+- PASS: TypeScript type-check — tsc --noEmit clean
+- PASS: Dashboard build — 464KB bundle
+- PASS: e2e/proof.spec.ts — 5/5 (mobile hamburger, mobile drawer, swipe gesture, tablet 768×1024, desktop 1280×800)
+
+### Bugs Filed
+None — no regressions found.
+
+### Command Transcript
+```
+npm --prefix aloop/cli/dashboard test -- --run
+→ 21 test files, 158 tests, all PASS
+
+npm --prefix aloop/cli/dashboard run type-check
+→ clean (exit 0)
+
+npm --prefix aloop/cli/dashboard run build
+→ 464KB bundle, ✓ built in 1.38s
+
+npx playwright test e2e/proof.spec.ts
+→ 5/5 PASS: mobile hamburger, mobile drawer, swipe gesture, tablet 768×1024, desktop 1280×800
+```
+
+### Assessment
+All 9 ACs from SPEC-ADDENDUM.md §Dashboard Responsiveness remain PASS at HEAD 8bbab8cde. No regressions introduced by chore/review-only commits since d462e239. Issue #114 complete.
+
+
+
 ## QA Session — 2026-03-31 (final-qa / final-review trigger)
 
 ### Test Environment
