@@ -1,5 +1,41 @@
 # Review Log
 
+## Review — 2026-04-01 08:45 — commit a71a3369d..ab37c1774
+
+**Verdict: FAIL** (2 findings → written to TODO.md as [review] tasks)
+**Scope:** `AppView.tsx` (tablet breakpoint fix `98e474ce6`), `aloop/bin/loop.sh` (model default fix `bb8fce584`), `e2e/proof.spec.ts` (tablet test update), `README.md`, `SPEC-ADDENDUM.md`, `QA_COVERAGE.md`, `QA_LOG.md`, `TODO.md`
+
+**Commits since last review (`a71a3369d`):**
+- `9db0a336b`, `73c33bebb` — chore(qa): QA_COVERAGE.md + QA_LOG.md only
+- `1fb5b55cc` — chore(spec-gap): TODO.md only (gap analysis)
+- `e7473b950` — docs: README.md — add 3 missing CLI commands (`scaffold`, `active`, `resolve`) — verified registered in `index.ts:3,5,8,29,56,108`
+- `d074cfbfa` — chore(qa): QA_LOG.md + TODO.md — Lighthouse AC9 94/100
+- `b12531067` — chore(spec-gap): TODO.md only
+- `1b782b1c1` — docs: README.md breakpoint description (superseded by `11c26afe6`)
+- `98e474ce6` — **fix**: AppView.tsx breakpoint fix (md: → lg:); e2e/proof.spec.ts tablet test updated
+- `bb8fce584` — **fix**: loop.sh model default sonnet → opus
+- `2054bd369` — chore(spec-gap): TODO.md only
+- `11c26afe6` — docs: README.md correct to lg:/1024px breakpoints; QA_COVERAGE.md corrections
+- `6076b62c8` — chore(qa): QA_COVERAGE.md + TODO.md (re-verify at HEAD)
+- `9ce4f1aa6` — chore(spec-gap): TODO.md only
+- `5fad748b8` — docs: SPEC-ADDENDUM.md checkboxes marked [x]
+- `ab37c1774` — chore(spec-review): TODO.md approval
+
+**Gate results:**
+- Gate 1 (Spec Compliance): FAIL — `bb8fce584` modifies `loop.sh` (model default: sonnet → opus), outside issue #114 scope (responsive layout). CONSTITUTION rule 12: "One issue, one concern." Spec-gap commit `b12531067` explicitly classified this as "out-of-scope — file a new issue"; `bb8fce584` overrode that classification.
+- Gate 2 (Test Depth): PASS — no test changes; 158 dashboard tests unchanged; `imgBtn` assertion still enforced
+- Gate 3 (Coverage): PASS — 158 tests, 21 files; no new code outside what was previously covered
+- Gate 4 (Code Quality): PASS — single-line changes; no dead code or duplication
+- Gate 5 (Integration Sanity): PASS — 158 dashboard vitest tests pass; `tsc --noEmit` clean
+- Gate 6 (Proof Verification): FAIL — `98e474ce6` is an observable UI change (CSS breakpoints). `iter-12/output.txt` contains unit test text — NOT valid proof per Gate 6 rules. No screenshot captured for corrected tablet layout.
+- Gate 7 (Runtime Layout): FAIL — CSS layout change in `AppView.tsx:366,1329` requires browser bounding-box verification. Cannot launch browser — mandatory FAIL. `e2e/proof.spec.ts:136-147` was updated correctly but never executed in this session.
+- Gate 8 (Version Compliance): PASS — no dependency changes
+- Gate 9 (Documentation Freshness): PASS — README at `11c26afe6` accurately describes lg: (1024px) breakpoints. SPEC-ADDENDUM.md checkboxes updated. CLI commands table now complete (3 missing entries added; all 3 verified registered in `index.ts`).
+
+**Concrete observation (non-failing gates):** Gate 9 — `e7473b950` adds `aloop active`, `aloop scaffold`, `aloop resolve` to README command table. Verified in `aloop/cli/src/index.ts:3,5,8,29,56,108` — all three commands are imported and registered. Documentation is now accurate.
+
+---
+
 ## Review — 2026-03-31 19:45 — commit 1b2603fdd..a71a3369d
 
 **Verdict: PASS** (no code changes since last review; QA re-verification commit only)
