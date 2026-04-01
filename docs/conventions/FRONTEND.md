@@ -165,8 +165,8 @@ dashboard/src/
 
 ## Additional Libraries in Use
 
-- `cmdk` — command palette (Cmd+K)
-- `react-resizable-panels` — resizable pane layout
+- `cmdk` — command palette (Cmd+K) — implemented in `AppView.tsx`
+- `react-resizable-panels` — resizable pane layout — wrapper available in `components/ui/resizable.tsx` but not currently wired into the layout (layout uses CSS flex instead)
 - `sonner` — toast notifications
 - `marked` — markdown rendering (sanitize output!)
 

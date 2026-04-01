@@ -65,10 +65,11 @@ aloop dashboard --port 3000 --session-dir ~/.aloop/sessions/<id>
 
 - Session sidebar with hierarchy (repo > project > issue > session)
 - Live activity log with phase transitions, provider info, and commit history
-- Document viewer for TODO.md, SPEC.md, RESEARCH.md, REVIEW_LOG.md
+- Document viewer for TODO.md, SPEC.md, RESEARCH.md, REVIEW_LOG.md, STEERING.md
 - Proof artifact gallery (screenshots, test output, layout assertions)
 - **Live steering** — send instructions to the running loop from the dashboard
 - **Stop controls** — graceful (SIGTERM) or force (SIGKILL)
+- **Command palette** (Cmd+K) — search sessions and trigger actions
 - **Responsive layout** — sidebar persistent at desktop (≥ 1024px / `lg:`); hamburger toggle visible on mobile and tablet (< 1024px); full overlay on mobile (< 640px); all tap targets ≥ 44×44px on mobile; no hover-only interactions
 
 ## Quality Gates
