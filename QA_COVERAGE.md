@@ -15,6 +15,7 @@
 | Tap targets ≥ 44px on mobile | 2026-03-31 | bcbff3f | PASS | 0 small buttons at 320px and 390px post Gate 2/4 fixes; no regression |
 | No horizontal scroll at 320px | 2026-03-31 | bcbff3f | PASS | bodyScrollWidth === windowWidth (320) at 320x568 |
 | Swipe gesture to open sidebar | 2026-03-31 | 6e97217 | FAIL | Spec body requires "swipe right from left edge opens sidebar" — not implemented; not in acceptance criteria (P3) |
+| Swipe gesture to open sidebar | 2026-04-01 | 98e474ce | PASS | False negative corrected: `AppView.tsx:1009-1028` implements touchstart/touchend handlers; `e2e/proof.spec.ts:103-134` verifies swipe (touchstart clientX=5→touchend clientX=80 opens `.fixed.inset-0.z-40` overlay). Original FAIL was a DOM attribute query limitation in QA tooling, not a missing feature. |
 | E2E smoke: tap target menuitem visibility | 2026-03-31 | bcbff3f | FAIL | `npx playwright test e2e/smoke.spec.ts:162` — Stop after iteration menuitem not found; pre-existing failure (same at 6e97217); product tap targets PASS via custom Playwright at 390px |
 | Unit test suite | 2026-03-31 | 0fd8078 | PASS | 158 tests pass (21 test files); re-verified at final-qa commit — no regression |
 | TypeScript type-check | 2026-03-31 | 0fd8078 | PASS | tsc --noEmit clean; build succeeds (464KB bundle) |
@@ -38,3 +39,4 @@
 | TypeScript type-check | 2026-03-31 | 60952f7 | PASS | tsc --noEmit clean; no regression |
 | Unit test suite | 2026-03-31 | 9db0a33 | PASS | 158 tests pass (21 test files); no regression — chore-only commit since 60952f7 |
 | TypeScript type-check | 2026-03-31 | 9db0a33 | PASS | tsc --noEmit clean; no regression |
+| Tablet breakpoint: hamburger visible at 768px | 2026-04-01 | 98e474ce | PASS | `AppView.tsx:366` changed `md:hidden` → `lg:hidden`; hamburger now persists through 1023px. `e2e/proof.spec.ts:136-147` asserts hamburger IS visible and sidebar hidden at 768px. Desktop sidebar at `hidden lg:flex` (1024px+) per SPEC-ADDENDUM.md §Dashboard Responsiveness. |
