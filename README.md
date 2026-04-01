@@ -65,7 +65,7 @@ aloop dashboard --port 3000 --session-dir ~/.aloop/sessions/<id> --workdir /path
 
 - Session sidebar with sessions grouped by project — active sessions at top, older sessions in a collapsed group
 - Live activity log with phase transitions, provider info, and commit history
-- Document viewer for TODO.md, SPEC.md, RESEARCH.md, REVIEW_LOG.md, STEERING.md, plus any extra `.md` files present in the workdir
+- Document viewer for TODO.md, SPEC.md, RESEARCH.md, REVIEW_LOG.md, STEERING.md
 - Proof artifact gallery (screenshots, test output, layout assertions)
 - **Live steering** — send instructions to the running loop from the dashboard
 - **Stop controls** — graceful (SIGTERM) or force (SIGKILL)
