@@ -692,3 +692,63 @@ $ALOOP_BIN orchestrate --plan-only --spec /dev/null  (in isolated temp dir)
 # Cleanup
 rm -rf /tmp/aloop-test-install-3oUhlI ~/.aloop/sessions/orchestrator-20260330-072744
 ```
+
+## QA Session — 2026-04-01 (final re-verify at e647545e0)
+
+### Test Environment
+- Binary under test: `/home/pj/.aloop/bin/aloop` (1.0.0, updated via `aloop update` to e647545e0)
+- `aloop update` output: "Version: e647545e0 (2026-04-01T09:24:23Z), Files updated: 57"
+- Note: `test-install` (npm pack path) skipped — vite/esbuild not available in this environment; `aloop update` used as equivalent behavioral test (validates install path, same binary)
+- Features tested: 5
+
+### Results
+- PASS: `bash -n loop.sh` (installed + worktree) — exit 0
+- PASS: PowerShell parser on loop.ps1 — 0 parse errors
+- PASS: `proof_manifest_found/missing` events at lines 2085, 2090, 2264, 2269 in installed loop.sh
+- PASS: `pipeline.yml` finalizer — 6 entries [spec-gap, docs, spec-review, final-review, final-qa, proof]; grep "cleanup" exits 1
+- PASS: `pipeline.yml` cr_analysis block — prompt, batch, filter, result_pattern all present; PROMPT_orch_cr_analysis.md exists
+- PASS: `orchestrate --plan-only` — session initialized, exit 0 in isolated temp dir
+
+### Bugs Filed
+None — all tests pass at e647545e0. HEAD is doc-only diff from previous QA (REVIEW_LOG.md + TODO.md tracking only); no functional regressions.
+
+### Command Transcript
+
+```
+# aloop update
+/home/pj/.aloop/bin/aloop update
+# Output: "Updated ~/.aloop — Version: e647545e0 (2026-04-01T09:24:23Z) — Files updated: 57"
+# Exit: 0 — PASS
+
+# Test 1: bash -n syntax check
+bash -n /home/pj/.aloop/bin/loop.sh
+# Exit: 0 — PASS
+bash -n aloop/bin/loop.sh
+# Exit: 0 — PASS
+
+# Test 2: proof_manifest events in loop.sh
+grep -n "proof_manifest_found\|proof_manifest_missing" /home/pj/.aloop/bin/loop.sh
+# Lines 2085, 2090, 2264, 2269 — 4 events (main path + queue_override) — PASS
+
+# Test 3: pipeline.yml finalizer — no cleanup
+grep -A 20 "^finalizer:" .aloop/pipeline.yml
+# [PROMPT_spec-gap.md, PROMPT_docs.md, PROMPT_spec-review.md, PROMPT_final-review.md, PROMPT_final-qa.md, PROMPT_proof.md] — 6 entries — PASS
+grep -c "cleanup" .aloop/pipeline.yml
+# 0 — PASS
+
+# Test 4: cr_analysis block
+grep -A 8 "cr_analysis:" .aloop/pipeline.yml
+# prompt: PROMPT_orch_cr_analysis.md, batch: 2, filter: {is_change_request, cr_spec_updated}, result_pattern — PASS
+ls aloop/templates/PROMPT_orch_cr_analysis.md
+# Exit: 0 — PASS
+
+# Test 5: orchestrate --plan-only
+TMPDIR=$(mktemp -d) && cd $TMPDIR && echo "# spec" > spec.md
+/home/pj/.aloop/bin/aloop orchestrate --plan-only --spec spec.md
+# "Orchestrator session initialized." — Exit: 0 — PASS
+rm -rf /home/pj/.aloop/sessions/orchestrator-20260401-092456
+
+# Test 6: PowerShell syntax check
+pwsh -NonInteractive -Command "[Parser]::ParseFile('loop.ps1', ...); Parse errors: 0"
+# Exit: 0 — PASS
+```
