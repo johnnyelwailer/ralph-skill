@@ -157,6 +157,7 @@ dashboard/src/
 - **Tap target sizing on mobile (WCAG 2.5.5):** Every interactive element that is primary on mobile must have `min-h-[44px] md:min-h-0` (and `min-w-[44px] md:min-w-0` for icon-only elements). The `md:min-h-0` removes the constraint at ≥768px where pointer precision is assumed. Do not use inline styles or arbitrary pixel values — use the Tailwind class.
 - **Use semantic elements for interactivity.** Clickable rows and custom controls must be `<button type="button">` (not `<div onClick>`). If a non-button element must be interactive, add `role="button" tabIndex={0}` and an `onKeyDown` handler for `Enter`/`Space`.
 - **No hover-only interactions.** Every hover affordance (tooltip, hover card) must also activate on tap/click. Use `useIsTouchDevice` to detect touch and switch to tap-toggle behavior.
+- **Lighthouse mobile accessibility score ≥ 90.** Run `npx lighthouse <url> --form-factor=mobile --only-categories=accessibility` against the dev server before merging changes that affect interactive elements, ARIA attributes, or color contrast. Baseline: 94/100 (established issue #114, 2026-04-01).
 
 ## Performance
 
