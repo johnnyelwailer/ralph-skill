@@ -178,6 +178,38 @@ All prior findings remain resolved. This commit closes the issue's QA cycle.
 
 ---
 
+## Review — 2026-04-01 — commit e74597f1f..7e758c792
+
+**Verdict: PASS** (0 findings)
+**Scope:** `QA_COVERAGE.md`, `QA_LOG.md`
+
+Summary of what changed since last review (e74597f1f):
+- `7e758c792`: chore(qa): QA session — final re-verify at e74597f1f PASS — appends 6 rows to QA_COVERAGE.md and a 52-line QA session entry to QA_LOG.md. No source code changes.
+
+Gate 1: PASS — Doc-only commit. QA session explicitly re-verifies all 9 TASK_SPEC.md ACs at `e74597f1f` (the prior REVIEW_LOG commit). Confirmed: iter-N mkdir before invoke_provider (loop.sh:2085,2264), baselines/ at init (loop.sh:1946), proof_manifest_found/missing events on both main and queue_override paths (lines 2085,2090,2264,2269), bash -n PASS, PROMPT_cleanup.md absent, pipeline.yml cr_analysis block intact. Consistent with prior verified state.
+
+Gate 2: PASS — No new tests or code. N/A.
+
+Gate 3: PASS — No code changes; no coverage impact.
+
+Gate 4: PASS — 6 new QA_COVERAGE.md rows each cite concrete behavioral evidence: bash -n exit codes at named commit (e74597f1f), grep line numbers for proof_manifest_found/missing events (2085,2090,2264,2269), orchestrate --plan-only exit 0 in isolated tmp dir, grep "cleanup" exits 1. QA_LOG.md transcript has actual commands and outputs. Minor: PowerShell syntax check transcript uses pseudocode notation — same minor noted in prior reviews; loop.ps1 not modified since b70caeaec; zero risk. No dead code, no duplication.
+
+Gate 5: PASS — No code changes. Prior confirmed: npm test 1092/33 pre-existing failures; tsc clean. No regression possible from doc-only commit.
+
+Gate 6: PASS (skip) — Internal QA tracking commit; no observable behavioral output. Expected correct outcome for doc-only changes.
+
+Gate 7: SKIP — No UI/layout changes.
+
+Gate 8: SKIP — No dependency changes.
+
+Gate 9: PASS — No user-facing docs changed. README, SPEC, CONSTITUTION.md unchanged.
+
+Gate 10: PASS — QA_COVERAGE.md: 65 rows total (6 added this session), all PASS = 100% > 30% threshold. No stale [qa/P1] bugs in TODO.md. Concrete observation: row 62 ("proof_manifest_found/missing in loop.sh at e74597f1f") cites exact line numbers 2085,2090,2264,2269 — not a shallow presence claim.
+
+All prior findings remain resolved. Issue #101 closes cleanly.
+
+---
+
 ## Review — 2026-03-30 — commit c05665ec7..8d5daba06
 
 **Verdict: PASS** (0 findings)
