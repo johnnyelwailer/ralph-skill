@@ -219,7 +219,7 @@ The installer deploys skill files to each harness directory and the Aloop runtim
 | `aloop process-requests` | Process pending orchestrator request files |
 | `aloop update` | Refresh runtime from repo |
 | `aloop devcontainer` | Generate .devcontainer config |
-| `aloop devcontainer-verify` | Verify devcontainer builds and passes checks |
+| `aloop devcontainer-verify` | Verify devcontainer builds, starts, and passes all checks |
 
 ### `aloop gh` — GitHub-Linked Loops
 
