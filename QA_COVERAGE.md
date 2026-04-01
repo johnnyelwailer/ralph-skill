@@ -92,3 +92,8 @@
 | TypeScript type-check | 2026-04-01 | 566e236b6 | PASS | tsc --noEmit clean (exit 0); no type errors |
 | Dashboard build | 2026-04-01 | 566e236b6 | PASS | 464KB bundle built in 1.36s |
 | e2e/proof.spec.ts (all 5) | 2026-04-01 | 566e236b6 | PASS | 5/5 pass: mobile hamburger, mobile drawer, swipe gesture, tablet 768×1024, desktop 1280×800 |
+| Unit test suite | 2026-04-01 | 9e0cb3948 | PASS | 158 tests pass (21 test files); no regression — chore/review-only commits since 566e236b6 |
+| TypeScript type-check | 2026-04-01 | 9e0cb3948 | PASS | tsc --noEmit clean (exit 0); no type errors |
+| Dashboard build | 2026-04-01 | 9e0cb3948 | PASS | 464KB bundle built in 1.23s |
+| e2e/proof.spec.ts (all 5) | 2026-04-01 | 9e0cb3948 | PASS | 5/5 pass: mobile hamburger, mobile drawer, swipe gesture, tablet 768×1024, desktop 1280×800 |
+| No horizontal scroll at 320px | 2026-04-01 | 9e0cb3948 | PASS | body=320 win=320 via Playwright browser check |

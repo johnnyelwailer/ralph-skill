@@ -1,5 +1,55 @@
 # QA Log
 
+## QA Session — 2026-04-01 (final-qa triggered by final-review, HEAD 9e0cb3948)
+
+### Test Environment
+- Binary under test: /tmp/aloop-test-install-Z1cjjz/bin/aloop (1.0.0) — cleaned up after session
+- HEAD commit: 9e0cb3948 (chore/review-only; no implementation changes since 566e236b6)
+- Commits since last QA: c8e224c77 → 168667172 → 552b94c11 → 213bd397c → 9e0cb3948 (all chore/docs/review)
+- Features tested: 5
+
+### Results
+- PASS: Unit test suite (158 tests / 21 files)
+- PASS: TypeScript type-check (tsc --noEmit exit 0)
+- PASS: Dashboard build (464KB bundle, 1.23s)
+- PASS: e2e/proof.spec.ts all 5 tests (mobile hamburger, mobile drawer, swipe gesture, tablet 768×1024, desktop 1280×800)
+- PASS: No horizontal scroll at 320px (browser: body=320 win=320)
+
+### Bugs Filed
+None. No new bugs found. All 9 ACs remain PASS at HEAD 9e0cb3948.
+
+### Command Transcript
+```
+# Install
+ALOOP_BIN=$(npm --prefix aloop/cli run --silent test-install -- --keep 2>/dev/null | tail -1)
+# → /tmp/aloop-test-install-Z1cjjz/bin/aloop
+$ALOOP_BIN --version
+# → 1.0.0
+
+# Unit tests
+npm test -- --run  (from aloop/cli/dashboard)
+# → 21 passed (21), 158 passed (158), Duration 2.78s
+
+# TypeScript check
+npx tsc --noEmit  (from aloop/cli/dashboard)
+# → exit 0 (clean)
+
+# Build
+npm run build  (from aloop/cli/dashboard)
+# → ✓ built in 1.23s, 464.34 kB
+
+# e2e proof tests
+npx playwright test e2e/proof.spec.ts
+# → 5 passed (2.9s)
+
+# Browser AC1 check
+node -e "chromium.launch() ... page.goto localhost:4173 at 320x568"
+# → body=320 win=320 => PASS
+```
+
+### Assessment
+All 9 ACs from SPEC-ADDENDUM.md §Dashboard Responsiveness remain PASS at HEAD 9e0cb3948. No regressions from chore/review-only commits since 566e236b6. Issue #114 complete.
+
 ## QA Session — 2026-04-01 (final-qa triggered by final-review, HEAD 566e236b6)
 
 ### Test Environment
