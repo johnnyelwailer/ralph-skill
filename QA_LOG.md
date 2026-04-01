@@ -1,5 +1,49 @@
 # QA Log
 
+## QA Session — 2026-04-01 (final re-verify at 8dae43991, issue #101)
+
+### Test Environment
+- HEAD: `8dae43991` — "chore: mark issue #101 implementation complete in TODO.md"
+- Delta from last QA (`c4380e7cf`): doc-only changes (QA_COVERAGE.md, QA_LOG.md, REVIEW_LOG.md, TODO.md) — no source code changes
+- Installed runtime: `~/.aloop/bin/loop.sh` at `c4380e7cf` (no update needed — no source changes)
+
+### Results
+
+- PASS: `bash -n loop.sh` — installed and worktree copies both exit 0
+- PASS: `loop.ps1` PowerShell parser — 0 parse errors
+- PASS: `aloop orchestrate --plan-only` — exits 0, pipeline.yml parses cleanly
+- PASS: `pipeline.yml` finalizer has 6 entries [spec-gap,docs,spec-review,final-review,final-qa,proof] — no cleanup entry
+- PASS: `PROMPT_cleanup.md` not present in worktree
+- PASS: `proof_manifest_found`/`proof_manifest_missing` events present at loop.sh lines 2085,2090,2264,2269
+- PASS: `artifacts/baselines/` mkdir at loop.sh:1946
+- PASS: `artifacts/iter-N/` mkdir at loop.sh:2077,2246 (both main and queue_override paths)
+
+No regressions. All acceptance criteria verified. Issue #101 implementation confirmed complete at HEAD.
+
+### Command Transcript
+
+```
+bash -n /home/pj/.aloop/bin/loop.sh
+# exit 0
+
+bash -n worktree/aloop/bin/loop.sh
+# exit 0
+
+pwsh -Command "ParseFile loop.ps1"
+# PASS: loop.ps1 syntax clean
+
+grep proof_manifest_found/missing /home/pj/.aloop/bin/loop.sh
+# lines 2085,2090,2264,2269 — both paths covered
+
+aloop orchestrate --plan-only
+# exit 0 — finalizer=[spec-gap,docs,spec-review,final-review,final-qa,proof], cr_analysis block present
+
+ls aloop/templates/PROMPT_cleanup.md
+# No such file — deleted as required
+```
+
+---
+
 ## QA Session — 2026-03-27 (iteration 1, issue #101)
 
 ### Test Environment
