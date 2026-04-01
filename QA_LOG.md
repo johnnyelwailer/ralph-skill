@@ -370,6 +370,62 @@ No source code changes since last verified QA pass (1b2603fdd). Chore-only commi
 - 60952f7ca: chore review PASS — no functional impact
 All SPEC-ADDENDUM.md acceptance criteria remain PASS. Issue-114 complete.
 
+## QA Session — 2026-04-01 (AC9 Lighthouse mobile accessibility audit)
+
+### Test Environment
+- Commit under test: e7473b950 (current HEAD)
+- Dashboard: built from source (`npm run build` → `npx vite preview --port 4099`)
+- Lighthouse: v13.0.3 (via npx)
+- Chrome: Playwright chromium-1208 (`~/.cache/ms-playwright/chromium-1208/chrome-linux/chrome`)
+- Audit: `--only-categories=accessibility --form-factor=mobile`
+
+### Features Tested
+1. Lighthouse mobile accessibility audit (SPEC-ADDENDUM.md L245: score >= 90)
+
+### Results
+
+| Test | Result |
+|------|--------|
+| Lighthouse mobile accessibility score | **94 / 100 — PASS** |
+
+**AC9 explicitly verified: score 94 >= 90.**
+
+One non-blocking audit finding (does not affect pass/fail, score already >= 90):
+- `button-name`: one button in `footer.border-t > div.flex > button.inline-flex` lacks an accessible name (`aria-label` or inner text visible to screen readers). This is a cosmetic/future-improvement item; it does not cause score < 90.
+
+### Bugs Filed
+None. AC9 PASS. The single failing audit (`button-name`, score 0.00) is a P3 cosmetic issue that does not cause the score to drop below 90.
+
+### Command Transcript
+```
+# Build dashboard
+cd aloop/cli/dashboard && npm install && npx vite build
+→ ✓ built in 1.32s (464.34 kB JS, 34.14 kB CSS)
+
+# Start preview server
+npx vite preview --port 4099 &
+
+# Run Lighthouse mobile accessibility audit
+CHROME_PATH=~/.cache/ms-playwright/chromium-1208/chrome-linux/chrome \
+npx lighthouse http://localhost:4099 \
+  --only-categories=accessibility \
+  --form-factor=mobile \
+  --screenEmulation.mobile \
+  --output=json \
+  --output-path=/tmp/lighthouse-report.json \
+  --chrome-flags="--headless --no-sandbox --disable-dev-shm-usage"
+→ Accessibility score: 94
+
+# Extract score
+python3 -c "import json; d=json.load(open('/tmp/lighthouse-report.json')); print(d['categories']['accessibility']['score']*100)"
+→ 94.0
+```
+
+### Assessment
+AC9 verified: Lighthouse mobile accessibility score = **94** (threshold: >= 90). All 9 SPEC-ADDENDUM.md acceptance criteria now explicitly verified. Issue-114 complete.
+
+---
+
 ## QA Session — 2026-03-31 (final-qa re-verification at 9db0a336b)
 
 ### Test Environment
