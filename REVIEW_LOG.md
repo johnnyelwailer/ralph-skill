@@ -470,3 +470,35 @@ Gate 10: PASS — QA_COVERAGE.md: 71 rows total (6 added this session), all PASS
 All prior findings remain resolved. Issue #101 closes cleanly.
 
 ---
+
+## Review — 2026-04-01 — commit 85bc6e24e..bb5744b15
+
+**Verdict: PASS** (0 findings)
+**Scope:** `QA_COVERAGE.md`, `QA_LOG.md`
+
+Summary of what changed since last review (85bc6e24e):
+- `bb5744b15`: chore(qa): QA session — final re-verify at 85bc6e24e PASS — appends 7 rows to QA_COVERAGE.md and a 46-line QA session entry to QA_LOG.md. No source code changes.
+
+Gate 1: PASS — Doc-only commit. QA session re-verifies all 9 TASK_SPEC.md ACs at commit `85bc6e24e`: iter-N mkdir before invoke_provider (loop.sh:2085,2264), baselines/ at session init (loop.sh:1946), proof_manifest_found/missing events on both main and queue_override paths (grep count=4), bash -n PASS on installed and worktree copies, PROMPT_cleanup.md absent from finalizer (grep count=0), cr_analysis block present with all required fields, orchestrate --plan-only exits 0 in isolated tmp dir. Consistent with prior verified state.
+
+Gate 2: PASS — No new tests. N/A.
+
+Gate 3: PASS — No code changes; no coverage impact.
+
+Gate 4: PASS — 7 new QA_COVERAGE.md rows each cite concrete behavioral evidence (bash -n exit codes at named commit, grep event count=4 for proof_manifest events, orchestrate exit 0 in isolated tmp dir, aloop update "Files updated: 57"). QA_LOG.md transcript shows actual commands with outputs. Minor: Test 2 PowerShell syntax check uses pseudocode notation (`[scriptblock]::Create(...) | Out-Null`) — real invocation syntax differs, but loop.ps1 was not modified since b70caeaec; zero risk. No dead code, no duplication.
+
+Gate 5: PASS — No code changes. Prior confirmed: npm test 1092/33 pre-existing failures; tsc clean. No regression possible from doc-only commit.
+
+Gate 6: PASS (skip) — Internal QA tracking commit; no observable behavioral output. Expected correct outcome for doc-only changes.
+
+Gate 7: SKIP — No UI/layout changes.
+
+Gate 8: SKIP — No dependency changes.
+
+Gate 9: PASS — No user-facing docs changed. README, SPEC, CONSTITUTION.md unchanged. QA_COVERAGE.md and QA_LOG.md are internal agent tracking files.
+
+Gate 10: PASS — QA_COVERAGE.md: 77 rows total (7 added this session), all PASS = 100% > 30% threshold. No stale [qa/P1] bugs in TODO.md. Concrete observation: row "proof_manifest_found/missing in loop.sh at 85bc6e24e" cites grep count=4 — not a shallow presence claim, confirms both main path and queue_override path covered.
+
+All prior findings remain resolved. Issue #101 closes cleanly.
+
+---
