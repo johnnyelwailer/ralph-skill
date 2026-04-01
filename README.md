@@ -69,7 +69,7 @@ aloop dashboard --port 3000 --session-dir ~/.aloop/sessions/<id>
 - Proof artifact gallery (screenshots, test output, layout assertions)
 - **Live steering** — send instructions to the running loop from the dashboard
 - **Stop controls** — graceful (SIGTERM) or force (SIGKILL)
-- **Responsive layout** — sidebar collapses to hamburger below 640px; all tap targets ≥ 44×44px on mobile; no hover-only interactions
+- **Responsive layout** — sidebar collapses to icon rail at 640px+ (hamburger toggle below 768px, full overlay on mobile < 640px); all tap targets ≥ 44×44px on mobile; no hover-only interactions
 
 ## Quality Gates
 
