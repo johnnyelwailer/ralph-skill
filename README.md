@@ -60,12 +60,12 @@ Real-time monitoring UI with SSE updates. Runs as a local web server. Fully resp
 
 ```bash
 aloop dashboard
-aloop dashboard --port 3000 --session-dir ~/.aloop/sessions/<id>
+aloop dashboard --port 3000 --session-dir ~/.aloop/sessions/<id> --workdir /path/to/project
 ```
 
-- Session sidebar with hierarchy (repo > project > issue > session)
+- Session sidebar with sessions grouped by project — active sessions at top, older sessions in a collapsed group
 - Live activity log with phase transitions, provider info, and commit history
-- Document viewer for TODO.md, SPEC.md, RESEARCH.md, REVIEW_LOG.md, STEERING.md
+- Document viewer for TODO.md, SPEC.md, RESEARCH.md, REVIEW_LOG.md, STEERING.md, plus any extra `.md` files present in the workdir
 - Proof artifact gallery (screenshots, test output, layout assertions)
 - **Live steering** — send instructions to the running loop from the dashboard
 - **Stop controls** — graceful (SIGTERM) or force (SIGKILL)
@@ -164,6 +164,7 @@ The installer deploys skill files to each harness directory and the Aloop runtim
 | `aloop update` | Refresh runtime from repo |
 | `aloop devcontainer` | Generate or augment .devcontainer config |
 | `aloop devcontainer-verify` | Verify devcontainer builds and passes checks |
+| `aloop process-requests` | Process pending requests from a session (called by loop.sh between iterations) |
 
 ### Slash commands (Claude Code / Codex / Copilot)
 
