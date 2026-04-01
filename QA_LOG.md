@@ -896,3 +896,65 @@ EXIT: 0
 
 ### Assessment
 No implementation changes since f096b4ae3. All 9 ACs confirmed PASS. Issue #114 complete.
+
+---
+
+## QA Session — 2026-04-01 (final-qa / post-Gate-9-FAIL trigger, HEAD a551553fd)
+
+### Test Environment
+- HEAD: a551553fd (Gate 9 FAIL review — chore/review-only since 8bbab8cde)
+- Dashboard: built from source (aloop/cli/dashboard)
+- Playwright: npx playwright via local node_modules
+- Previous QA: 8bbab8cde (all PASS)
+
+### Context
+Triggered by final-review agent that found Gate 9 FAIL: README claims "plus any extra `.md` files present in the workdir" but this is not implemented. No implementation changes since 8bbab8cde (intervening commits are chore/review/docs only). QA run confirms baseline regression-free state and validates the Gate 9 finding.
+
+### Features Tested
+1. Unit test suite (158 tests)
+2. TypeScript type-check
+3. Dashboard build
+4. e2e/proof.spec.ts (5 responsive layout tests)
+5. Extra .md tabs — README claim validation
+
+### Results
+- PASS: 158 unit tests (21 files)
+- PASS: tsc --noEmit (exit 0)
+- PASS: Dashboard build (464KB bundle, 1.52s)
+- PASS: e2e/proof.spec.ts 5/5 (mobile hamburger, mobile drawer, swipe gesture, tablet 768×1024, desktop 1280×800)
+- FAIL: Extra .md tabs — EXTRA.md in workdir fixture, but dashboard shows only fixed tabs: ["TODO","SPEC","RESEARCH","REVIEW LOG","Health"]. README claim is inaccurate.
+
+### Bugs Filed
+None new. Gate 9 finding already tracked as `[review]` item in TODO.md ("Gate 9: README inaccuracy — revert or implement extra .md tabs claim"). Not a regression — the README was added in `0451a1638`; the feature was never implemented.
+
+### Command Transcript
+```
+$ npm test -- --run
+→ 21 passed (21) | 158 passed (158) | Duration 4.70s
+EXIT: 0
+
+$ npx tsc --noEmit
+EXIT: 0
+
+$ npm run build
+→ dist/assets/index-BPOmcTgd.js 464.34 kB | ✓ built in 1.52s
+EXIT: 0
+
+$ npx playwright test e2e/proof.spec.ts
+→ 1 proof: mobile 390x844 — hamburger visible, sidebar closed PASS (159ms)
+→ 2 proof: mobile 390x844 — sidebar drawer open PASS (162ms)
+→ 3 proof: mobile 390x844 — swipe gesture opens sidebar PASS (137ms)
+→ 4 proof: tablet 768x1024 — sidebar hidden by default, hamburger visible PASS (129ms)
+→ 5 proof: desktop 1280x800 — layout unchanged, no collapse button PASS (150ms)
+→ 5 passed (4.1s)
+EXIT: 0
+
+$ npx playwright test e2e/qa-extra-tabs.spec.ts  [inline temp spec, removed after]
+→ Tabs found: ["TODO","SPEC","RESEARCH","REVIEW LOG","Health"]
+→ EXTRA tab present: false
+→ 1 failed — EXTRA tab not found
+EXIT: 1
+```
+
+### Assessment
+All 9 SPEC-ADDENDUM.md §Dashboard Responsiveness ACs remain PASS. Gate 9 finding confirmed: README line 68 inaccurately claims extra .md files appear as tabs; the dashboard only renders fixed DOC_FILES. Fix required: either revert README line or implement server-side discovery. Issue #114 blocked on Gate 9 fix.

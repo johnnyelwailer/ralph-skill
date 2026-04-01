@@ -82,3 +82,8 @@
 | TypeScript type-check | 2026-04-01 | 8bbab8cde | PASS | tsc --noEmit clean (exit 0); no type errors |
 | Dashboard build | 2026-04-01 | 8bbab8cde | PASS | 464KB bundle built in 1.38s |
 | e2e/proof.spec.ts (all 5) | 2026-04-01 | 8bbab8cde | PASS | 5/5 pass: mobile hamburger, mobile drawer, swipe gesture, tablet 768×1024, desktop 1280×800 |
+| Unit test suite | 2026-04-01 | a551553fd | PASS | 158 tests pass (21 test files); no regression — chore/review-only commits since 8bbab8cde |
+| TypeScript type-check | 2026-04-01 | a551553fd | PASS | tsc --noEmit clean (exit 0); no type errors |
+| Dashboard build | 2026-04-01 | a551553fd | PASS | 464KB bundle built in 1.52s |
+| e2e/proof.spec.ts (all 5) | 2026-04-01 | a551553fd | PASS | 5/5 pass: mobile hamburger, mobile drawer, swipe gesture, tablet 768×1024, desktop 1280×800 |
+| Extra .md tabs (README claim) | 2026-04-01 | a551553fd | FAIL | README claims "plus any extra `.md` files present in the workdir" — EXTRA.md is in fixtures/workdir but dashboard shows only fixed tabs: ["TODO","SPEC","RESEARCH","REVIEW LOG","Health"]. No EXTRA tab. README inaccuracy confirmed. Already tracked as Gate 9 TODO.md review item. |
