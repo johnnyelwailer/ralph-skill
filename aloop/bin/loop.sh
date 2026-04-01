@@ -30,7 +30,7 @@ MODE="plan-build-review"
 PROVIDER="claude"
 ROUND_ROBIN_PROVIDERS="claude,opencode,codex,gemini,copilot"
 # Model defaults — keep in sync with ~/.aloop/config.yml (source of truth)
-CLAUDE_MODEL="${ALOOP_CLAUDE_MODEL:-opus}"
+CLAUDE_MODEL="${ALOOP_CLAUDE_MODEL:-sonnet}"
 CODEX_MODEL="${ALOOP_CODEX_MODEL:-gpt-5.3-codex}"
 GEMINI_MODEL="${ALOOP_GEMINI_MODEL:-gemini-3.1-pro-preview}"
 COPILOT_MODEL="${ALOOP_COPILOT_MODEL:-gpt-5.3-codex}"
