@@ -55,3 +55,14 @@
 | Tap targets ≥ 44px on mobile | 2026-04-01 | f3bd8b5bc | PASS | 0 small buttons at 320×568 |
 | Steer input visible on mobile | 2026-04-01 | f3bd8b5bc | PASS | Textarea visible at 375×667 |
 | loop.sh model default (post-revert) | 2026-04-01 | f3bd8b5bc | NOTE | d38ccab86 reverted loop.sh to sonnet (pre-issue-114 state); config.yml=opus, loop.ps1=opus. Cross-platform mismatch intentionally deferred to issue #284. Not a regression for issue #114 scope. |
+| Unit test suite | 2026-04-01 | 7f18cd586 | PASS | 158 tests pass (21 test files); no regression post docs/review-only commits since f3bd8b5bc |
+| TypeScript type-check | 2026-04-01 | 7f18cd586 | PASS | tsc --noEmit clean (exit 0); no type errors |
+| Dashboard build | 2026-04-01 | 7f18cd586 | PASS | 464KB bundle built in 1.28s |
+| e2e/proof.spec.ts (all 5) | 2026-04-01 | 7f18cd586 | PASS | 5/5 pass: mobile hamburger, mobile drawer, swipe gesture, tablet 768×1024, desktop 1280×800 |
+| No horizontal scroll at 320px | 2026-04-01 | 7f18cd586 | PASS | body=320 win=320 via Playwright |
+| Hamburger ≥ 44×44px at 375px | 2026-04-01 | 7f18cd586 | PASS | visible=true box={"x":12,"y":8,"width":44,"height":44} via getByRole('button', { name: 'Toggle sidebar' }) |
+| Tap targets ≥ 44px on mobile | 2026-04-01 | 7f18cd586 | PASS | 0 small buttons at 375×667 |
+| Steer input visible at 320px | 2026-04-01 | 7f18cd586 | PASS | Textarea visible=true at 320×568 |
+| Hamburger visible at tablet 768px | 2026-04-01 | 7f18cd586 | PASS | 44×44px box at 768×1024; desktop sidebar width=0 (hidden) |
+| Session list scroll at 375px | 2026-04-01 | 7f18cd586 | PASS | ScrollArea found in mobile drawer after hamburger click |
+| E2E smoke: tap target menuitem visibility | 2026-04-01 | 7f18cd586 | FAIL | Pre-existing failure (same as bcbff3f, 6e97217): Stop after iteration menuitem not found in smoke.spec.ts:162. Not a regression. |

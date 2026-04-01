@@ -620,3 +620,84 @@ grep ClaudeModel aloop/bin/loop.ps1 → [string]$ClaudeModel = 'opus'
 
 ### Assessment
 All SPEC-ADDENDUM.md acceptance criteria remain PASS at final HEAD (f3bd8b5bc). No regressions introduced by chore/docs commits since last QA (ce703290b). The loop.sh revert to `sonnet` is an intentional scope decision per Gate 1, tracked in issue #284. Issue-114 complete.
+
+## QA Session — 2026-04-01 (final-qa — post docs-sync + review commits at 7f18cd586)
+
+### Test Environment
+- Binary under test: /tmp/aloop-test-install-iMWro0/bin/aloop (version 1.0.0)
+- Dashboard: built from source (`npm run build` → `npx vite preview --port 4042`)
+- Playwright: chromium via dashboard/node_modules/playwright
+- Viewports tested: 320×568, 375×667, 768×1024, 390×844, 1440×900
+- Commit under test: 7f18cd586 (HEAD)
+- Commits since last QA (f3bd8b5bc): 37fe49717 (docs: README+FRONTEND.md sync), 2fab81e3c (chore: review PASS), 7f18cd586 (chore: review PASS) — all docs/chore, no source changes
+- Working tree: fixture timestamp updates (e2e/fixtures/ only — test data, not source)
+
+### Features Tested (5)
+1. Unit test suite (vitest — 158 tests)
+2. TypeScript type-check (tsc --noEmit)
+3. Dashboard build (vite build)
+4. e2e/proof.spec.ts — full suite (5 tests)
+5. Visual Playwright: AC1 no-hscroll, AC2 hamburger, AC3 steer input, AC4 tap targets, AC5 session scroll, AC6 tablet hamburger, AC7 desktop layout
+
+### Results
+
+| Test | Result |
+|------|--------|
+| Unit test suite (158 tests, 21 files) | PASS |
+| TypeScript type-check | PASS |
+| Dashboard build (464KB bundle) | PASS |
+| e2e/proof.spec.ts 5/5 | PASS |
+| AC1 320×568: no horizontal scroll (body=320 win=320) | PASS |
+| AC2 375×667: hamburger ≥ 44×44px (box={"x":12,"y":8,"width":44,"height":44}) | PASS |
+| AC3 320×568: steer textarea visible | PASS |
+| AC4 375×667: tap targets ≥ 44px (0 small buttons) | PASS |
+| AC5 375×667: session list ScrollArea in mobile drawer | PASS |
+| AC6 768×1024: hamburger 44×44px visible, desktop sidebar width=0 | PASS |
+| AC7 1440×900: desktop layout renders, no horizontal scroll | PASS |
+| E2E smoke tap-target menuitem (smoke.spec.ts:162) | FAIL (pre-existing — identical to bcbff3f, 6e97217) |
+
+### Bugs Filed
+None. No new bugs. Pre-existing E2E smoke failure confirmed unchanged.
+
+### Command Transcript
+```
+# Install binary from source
+npm --prefix aloop/cli run --silent test-install -- --keep  →  /tmp/aloop-test-install-iMWro0/bin/aloop
+aloop --version  →  1.0.0 (exit 0)
+
+# Unit tests
+npm --prefix aloop/cli/dashboard test  →  21 test files, 158 tests passed (3.18s) — exit 0
+
+# TypeScript type-check
+cd aloop/cli/dashboard && npx tsc --noEmit  →  (no output — clean) — exit 0
+
+# Build
+npm run build  →  ✓ built in 1.28s (464.34 kB JS, 34.11 kB CSS) — exit 0
+
+# Preview server
+npm run preview -- --host 0.0.0.0 --port 4042 &
+
+# e2e proof tests
+npx playwright test e2e/proof.spec.ts --reporter=list
+→ 5 passed (3.0s) — exit 0
+  ✓ proof: mobile 390x844 — hamburger visible, sidebar closed
+  ✓ proof: mobile 390x844 — sidebar drawer open
+  ✓ proof: mobile 390x844 — swipe gesture opens sidebar
+  ✓ proof: tablet 768x1024 — sidebar hidden by default, hamburger visible
+  ✓ proof: desktop 1280x800 — layout unchanged, no collapse button
+
+# Full e2e suite
+npx playwright test e2e/ --reporter=list  →  10 passed, 1 failed (smoke.spec.ts:162 pre-existing)
+
+# Visual Playwright AC checks (node --input-type=module inline)
+→ AC1 no-hscroll 320px: body=320 win=320 PASS
+→ AC2 hamburger 375px (getByRole Toggle sidebar): visible=true box={"x":12,"y":8,"width":44,"height":44} PASS
+→ AC4 tap-targets 375px: 0 small buttons PASS
+→ AC3 steer-input 320px: visible=true PASS
+→ AC7 desktop 1440px: sidebar=found no-hscroll=true PASS
+→ AC6 hamburger tablet 768px: visible=true box={"x":16,"y":10,"width":44,"height":44} PASS
+→ AC5 session list scroll: scrollArea=found PASS
+```
+
+### Assessment
+No source code changes since last verified QA pass (f3bd8b5bc). Post-docs-sync commits (37fe49717, 2fab81e3c, 7f18cd586) are docs/chore-only with zero functional impact. All 9 SPEC-ADDENDUM.md acceptance criteria remain PASS. Issue-114 complete.
