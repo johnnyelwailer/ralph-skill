@@ -234,15 +234,15 @@ This extends the dashboard specification in **UX: Dashboard, Start Flow, Auto-Mo
 
 ### Acceptance Criteria
 
-- [ ] Dashboard renders without horizontal scroll at 320px viewport width
-- [ ] Sidebar collapses to hamburger menu below 640px
-- [ ] Steer input is accessible (visible or one tap away) at all breakpoints
-- [ ] All tap targets are at least 44x44px on mobile viewports
-- [ ] Session list is scrollable and usable on a 375px-wide viewport (iPhone SE)
-- [ ] `Ctrl+B` / hamburger toggle works at tablet breakpoint
-- [ ] Desktop layout is unchanged from the current spec
-- [ ] No hover-only interactions — all have tap/click equivalents
-- [ ] Lighthouse mobile accessibility score >= 90
+- [x] Dashboard renders without horizontal scroll at 320px viewport width
+- [x] Sidebar collapses to hamburger menu below 640px
+- [x] Steer input is accessible (visible or one tap away) at all breakpoints
+- [x] All tap targets are at least 44x44px on mobile viewports
+- [x] Session list is scrollable and usable on a 375px-wide viewport (iPhone SE)
+- [x] `Ctrl+B` / hamburger toggle works at tablet breakpoint
+- [x] Desktop layout is unchanged from the current spec
+- [x] No hover-only interactions — all have tap/click equivalents
+- [x] Lighthouse mobile accessibility score >= 90
 
 ---
 
