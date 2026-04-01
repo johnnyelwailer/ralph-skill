@@ -1,5 +1,51 @@
 # QA Log
 
+## QA Session — 2026-04-01 (final re-verify at 85bc6e24e, issue #101)
+
+### Test Environment
+- HEAD: `85bc6e24e` — "chore(review): PASS — gates 1-10 pass"
+- Delta from last QA (`805f831e2`): doc/review-only commits (bfbd8f47a, 85bc6e24e) — no source code changes
+- Installed runtime: `aloop update` ran, output: "Version: 85bc6e24e, Files updated: 57"
+
+### Results
+- PASS: loop.sh bash syntax (-n check) — installed + worktree copies
+- PASS: loop.ps1 PowerShell parser — 0 parse errors
+- PASS: proof_manifest_found/missing — 4 event emissions in installed loop.sh
+- PASS: pipeline.yml finalizer — no PROMPT_cleanup.md (6 entries: spec-gap,docs,spec-review,final-review,final-qa,proof)
+- PASS: pipeline.yml cr_analysis block present with all required fields
+- PASS: orchestrate --plan-only exits 0 in isolated temp dir
+- PASS: aloop update — Version: 85bc6e24e, Files updated: 57
+
+### Bugs Filed
+- None
+
+### Command Transcript
+```
+$ aloop update
+Updated ~/.aloop from worktree
+Version: 85bc6e24e (2026-04-01T09:56:19Z)
+Files updated: 57
+
+$ bash -n /home/pj/.aloop/bin/loop.sh; echo $?
+0   # PASS: installed
+
+$ bash -n /path/to/worktree/aloop/bin/loop.sh; echo $?
+0   # PASS: worktree
+
+$ pwsh -Command "[scriptblock]::Create((Get-Content 'loop.ps1' -Raw)) | Out-Null; Write-Output 'PASS: 0 parse errors'"
+PASS: 0 parse errors
+
+$ grep -c 'proof_manifest_found\|proof_manifest_missing' /home/pj/.aloop/bin/loop.sh
+4   # PASS: 4 event emissions
+
+# pipeline.yml: no PROMPT_cleanup, cr_analysis present — PASS
+
+$ aloop orchestrate --plan-only  (in /tmp/qa-test-85bc6e24e)
+Exit: 0   # PASS
+```
+
+---
+
 ## QA Session — 2026-04-01 (final re-verify at 805f831e2, issue #101)
 
 ### Test Environment

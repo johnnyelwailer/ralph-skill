@@ -69,6 +69,13 @@
 | pipeline.yml finalizer — no PROMPT_cleanup.md (at 805f831e2) | 2026-04-01 | 805f831e2 | PASS | finalizer=[spec-gap,docs,spec-review,final-review,final-qa,proof]; grep "cleanup" count=0 |
 | pipeline.yml cr_analysis block present (at 805f831e2) | 2026-04-01 | 805f831e2 | PASS | cr_analysis block with all required fields (prompt, batch, filter, result_pattern) |
 | orchestrate --plan-only exits 0 (at 805f831e2) | 2026-04-01 | 805f831e2 | PASS | exit 0 in isolated temp dir — no regressions |
+| loop.sh bash syntax (-n check) at 85bc6e24e | 2026-04-01 | 85bc6e24e | PASS | `bash -n` on installed + worktree copies — exit 0; doc-only delta from 805f831e2, no regressions |
+| loop.ps1 syntax check (PowerShell parser) at 85bc6e24e | 2026-04-01 | 85bc6e24e | PASS | PowerShell parser reports 0 parse errors at final HEAD |
+| proof_manifest_found/missing in loop.sh at 85bc6e24e | 2026-04-01 | 85bc6e24e | PASS | 4 event emissions in installed loop.sh — both main path and queue_override path covered |
+| pipeline.yml finalizer — no PROMPT_cleanup.md (at 85bc6e24e) | 2026-04-01 | 85bc6e24e | PASS | finalizer=[spec-gap,docs,spec-review,final-review,final-qa,proof]; no PROMPT_cleanup refs |
+| pipeline.yml cr_analysis block present (at 85bc6e24e) | 2026-04-01 | 85bc6e24e | PASS | cr_analysis block present with all required fields (prompt, batch, filter, result_pattern) |
+| orchestrate --plan-only exits 0 (at 85bc6e24e) | 2026-04-01 | 85bc6e24e | PASS | exit 0 in isolated temp dir /tmp/qa-test-85bc6e24e — no regressions |
+| aloop update at 85bc6e24e | 2026-04-01 | 85bc6e24e | PASS | `aloop update` output: "Version: 85bc6e24e, Files updated: 57" — installed binary matches HEAD |
 | pipeline.yml finalizer — no PROMPT_cleanup.md (at c4380e7cf) | 2026-03-30 | c4380e7cf | PASS | Behavioral: finalizer has 6 entries [spec-gap,docs,spec-review,final-review,final-qa,proof] — no cleanup entry; grep for "cleanup" exits 1 |
 | pipeline.yml cr_analysis block present (at c4380e7cf) | 2026-03-30 | c4380e7cf | PASS | Behavioral: cr_analysis block has all required fields (prompt, batch, filter, result_pattern); PROMPT_orch_cr_analysis.md exists |
 | orchestrate --plan-only exits 0 (at c4380e7cf) | 2026-03-30 | c4380e7cf | PASS | Behavioral: orchestrate --plan-only exits 0 — pipeline.yml (including cr_analysis block) parses without error |
