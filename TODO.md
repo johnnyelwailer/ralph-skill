@@ -6,7 +6,7 @@
 
 - [x] [review] **Gate 1 / CONSTITUTION Rule 12 — RESOLVED**: Reverted `bb8fce584` (loop.sh model default change, out-of-scope for issue #114). Filed dedicated issue #284 for the fix: https://github.com/johnnyelwailer/ralph-skill/issues/284 [reviewed: gates 1-9 pass]
 
-### Spec Review — APPROVED (2026-04-01, re-confirmed 2026-04-01, re-confirmed 2026-04-01 post-docs-e2c994432, re-confirmed 2026-04-01 final-review, re-confirmed 2026-04-01 post-final-qa, re-confirmed 2026-04-01 final-review post-final-qa) [reviewed: gates 1-9 pass]
+### Spec Review — APPROVED (2026-04-01, re-confirmed 2026-04-01, re-confirmed 2026-04-01 post-docs-e2c994432, re-confirmed 2026-04-01 final-review, re-confirmed 2026-04-01 post-final-qa, re-confirmed 2026-04-01 final-review post-final-qa, re-confirmed 2026-04-01 post-fixture-event) [reviewed: gates 1-9 pass]
 
 All 9 SPEC-ADDENDUM.md §Dashboard Responsiveness acceptance criteria verified PASS:
 - AC1: No horizontal scroll at 320px — PASS (Playwright QA_COVERAGE, multiple commits)
@@ -28,6 +28,8 @@ Non-AC spec body requirements also satisfied: swipe-right gesture (`AppView.tsx:
 **Re-confirmed 2026-04-01 (spec-review agent, triggered by docs event, commit e2c994432):** Docs-only commit — `FRONTEND.md` documents `parseTodoProgress` cross-module import (`AppView.tsx:25` imports from `../../src/lib/parseTodoProgress`). No implementation changes. Import confirmed present and accurate. All 9 ACs remain PASS. No new gaps. Issue #114 complete.
 
 **Re-confirmed 2026-04-01 (spec-review agent, triggered by docs event, commit a31de3106):** Chore/QA-only commit — final-qa pass recorded in `QA_COVERAGE.md` and `QA_LOG.md`. No implementation changes since last review (`a866696bd`). Working directory deltas are e2e fixture files only (not in scope). All 9 ACs remain PASS. SPEC-ADDENDUM.md §Dashboard Responsiveness AC checkboxes all `[x]`. No new gaps. Issue #114 complete.
+
+**Re-confirmed 2026-04-01 (spec-review agent, triggered by fixture/docs event, HEAD adc2b48e9):** No implementation changes since last review. Working directory deltas are e2e fixture stubs (`workdir/SPEC.md`, `EXTRA.md`, `RESEARCH.md` — placeholder content only) and npm log files. All 9 ACs remain PASS. No new gaps. Issue #114 complete.
 
 ### Completed
 - [x] [spec-gap] **spec-gap analysis: no discrepancies found — spec fully fulfilled** (2026-04-01, re-confirmed 2026-04-01, re-confirmed 2026-04-01 post-final-qa). Third independent pass: no implementation changes since `0be2b4cb7` (all intervening commits are chore/review/qa). Key markers confirmed present: `AppView.tsx:366` `lg:hidden` hamburger, `AppView.tsx:1329` `hidden lg:flex` sidebar, `useIsTouchDevice`+`useLongPress` hooks, `min-h-[44px]` in 11 files. SPEC-ADDENDUM.md §Dashboard Responsiveness all 9 AC checkboxes `[x]`. Zero new gaps.
