@@ -1077,3 +1077,55 @@ $ find src/components -name "*.stories.tsx" | wc -l
 # Cleanup
 $ rm -rf /tmp/sb-qa-final-build-2
 ```
+
+## QA Session — 2026-04-01 (iteration 20)
+
+### Test Environment
+- Commit under test: f27213f6a
+- Disk space: 329G free on /, 11G free on /tmp
+- Features tested: 4 (tsc, vitest, storybook build, file completeness)
+
+### Summary
+No source code changes since last QA pass (971916634) — only chore/review commits (f27213f6a, d5a6ffee2, 6c53fed31, 3f8315d6d). Full dynamic re-test confirms no regressions.
+
+### Results
+- PASS: TypeScript type-check (tsc --noEmit exit 0)
+- PASS: npm test (51 files, 632 tests)
+- PASS: Storybook build (178 stories)
+- PASS: Component file counts (30 .test.tsx, 41 .stories.tsx)
+
+### Bugs Filed
+None.
+
+### Command Transcript
+```
+# TypeScript type-check
+$ npm run type-check --prefix aloop/cli/dashboard
+> tsc --noEmit
+EXIT: 0
+
+# Vitest
+$ npm test --prefix aloop/cli/dashboard
+Test Files: 51 passed (51)
+Tests:      632 passed (632)
+EXIT: 0
+
+# Storybook build
+$ npm run build-storybook --prefix aloop/cli/dashboard -- --output-dir /tmp/sb-qa-1775023733
+→ Storybook build completed successfully
+EXIT: 0
+
+# Stories count
+$ python3 -c "import json; d=json.load(open('/tmp/sb-qa-1775023733/index.json')); print('Total entries:', len(d['entries']))"
+Total entries: 178
+EXIT: 0
+
+# Component file counts
+$ find aloop/cli/dashboard/src/components -name "*.test.tsx" | wc -l
+30
+$ find aloop/cli/dashboard/src/components -name "*.stories.tsx" | wc -l
+41
+
+# Cleanup
+$ rm -rf /tmp/sb-qa-1775023733
+```
