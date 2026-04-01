@@ -370,6 +370,90 @@ No source code changes since last verified QA pass (1b2603fdd). Chore-only commi
 - 60952f7ca: chore review PASS — no functional impact
 All SPEC-ADDENDUM.md acceptance criteria remain PASS. Issue-114 complete.
 
+## QA Session — 2026-04-01 (final-qa — post review FAIL f75187790)
+
+### Test Environment
+- Binary under test: /tmp/aloop-test-install-fcZ105/bin/aloop (version 1.0.0)
+- Dashboard: built from source (dist/index.html, 464KB bundle), served via vite preview :4110
+- Playwright: chromium via dashboard/node_modules/playwright
+- Commit under test: f75187790 (HEAD)
+- Commits since last QA (11c26afe6): 6076b62c8 (chore), 9ce4f1aa6 (chore), 5fad748b8 (docs), ab37c1774 (chore), f75187790 (chore/review) — all docs/chore, no source changes
+
+### Features Tested (5)
+1. Tablet 768×1024 layout: hamburger visible, desktop sidebar hidden (Gates 6+7 evidence)
+2. e2e/proof.spec.ts — full suite (5 tests)
+3. Swipe gesture opens sidebar (mobile 390×844)
+4. Unit test suite (vitest)
+5. loop.sh model default alignment with config.yml
+
+### Results
+
+| Test | Result |
+|------|--------|
+| Tablet 768×1024: hamburger "Toggle sidebar" visible (44×44px) | PASS |
+| Tablet 768×1024: .hidden.lg:flex desktop sidebar hidden (null box) | PASS |
+| e2e/proof.spec.ts:75 — mobile hamburger visible | PASS |
+| e2e/proof.spec.ts:89 — mobile sidebar drawer open | PASS |
+| e2e/proof.spec.ts:103 — swipe gesture opens sidebar | PASS |
+| e2e/proof.spec.ts:136 — tablet 768×1024 hamburger visible, sidebar hidden | PASS |
+| e2e/proof.spec.ts:149 — desktop 1280×800 layout unchanged | PASS |
+| Unit test suite (158 tests, 21 files) | PASS |
+| loop.sh CLAUDE_MODEL defaults to opus | PASS |
+| config.yml claude: opus | PASS |
+| loop.ps1 $ClaudeModel = 'opus' | PASS |
+
+### Bugs Filed
+None. No new bugs. All features verified PASS.
+
+**Note on open review items:**
+- **Gate 1 (bb8fce584 / Rule 12)**: QA confirms loop.sh, config.yml, and loop.ps1 now all default to `opus` — functionally correct cross-platform parity. Whether this change belongs in issue #114 scope is a review policy question, not a QA finding.
+- **Gates 6+7 (98e474ce6)**: Visual proof provided — screenshot `/tmp/tablet-768x1024-layout.png` shows hamburger visible at 768px, no sidebar. Custom Playwright: hamburger 44×44px, .hidden.lg:flex has null bounding box. e2e/proof.spec.ts:136 PASS. Evidence satisfies Gate 7 bounding-box requirement.
+
+### Command Transcript
+```
+# Install binary
+npm --prefix aloop/cli pack  →  aloop-cli-1.0.0.tgz
+npm install -g --prefix /tmp/aloop-test-install-fcZ105 aloop-cli-1.0.0.tgz  →  added 2 packages
+/tmp/aloop-test-install-fcZ105/bin/aloop --version  →  1.0.0 (exit 0)
+
+# Build and serve dashboard
+cd aloop/cli/dashboard && npm run build  →  ✓ built 464KB (exit 0)
+npx vite preview --port 4110 &
+
+# Unit tests
+npm test -- --run  →  21 test files, 158 tests passed (2.74s) — exit 0
+
+# e2e proof.spec.ts (5 tests)
+npx playwright test e2e/proof.spec.ts --reporter=line
+→ 5 passed (4.1s) — exit 0
+  - mobile 390x844 hamburger visible
+  - mobile 390x844 sidebar drawer open
+  - mobile 390x844 swipe gesture opens sidebar
+  - tablet 768x1024 sidebar hidden, hamburger visible
+  - desktop 1280x800 layout unchanged
+
+# Custom Playwright tablet 768×1024
+node /tmp/qa-tablet-proof.cjs  →  (exit 0)
+  All buttons at 768x1024 (11 total):
+    aria="Expand sidebar" box=null(hidden)
+    aria="Toggle sidebar" box=44x44  ← hamburger VISIBLE
+    ...
+  Desktop sidebar (hidden lg:flex): box=null ← HIDDEN
+  Hamburger: VISIBLE (44×44) aria="Toggle sidebar" — PASS
+  Desktop sidebar: HIDDEN — PASS
+  Screenshot: /tmp/tablet-768x1024-layout.png
+
+# loop.sh model check
+grep CLAUDE_MODEL loop.sh  →  CLAUDE_MODEL="${ALOOP_CLAUDE_MODEL:-opus}" (line 33)
+grep "claude:" config.yml  →  claude: opus (line 21)
+grep ClaudeModel loop.ps1  →  [string]$ClaudeModel = 'opus' (line 34)
+```
+
+### Assessment
+All SPEC-ADDENDUM.md acceptance criteria remain PASS. Gates 6+7 visual proof captured. No regressions. Issue-114 complete.
+
+---
+
 ## QA Session — 2026-04-01 (AC9 Lighthouse mobile accessibility audit)
 
 ### Test Environment

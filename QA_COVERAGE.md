@@ -41,3 +41,8 @@
 | TypeScript type-check | 2026-03-31 | 9db0a33 | PASS | tsc --noEmit clean; no regression |
 | Tablet breakpoint: hamburger visible at 768px | 2026-04-01 | 98e474ce | PASS | `AppView.tsx:366` changed `md:hidden` → `lg:hidden`; hamburger now persists through 1023px. `e2e/proof.spec.ts:136-147` asserts hamburger IS visible and sidebar hidden at 768px. Desktop sidebar at `hidden lg:flex` (1024px+) per SPEC-ADDENDUM.md §Dashboard Responsiveness. |
 | Unit test suite | 2026-04-01 | 11c26afe6 | PASS | 158 tests pass (21 test files); re-verified at HEAD — no regression post docs/chore commits since 9db0a33. |
+| Unit test suite | 2026-04-01 | f75187790 | PASS | 158 tests (21 files); no regression at HEAD (f75187790) |
+| e2e/proof.spec.ts (all 5) | 2026-04-01 | f75187790 | PASS | 5/5 pass: mobile hamburger, mobile drawer, swipe gesture, tablet 768×1024, desktop 1280×800 |
+| Tablet 768×1024: hamburger visible | 2026-04-01 | f75187790 | PASS | Custom Playwright: "Toggle sidebar" 44×44px visible; .hidden.lg:flex sidebar null box (hidden). Screenshot: /tmp/tablet-768x1024-layout.png |
+| Swipe gesture opens sidebar | 2026-04-01 | f75187790 | PASS | proof.spec.ts:103 PASS — touchstart clientX=5→touchend clientX=80 opens .fixed.inset-0.z-40 overlay |
+| loop.sh model default | 2026-04-01 | f75187790 | PASS | CLAUDE_MODEL defaults to opus — matches config.yml (claude: opus) and loop.ps1 ([string]$ClaudeModel = 'opus'). Cross-platform parity confirmed. |
