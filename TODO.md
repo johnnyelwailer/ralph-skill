@@ -7,6 +7,21 @@
 - [x] [spec-gap] **P3** — Unit test suite not re-verified at HEAD (`11c26afe6`). Last passing entry in `QA_COVERAGE.md` is at `9db0a33` (several commits prior). Intervening commits are docs/chore-only — low regression risk, but verification chain is incomplete. Fixed: ran `npm test` at HEAD — 158 tests pass (21 test files); QA_COVERAGE.md updated.
 - [x] [spec-gap] **P3** — `SPEC-ADDENDUM.md` §Dashboard Responsiveness acceptance criteria checkboxes (lines 237-245) are all still `[ ]` unchecked, but all 9 criteria are verified PASS in `QA_COVERAGE.md` (Lighthouse 94/100, all layout/tap-target/hover tests PASS). Cosmetic only — code is correct, spec docs are stale. No P1/P2 blockers. spec-gap analysis: no P1/P2 discrepancies found — spec fully fulfilled for issue #114 scope.
 
+### Spec Review — APPROVED (2026-04-01)
+
+All 9 SPEC-ADDENDUM.md §Dashboard Responsiveness acceptance criteria verified PASS:
+- AC1: No horizontal scroll at 320px — PASS (Playwright QA_COVERAGE, multiple commits)
+- AC2: Sidebar → hamburger below 640px — PASS (`AppView.tsx:366` `lg:hidden` hamburger; QA_COVERAGE)
+- AC3: Steer input accessible at all breakpoints — PASS (QA_COVERAGE: visible at 320/375/768/1920px)
+- AC4: Tap targets >= 44x44px on mobile — PASS (`min-h-[44px] min-w-[44px]` throughout; 0 small buttons at 320/375px)
+- AC5: Session list scrollable at 375px — PASS (ScrollArea in mobile drawer; QA_COVERAGE)
+- AC6: Ctrl+B / hamburger at tablet — PASS (P2 fix applied: `lg:hidden` hamburger + `hidden lg:flex` desktop sidebar)
+- AC7: Desktop layout unchanged — PASS (2-column at 1440px confirmed; QA_COVERAGE)
+- AC8: No hover-only interactions — PASS (HoverCard tap-toggle via `useIsTouchDevice`; Tooltip tap support; 158 unit tests)
+- AC9: Lighthouse mobile accessibility >= 90 — PASS (score 94/100; QA_LOG 2026-04-01)
+
+Non-AC spec body requirements also satisfied: swipe-right gesture (`AppView.tsx:1009-1028`; e2e verified) and long-press context menu (`SessionCard.tsx:31-65` + `useLongPress` hook). No P1/P2 gaps found. Issue #114 complete.
+
 ### Completed
 - [x] [spec-gap] **P2 (in-scope)** — Fix tablet breakpoint to match spec. SPEC-ADDENDUM.md §Dashboard Responsiveness (line 214) defines tablet (640-1024px) as "Sidebar is collapsible (hidden by default, toggled via Ctrl+B / hamburger)". Fixed:
   - `AppView.tsx:366`: `md:hidden` → `lg:hidden` (hamburger persists through tablet).
