@@ -1,5 +1,50 @@
 # QA Log
 
+## QA Session — 2026-04-01 (final re-verify at eb38cca26, issue #101)
+
+### Test Environment
+- HEAD: `eb38cca26` — "chore(review): PASS — gates 1-10 pass"
+- Delta from last QA (`e647545e0`): doc-only (QA_COVERAGE.md, QA_LOG.md, REVIEW_LOG.md, TODO.md) — no source code changes
+- Installed runtime: `~/.aloop/bin/loop.sh` (no update needed — no source changes since e647545e0)
+
+### Results
+
+- PASS: `bash -n loop.sh` — installed and worktree copies both exit 0
+- PASS: `loop.ps1` PowerShell parser — 0 parse errors
+- PASS: `aloop orchestrate --plan-only` — exits 0, pipeline.yml parses cleanly
+- PASS: `pipeline.yml` finalizer has 6 entries [spec-gap,docs,spec-review,final-review,final-qa,proof] — no cleanup entry
+- PASS: `proof_manifest_found`/`proof_manifest_missing` events present at loop.sh lines 2085,2090,2264,2269
+- PASS: `pipeline.yml` cr_analysis block present with all required fields
+
+No regressions. All acceptance criteria still hold at HEAD. Issue #101 implementation confirmed complete.
+
+### Bugs Filed
+None.
+
+### Command Transcript
+
+```
+bash -n /home/pj/.aloop/bin/loop.sh
+# exit 0
+
+bash -n worktree/aloop/bin/loop.sh
+# exit 0
+
+pwsh -NoProfile -Command "ParseFile loop.ps1"
+# PASS: 0 parse errors
+
+grep proof_manifest_found/missing /home/pj/.aloop/bin/loop.sh
+# lines 2085,2090,2264,2269 — both paths covered
+
+aloop orchestrate --plan-only (isolated /tmp dir with SPEC.md + pipeline.yml)
+# exit 0 — finalizer=[spec-gap,docs,spec-review,final-review,final-qa,proof], cr_analysis block present
+
+grep "cleanup" .aloop/pipeline.yml
+# exit 1 — no cleanup entry
+```
+
+---
+
 ## QA Session — 2026-04-01 (final re-verify at 8dae43991, issue #101)
 
 ### Test Environment

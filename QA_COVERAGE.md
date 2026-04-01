@@ -51,6 +51,12 @@
 | pipeline.yml cr_analysis block present (at e647545e0) | 2026-04-01 | e647545e0 | PASS | cr_analysis block with all required fields; PROMPT_orch_cr_analysis.md exists |
 | orchestrate --plan-only exits 0 (at e647545e0) | 2026-04-01 | e647545e0 | PASS | Session initialized, exit 0 in isolated temp dir — no regressions |
 | aloop update at e647545e0 | 2026-04-01 | e647545e0 | PASS | `aloop update` output: "Version: e647545e0, Files updated: 57" — installed binary matches HEAD |
+| loop.sh bash syntax (-n check) at eb38cca26 | 2026-04-01 | eb38cca26 | PASS | `bash -n` on installed + worktree copies — exit 0; doc-only delta from e647545e0, no regressions |
+| loop.ps1 syntax check (PowerShell parser) at eb38cca26 | 2026-04-01 | eb38cca26 | PASS | PowerShell parser reports 0 parse errors at final HEAD |
+| proof_manifest_found/missing in loop.sh at eb38cca26 | 2026-04-01 | eb38cca26 | PASS | 4 event emissions: lines 2085,2090 (main path) + 2264,2269 (queue_override) — still present |
+| pipeline.yml finalizer — no PROMPT_cleanup.md (at eb38cca26) | 2026-04-01 | eb38cca26 | PASS | finalizer=[spec-gap,docs,spec-review,final-review,final-qa,proof]; grep "cleanup" exits 1 |
+| pipeline.yml cr_analysis block present (at eb38cca26) | 2026-04-01 | eb38cca26 | PASS | cr_analysis block with all required fields (prompt, batch, filter, result_pattern) |
+| orchestrate --plan-only exits 0 (at eb38cca26) | 2026-04-01 | eb38cca26 | PASS | Session initialized, exit 0 in isolated temp dir — no regressions |
 | pipeline.yml finalizer — no PROMPT_cleanup.md (at c4380e7cf) | 2026-03-30 | c4380e7cf | PASS | Behavioral: finalizer has 6 entries [spec-gap,docs,spec-review,final-review,final-qa,proof] — no cleanup entry; grep for "cleanup" exits 1 |
 | pipeline.yml cr_analysis block present (at c4380e7cf) | 2026-03-30 | c4380e7cf | PASS | Behavioral: cr_analysis block has all required fields (prompt, batch, filter, result_pattern); PROMPT_orch_cr_analysis.md exists |
 | orchestrate --plan-only exits 0 (at c4380e7cf) | 2026-03-30 | c4380e7cf | PASS | Behavioral: orchestrate --plan-only exits 0 — pipeline.yml (including cr_analysis block) parses without error |
