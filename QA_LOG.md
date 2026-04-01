@@ -1,5 +1,59 @@
 # QA Log
 
+## QA Session — 2026-04-01 (final re-verify at 805f831e2, issue #101)
+
+### Test Environment
+- HEAD: `805f831e2` — "chore(review): PASS — gates 1-10 pass"
+- Delta from last QA (`e74597f1f`): doc-only (QA_COVERAGE.md, QA_LOG.md, REVIEW_LOG.md, TODO.md) — no source code changes
+- Installed runtime: `~/.aloop/bin/loop.sh` (no update needed — no source changes since e74597f1f)
+
+### Results
+
+- PASS: `bash -n loop.sh` — installed and worktree copies both exit 0
+- PASS: `loop.ps1` PowerShell parser — 0 parse errors
+- PASS: `aloop orchestrate --plan-only` — exits 0, pipeline.yml parses cleanly
+- PASS: `pipeline.yml` finalizer has 6 entries [spec-gap,docs,spec-review,final-review,final-qa,proof] — no cleanup entry
+- PASS: `proof_manifest_found`/`proof_manifest_missing` events present at loop.sh lines 2085,2090,2264,2269
+- PASS: `pipeline.yml` cr_analysis block present with all required fields
+- PASS: `PROMPT_cleanup.md` not present in worktree
+
+No regressions. All acceptance criteria still hold at HEAD. Issue #101 implementation confirmed complete.
+
+### Bugs Filed
+None.
+
+### Command Transcript
+
+```
+bash -n /home/pj/.aloop/bin/loop.sh
+# exit 0
+
+bash -n worktree/aloop/bin/loop.sh
+# exit 0
+
+pwsh -NoProfile -Command "ParseFile loop.ps1"
+# PASS: 0 parse errors
+
+grep proof_manifest_found/missing /home/pj/.aloop/bin/loop.sh
+# lines 2085,2090,2264,2269 — both paths covered
+
+grep -c "cleanup" .aloop/pipeline.yml
+# 0 — no cleanup entry
+
+grep -A 10 cr_analysis .aloop/pipeline.yml
+# cr_analysis block with prompt, batch, filter (is_change_request+cr_spec_updated), result_pattern — all required fields present
+
+ls aloop/templates/PROMPT_cleanup.md
+# No such file — deleted as required
+
+python3: pipeline.yml finalizer=['PROMPT_spec-gap.md','PROMPT_docs.md','PROMPT_spec-review.md','PROMPT_final-review.md','PROMPT_final-qa.md','PROMPT_proof.md'] — 6 entries
+
+aloop orchestrate --plan-only (isolated /tmp dir with SPEC.md + .aloop/pipeline.yml)
+# exit 0 — pipeline.yml parses cleanly
+```
+
+---
+
 ## QA Session — 2026-04-01 (final re-verify at e74597f1f, issue #101)
 
 ### Test Environment
