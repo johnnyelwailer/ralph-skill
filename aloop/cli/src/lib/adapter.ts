@@ -57,13 +57,114 @@ export interface OrchestratorAdapter {
 
 // ----- GitHubAdapter -----
 
+interface ProjectStatusContext {
+  itemId: string;
+  projectId: string;
+  statusFieldId: string;
+  statusOptions: Map<string, string>;
+}
+
 export class GitHubAdapter implements OrchestratorAdapter {
   private readonly repo: string;
   private readonly execGh: GhExecFn;
+  private readonly projectStatusContextCache = new Map<number, ProjectStatusContext | null>();
 
   constructor(config: AdapterConfig, execGh: GhExecFn) {
     this.repo = config.repo;
     this.execGh = execGh;
+  }
+
+  private async resolveProjectStatusContext(issueNumber: number): Promise<ProjectStatusContext | null> {
+    if (this.projectStatusContextCache.has(issueNumber)) {
+      return this.projectStatusContextCache.get(issueNumber) ?? null;
+    }
+
+    const parts = this.repo.split('/');
+    const owner = parts[0];
+    const name = parts[1];
+    if (!owner || !name || parts.length !== 2) {
+      this.projectStatusContextCache.set(issueNumber, null);
+      return null;
+    }
+
+    const query = 'query($owner:String!,$repo:String!,$number:Int!){repository(owner:$owner,name:$repo){issue(number:$number){projectItems(first:20){nodes{id project{id} fieldValues(first:50){nodes{... on ProjectV2ItemFieldSingleSelectValue{field{... on ProjectV2SingleSelectField{id name options{id name}}}}}}}}}}}';
+    const response = await this.execGh([
+      'api', 'graphql',
+      '-f', `query=${query}`,
+      '-F', `owner=${owner}`,
+      '-F', `repo=${name}`,
+      '-F', `number=${issueNumber}`,
+    ]);
+
+    const parsed = JSON.parse(response.stdout) as {
+      data?: {
+        repository?: {
+          issue?: {
+            projectItems?: {
+              nodes?: Array<{
+                id?: string;
+                project?: { id?: string };
+                fieldValues?: {
+                  nodes?: Array<{
+                    field?: {
+                      id?: string;
+                      name?: string;
+                      options?: Array<{ id?: string; name?: string }>;
+                    };
+                  }>;
+                };
+              }>;
+            };
+          };
+        };
+      };
+    };
+
+    const nodes = parsed.data?.repository?.issue?.projectItems?.nodes;
+    if (!Array.isArray(nodes)) {
+      this.projectStatusContextCache.set(issueNumber, null);
+      return null;
+    }
+
+    for (const node of nodes) {
+      const itemId = typeof node.id === 'string' ? node.id : '';
+      const projectId = typeof node.project?.id === 'string' ? node.project.id : '';
+      if (!itemId || !projectId) continue;
+      const fieldNodes = node.fieldValues?.nodes;
+      if (!Array.isArray(fieldNodes)) continue;
+      for (const fieldNode of fieldNodes) {
+        const field = fieldNode.field;
+        if (!field || field.name !== 'Status') continue;
+        const fieldId = typeof field.id === 'string' ? field.id : '';
+        if (!fieldId || !Array.isArray(field.options) || field.options.length === 0) continue;
+        const statusOptions = new Map<string, string>();
+        for (const option of field.options) {
+          if (typeof option.name === 'string' && typeof option.id === 'string') {
+            statusOptions.set(option.name.toLowerCase(), option.id);
+          }
+        }
+        const context: ProjectStatusContext = { itemId, projectId, statusFieldId: fieldId, statusOptions };
+        this.projectStatusContextCache.set(issueNumber, context);
+        return context;
+      }
+    }
+
+    this.projectStatusContextCache.set(issueNumber, null);
+    return null;
+  }
+
+  async setIssueStatus(number: number, status: string): Promise<void> {
+    const context = await this.resolveProjectStatusContext(number);
+    if (!context) return;
+    const optionId = context.statusOptions.get(status.toLowerCase());
+    if (!optionId) return;
+    await this.execGh([
+      'project', 'item-edit',
+      '--id', context.itemId,
+      '--project-id', context.projectId,
+      '--field-id', context.statusFieldId,
+      '--single-select-option-id', optionId,
+    ]);
   }
 
   async createIssue(title: string, body: string, labels: string[]): Promise<{ number: number; url: string }> {

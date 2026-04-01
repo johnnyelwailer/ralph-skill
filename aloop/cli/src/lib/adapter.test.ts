@@ -485,6 +485,109 @@ describe('GitHubAdapter', () => {
     });
   });
 
+  describe('setIssueStatus', () => {
+    const graphqlResponse = {
+      data: {
+        repository: {
+          issue: {
+            projectItems: {
+              nodes: [
+                {
+                  id: 'PVTI_abc',
+                  project: { id: 'PVT_xyz' },
+                  fieldValues: {
+                    nodes: [
+                      {
+                        field: {
+                          id: 'PVTSSF_123',
+                          name: 'Status',
+                          options: [
+                            { id: 'OPT_ready', name: 'Ready' },
+                            { id: 'OPT_done', name: 'Done' },
+                            { id: 'OPT_inprogress', name: 'In progress' },
+                          ],
+                        },
+                      },
+                    ],
+                  },
+                },
+              ],
+            },
+          },
+        },
+      },
+    };
+
+    it('calls project item-edit with the correct option id', async () => {
+      const calls: string[][] = [];
+      const execGh: GhExecFn = async (args) => {
+        calls.push(args);
+        if (args.includes('graphql')) return { stdout: JSON.stringify(graphqlResponse), stderr: '' };
+        return { stdout: '', stderr: '' };
+      };
+      const adapter = new GitHubAdapter(config, execGh);
+      await adapter.setIssueStatus(7, 'Ready');
+      const editCall = calls.find((a) => a.includes('item-edit'));
+      assert.ok(editCall, 'expected a project item-edit call');
+      assert.ok(editCall.includes('PVTI_abc'));
+      assert.ok(editCall.includes('PVT_xyz'));
+      assert.ok(editCall.includes('PVTSSF_123'));
+      assert.ok(editCall.includes('OPT_ready'));
+    });
+
+    it('status matching is case-insensitive', async () => {
+      const calls: string[][] = [];
+      const execGh: GhExecFn = async (args) => {
+        calls.push(args);
+        if (args.includes('graphql')) return { stdout: JSON.stringify(graphqlResponse), stderr: '' };
+        return { stdout: '', stderr: '' };
+      };
+      const adapter = new GitHubAdapter(config, execGh);
+      await adapter.setIssueStatus(7, 'IN PROGRESS');
+      const editCall = calls.find((a) => a.includes('item-edit'));
+      assert.ok(editCall, 'expected a project item-edit call');
+      assert.ok(editCall.includes('OPT_inprogress'));
+    });
+
+    it('does nothing when issue has no project', async () => {
+      const emptyResponse = { data: { repository: { issue: { projectItems: { nodes: [] } } } } };
+      const calls: string[][] = [];
+      const execGh: GhExecFn = async (args) => {
+        calls.push(args);
+        return { stdout: JSON.stringify(emptyResponse), stderr: '' };
+      };
+      const adapter = new GitHubAdapter(config, execGh);
+      await adapter.setIssueStatus(7, 'Ready');
+      assert.ok(!calls.some((a) => a.includes('item-edit')));
+    });
+
+    it('does nothing when status option not found in project', async () => {
+      const calls: string[][] = [];
+      const execGh: GhExecFn = async (args) => {
+        calls.push(args);
+        if (args.includes('graphql')) return { stdout: JSON.stringify(graphqlResponse), stderr: '' };
+        return { stdout: '', stderr: '' };
+      };
+      const adapter = new GitHubAdapter(config, execGh);
+      await adapter.setIssueStatus(7, 'Nonexistent Status');
+      assert.ok(!calls.some((a) => a.includes('item-edit')));
+    });
+
+    it('caches the project context to avoid repeat graphql calls', async () => {
+      const calls: string[][] = [];
+      const execGh: GhExecFn = async (args) => {
+        calls.push(args);
+        if (args.includes('graphql')) return { stdout: JSON.stringify(graphqlResponse), stderr: '' };
+        return { stdout: '', stderr: '' };
+      };
+      const adapter = new GitHubAdapter(config, execGh);
+      await adapter.setIssueStatus(7, 'Ready');
+      await adapter.setIssueStatus(7, 'Done');
+      const graphqlCalls = calls.filter((a) => a.includes('graphql'));
+      assert.equal(graphqlCalls.length, 1, 'graphql should only be called once due to caching');
+    });
+  });
+
   describe('fetchBulkIssueState', () => {
     it('delegates to fetchBulkIssueState from github-monitor', async () => {
       const graphqlResponse = {
