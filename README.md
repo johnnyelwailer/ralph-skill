@@ -245,13 +245,14 @@ Child loops use `aloop gh pr-create`, `aloop gh issue-comment`, etc. for policy-
 ### Slash commands (Claude Code / Codex / Copilot)
 
 ```
-/aloop:setup       Configure Aloop for the current project
-/aloop:start       Launch a loop
-/aloop:status      Check running sessions
-/aloop:dashboard   Launch the dashboard
-/aloop:stop        Stop a loop
-/aloop:steer       Send a steering instruction
-/aloop:orchestrate Launch multi-issue orchestration
+/aloop:setup          Configure Aloop for the current project
+/aloop:start          Launch a loop
+/aloop:status         Check running sessions
+/aloop:dashboard      Launch the dashboard
+/aloop:stop           Stop a loop
+/aloop:steer          Send a steering instruction
+/aloop:orchestrate    Launch multi-issue orchestration
+/aloop:devcontainer   Generate .devcontainer config for isolated agent execution
 ```
 
 ## Architecture
