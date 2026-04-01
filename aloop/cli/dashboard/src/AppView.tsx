@@ -363,7 +363,7 @@ function Header({
     <header className="border-b border-border px-3 py-2 md:px-4 md:py-2.5 shrink-0">
       <h1 className="sr-only">Aloop Dashboard</h1>
       <div className="flex items-center gap-2 sm:gap-4" data-testid="session-header-grid">
-        <button ref={mobileMenuButtonRef} type="button" aria-label="Toggle sidebar" className="inline-flex items-center justify-center md:hidden p-1 min-h-[44px] min-w-[44px] rounded hover:bg-accent text-muted-foreground hover:text-foreground transition-colors" onClick={onToggleMobileMenu}>
+        <button ref={mobileMenuButtonRef} type="button" aria-label="Toggle sidebar" className="inline-flex items-center justify-center lg:hidden p-1 min-h-[44px] min-w-[44px] rounded hover:bg-accent text-muted-foreground hover:text-foreground transition-colors" onClick={onToggleMobileMenu}>
           <Menu className="h-5 w-5" />
         </button>
         <Tooltip>
@@ -1325,8 +1325,8 @@ function AppInner() {
   return (
     <div className="h-screen flex flex-col bg-background text-foreground overflow-hidden" onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
       <div className="flex flex-1 min-h-0">
-        {/* Desktop sidebar — visible at sm+ (640px); mobile uses the overlay drawer */}
-        <div className="hidden sm:flex">
+        {/* Desktop sidebar — visible at lg+ (1024px); mobile/tablet use the overlay drawer */}
+        <div className="hidden lg:flex">
           <Sidebar
             sessions={sessions}
             selectedSessionId={selectedSessionId}

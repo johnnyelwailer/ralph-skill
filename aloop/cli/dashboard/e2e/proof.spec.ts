@@ -133,15 +133,15 @@ test('proof: mobile 390x844 — swipe gesture opens sidebar', async ({ page }) =
   await page.screenshot({ path: path.join(artifactDir, 'mobile-390x844-swipe-open.png'), fullPage: true });
 });
 
-test('proof: tablet 768x1024 — sidebar always visible, no hamburger', async ({ page }) => {
+test('proof: tablet 768x1024 — sidebar hidden by default, hamburger visible', async ({ page }) => {
   await page.setViewportSize({ width: 768, height: 1024 });
   await page.goto('/');
 
-  // Sidebar should be visible at tablet breakpoint
-  await expect(page.locator('aside').first()).toBeVisible();
+  // Hamburger should be visible at tablet (lg:hidden means visible below 1024px)
+  await expect(page.getByRole('button', { name: 'Toggle sidebar' })).toBeVisible();
 
-  // Hamburger should NOT be visible at tablet (sm:hidden)
-  await expect(page.getByRole('button', { name: 'Toggle sidebar' })).not.toBeVisible();
+  // Desktop sidebar div should be hidden at tablet (hidden lg:flex)
+  await expect(page.locator('aside').first()).not.toBeVisible();
 
   await page.screenshot({ path: path.join(artifactDir, 'tablet-768x1024-layout.png'), fullPage: true });
 });
