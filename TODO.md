@@ -4,11 +4,7 @@
 
 ### Up Next
 
-- [ ] [review] **Gate 1 / CONSTITUTION Rule 12**: `bb8fce584` modifies `aloop/bin/loop.sh` (model default: `sonnet` → `opus`) — a file outside issue #114 scope (responsive layout). The spec-gap commit `b12531067` correctly classified this as "out-of-scope — file separate issue"; `bb8fce584` overrode that ruling without justification. CONSTITUTION rule 12: "One issue, one concern. Do not bundle unrelated changes." Resolution: revert `bb8fce584` from this branch and file a dedicated issue for the loop.sh model default fix, OR add explicit written authorization documenting why this fix is in-scope for issue #114. (priority: high)
-- [ ] [review] **Gates 6+7**: `98e474ce6` changes CSS layout breakpoints in `AppView.tsx` (hamburger `md:hidden` → `lg:hidden`; sidebar wrapper `hidden sm:flex` → `hidden lg:flex`) — an observable UI change. `aloop/artifacts/iter-12/output.txt` contains unit test pass count only; per Gate 6 rules, test output is NOT valid proof. Gate 7 requires browser verification with bounding boxes for layout changes and cannot be satisfied by code inspection. Resolution: run `e2e/proof.spec.ts` (Playwright) at 768×1024 viewport and capture `tablet-768x1024-layout.png` showing hamburger button is visible (non-zero bounding box) and `aside.first()` is hidden (zero/display:none). Submit screenshot as proof artifact. (priority: high)
-
-- [x] [spec-gap] **P3** — Unit test suite not re-verified at HEAD (`11c26afe6`). Last passing entry in `QA_COVERAGE.md` is at `9db0a33` (several commits prior). Intervening commits are docs/chore-only — low regression risk, but verification chain is incomplete. Fixed: ran `npm test` at HEAD — 158 tests pass (21 test files); QA_COVERAGE.md updated.
-- [x] [spec-gap] **P3** — `SPEC-ADDENDUM.md` §Dashboard Responsiveness acceptance criteria checkboxes (lines 237-245) are all still `[ ]` unchecked, but all 9 criteria are verified PASS in `QA_COVERAGE.md` (Lighthouse 94/100, all layout/tap-target/hover tests PASS). Cosmetic only — code is correct, spec docs are stale. No P1/P2 blockers. spec-gap analysis: no P1/P2 discrepancies found — spec fully fulfilled for issue #114 scope.
+- [x] [review] **Gate 1 / CONSTITUTION Rule 12 — RESOLVED**: Reverted `bb8fce584` (loop.sh model default change, out-of-scope for issue #114). Filed dedicated issue #284 for the fix: https://github.com/johnnyelwailer/ralph-skill/issues/284
 
 ### Spec Review — APPROVED (2026-04-01)
 
@@ -26,6 +22,9 @@ All 9 SPEC-ADDENDUM.md §Dashboard Responsiveness acceptance criteria verified P
 Non-AC spec body requirements also satisfied: swipe-right gesture (`AppView.tsx:1009-1028`; e2e verified) and long-press context menu (`SessionCard.tsx:31-65` + `useLongPress` hook). No P1/P2 gaps found. Issue #114 complete.
 
 ### Completed
+- [x] [spec-gap] **P3** — Unit test suite not re-verified at HEAD (`11c26afe6`). Last passing entry in `QA_COVERAGE.md` is at `9db0a33` (several commits prior). Intervening commits are docs/chore-only — low regression risk, but verification chain is incomplete. Fixed: ran `npm test` at HEAD — 158 tests pass (21 test files); QA_COVERAGE.md updated.
+- [x] [spec-gap] **P3** — `SPEC-ADDENDUM.md` §Dashboard Responsiveness acceptance criteria checkboxes (lines 237-245) are all still `[ ]` unchecked, but all 9 criteria are verified PASS in `QA_COVERAGE.md` (Lighthouse 94/100, all layout/tap-target/hover tests PASS). Cosmetic only — code is correct, spec docs are stale. No P1/P2 blockers. spec-gap analysis: no P1/P2 discrepancies found — spec fully fulfilled for issue #114 scope.
+- [x] [review] **Gates 6+7 — RESOLVED**: `98e474ce6` tablet breakpoint fix verified. `e2e/proof.spec.ts` 5/5 PASS at 768×1024 (`ce703290b`). Hamburger 44×44px visible; `.hidden.lg:flex` sidebar null bounding box. QA_COVERAGE.md + QA_LOG.md document evidence. Gate 7 bounding-box requirement satisfied.
 - [x] [spec-gap] **P2 (in-scope)** — Fix tablet breakpoint to match spec. SPEC-ADDENDUM.md §Dashboard Responsiveness (line 214) defines tablet (640-1024px) as "Sidebar is collapsible (hidden by default, toggled via Ctrl+B / hamburger)". Fixed:
   - `AppView.tsx:366`: `md:hidden` → `lg:hidden` (hamburger persists through tablet).
   - `AppView.tsx:1329`: `hidden sm:flex` → `hidden lg:flex` (desktop sidebar only at lg+).
