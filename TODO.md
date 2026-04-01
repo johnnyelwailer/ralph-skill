@@ -6,7 +6,7 @@
 
 - [x] [review] **Gate 1 / CONSTITUTION Rule 12 — RESOLVED**: Reverted `bb8fce584` (loop.sh model default change, out-of-scope for issue #114). Filed dedicated issue #284 for the fix: https://github.com/johnnyelwailer/ralph-skill/issues/284 [reviewed: gates 1-9 pass]
 
-### Spec Review — APPROVED (2026-04-01, re-confirmed 2026-04-01) [reviewed: gates 1-9 pass]
+### Spec Review — APPROVED (2026-04-01, re-confirmed 2026-04-01, re-confirmed 2026-04-01 post-docs-e2c994432) [reviewed: gates 1-9 pass]
 
 All 9 SPEC-ADDENDUM.md §Dashboard Responsiveness acceptance criteria verified PASS:
 - AC1: No horizontal scroll at 320px — PASS (Playwright QA_COVERAGE, multiple commits)
@@ -24,6 +24,8 @@ Non-AC spec body requirements also satisfied: swipe-right gesture (`AppView.tsx:
 **Re-confirmed 2026-04-01 (spec-review agent):** Independent re-verification of all 9 ACs against implementation and QA evidence. All criteria remain PASS. Implementation cross-checked: swipe handler at `AppView.tsx:1009-1028`, long-press at `SessionCard.tsx:31-41`, hamburger breakpoint `lg:hidden` at `AppView.tsx:366`, desktop sidebar `hidden lg:flex` at `AppView.tsx:1329`. Lighthouse 94/100 in QA_LOG.md. No new gaps found.
 
 **Re-confirmed 2026-04-01 (spec-review agent, triggered by docs event):** Post-docs-sync re-verification. Most recent commit `37fe49717` is docs-only (README + FRONTEND.md sync); no implementation changes since last review. SPEC-ADDENDUM.md §Dashboard Responsiveness AC checkboxes (lines 237-245) now all `[x]` — previously P3 cosmetic, now resolved. All 9 ACs still PASS. No new gaps found. Issue #114 complete.
+
+**Re-confirmed 2026-04-01 (spec-review agent, triggered by docs event, commit e2c994432):** Docs-only commit — `FRONTEND.md` documents `parseTodoProgress` cross-module import (`AppView.tsx:25` imports from `../../src/lib/parseTodoProgress`). No implementation changes. Import confirmed present and accurate. All 9 ACs remain PASS. No new gaps. Issue #114 complete.
 
 ### Completed
 - [x] [spec-gap] **spec-gap analysis: no discrepancies found — spec fully fulfilled** (2026-04-01, re-confirmed 2026-04-01). Second independent pass: verified all 9 ACs remain PASS, all `[spec-gap]` items resolved, no new implementation changes since last analysis (HEAD `86b0932a0` is chore-only). Swipe handler at `AppView.tsx:1012-1028`, long-press at `SessionCard.tsx:31-41`, hamburger `lg:hidden` at `AppView.tsx:366`, desktop sidebar `hidden lg:flex` at `AppView.tsx:1329`, ScrollArea in mobile drawer, `useIsTouchDevice` in hover-card/tooltip, `useLongPress` hook — all confirmed present. Zero new gaps.
