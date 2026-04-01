@@ -1,5 +1,29 @@
 # Review Log
 
+## Review — 2026-04-01 — commit 8a4331f95 (no new commits)
+
+**Verdict: PASS** (no implementation changes since last review; all 9 ACs still PASS)
+**Scope:** No new commits since `8a4331f95`. Working directory has uncommitted e2e fixture files only (`active.json`, `history.json`, `log.jsonl`, `status.json`, `STEERING.md` deleted, plus untracked `queue/*.md`, `EXTRA.md`, `RESEARCH.md`, `SPEC.md` stubs) — none are implementation changes.
+
+**Prior findings from last review (`8a4331f95`):** None — all gates were PASS; Gate 9 finding (README extra .md claim) was resolved at `44c116dd5` and verified at `8a4331f95`.
+
+**Gate results:**
+- Gate 1 (Spec Compliance): PASS — no implementation changes; all 9 SPEC-ADDENDUM.md §Dashboard Responsiveness ACs unchanged
+- Gate 2 (Test Depth): PASS — no test changes; 158 unit tests + 5 e2e tests unchanged
+- Gate 3 (Coverage): PASS — no new code
+- Gate 4 (Code Quality): PASS — no code changes
+- Gate 5 (Integration Sanity): PASS — last verified QA (158 tests pass, tsc clean, 464kB build, 5/5 e2e) still stands
+- Gate 6 (Proof Verification): PASS — no new observable output; skip is correct
+- Gate 7 (Runtime Layout): PASS — no layout changes
+- Gate 8 (Version Compliance): PASS — no dependency changes
+- Gate 9 (Documentation Freshness): PASS — no documentation changes; README.md correctly documents 5 fixed doc files (matches `DOC_FILES` in `dashboard.ts:61`)
+
+**Concrete observation:** Gate 9 — `dashboard.ts:61` `DOC_FILES` remains `['TODO.md', 'SPEC.md', 'RESEARCH.md', 'REVIEW_LOG.md', 'STEERING.md']`; README.md line 68 now correctly says "Document viewer for TODO.md, SPEC.md, RESEARCH.md, REVIEW_LOG.md, STEERING.md" (no extra .md claim). Gate 9 finding fully resolved and stable.
+
+**PR_DESCRIPTION.md:** Complete and accurate — all 9 ACs checked `[x]` with correct evidence.
+
+---
+
 ## Review — 2026-04-01 — commit 8bbab8cde..41adb23d9
 
 **Verdict: FAIL** (1 finding → written to TODO.md as [review] task)
