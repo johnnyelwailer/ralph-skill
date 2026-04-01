@@ -301,180 +301,6 @@ function parseBudget(value: string | undefined): number | null {
   return parsed;
 }
 
-interface ProjectStatusSyncDeps {
-  execGh: (args: string[]) => Promise<{ stdout: string; stderr: string }>;
-  appendLog?: (sessionDir: string, entry: Record<string, unknown>) => void;
-  now?: () => Date;
-  sessionDir?: string;
-}
-
-interface ProjectStatusContext {
-  itemId: string;
-  projectId: string;
-  statusFieldId: string;
-  statusOptions: Map<string, string>;
-}
-
-const projectStatusContextCache = new Map<string, ProjectStatusContext | null>();
-const PROJECT_STATUS_FIELD_NAME = 'Status';
-
-function parseRepoSlug(repo: string): { owner: string; name: string } | null {
-  const [owner, name, ...rest] = repo.split('/');
-  if (!owner || !name || rest.length > 0) return null;
-  return { owner, name };
-}
-
-async function resolveIssueProjectStatusContext(
-  repo: string,
-  issueNumber: number,
-  deps: ProjectStatusSyncDeps,
-): Promise<ProjectStatusContext | null> {
-  const cacheKey = `${repo}#${issueNumber}`;
-  if (projectStatusContextCache.has(cacheKey)) {
-    return projectStatusContextCache.get(cacheKey) ?? null;
-  }
-
-  const slug = parseRepoSlug(repo);
-  if (!slug) {
-    projectStatusContextCache.set(cacheKey, null);
-    return null;
-  }
-
-  const query = 'query($owner:String!,$repo:String!,$number:Int!){repository(owner:$owner,name:$repo){issue(number:$number){projectItems(first:20){nodes{id project{id} fieldValues(first:50){nodes{... on ProjectV2ItemFieldSingleSelectValue{field{... on ProjectV2SingleSelectField{id name options{id name}}}}}}}}}}}';
-  const response = await deps.execGh([
-    'api',
-    'graphql',
-    '-f',
-    `query=${query}`,
-    '-F',
-    `owner=${slug.owner}`,
-    '-F',
-    `repo=${slug.name}`,
-    '-F',
-    `number=${issueNumber}`,
-  ]);
-  const parsed = JSON.parse(response.stdout) as {
-    data?: {
-      repository?: {
-        issue?: {
-          projectItems?: {
-            nodes?: Array<{
-              id?: string;
-              project?: { id?: string };
-              fieldValues?: {
-                nodes?: Array<{
-                  field?: {
-                    id?: string;
-                    name?: string;
-                    options?: Array<{ id?: string; name?: string }>;
-                  };
-                }>;
-              };
-            }>;
-          };
-        };
-      };
-    };
-  };
-  const nodes = parsed.data?.repository?.issue?.projectItems?.nodes;
-  if (!Array.isArray(nodes)) {
-    projectStatusContextCache.set(cacheKey, null);
-    return null;
-  }
-
-  for (const node of nodes) {
-    const itemId = typeof node.id === 'string' ? node.id : '';
-    const projectId = typeof node.project?.id === 'string' ? node.project.id : '';
-    if (!itemId || !projectId) continue;
-    const fieldNodes = node.fieldValues?.nodes;
-    if (!Array.isArray(fieldNodes)) continue;
-    for (const fieldNode of fieldNodes) {
-      const field = fieldNode.field;
-      if (!field || field.name !== PROJECT_STATUS_FIELD_NAME) continue;
-      const fieldId = typeof field.id === 'string' ? field.id : '';
-      if (!fieldId || !Array.isArray(field.options) || field.options.length === 0) continue;
-      const statusOptions = new Map<string, string>();
-      for (const option of field.options) {
-        if (typeof option.name === 'string' && typeof option.id === 'string') {
-          statusOptions.set(option.name.toLowerCase(), option.id);
-        }
-      }
-      const context: ProjectStatusContext = {
-        itemId,
-        projectId,
-        statusFieldId: fieldId,
-        statusOptions,
-      };
-      projectStatusContextCache.set(cacheKey, context);
-      return context;
-    }
-  }
-
-  projectStatusContextCache.set(cacheKey, null);
-  return null;
-}
-
-async function syncIssueProjectStatus(
-  issueNumber: number,
-  repo: string,
-  targetStatus: OrchestratorIssueStatus,
-  deps: ProjectStatusSyncDeps,
-): Promise<boolean> {
-  try {
-    const context = await resolveIssueProjectStatusContext(repo, issueNumber, deps);
-    if (!context) {
-      deps.appendLog?.(deps.sessionDir ?? '', {
-        timestamp: deps.now?.().toISOString() ?? new Date().toISOString(),
-        event: 'project_status_sync_skipped',
-        issue_number: issueNumber,
-        target_status: targetStatus,
-        reason: 'status_field_not_found',
-      });
-      return false;
-    }
-    const optionId = context.statusOptions.get(targetStatus.toLowerCase());
-    if (!optionId) {
-      deps.appendLog?.(deps.sessionDir ?? '', {
-        timestamp: deps.now?.().toISOString() ?? new Date().toISOString(),
-        event: 'project_status_sync_skipped',
-        issue_number: issueNumber,
-        target_status: targetStatus,
-        reason: 'status_option_not_found',
-      });
-      return false;
-    }
-
-    await deps.execGh([
-      'project',
-      'item-edit',
-      '--id',
-      context.itemId,
-      '--project-id',
-      context.projectId,
-      '--field-id',
-      context.statusFieldId,
-      '--single-select-option-id',
-      optionId,
-    ]);
-    deps.appendLog?.(deps.sessionDir ?? '', {
-      timestamp: deps.now?.().toISOString() ?? new Date().toISOString(),
-      event: 'project_status_synced',
-      issue_number: issueNumber,
-      target_status: targetStatus,
-    });
-    return true;
-  } catch (error: unknown) {
-    deps.appendLog?.(deps.sessionDir ?? '', {
-      timestamp: deps.now?.().toISOString() ?? new Date().toISOString(),
-      event: 'project_status_sync_failed',
-      issue_number: issueNumber,
-      target_status: targetStatus,
-      error: error instanceof Error ? error.message : String(error),
-    });
-    return false;
-  }
-}
-
 export function assertAutonomyLevel(value: string | undefined): AutonomyLevel {
   const normalized = value?.trim().toLowerCase();
   if (!normalized || normalized === 'balanced') return 'balanced';
@@ -1889,34 +1715,16 @@ export async function applyTriageResultsToIssue(
     }
 
     if (result.classification === 'needs_clarification') {
-      if (deps.adapter) {
-        await deps.adapter.postComment(issue.number, formatNeedsClarificationReply(comment));
-      } else {
-        await deps.execGh!([
-          'issue', 'comment', String(issue.number), '--repo', repo, '--body', formatNeedsClarificationReply(comment),
-        ]);
-      }
+      await deps.adapter!.postComment(issue.number, formatNeedsClarificationReply(comment));
       if (!issue.blocked_on_human) {
-        if (deps.adapter) {
-          await deps.adapter.updateIssue(issue.number, { labels_add: ['aloop/blocked-on-human'] });
-        } else {
-          await deps.execGh!([
-            'issue', 'edit', String(issue.number), '--repo', repo, '--add-label', 'aloop/blocked-on-human',
-          ]);
-        }
+        await deps.adapter!.updateIssue(issue.number, { labels_add: ['aloop/blocked-on-human'] });
       }
       issue.blocked_on_human = true;
       actionTaken = 'post_reply_and_block';
     } else if (result.classification === 'actionable') {
       let unblocked = false;
       if (issue.blocked_on_human) {
-        if (deps.adapter) {
-          await deps.adapter.updateIssue(issue.number, { labels_remove: ['aloop/blocked-on-human'] });
-        } else {
-          await deps.execGh!([
-            'issue', 'edit', String(issue.number), '--repo', repo, '--remove-label', 'aloop/blocked-on-human',
-          ]);
-        }
+        await deps.adapter!.updateIssue(issue.number, { labels_remove: ['aloop/blocked-on-human'] });
         issue.blocked_on_human = false;
         unblocked = true;
       }
@@ -1937,13 +1745,7 @@ export async function applyTriageResultsToIssue(
         actionTaken = 'steering_deferred';
       }
     } else if (result.classification === 'question') {
-      if (deps.adapter) {
-        await deps.adapter.postComment(issue.number, formatQuestionReply(comment));
-      } else {
-        await deps.execGh!([
-          'issue', 'comment', String(issue.number), '--repo', repo, '--body', formatQuestionReply(comment),
-        ]);
-      }
+      await deps.adapter!.postComment(issue.number, formatQuestionReply(comment));
       actionTaken = 'question_answered';
     } else {
       actionTaken = 'triaged_no_action';
@@ -1968,98 +1770,9 @@ export async function applyTriageResultsToIssue(
   return entries;
 }
 
-interface ParsedMonitorComment {
-  issueNumber: number | null;
-  comment: TriageComment;
-}
-
 export interface TriageMonitorCycleResult {
   processed_issues: number;
   triaged_entries: number;
-}
-
-function parsePositiveInteger(value: unknown): number | null {
-  if (typeof value !== 'number' || !Number.isInteger(value) || value <= 0) {
-    return null;
-  }
-  return value;
-}
-
-function parseNumberFromUrl(url: unknown, pattern: RegExp): number | null {
-  if (typeof url !== 'string') {
-    return null;
-  }
-  const match = url.match(pattern);
-  if (!match) {
-    return null;
-  }
-  const parsed = Number.parseInt(match[1]!, 10);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
-}
-
-function extractCommentsPayload(stdout: string): unknown[] {
-  const trimmed = stdout.trim();
-  if (!trimmed) {
-    return [];
-  }
-
-  try {
-    const parsed = JSON.parse(trimmed) as unknown;
-    if (Array.isArray(parsed)) {
-      return parsed;
-    }
-    if (parsed && typeof parsed === 'object' && Array.isArray((parsed as { comments?: unknown[] }).comments)) {
-      return (parsed as { comments: unknown[] }).comments;
-    }
-  } catch {
-    return [];
-  }
-
-  return [];
-}
-
-function normalizeMonitorComments(rawComments: unknown[], context: 'issue' | 'pr'): ParsedMonitorComment[] {
-  const result: ParsedMonitorComment[] = [];
-
-  for (const raw of rawComments) {
-    if (!raw || typeof raw !== 'object') {
-      continue;
-    }
-    const obj = raw as Record<string, unknown>;
-    const id = parsePositiveInteger(obj.id);
-    const body = typeof obj.body === 'string' ? obj.body : '';
-    const author = typeof obj.author === 'string'
-      ? obj.author
-      : typeof (obj.user as { login?: unknown } | undefined)?.login === 'string'
-        ? (obj.user as { login: string }).login
-        : 'unknown';
-    if (id === null) {
-      continue;
-    }
-
-    let issueNumber: number | null = null;
-    if (context === 'issue') {
-      issueNumber = parsePositiveInteger(obj.issue_number)
-        ?? parseNumberFromUrl(obj.issue_url, /\/issues\/(\d+)(?:\/)?$/);
-    } else {
-      issueNumber = parsePositiveInteger(obj.pull_request_number)
-        ?? parseNumberFromUrl(obj.pull_request_url, /\/pulls\/(\d+)(?:\/)?$/);
-    }
-
-    result.push({
-      issueNumber,
-      comment: {
-        id,
-        author,
-        body,
-        context,
-        created_at: typeof obj.created_at === 'string' ? obj.created_at : undefined,
-        author_association: typeof obj.author_association === 'string' ? obj.author_association : undefined,
-      },
-    });
-  }
-
-  return result;
 }
 
 export async function runTriageMonitorCycle(
@@ -2069,7 +1782,7 @@ export async function runTriageMonitorCycle(
   deps: Pick<OrchestrateDeps, 'now'> & { execGh?: OrchestrateDeps['execGh']; writeFile?: OrchestrateDeps['writeFile']; adapter?: OrchestratorAdapter },
   aloopRoot?: string,
 ): Promise<TriageMonitorCycleResult> {
-  if (!deps.execGh && !deps.adapter) {
+  if (!deps.adapter) {
     return { processed_issues: 0, triaged_entries: 0 };
   }
 
@@ -2080,55 +1793,27 @@ export async function runTriageMonitorCycle(
     let issueComments: TriageComment[];
     let prComments: TriageComment[];
 
-    if (deps.adapter) {
-      // Adapter path: fetch comments directly per issue/PR
-      const rawIssueComments = await deps.adapter.listComments(issue.number, since);
-      issueComments = rawIssueComments.map((c) => ({
+    // Adapter path: fetch comments directly per issue/PR
+    const rawIssueComments = await deps.adapter!.listComments(issue.number, since);
+    issueComments = rawIssueComments.map((c) => ({
+      id: c.id,
+      author: c.author,
+      body: c.body,
+      created_at: c.created_at,
+      context: 'issue' as const,
+    }));
+
+    if (issue.pr_number !== null) {
+      const rawPrComments = await deps.adapter!.listComments(issue.pr_number, since);
+      prComments = rawPrComments.map((c) => ({
         id: c.id,
         author: c.author,
         body: c.body,
         created_at: c.created_at,
-        context: 'issue' as const,
+        context: 'pr' as const,
       }));
-
-      if (issue.pr_number !== null) {
-        const rawPrComments = await deps.adapter.listComments(issue.pr_number, since);
-        prComments = rawPrComments.map((c) => ({
-          id: c.id,
-          author: c.author,
-          body: c.body,
-          created_at: c.created_at,
-          context: 'pr' as const,
-        }));
-      } else {
-        prComments = [];
-      }
     } else {
-      // Legacy path: use aloop CLI subcommands
-      const issueCommentsResponse = await deps.execGh!([
-        'issue-comments',
-        '--session', sessionId,
-        '--since', since,
-        '--role', 'orchestrator',
-      ]);
-      const prCommentsResponse = await deps.execGh!([
-        'pr-comments',
-        '--session', sessionId,
-        '--since', since,
-        '--role', 'orchestrator',
-      ]);
-
-      issueComments = normalizeMonitorComments(
-        extractCommentsPayload(issueCommentsResponse.stdout),
-        'issue',
-      ).filter((entry) => entry.issueNumber === issue.number)
-        .map((entry) => entry.comment);
-
-      prComments = normalizeMonitorComments(
-        extractCommentsPayload(prCommentsResponse.stdout),
-        'pr',
-      ).filter((entry) => issue.pr_number !== null && entry.issueNumber === issue.pr_number)
-        .map((entry) => entry.comment);
+      prComments = [];
     }
 
     const entries = await applyTriageResultsToIssue(
@@ -2155,26 +1840,6 @@ interface SpecQuestionIssueSummary {
   title: string;
   body: string;
   labels: GithubIssueLabel[];
-}
-
-function parseSpecQuestionIssueList(stdout: string): SpecQuestionIssueSummary[] {
-  const trimmed = stdout.trim();
-  if (!trimmed) return [];
-  try {
-    const parsed = JSON.parse(trimmed) as unknown;
-    if (!Array.isArray(parsed)) return [];
-    return parsed
-      .filter((issue): issue is Record<string, unknown> => Boolean(issue) && typeof issue === 'object')
-      .map((issue) => ({
-        number: parsePositiveInteger(issue.number) ?? 0,
-        title: typeof issue.title === 'string' ? issue.title : '',
-        body: typeof issue.body === 'string' ? issue.body : '',
-        labels: Array.isArray(issue.labels) ? issue.labels as GithubIssueLabel[] : [],
-      }))
-      .filter((issue) => issue.number > 0);
-  } catch {
-    return [];
-  }
 }
 
 function extractLabelNames(labels: GithubIssueLabel[]): Set<string> {
@@ -2237,35 +1902,20 @@ export async function resolveSpecQuestionIssues(
   sessionDir: string,
   deps: Pick<ScanLoopDeps, 'execGh' | 'appendLog' | 'now' | 'adapter'>,
 ): Promise<SpecQuestionResolveStats> {
-  if (!deps.execGh && !deps.adapter) {
+  if (!deps.adapter) {
     return { processed: 0, waiting: 0, autoResolved: 0, userOverrides: 0 };
   }
   const result: SpecQuestionResolveStats = { processed: 0, waiting: 0, autoResolved: 0, userOverrides: 0 };
   let issues;
-  if (deps.adapter) {
-    const adapterIssues = await deps.adapter.listIssues({ labels: ['aloop/spec-question'], state: 'open' });
-    // adapter.listIssues only returns { number, title, state } — fetch full details
-    const fullIssues = [];
-    for (const ai of adapterIssues) {
-      const full = await deps.adapter.getIssue(ai.number);
-      fullIssues.push({ number: full.number, title: full.title, body: full.body, labels: full.labels.map((l) => ({ name: l })) });
-    }
-    issues = fullIssues;
-  } else {
-    const response = await deps.execGh!([
-      'issue',
-      'list',
-      '--repo',
-      repo,
-      '--label',
-      'aloop/spec-question',
-      '--state',
-      'open',
-      '--json',
-      'number,title,body,labels',
-    ]);
-    issues = parseSpecQuestionIssueList(response.stdout);
+  // Adapter path: fetch issues via adapter
+  const adapterIssues = await deps.adapter.listIssues({ labels: ['aloop/spec-question'], state: 'open' });
+  // adapter.listIssues only returns { number, title, state } — fetch full details
+  const fullIssues = [];
+  for (const ai of adapterIssues) {
+    const full = await deps.adapter.getIssue(ai.number);
+    fullIssues.push({ number: full.number, title: full.title, body: full.body, labels: full.labels.map((l) => ({ name: l })) });
   }
+  issues = fullIssues;
   for (const issue of issues) {
     result.processed += 1;
     const labelNames = extractLabelNames(issue.labels);
@@ -2275,13 +1925,7 @@ export async function resolveSpecQuestionIssues(
     const reopenedByUser = labelNames.has('aloop/auto-resolved');
     if (reopenedByUser) {
       if (!labelNames.has('aloop/blocked-on-human')) {
-        if (deps.adapter) {
-          await deps.adapter.updateIssue(issueNumber, { labels_add: ['aloop/blocked-on-human'] });
-        } else {
-          await deps.execGh!([
-            'issue', 'edit', String(issueNumber), '--repo', repo, '--add-label', 'aloop/blocked-on-human',
-          ]);
-        }
+        await deps.adapter.updateIssue(issueNumber, { labels_add: ['aloop/blocked-on-human'] });
       }
       result.userOverrides += 1;
       deps.appendLog(sessionDir, {
@@ -2295,13 +1939,7 @@ export async function resolveSpecQuestionIssues(
 
     if (action === 'wait_for_user') {
       if (!labelNames.has('aloop/blocked-on-human')) {
-        if (deps.adapter) {
-          await deps.adapter.updateIssue(issueNumber, { labels_add: ['aloop/blocked-on-human'] });
-        } else {
-          await deps.execGh!([
-            'issue', 'edit', String(issueNumber), '--repo', repo, '--add-label', 'aloop/blocked-on-human',
-          ]);
-        }
+        await deps.adapter.updateIssue(issueNumber, { labels_add: ['aloop/blocked-on-human'] });
       }
       result.waiting += 1;
       deps.appendLog(sessionDir, {
@@ -2314,33 +1952,9 @@ export async function resolveSpecQuestionIssues(
       continue;
     }
 
-    if (deps.adapter) {
-      await deps.adapter.postComment(issueNumber, formatResolverDecisionComment(state.autonomy_level ?? 'balanced', risk));
-      await deps.adapter.updateIssue(issueNumber, { labels_add: ['aloop/auto-resolved'], labels_remove: ['aloop/blocked-on-human'] });
-      await deps.adapter.closeIssue(issueNumber);
-    } else {
-      await deps.execGh!([
-        'issue',
-        'comment',
-        String(issueNumber),
-        '--repo',
-        repo,
-        '--body',
-        formatResolverDecisionComment(state.autonomy_level ?? 'balanced', risk),
-      ]);
-      await deps.execGh!([
-        'issue',
-        'edit',
-        String(issueNumber),
-        '--repo',
-        repo,
-        '--add-label',
-        'aloop/auto-resolved',
-        '--remove-label',
-        'aloop/blocked-on-human',
-      ]);
-      await deps.execGh!(['issue', 'close', String(issueNumber), '--repo', repo]);
-    }
+    await deps.adapter.postComment(issueNumber, formatResolverDecisionComment(state.autonomy_level ?? 'balanced', risk));
+    await deps.adapter.updateIssue(issueNumber, { labels_add: ['aloop/auto-resolved'], labels_remove: ['aloop/blocked-on-human'] });
+    await deps.adapter.closeIssue(issueNumber);
     result.autoResolved += 1;
     deps.appendLog(sessionDir, {
       timestamp: deps.now().toISOString(),
@@ -2501,28 +2115,13 @@ export async function applyEstimateResults(
       if (issue.status === 'Needs refinement') {
         issue.status = 'Ready';
       }
-      if ((deps?.adapter || deps?.execGh) && deps.repo) {
-        if (deps.execGh) {
-          await syncIssueProjectStatus(result.issue_number, deps.repo, 'Ready', {
-            execGh: deps.execGh,
-            appendLog: deps.appendLog,
-            now: deps.now,
-            sessionDir: deps.sessionDir,
-          });
-        }
+      if (deps?.adapter && deps.repo) {
+        await deps.adapter.setIssueStatus?.(result.issue_number, 'Ready');
         const labelsToAdd: string[] = [];
         if (result.complexity_tier) labelsToAdd.push(`complexity/${result.complexity_tier}`);
         if (result.priority) labelsToAdd.push(result.priority);
         if (labelsToAdd.length > 0) {
-          if (deps.adapter) {
-            await deps.adapter.updateIssue(result.issue_number, { labels_add: labelsToAdd });
-          } else {
-            await deps.execGh!([
-              'issue', 'edit', String(result.issue_number),
-              '--repo', deps.repo,
-              ...labelsToAdd.flatMap((l) => ['--add-label', l]),
-            ]);
-          }
+          await deps.adapter.updateIssue(result.issue_number, { labels_add: labelsToAdd });
         }
       }
       outcome.updated.push(result.issue_number);
@@ -2567,23 +2166,13 @@ export async function applyEstimateResults(
       outcome.blocked.push(result.issue_number);
 
       // Create aloop/spec-question issues for each gap
-      if (result.gaps && result.gaps.length > 0 && (deps?.adapter || deps?.execGhIssueCreate) && deps.repo && deps.sessionId) {
+      if (result.gaps && result.gaps.length > 0 && deps?.adapter && deps.repo && deps.sessionId) {
         for (const gap of result.gaps) {
-          if (deps.adapter) {
-            await deps.adapter.createIssue(
-              `[spec-question] #${result.issue_number}: ${gap}`,
-              `Blocking issue #${result.issue_number} (${issue.title}).\n\n**DoR gap:** ${gap}\n\nThis spec-question must be resolved before the parent issue can be dispatched.`,
-              ['aloop/spec-question'],
-            );
-          } else {
-            await deps.execGhIssueCreate!(
-              deps.repo,
-              deps.sessionId,
-              `[spec-question] #${result.issue_number}: ${gap}`,
-              `Blocking issue #${result.issue_number} (${issue.title}).\n\n**DoR gap:** ${gap}\n\nThis spec-question must be resolved before the parent issue can be dispatched.`,
-              ['aloop/spec-question'],
-            );
-          }
+          await deps.adapter.createIssue(
+            `[spec-question] #${result.issue_number}: ${gap}`,
+            `Blocking issue #${result.issue_number} (${issue.title}).\n\n**DoR gap:** ${gap}\n\nThis spec-question must be resolved before the parent issue can be dispatched.`,
+            ['aloop/spec-question'],
+          );
         }
       }
     }
@@ -3555,28 +3144,13 @@ export async function checkPrGates(
   // Gate 1: Mergeability (conflict check)
   let mergeable = false;
   try {
-    if (deps.adapter) {
-      const status = await deps.adapter.getPRStatus(prNumber);
-      mergeable = status.mergeable;
-      gates.push({
-        gate: 'merge_conflicts',
-        status: mergeable ? 'pass' : 'fail',
-        detail: mergeable ? 'No merge conflicts' : 'Merge conflicts detected',
-      });
-    } else {
-      const viewResult = await deps.execGh([
-        'pr', 'view', String(prNumber), '--repo', repo, '--json', 'mergeable,mergeStateStatus',
-      ]);
-      const prData = JSON.parse(viewResult.stdout);
-      mergeable = prData.mergeable === 'MERGEABLE';
-      const mergeState = prData.mergeStateStatus ?? 'UNKNOWN';
-      const mergeUnknown = prData.mergeable === 'UNKNOWN' || mergeState === 'UNKNOWN';
-      gates.push({
-        gate: 'merge_conflicts',
-        status: mergeable ? 'pass' : mergeUnknown ? 'pending' : 'fail',
-        detail: mergeable ? 'No merge conflicts' : mergeUnknown ? 'Mergeability not yet computed' : `Merge state: ${mergeState}`,
-      });
-    }
+    const status = await deps.adapter!.getPRStatus(prNumber);
+    mergeable = status.mergeable;
+    gates.push({
+      gate: 'merge_conflicts',
+      status: mergeable ? 'pass' : 'fail',
+      detail: mergeable ? 'No merge conflicts' : 'Merge conflicts detected',
+    });
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
     // API error — don't block the PR, just skip this gate (will retry next pass)
@@ -3585,64 +3159,25 @@ export async function checkPrGates(
 
   // Gate 2: CI checks (covers CI pipeline, coverage, lint/type check)
   try {
-    if (deps.adapter) {
-      const prChecks = await deps.adapter.getPrChecks(prNumber);
-      if (prChecks.checks.length === 0) {
-        if (ciWorkflowsConfigured) {
-          gates.push({ gate: 'ci_checks', status: 'pending', detail: 'CI workflows configured but no check runs reported yet' });
-        } else {
-          gates.push({ gate: 'ci_checks', status: 'pass', detail: 'No GitHub Actions workflows detected; local fallback validation required' });
-        }
-      } else if (prChecks.pending) {
-        gates.push({ gate: 'ci_checks', status: 'pending', detail: 'Some CI checks still running' });
-      } else if (prChecks.passed) {
-        gates.push({ gate: 'ci_checks', status: 'pass', detail: `All ${prChecks.checks.length} checks passed` });
+    const prChecks = await deps.adapter!.getPrChecks(prNumber);
+    if (prChecks.checks.length === 0) {
+      if (ciWorkflowsConfigured) {
+        gates.push({ gate: 'ci_checks', status: 'pending', detail: 'CI workflows configured but no check runs reported yet' });
       } else {
-        const failedChecks = prChecks.checks.filter(
-          (c) => c.conclusion === 'FAILURE' || c.conclusion === 'failure' ||
-            c.conclusion === 'CANCELLED' || c.conclusion === 'cancelled' ||
-            c.conclusion === 'TIMED_OUT' || c.conclusion === 'timed_out',
-        );
-        const failNames = failedChecks.map((c) => c.name).join(', ');
-        gates.push({ gate: 'ci_checks', status: 'fail', detail: `Failed checks: ${failNames}` });
+        gates.push({ gate: 'ci_checks', status: 'pass', detail: 'No GitHub Actions workflows detected; local fallback validation required' });
       }
+    } else if (prChecks.pending) {
+      gates.push({ gate: 'ci_checks', status: 'pending', detail: 'Some CI checks still running' });
+    } else if (prChecks.passed) {
+      gates.push({ gate: 'ci_checks', status: 'pass', detail: `All ${prChecks.checks.length} checks passed` });
     } else {
-      const checksResult = await deps.execGh([
-        'pr', 'view', String(prNumber), '--repo', repo, '--json', 'statusCheckRollup',
-      ]);
-      const parsed = JSON.parse(checksResult.stdout);
-      const checks: Array<{ name: string; state: string; conclusion: string }> = (parsed.statusCheckRollup ?? []).map((c: any) => ({
-        name: c.name ?? c.context ?? 'unknown',
-        state: c.status ?? c.state ?? 'COMPLETED',
-        conclusion: c.conclusion ?? (c.state === 'SUCCESS' ? 'SUCCESS' : 'PENDING'),
-      }));
-      const allCompleted = checks.every((c) => c.state === 'COMPLETED' || c.state === 'completed');
-      const allPassed = checks.every(
-        (c) => (c.state === 'COMPLETED' || c.state === 'completed') &&
-          (c.conclusion === 'SUCCESS' || c.conclusion === 'success' ||
-           c.conclusion === 'NEUTRAL' || c.conclusion === 'neutral' ||
-           c.conclusion === 'SKIPPED' || c.conclusion === 'skipped'),
-      );
-      const failedChecks = checks.filter(
+      const failedChecks = prChecks.checks.filter(
         (c) => c.conclusion === 'FAILURE' || c.conclusion === 'failure' ||
           c.conclusion === 'CANCELLED' || c.conclusion === 'cancelled' ||
           c.conclusion === 'TIMED_OUT' || c.conclusion === 'timed_out',
       );
-
-      if (checks.length === 0) {
-        if (ciWorkflowsConfigured) {
-          gates.push({ gate: 'ci_checks', status: 'pending', detail: 'CI workflows configured but no check runs reported yet' });
-        } else {
-          gates.push({ gate: 'ci_checks', status: 'pass', detail: 'No GitHub Actions workflows detected; local fallback validation required' });
-        }
-      } else if (!allCompleted) {
-        gates.push({ gate: 'ci_checks', status: 'pending', detail: 'Some CI checks still running' });
-      } else if (allPassed) {
-        gates.push({ gate: 'ci_checks', status: 'pass', detail: `All ${checks.length} checks passed` });
-      } else {
-        const failNames = failedChecks.map((c) => c.name).join(', ');
-        gates.push({ gate: 'ci_checks', status: 'fail', detail: `Failed checks: ${failNames}` });
-      }
+      const failNames = failedChecks.map((c) => c.name).join(', ');
+      gates.push({ gate: 'ci_checks', status: 'fail', detail: `Failed checks: ${failNames}` });
     }
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
@@ -3703,13 +3238,7 @@ export async function mergePr(
   deps: PrLifecycleDeps,
 ): Promise<PrMergeResult> {
   try {
-    if (deps.adapter) {
-      await deps.adapter.mergePR(prNumber, 'squash');
-    } else {
-      await deps.execGh([
-        'pr', 'merge', String(prNumber), '--repo', repo, '--squash', '--delete-branch',
-      ]);
-    }
+    await deps.adapter!.mergePR(prNumber, 'squash');
     return { pr_number: prNumber, merged: true };
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
@@ -3745,22 +3274,8 @@ export async function createTrunkToMainPr(
   ].filter(Boolean).join('\n');
 
   try {
-    let prNumber: number | null;
-    if (deps.adapter) {
-      const prResult = await deps.adapter.createPR(title, body, trunkBranch, 'main');
-      prNumber = prResult.number;
-    } else {
-      const result = await deps.execGh!([
-        'pr', 'create',
-        '--repo', repo,
-        '--base', 'main',
-        '--head', trunkBranch,
-        '--title', title,
-        '--body', body,
-      ]);
-      const parsed = parsePrCreateOutput(result.stdout);
-      prNumber = parsed.number;
-    }
+    const prResult = await deps.adapter!.createPR(title, body, trunkBranch, 'main');
+    const prNumber = prResult.number;
     deps.appendLog(sessionDir, {
       timestamp: new Date().toISOString(),
       event: 'trunk_to_main_pr_created',
@@ -3770,31 +3285,6 @@ export async function createTrunkToMainPr(
     return prNumber;
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
-    // Check if PR already exists (only possible via execGh — adapter has no listPRs equivalent)
-    if (!deps.adapter && deps.execGh) {
-      try {
-        const listResult = await deps.execGh([
-          'pr', 'list',
-          '--repo', repo,
-          '--head', trunkBranch,
-          '--base', 'main',
-          '--json', 'number',
-          '--jq', '.[0].number',
-        ]);
-        const existingNumber = Number.parseInt(listResult.stdout.trim(), 10);
-        if (Number.isFinite(existingNumber) && existingNumber > 0) {
-          deps.appendLog(sessionDir, {
-            timestamp: new Date().toISOString(),
-            event: 'trunk_to_main_pr_exists',
-            pr_number: existingNumber,
-            trunk_branch: trunkBranch,
-          });
-          return existingNumber;
-        }
-      } catch {
-        // Listing also failed
-      }
-    }
     deps.appendLog(sessionDir, {
       timestamp: new Date().toISOString(),
       event: 'trunk_to_main_pr_failed',
@@ -3822,17 +3312,8 @@ export async function flagForHuman(
 ): Promise<void> {
   const body = `Flagged for human resolution: ${reason}`;
   try {
-    if (deps.adapter) {
-      await deps.adapter.postComment(issue.number, body);
-      await deps.adapter.updateIssue(issue.number, { labels_add: ['aloop/blocked-on-human'] });
-    } else {
-      await deps.execGh([
-        'issue', 'comment', String(issue.number), '--repo', repo, '--body', body,
-      ]);
-      await deps.execGh([
-        'issue', 'edit', String(issue.number), '--repo', repo, '--add-label', 'aloop/blocked-on-human',
-      ]);
-    }
+    await deps.adapter!.postComment(issue.number, body);
+    await deps.adapter!.updateIssue(issue.number, { labels_add: ['aloop/blocked-on-human'] });
   } catch {
     // Best-effort labeling
   }
@@ -3981,14 +3462,7 @@ export async function processPrLifecycle(
         ? ` CI retry ${stateIssue.ci_failure_retries ?? 1}/${ORCHESTRATOR_CI_PERSISTENCE_LIMIT} before human escalation.`
         : '';
       const commentBody = `PR #${prNumber} failed gates: ${failDetail}.${ciRetryNote} Please address and update the PR.`;
-      if (deps.adapter) {
-        await deps.adapter.postComment(issue.number, commentBody);
-      } else {
-        await deps.execGh([
-          'issue', 'comment', String(issue.number), '--repo', repo,
-          '--body', commentBody,
-        ]);
-      }
+      await deps.adapter!.postComment(issue.number, commentBody);
     } catch {
       // Best-effort comment
     }
@@ -4023,14 +3497,7 @@ export async function processPrLifecycle(
     const alreadyCommented = (stateIssue as any)?.last_review_comment === reviewResult.summary;
     if (!alreadyCommented) {
       try {
-        if (deps.adapter) {
-          await deps.adapter.postComment(prNumber, `Agent review requested changes:\n\n${reviewResult.summary}`);
-        } else {
-          await deps.execGh([
-            'pr', 'comment', String(prNumber), '--repo', repo,
-            '--body', `Agent review requested changes:\n\n${reviewResult.summary}`,
-          ]);
-        }
+        await deps.adapter!.postComment(prNumber, `Agent review requested changes:\n\n${reviewResult.summary}`);
       } catch {
         // Best-effort
       }
@@ -4071,12 +3538,7 @@ export async function processPrLifecycle(
       stateIssue.state = 'merged';
       stateIssue.status = 'Done';
     }
-    await syncIssueProjectStatus(issue.number, repo, 'Done', {
-      execGh: deps.execGh,
-      appendLog: deps.appendLog,
-      now: deps.now,
-      sessionDir,
-    });
+    await deps.adapter?.setIssueStatus?.(issue.number, 'Done');
     state.updated_at = deps.now().toISOString();
     await deps.writeFile(stateFile, `${JSON.stringify(state, null, 2)}\n`, 'utf8');
 
@@ -4090,11 +3552,7 @@ export async function processPrLifecycle(
 
     // Close the issue
     try {
-      if (deps.adapter) {
-        await deps.adapter.closeIssue(issue.number);
-      } else {
-        await deps.execGh(['issue', 'close', String(issue.number), '--repo', repo]);
-      }
+      await deps.adapter!.closeIssue(issue.number);
     } catch {
       // Best-effort close
     }
@@ -4460,18 +3918,6 @@ export interface MonitorChildDeps {
 }
 
 /**
- * Parse the PR number and URL from `gh pr create` output.
- */
-function parsePrCreateOutput(stdout: string): { number: number | null; url: string } {
-  // gh pr create outputs a URL like https://github.com/owner/repo/pull/123
-  const match = stdout.match(/\/pull\/(\d+)/);
-  return {
-    number: match ? Number.parseInt(match[1], 10) : null,
-    url: stdout.trim(),
-  };
-}
-
-/**
  * Create a PR for a completed child session's branch.
  */
 async function createPrForChild(
@@ -4517,40 +3963,10 @@ async function createPrForChild(
   const prBody = `Automated implementation for issue #${issue.number}.\n\nCloses #${issue.number}`;
 
   try {
-    if (deps.adapter) {
-      const prResult = await deps.adapter.createPR(prTitle, prBody, branch, effectiveBase);
-      return { pr_number: prResult.number, branch, baseBranch: effectiveBase };
-    }
-    const result = await deps.execGh!([
-      'pr', 'create',
-      '--repo', repo,
-      '--base', effectiveBase,
-      '--head', branch,
-      '--title', prTitle,
-      '--body', prBody,
-    ]);
-    const parsed = parsePrCreateOutput(result.stdout);
-    return { pr_number: parsed.number, branch, baseBranch: effectiveBase };
+    const prResult = await deps.adapter!.createPR(prTitle, prBody, branch, effectiveBase);
+    return { pr_number: prResult.number, branch, baseBranch: effectiveBase };
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
-    // Check if PR already exists for this branch (only via execGh — adapter has no listPRs equivalent)
-    if (!deps.adapter && deps.execGh) {
-      try {
-        const listResult = await deps.execGh([
-          'pr', 'list',
-          '--repo', repo,
-          '--head', branch,
-          '--json', 'number',
-          '--jq', '.[0].number',
-        ]);
-        const existingNumber = Number.parseInt(listResult.stdout.trim(), 10);
-        if (Number.isFinite(existingNumber) && existingNumber > 0) {
-          return { pr_number: existingNumber, branch, baseBranch: effectiveBase };
-        }
-      } catch {
-        // PR list also failed
-      }
-    }
     return { pr_number: null, branch, baseBranch: effectiveBase, error: msg };
   }
 }
@@ -4648,14 +4064,7 @@ export async function monitorChildSessions(
           stateIssue.state = 'pr_open';
           stateIssue.pr_number = prResult.pr_number;
           stateIssue.status = 'In review';
-          if (deps.execGh) {
-            await syncIssueProjectStatus(issue.number, repo, 'In review', {
-              execGh: deps.execGh,
-              appendLog: deps.appendLog,
-              now: deps.now,
-              sessionDir,
-            });
-          }
+          await deps.adapter?.setIssueStatus?.(issue.number, 'In review');
         }
         result.prs_created++;
         entry.action = 'pr_created';
@@ -5680,14 +5089,7 @@ export async function runOrchestratorScanPass(
           stateIssue.child_session = launchResult.session_id;
           (stateIssue as any).child_pid = launchResult.pid;
           stateIssue.status = 'In progress';
-          if (repo && deps.execGh) {
-            await syncIssueProjectStatus(issue.number, repo, 'In progress', {
-              execGh: deps.execGh,
-              appendLog: deps.appendLog,
-              now: deps.now,
-              sessionDir,
-            });
-          }
+          await deps.adapter?.setIssueStatus?.(issue.number, 'In progress');
         }
         result.dispatched++;
 
