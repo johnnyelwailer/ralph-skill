@@ -16,7 +16,7 @@
 
 ### Up Next
 
-- [ ] (no tasks remaining after fix tasks above complete)
+- [ ] (no tasks remaining — issue #101 implementation complete)
 
 ### Completed
 
