@@ -25,7 +25,7 @@ Key changes:
 - `aloop/cli/dashboard/src/AppView.tsx` — mobile hamburger (`lg:hidden`), desktop sidebar (`hidden lg:flex`), responsive layout, swipe gesture, aria-labels on close buttons
 - `aloop/cli/dashboard/e2e/smoke.spec.ts` — Playwright bounding box checks for tap targets at 375×667 and 390×844
 - `aloop/cli/dashboard/e2e/proof.spec.ts` — 5 layout tests: mobile hamburger/drawer/swipe, tablet 768×1024, desktop 1280×800
-- `docs/conventions/FRONTEND.md` — updated to reflect SSE/EventSource, actual file structure, hooks/, tap target accessibility conventions; clarifies react-resizable-panels wrapper exists but layout uses CSS flex
+- `docs/conventions/FRONTEND.md` — updated to reflect SSE/EventSource, actual file structure, hooks/, tap target accessibility conventions; clarifies react-resizable-panels wrapper exists but layout uses CSS flex; documents `parseTodoProgress` cross-module import from CLI shared lib (`../../src/lib/parseTodoProgress`)
 - `README.md` — documents responsive mobile layout, corrects CLI flags, adds OpenCode limitation note, corrects auth failure behavior (degraded/no-auto-retry), corrects OpenCode autonomous flag (`run --dir <workdir>` → `run`), adds STEERING.md to document viewer list, documents command palette (Cmd+K)
 
 ## Verification

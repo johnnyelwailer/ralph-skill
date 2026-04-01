@@ -1,5 +1,36 @@
 # Review Log
 
+## Review — 2026-04-01 18:30 — commit 2fab81e3c..c60f67e60
+
+**Verdict: PASS** (docs-only change; no code changes since last review)
+**Scope:** `docs/conventions/FRONTEND.md` (1-line addition `e2c994432`), `QA_COVERAGE.md` + `QA_LOG.md` (QA re-verification `86b0932a0`), `TODO.md` + `REVIEW_LOG.md` (chore commits)
+
+**Commits since last review (`2fab81e3c`):**
+- `7f18cd586` — chore(review): PASS — TODO.md + REVIEW_LOG.md spec-review re-confirmation (internal)
+- `86b0932a0` — chore(qa): PASS — QA_COVERAGE.md + QA_LOG.md final-qa re-verification
+- `0be2b4cb7` — chore(spec-gap): no discrepancies — TODO.md only
+- `e2c994432` — docs: document `parseTodoProgress` cross-module import in FRONTEND.md
+- `c60f67e60` — chore(review): PASS — TODO.md + REVIEW_LOG.md spec-review re-confirmation (internal)
+
+**Prior findings from last review (2026-04-01 18:20):** None — all gates were PASS; no carry-over items.
+
+**Gate results:**
+- Gate 1 (Spec Compliance): PASS — docs-only; no implementation changes; all 9 SPEC-ADDENDUM.md ACs still PASS
+- Gate 2 (Test Depth): PASS — no test changes; 158 tests unchanged
+- Gate 3 (Coverage): PASS — no new code
+- Gate 4 (Code Quality): PASS — single accurate sentence added to FRONTEND.md; no dead code
+- Gate 5 (Integration Sanity): PASS — `86b0932a0` QA confirms 158 unit tests PASS, `tsc --noEmit` clean, 464kB bundle, e2e `proof.spec.ts` 5/5 PASS
+- Gate 6 (Proof Verification): PASS — docs-only; skip with empty artifacts is correct outcome
+- Gate 7 (Runtime Layout): PASS — no layout changes
+- Gate 8 (Version Compliance): PASS — no dependency changes
+- Gate 9 (Documentation Freshness): PASS — `e2c994432` addition verified accurate: `AppView.tsx:25` imports `parseTodoProgress` from `../../src/lib/parseTodoProgress`; used at `AppView.tsx:1219`. Documentation claim matches implementation.
+
+**Concrete observation:** Gate 9 — `FRONTEND.md` addition documents the non-obvious cross-module import path for `parseTodoProgress`. Verified: `AppView.tsx:25` (`import { parseTodoProgress } from '../../src/lib/parseTodoProgress'`) — this is the CLI's shared lib, distinct from the dashboard's own `src/lib/`. Used at `AppView.tsx:1219` to count completed/total checkbox tasks in TODO.md. Documentation is accurate and practically valuable.
+
+**PR_DESCRIPTION.md:** Updated — FRONTEND.md entry extended to mention `parseTodoProgress` documentation addition.
+
+---
+
 ## Review — 2026-04-01 18:20 — commit f3bd8b5bc..2fab81e3c
 
 **Verdict: PASS** (docs-only changes; no code changes since last review)
