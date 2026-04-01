@@ -143,6 +143,7 @@ dashboard/src/
 ```
 
 - **Colocate tests:** `App.test.tsx` next to `App.tsx`.
+- **Shared CLI utility:** `AppView.tsx` imports `parseTodoProgress` from `../../src/lib/parseTodoProgress` (the CLI's lib, not the dashboard's `src/lib/`). This counts completed/total checkbox tasks in TODO.md.
 - **Coverage tests:** `App.coverage.test.ts` for coverage-specific scenarios.
 - Feature components go in `components/` (not in `ui/`).
 - **Target: ~150 LOC per file.** Files above 200 LOC should be split. See SPEC-ADDENDUM.md for the full decomposition plan.
