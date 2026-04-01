@@ -66,6 +66,10 @@
 
 **Spec-gap re-run (2026-03-31, all-tasks-done trigger — sixteenth pass):** No new gaps found. Verified via Glob: 30 .test.tsx files (28 non-ui ✓, 2 ui/); 41 .stories.tsx files (28 non-ui ✓, 13 ui/); ci.yml confirmed present at .github/workflows/ci.yml ✓. No code changes since fifteenth pass (only chore/QA commits). The 3 pre-existing P2 gaps (loop.sh model default, on_start config block, spec-gap periodic scheduling) remain open and out of scope for Issue #183. No P1 or P2 gaps exist within Issue #183 scope. spec-gap analysis: no discrepancies found — spec fully fulfilled (Issue #183 scope).
 
+### Spec Review — APPROVED (docs trigger re-run, 2026-04-01) [reviewed: gates 1-9 pass — thirtieth spec-review pass]
+
+No new changes since twenty-ninth spec-review pass. Triggered by spec-gap chore commit `f1f29da97` (twenty-first spec-gap PASS). Verified: 30 .test.tsx files (28 non-ui ✓, 2 ui/); 41 .stories.tsx files (28 non-ui ✓, 13 ui/); ci.yml confirmed present ✓. All previously verified items remain unchanged. No new gaps found.
+
 ### Spec Review — APPROVED (spec-review trigger re-run, 2026-04-01) [reviewed: gates 1-9 pass — twenty-ninth spec-review pass]
 
 No new changes since twenty-eighth spec-review pass. Triggered by spec-gap chore commit `d5a6ffee2` (twenty-eighth review PASS). Verified: 30 .test.tsx files (28 non-ui ✓, 2 ui/); 41 .stories.tsx files (28 non-ui ✓, 13 ui/); ci.yml confirmed present ✓. All previously verified items remain unchanged. No new gaps found.
