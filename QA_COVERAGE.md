@@ -46,3 +46,12 @@
 | Tablet 768×1024: hamburger visible | 2026-04-01 | f75187790 | PASS | Custom Playwright: "Toggle sidebar" 44×44px visible; .hidden.lg:flex sidebar null box (hidden). Screenshot: /tmp/tablet-768x1024-layout.png |
 | Swipe gesture opens sidebar | 2026-04-01 | f75187790 | PASS | proof.spec.ts:103 PASS — touchstart clientX=5→touchend clientX=80 opens .fixed.inset-0.z-40 overlay |
 | loop.sh model default | 2026-04-01 | f75187790 | PASS | CLAUDE_MODEL defaults to opus — matches config.yml (claude: opus) and loop.ps1 ([string]$ClaudeModel = 'opus'). Cross-platform parity confirmed. |
+| Unit test suite | 2026-04-01 | f3bd8b5bc | PASS | 158 tests (21 files); no regression at HEAD after docs/chore + loop.sh revert commits |
+| TypeScript type-check | 2026-04-01 | f3bd8b5bc | PASS | tsc --noEmit clean; no type errors |
+| Dashboard build | 2026-04-01 | f3bd8b5bc | PASS | 464KB bundle; ✓ built in 1.38s |
+| e2e/proof.spec.ts (all 5) | 2026-04-01 | f3bd8b5bc | PASS | 5/5 pass at HEAD: mobile hamburger, mobile drawer, swipe gesture, tablet 768×1024, desktop 1280×800 |
+| No horizontal scroll at 320px | 2026-04-01 | f3bd8b5bc | PASS | body=320 win=320 (no hscroll) |
+| Hamburger present on mobile | 2026-04-01 | f3bd8b5bc | PASS | aria-label*="sidebar" button found at 320px |
+| Tap targets ≥ 44px on mobile | 2026-04-01 | f3bd8b5bc | PASS | 0 small buttons at 320×568 |
+| Steer input visible on mobile | 2026-04-01 | f3bd8b5bc | PASS | Textarea visible at 375×667 |
+| loop.sh model default (post-revert) | 2026-04-01 | f3bd8b5bc | NOTE | d38ccab86 reverted loop.sh to sonnet (pre-issue-114 state); config.yml=opus, loop.ps1=opus. Cross-platform mismatch intentionally deferred to issue #284. Not a regression for issue #114 scope. |

@@ -544,3 +544,79 @@ npm --prefix aloop/cli/dashboard run type-check
 No source code changes since last verified QA pass (60952f7ca). Chore-only commit:
 - 9db0a336b: chore QA PASS — no functional impact
 All SPEC-ADDENDUM.md acceptance criteria remain PASS. Issue-114 complete.
+
+## QA Session — 2026-04-01 (final-qa — post review PASS f3bd8b5bc)
+
+### Test Environment
+- Dashboard: built from source (`npm run build` → `npx vite preview --port 4120`)
+- Playwright: chromium via dashboard/node_modules/playwright
+- Viewports tested: 320×568, 375×667, 768×1024, 1280×800, 1440×900
+- Commit under test: f3bd8b5bc (HEAD)
+- Commits since last QA (ce703290b): d38ccab86 (revert loop.sh opus→sonnet), b021a35fe (chore Gate 1 RESOLVED), 725156b38 (chore spec-gap), 840b77ea6 (docs FRONTEND.md), 2002bfbd5 (chore review), f3bd8b5bc (chore review PASS)
+
+### Features Tested (5)
+1. Unit test suite (vitest — 158 tests)
+2. TypeScript type-check (tsc --noEmit)
+3. Dashboard build (vite build)
+4. e2e/proof.spec.ts — full suite (5 tests)
+5. Visual Playwright: no-hscroll, hamburger, tap targets, steer input, desktop layout
+
+### Results
+
+| Test | Result |
+|------|--------|
+| Unit test suite (158 tests, 21 files) | PASS |
+| TypeScript type-check | PASS |
+| Dashboard build (464KB bundle) | PASS |
+| e2e/proof.spec.ts 5/5 | PASS |
+| 320×568: no horizontal scroll | PASS |
+| 320×568: hamburger button | PASS |
+| 320×568: tap targets ≥ 44px (0 small) | PASS |
+| 375×667: steer textarea visible | PASS |
+| 1440×900: desktop layout renders | PASS |
+
+### Bugs Filed
+None. No regressions detected at HEAD.
+
+**Note on loop.sh model default:** d38ccab86 reverted loop.sh back to `sonnet` (pre-issue-114 baseline). Current state: loop.sh=sonnet, config.yml=opus, loop.ps1=opus — cross-platform mismatch, intentionally deferred to issue #284 per Gate 1 RESOLVED. This is out of scope for issue #114 and is not a new QA bug.
+
+### Command Transcript
+```
+# Unit tests (from aloop/cli/dashboard/)
+npm test -- --run
+→ 21 test files, 158 tests passed (2.72s) — exit 0
+
+# TypeScript type-check
+npx tsc --noEmit
+→ (no output — clean) — exit 0
+
+# Build
+npm run build
+→ ✓ built in 1.38s (464.34 kB JS, 34.11 kB CSS) — exit 0
+
+# e2e proof tests
+npx playwright test e2e/proof.spec.ts --reporter=line
+→ 5 passed (4.1s) — exit 0
+  - mobile 390x844 hamburger visible
+  - mobile 390x844 sidebar drawer open
+  - mobile 390x844 swipe gesture opens sidebar
+  - tablet 768x1024 sidebar hidden, hamburger visible
+  - desktop 1280x800 layout unchanged
+
+# Visual Playwright at 320×568, 375×667, 1440×900
+node /tmp/qa-final-check.mjs (inline ESM via node --input-type=module)
+→ PASS: 320x568 no-hscroll — body=320 win=320
+→ PASS: 320x568 hamburger — found
+→ PASS: 320x568 tap targets — 0 small
+→ PASS: 375x667 steer input — visible
+→ PASS: 1440x900 desktop layout — body text length=361
+→ All checks PASS — exit 0
+
+# loop.sh model check
+grep CLAUDE_MODEL aloop/bin/loop.sh → CLAUDE_MODEL="${ALOOP_CLAUDE_MODEL:-sonnet}" (reverted by d38ccab86)
+grep "claude:" aloop/config.yml → claude: opus
+grep ClaudeModel aloop/bin/loop.ps1 → [string]$ClaudeModel = 'opus'
+```
+
+### Assessment
+All SPEC-ADDENDUM.md acceptance criteria remain PASS at final HEAD (f3bd8b5bc). No regressions introduced by chore/docs commits since last QA (ce703290b). The loop.sh revert to `sonnet` is an intentional scope decision per Gate 1, tracked in issue #284. Issue-114 complete.
