@@ -84,7 +84,7 @@ Current Radix primitives in use:
 ## Vite Dev Server
 
 - **Dev:** `npm --prefix aloop/cli/dashboard run dev` — Vite dev server with HMR.
-- **API proxy:** Vite proxies `/api/*` and `/ws` to the aloop CLI server during development.
+- **API proxy:** Vite proxies `/api/*` and `/events` to the aloop CLI server during development.
 - **Build:** `vite build` outputs to `dist/dashboard/` inside the CLI package.
 - The built dashboard is served statically by the CLI's Express server in production.
 
@@ -92,7 +92,7 @@ Current Radix primitives in use:
 
 - **React hooks for local state.** `useState`, `useReducer`, `useContext`.
 - **No Redux, no Zustand, no external state library.** The dashboard is simple enough for hooks.
-- **WebSocket for real-time updates.** Server pushes session state changes; dashboard renders them.
+- **SSE (Server-Sent Events) for real-time updates.** The dashboard uses `EventSource` to connect to `/events` — server pushes session state changes; dashboard renders them. Auto-reconnects with exponential backoff on disconnect.
 - **Fetch for API calls.** Use native `fetch` — no axios.
 
 ## Component Development with Storybook
@@ -107,12 +107,37 @@ Current Radix primitives in use:
 ```
 dashboard/src/
   App.tsx              # Root component
-  AppView.tsx          # Main layout
+  AppView.tsx          # Main layout and orchestration
   main.tsx             # Entry point
   index.css            # Tailwind imports
   components/
-    ui/                # shadcn/Radix primitives
+    LogEntryRow.tsx    # Activity log entry (expandable)
+    artifacts/
+      ArtifactViewer.tsx           # Image/file preview
+      ArtifactComparisonDialog.tsx # Before/after (side-by-side, slider, overlay)
+    layout/
+      ResponsiveLayout.tsx         # Breakpoint logic, mobile hamburger
+    progress/
+      CostDisplay.tsx              # Token/cost display per iteration
+    session/
+      SessionCard.tsx              # Single session entry in sidebar
+      SessionContextMenu.tsx       # Long-press context menu for sessions
+    shared/
+      ElapsedTimer.tsx             # Live-counting timer
+      PhaseBadge.tsx               # Phase label badge
+      StatusDot.tsx                # Status indicator dot
+    ui/                # shadcn/Radix primitives (project-owned copies)
+  hooks/
+    useLongPress.ts    # Long-press detection (pointer events)
+    useIsTouchDevice.ts # Detect touch vs pointer device
+    useBreakpoint.ts   # Responsive breakpoint detection
+    useCost.ts         # Session cost aggregation
   lib/
+    ansi.ts            # ANSI → HTML parsing
+    format.ts          # Formatting helpers (duration, tokens, etc.)
+    log.ts             # Log parsing and event utilities
+    providerHealth.ts  # Provider health state helpers
+    types.ts           # Shared TypeScript interfaces
     utils.ts           # cn() and shared utilities
   test-setup.ts        # Vitest + Testing Library setup
 ```
@@ -120,6 +145,7 @@ dashboard/src/
 - **Colocate tests:** `App.test.tsx` next to `App.tsx`.
 - **Coverage tests:** `App.coverage.test.ts` for coverage-specific scenarios.
 - Feature components go in `components/` (not in `ui/`).
+- **Target: ~150 LOC per file.** Files above 200 LOC should be split. See SPEC-ADDENDUM.md for the full decomposition plan.
 
 ## Accessibility
 
@@ -127,6 +153,9 @@ dashboard/src/
 - **All interactive elements must be keyboard accessible.**
 - **Color is not the only indicator.** Use icons or text alongside color signals.
 - **Test with keyboard navigation** — Tab, Enter, Escape, Arrow keys.
+- **Tap target sizing on mobile (WCAG 2.5.5):** Every interactive element that is primary on mobile must have `min-h-[44px] md:min-h-0` (and `min-w-[44px] md:min-w-0` for icon-only elements). The `md:min-h-0` removes the constraint at ≥768px where pointer precision is assumed. Do not use inline styles or arbitrary pixel values — use the Tailwind class.
+- **Use semantic elements for interactivity.** Clickable rows and custom controls must be `<button type="button">` (not `<div onClick>`). If a non-button element must be interactive, add `role="button" tabIndex={0}` and an `onKeyDown` handler for `Enter`/`Space`.
+- **No hover-only interactions.** Every hover affordance (tooltip, hover card) must also activate on tap/click. Use `useIsTouchDevice` to detect touch and switch to tap-toggle behavior.
 
 ## Performance
 
