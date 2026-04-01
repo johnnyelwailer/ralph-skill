@@ -6,7 +6,7 @@
 
 - [x] [review] **Gate 1 / CONSTITUTION Rule 12 — RESOLVED**: Reverted `bb8fce584` (loop.sh model default change, out-of-scope for issue #114). Filed dedicated issue #284 for the fix: https://github.com/johnnyelwailer/ralph-skill/issues/284 [reviewed: gates 1-9 pass]
 
-### Spec Review — APPROVED (2026-04-01, re-confirmed 2026-04-01, re-confirmed 2026-04-01 post-docs-e2c994432, re-confirmed 2026-04-01 final-review, re-confirmed 2026-04-01 post-final-qa, re-confirmed 2026-04-01 final-review post-final-qa, re-confirmed 2026-04-01 post-fixture-event, re-confirmed 2026-04-01 final-review post-fixture-event, re-confirmed 2026-04-01 post-fixture-timestamp-event, re-confirmed 2026-04-01 final-review post-fixture-timestamp-event) [reviewed: gates 1-9 pass]
+### Spec Review — APPROVED (2026-04-01, re-confirmed 2026-04-01, re-confirmed 2026-04-01 post-docs-e2c994432, re-confirmed 2026-04-01 final-review, re-confirmed 2026-04-01 post-final-qa, re-confirmed 2026-04-01 final-review post-final-qa, re-confirmed 2026-04-01 post-fixture-event, re-confirmed 2026-04-01 final-review post-fixture-event, re-confirmed 2026-04-01 post-fixture-timestamp-event, re-confirmed 2026-04-01 final-review post-fixture-timestamp-event, re-confirmed 2026-04-01 post-docs-0451a1638) [reviewed: gates 1-9 pass]
 
 All 9 SPEC-ADDENDUM.md §Dashboard Responsiveness acceptance criteria verified PASS:
 - AC1: No horizontal scroll at 320px — PASS (Playwright QA_COVERAGE, multiple commits)
