@@ -1,5 +1,34 @@
 # Review Log
 
+## Review — 2026-04-01 18:20 — commit f3bd8b5bc..2fab81e3c
+
+**Verdict: PASS** (docs-only changes; no code changes since last review)
+**Scope:** `README.md` + `docs/conventions/FRONTEND.md` (docs sync `37fe49717`), `QA_COVERAGE.md` + `QA_LOG.md` (final-qa `b17dca85f`), `TODO.md` (spec-review re-confirmation `2fab81e3c`)
+
+**Commits since last review (`f3bd8b5bc`):**
+- `b17dca85f` — chore(qa): QA_COVERAGE.md + QA_LOG.md final-qa re-verification
+- `37fe49717` — docs: README add STEERING.md to viewer list + command palette; FRONTEND.md clarify react-resizable-panels
+- `2fab81e3c` — chore(review): TODO.md spec-review re-confirmation post-docs-sync
+
+**Prior findings from last review (2026-04-01 17:58):** All resolved — no carry-over items.
+
+**Gate results:**
+- Gate 1 (Spec Compliance): PASS — docs-only; no implementation changes; all 9 SPEC-ADDENDUM.md ACs still verified
+- Gate 2 (Test Depth): PASS — no test changes; 158 tests unchanged
+- Gate 3 (Coverage): PASS — no new code
+- Gate 4 (Code Quality): PASS — docs corrections; no dead code
+- Gate 5 (Integration Sanity): PASS — no code changes since 158-test pass at `f3bd8b5bc`
+- Gate 6 (Proof Verification): PASS — docs-only; skip with empty artifacts is correct outcome
+- Gate 7 (Runtime Layout): PASS — no layout changes
+- Gate 8 (Version Compliance): PASS — no dependency changes
+- Gate 9 (Documentation Freshness): PASS — `37fe49717` claims verified: (a) STEERING.md in viewer: `AppView.tsx:555` docOrder array includes `'STEERING.md'` ✓; (b) CommandPalette (Cmd+K) in AppView: `AppView.tsx:920` function `CommandPalette`, `AppView.tsx:1384` rendered ✓; (c) react-resizable-panels wrapper not wired into layout: `components/ui/resizable.tsx` exists but no import in AppView.tsx ✓. All doc claims accurate.
+
+**Concrete observation:** Gate 9 — `37fe49717` corrects two doc gaps that were factually inaccurate: (1) STEERING.md was already in the DocsPanel since `AppView.tsx:555` added it, but README omitted it; (2) command palette (`CommandPalette` at `AppView.tsx:920`) was implemented but undocumented in README. Both additions are exact matches to the implementation. FRONTEND.md clarification about react-resizable-panels is also accurate — wrapper at `components/ui/resizable.tsx` exists but AppView uses CSS flex directly.
+
+**PR_DESCRIPTION.md:** Updated to include STEERING.md and command palette in the README files-changed entry.
+
+---
+
 ## Review — 2026-04-01 08:45 — commit a71a3369d..ab37c1774
 
 **Verdict: FAIL** (2 findings → written to TODO.md as [review] tasks)
