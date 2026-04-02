@@ -2874,6 +2874,10 @@ function createMockAdapter(overrides: Partial<OrchestratorAdapter> = {}): Orches
     mergePR: async (number: number, method: string) => {
       calls.push({ method: 'mergePR', args: [number, method] });
     },
+    listPRs: async (filters: Record<string, unknown>) => {
+      calls.push({ method: 'listPRs', args: [filters] });
+      return [];
+    },
     getPRStatus: async (number: number) => {
       calls.push({ method: 'getPRStatus', args: [number] });
       return { mergeable: true, ci_status: 'success' as const, reviews: [] };

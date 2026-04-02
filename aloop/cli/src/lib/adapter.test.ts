@@ -230,6 +230,56 @@ describe('GitHubAdapter', () => {
     });
   });
 
+  describe('listPRs', () => {
+    it('lists PRs with default filters', async () => {
+      const execGh = mockGh({
+        'pr list': {
+          stdout: JSON.stringify([
+            { number: 1, url: 'https://github.com/owner/repo/pull/1', title: 'PR 1', state: 'OPEN', headRefName: 'feat-a', baseRefName: 'main' },
+            { number: 2, url: 'https://github.com/owner/repo/pull/2', title: 'PR 2', state: 'OPEN', headRefName: 'feat-b', baseRefName: 'main' },
+          ]),
+          stderr: '',
+        },
+      });
+      const adapter = new GitHubAdapter(config, execGh);
+      const prs = await adapter.listPRs({});
+      assert.equal(prs.length, 2);
+      assert.equal(prs[0].number, 1);
+      assert.equal(prs[1].number, 2);
+    });
+
+    it('filters by head branch', async () => {
+      let calledArgs: string[] = [];
+      const execGh: GhExecFn = async (args) => {
+        calledArgs = args;
+        return { stdout: JSON.stringify([{ number: 5, url: 'https://github.com/owner/repo/pull/5', title: 'Dup PR', state: 'OPEN', headRefName: 'feat-x', baseRefName: 'main' }]), stderr: '' };
+      };
+      const adapter = new GitHubAdapter(config, execGh);
+      const prs = await adapter.listPRs({ head: 'feat-x', state: 'all' });
+      assert.ok(calledArgs.includes('--head'));
+      assert.ok(calledArgs.includes('feat-x'));
+      assert.equal(prs.length, 1);
+      assert.equal(prs[0].number, 5);
+    });
+
+    it('passes state filter to gh', async () => {
+      let calledArgs: string[] = [];
+      const execGh: GhExecFn = async (args) => { calledArgs = args; return { stdout: '[]', stderr: '' }; };
+      const adapter = new GitHubAdapter(config, execGh);
+      await adapter.listPRs({ state: 'closed' });
+      assert.ok(calledArgs.includes('closed'));
+    });
+
+    it('returns empty array when no PRs found', async () => {
+      const execGh = mockGh({
+        'pr list': { stdout: '[]', stderr: '' },
+      });
+      const adapter = new GitHubAdapter(config, execGh);
+      const prs = await adapter.listPRs({});
+      assert.equal(prs.length, 0);
+    });
+  });
+
   describe('mergePR', () => {
     it('merges with squash by default', async () => {
       let calledArgs: string[] = [];

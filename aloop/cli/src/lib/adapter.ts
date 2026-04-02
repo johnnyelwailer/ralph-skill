@@ -45,6 +45,7 @@ export interface OrchestratorAdapter {
   // PR lifecycle
   createPR(title: string, body: string, head: string, base: string): Promise<{ number: number; url: string }>;
   mergePR(number: number, method: 'squash' | 'merge' | 'rebase'): Promise<void>;
+  listPRs(filters: { head?: string; state?: 'open' | 'closed' | 'all' }): Promise<Array<{ number: number; url: string; title: string; state: string; headRefName: string; baseRefName: string }>>;
   getPRStatus(number: number): Promise<{ mergeable: boolean; ci_status: 'success' | 'failure' | 'pending'; reviews: Array<{ verdict: string }> }>;
   getPrChecks(prNumber: number): Promise<PrChecksResult>;
 
@@ -263,6 +264,35 @@ export class GitHubAdapter implements OrchestratorAdapter {
   async mergePR(number: number, method: 'squash' | 'merge' | 'rebase'): Promise<void> {
     const args = ['pr', 'merge', String(number), '--repo', this.repo, `--${method}`, '--delete-branch'];
     await this.execGh(args);
+  }
+
+  async listPRs(filters: { head?: string; state?: 'open' | 'closed' | 'all' }): Promise<Array<{ number: number; url: string; title: string; state: string; headRefName: string; baseRefName: string }>> {
+    const args = [
+      'pr', 'list', '--repo', this.repo,
+      '--state', filters?.state ?? 'open',
+      '--json', 'number,url,title,state,headRefName,baseRefName',
+      '--limit', '100',
+    ];
+    if (filters?.head) {
+      args.push('--head', filters.head);
+    }
+    const result = await this.execGh(args);
+    const items = JSON.parse(result.stdout) as Array<{
+      number: number;
+      url: string;
+      title: string;
+      state: string;
+      headRefName: string;
+      baseRefName: string;
+    }>;
+    return items.map((item) => ({
+      number: item.number,
+      url: item.url,
+      title: item.title,
+      state: item.state,
+      headRefName: item.headRefName,
+      baseRefName: item.baseRefName,
+    }));
   }
 
   async getPRStatus(prNumber: number): Promise<{ mergeable: boolean; ci_status: 'success' | 'failure' | 'pending'; reviews: Array<{ verdict: string }> }> {
