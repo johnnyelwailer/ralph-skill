@@ -2779,12 +2779,14 @@ describe('dispatchChildLoops', () => {
 function createMockPrDeps(overrides: Partial<PrLifecycleDeps> = {}): PrLifecycleDeps & { logs: Record<string, unknown>[]; writtenFiles: Record<string, string> } {
   const logs: Record<string, unknown>[] = [];
   const writtenFiles: Record<string, string> = {};
+  const mockAdapter = createMockAdapter();
   return {
     execGh: async () => ({ stdout: '', stderr: '' }),
     readFile: async () => '',
     writeFile: async (p: string, data: string) => { writtenFiles[p] = data; },
     now: () => new Date('2026-03-09T12:00:00Z'),
     appendLog: (_dir: string, entry: Record<string, unknown>) => { logs.push(entry); },
+    adapter: mockAdapter,
     ...overrides,
     logs,
     writtenFiles,
@@ -2889,6 +2891,13 @@ function createMockAdapter(overrides: Partial<OrchestratorAdapter> = {}): Orches
         pending: false,
         checks: [{ name: 'build', status: 'COMPLETED', conclusion: 'SUCCESS' }],
       };
+    },
+    closePR: async (number: number, comment?: string) => {
+      calls.push({ method: 'closePR', args: [number, comment] });
+    },
+    getPrDiff: async (number: number) => {
+      calls.push({ method: 'getPrDiff', args: [number] });
+      return '';
     },
     ...trackedOverrides,
   };
@@ -3138,9 +3147,10 @@ describe('reviewPrDiff', () => {
   });
 
   it('returns pending when diff fetch fails', async () => {
-    const deps = createMockPrDeps({
-      execGh: async () => { throw new Error('Not found'); },
+    const adapter = createMockAdapter({
+      getPrDiff: async () => { throw new Error('Not found'); },
     });
+    const deps = createMockPrDeps({ adapter });
     const result = await reviewPrDiff(100, 'owner/repo', deps);
     assert.equal(result.verdict, 'pending');
     assert.ok(result.summary.includes('PR diff fetch failed'));

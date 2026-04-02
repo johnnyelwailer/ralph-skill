@@ -3105,19 +3105,20 @@ export interface PrMergeResult {
 }
 
 export interface PrLifecycleDeps {
-  execGh: (args: string[]) => Promise<{ stdout: string; stderr: string }>;
+  execGh?: (args: string[]) => Promise<{ stdout: string; stderr: string }>;
   readFile: (path: string, encoding: BufferEncoding) => Promise<string>;
   writeFile: (path: string, data: string, encoding: BufferEncoding) => Promise<void>;
   now: () => Date;
   appendLog: (sessionDir: string, entry: Record<string, unknown>) => void;
   /** Run an agent review against a PR diff. Returns the verdict and summary. */
   invokeAgentReview?: (prNumber: number, repo: string, diff: string) => Promise<AgentReviewResult>;
-  adapter?: OrchestratorAdapter;
+  adapter: OrchestratorAdapter;
 }
 
 const ORCHESTRATOR_CI_PERSISTENCE_LIMIT = 3;
 
 async function hasGithubActionsWorkflows(repo: string, deps: PrLifecycleDeps): Promise<boolean> {
+  if (!deps.execGh) return false;
   try {
     const response = await deps.execGh([
       'api', `repos/${repo}/actions/workflows`, '--method', 'GET', '--jq', '.total_count',
@@ -3144,7 +3145,7 @@ export async function checkPrGates(
   // Gate 1: Mergeability (conflict check)
   let mergeable = false;
   try {
-    const status = await deps.adapter!.getPRStatus(prNumber);
+    const status = await deps.adapter.getPRStatus(prNumber);
     mergeable = status.mergeable;
     gates.push({
       gate: 'merge_conflicts',
@@ -3159,7 +3160,7 @@ export async function checkPrGates(
 
   // Gate 2: CI checks (covers CI pipeline, coverage, lint/type check)
   try {
-    const prChecks = await deps.adapter!.getPrChecks(prNumber);
+    const prChecks = await deps.adapter.getPrChecks(prNumber);
     if (prChecks.checks.length === 0) {
       if (ciWorkflowsConfigured) {
         gates.push({ gate: 'ci_checks', status: 'pending', detail: 'CI workflows configured but no check runs reported yet' });
@@ -3202,11 +3203,10 @@ export async function reviewPrDiff(
   repo: string,
   deps: PrLifecycleDeps,
 ): Promise<AgentReviewResult> {
-  // Get the PR diff
+  // Get the PR diff via adapter
   let diff: string;
   try {
-    const diffResult = await deps.execGh(['pr', 'diff', String(prNumber), '--repo', repo]);
-    diff = diffResult.stdout;
+    diff = await deps.adapter.getPrDiff(prNumber);
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
     // API error — retry next pass, don't permanently fail
@@ -3238,7 +3238,7 @@ export async function mergePr(
   deps: PrLifecycleDeps,
 ): Promise<PrMergeResult> {
   try {
-    await deps.adapter!.mergePR(prNumber, 'squash');
+    await deps.adapter.mergePR(prNumber, 'squash');
     return { pr_number: prNumber, merged: true };
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
@@ -3312,8 +3312,8 @@ export async function flagForHuman(
 ): Promise<void> {
   const body = `Flagged for human resolution: ${reason}`;
   try {
-    await deps.adapter!.postComment(issue.number, body);
-    await deps.adapter!.updateIssue(issue.number, { labels_add: ['aloop/blocked-on-human'] });
+    await deps.adapter.postComment(issue.number, body);
+    await deps.adapter.updateIssue(issue.number, { labels_add: ['aloop/blocked-on-human'] });
   } catch {
     // Best-effort labeling
   }
@@ -3422,8 +3422,8 @@ export async function processPrLifecycle(
       if (retries >= ORCHESTRATOR_CI_PERSISTENCE_LIMIT) {
         // Close the PR and reset for fresh attempt instead of permanent failure
         try {
-          await deps.execGh(['pr', 'close', String(prNumber), '--repo', repo, '--comment',
-            `Closing: persistent CI failure after ${retries} attempts: ${ciFailure.detail}. Will re-dispatch fresh.`]);
+          await deps.adapter.closePR(prNumber,
+            `Closing: persistent CI failure after ${retries} attempts: ${ciFailure.detail}. Will re-dispatch fresh.`);
         } catch { /* best-effort */ }
 
         stateIssue.state = 'pending';
@@ -3462,7 +3462,7 @@ export async function processPrLifecycle(
         ? ` CI retry ${stateIssue.ci_failure_retries ?? 1}/${ORCHESTRATOR_CI_PERSISTENCE_LIMIT} before human escalation.`
         : '';
       const commentBody = `PR #${prNumber} failed gates: ${failDetail}.${ciRetryNote} Please address and update the PR.`;
-      await deps.adapter!.postComment(issue.number, commentBody);
+      await deps.adapter.postComment(issue.number, commentBody);
     } catch {
       // Best-effort comment
     }
@@ -3497,7 +3497,7 @@ export async function processPrLifecycle(
     const alreadyCommented = (stateIssue as any)?.last_review_comment === reviewResult.summary;
     if (!alreadyCommented) {
       try {
-        await deps.adapter!.postComment(prNumber, `Agent review requested changes:\n\n${reviewResult.summary}`);
+        await deps.adapter.postComment(prNumber, `Agent review requested changes:\n\n${reviewResult.summary}`);
       } catch {
         // Best-effort
       }
@@ -3552,7 +3552,7 @@ export async function processPrLifecycle(
 
     // Close the issue
     try {
-      await deps.adapter!.closeIssue(issue.number);
+      await deps.adapter.closeIssue(issue.number);
     } catch {
       // Best-effort close
     }

@@ -45,9 +45,11 @@ export interface OrchestratorAdapter {
   // PR lifecycle
   createPR(title: string, body: string, head: string, base: string): Promise<{ number: number; url: string }>;
   mergePR(number: number, method: 'squash' | 'merge' | 'rebase'): Promise<void>;
+  closePR(number: number, comment?: string): Promise<void>;
   listPRs(filters: { head?: string; state?: 'open' | 'closed' | 'all' }): Promise<Array<{ number: number; url: string; title: string; state: string; headRefName: string; baseRefName: string }>>;
   getPRStatus(number: number): Promise<{ mergeable: boolean; ci_status: 'success' | 'failure' | 'pending'; reviews: Array<{ verdict: string }> }>;
   getPrChecks(prNumber: number): Promise<PrChecksResult>;
+  getPrDiff(prNumber: number): Promise<string>;
 
   // Project status (optional)
   setIssueStatus?(number: number, status: string): Promise<void>;
@@ -266,6 +268,14 @@ export class GitHubAdapter implements OrchestratorAdapter {
     await this.execGh(args);
   }
 
+  async closePR(number: number, comment?: string): Promise<void> {
+    const args = ['pr', 'close', String(number), '--repo', this.repo];
+    if (comment) {
+      args.push('--comment', comment);
+    }
+    await this.execGh(args);
+  }
+
   async listPRs(filters: { head?: string; state?: 'open' | 'closed' | 'all' }): Promise<Array<{ number: number; url: string; title: string; state: string; headRefName: string; baseRefName: string }>> {
     const args = [
       'pr', 'list', '--repo', this.repo,
@@ -341,6 +351,11 @@ export class GitHubAdapter implements OrchestratorAdapter {
       pending,
       checks: checks.map((c) => ({ name: c.name, status: c.status, conclusion: c.conclusion })),
     };
+  }
+
+  async getPrDiff(prNumber: number): Promise<string> {
+    const result = await this.execGh(['pr', 'diff', String(prNumber), '--repo', this.repo]);
+    return result.stdout;
   }
 
   async postComment(issueNumber: number, body: string): Promise<void> {

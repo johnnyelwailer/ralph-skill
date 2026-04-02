@@ -997,7 +997,7 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
     etagCache,
     aloopRoot,
     adapter,
-    prLifecycleDeps: {
+    prLifecycleDeps: adapter ? {
       execGh,
       readFile: (p: string, enc: BufferEncoding) => readFile(p, enc),
       writeFile: (p: string, data: string, enc: BufferEncoding) => writeFile(p, data, enc),
@@ -1016,7 +1016,7 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
         unlink,
         adapter,
       }),
-    },
+    } : undefined,
     dispatchDeps: {
       existsSync,
       readFile: (p: string, enc: BufferEncoding) => readFile(p, enc),
