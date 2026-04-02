@@ -197,6 +197,22 @@ All prior findings resolved. Gate 2: tests now assert exact `model.name` — tho
 
 - Claude hint: Use parallel subagents when large searches are needed; summarize before coding.
 
+## PR_DESCRIPTION.md
+
+When the review produces findings (pass or fail), generate a `PR_DESCRIPTION.md` file in the worktree root summarizing the changes for pull request context.
+
+### Format
+
+```markdown
+# PR Description
+
+## Summary
+<1-3 bullet points describing what was changed and why>
+
+## Verification
+<how the changes were validated: tests run, coverage, manual checks>
+```
+
 ## Rules
 
 - **Review only what changed.** Review only the most recent build iterations work, SINCE LAST REVIEW (multiple build iterations may have passed since last review, if no review has happened yet, review ALL).

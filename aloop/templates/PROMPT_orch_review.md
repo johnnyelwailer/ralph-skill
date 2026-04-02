@@ -23,6 +23,12 @@ The orchestrator review is NOT a line-by-line code review (the child's own revie
 4. Evaluate each of the 5 review dimensions above.
 5. Write your verdict.
 
+## Acceptance Criteria Verification
+
+For each acceptance criterion listed in the issue:
+- Mark it as **verified** only if the PR diff provides concrete evidence (code path, test, or observable behavior) that the criterion is met.
+- Mark any criterion as **NOT verified** if you cannot find evidence in the diff or tests. Unverified criteria require `request-changes` — the child must add proof or implementation before merge.
+
 ## Rules
 
 - When in doubt, `request-changes`. It's cheaper to re-iterate than to revert a bad merge.
