@@ -2494,10 +2494,10 @@ describe('launchChildLoop', () => {
   it('creates worktree with correct branch name', async () => {
     const deps = createMockDispatchDeps();
     await launchChildLoop(issue, '/sessions/orch-1', '/project', 'myapp', '/project/.aloop/prompts', '/home/.aloop', deps);
-    const gitCall = deps._spawnSyncCalls.find((c) => c.command === 'git');
-    assert.ok(gitCall, 'git worktree add should be called');
-    assert.ok(gitCall.args.includes('-b'));
-    assert.ok(gitCall.args.includes('aloop/issue-42'));
+    const worktreeCall = deps._spawnSyncCalls.find((c) => c.command === 'git' && c.args.includes('worktree') && c.args.includes('add'));
+    assert.ok(worktreeCall, 'git worktree add should be called');
+    assert.ok(worktreeCall.args.includes('-b'));
+    assert.ok(worktreeCall.args.includes('aloop/issue-42'));
   });
 
   it('seeds TODO.md in worktree', async () => {
@@ -2594,22 +2594,22 @@ describe('launchChildLoop', () => {
     assert.ok(deps._spawnCalls.some((c) => c.command.endsWith('loop.sh')));
   });
 
-  it('seeds SPEC.md from issue body in worktree', async () => {
+  it('seeds TASK_SPEC.md from issue body in worktree', async () => {
     const issueWithBody = makeIssue({ number: 42, title: 'Add feature X', body: '## Requirements\n\n- Support login\n- Handle errors' });
     const deps = createMockDispatchDeps();
     await launchChildLoop(issueWithBody, '/sessions/orch-1', '/project', 'myapp', '/project/.aloop/prompts', '/home/.aloop', deps);
-    const specFile = Object.keys(deps._writtenFiles).find((p) => p.endsWith('/worktree/SPEC.md'));
-    assert.ok(specFile, 'SPEC.md should be written to child worktree');
+    const specFile = Object.keys(deps._writtenFiles).find((p) => p.endsWith('/worktree/TASK_SPEC.md'));
+    assert.ok(specFile, 'TASK_SPEC.md should be written to child worktree');
     assert.ok(deps._writtenFiles[specFile].includes('Issue #42'));
     assert.ok(deps._writtenFiles[specFile].includes('Support login'));
   });
 
-  it('does not seed SPEC.md when issue has no body', async () => {
+  it('does not seed TASK_SPEC.md when issue has no body', async () => {
     const issueNoBody = makeIssue({ number: 42, title: 'Add feature X', body: undefined });
     const deps = createMockDispatchDeps();
     await launchChildLoop(issueNoBody, '/sessions/orch-1', '/project', 'myapp', '/project/.aloop/prompts', '/home/.aloop', deps);
-    const specFile = Object.keys(deps._writtenFiles).find((p) => p.endsWith('/worktree/SPEC.md'));
-    assert.equal(specFile, undefined, 'SPEC.md should not be written when issue body is empty');
+    const specFile = Object.keys(deps._writtenFiles).find((p) => p.endsWith('/worktree/TASK_SPEC.md'));
+    assert.equal(specFile, undefined, 'TASK_SPEC.md should not be written when issue body is empty');
   });
 
   it('compiles loop-plan.json for child session', async () => {
@@ -3939,14 +3939,14 @@ describe('queueGapAnalysisForIssues', () => {
     const productContent = writtenFiles['/queue/gap-analysis-product.md'];
     assert.match(productContent, /orch_product_analyst/);
     assert.match(productContent, /# Product Prompt/);
-    assert.match(productContent, /# Spec content here/);
+    assert.match(productContent, /Read SPEC\.md and SPEC-ADDENDUM\.md from the project working directory/);
     assert.match(productContent, /Issue #10: Auth/);
     assert.match(productContent, /Implement auth/);
 
     const archContent = writtenFiles['/queue/gap-analysis-architecture.md'];
     assert.match(archContent, /orch_arch_analyst/);
     assert.match(archContent, /# Arch Prompt/);
-    assert.match(archContent, /# Spec content here/);
+    assert.match(archContent, /Read SPEC\.md and SPEC-ADDENDUM\.md from the project working directory/);
   });
 
   it('returns 0 when no issues need analysis', async () => {
@@ -4006,7 +4006,7 @@ describe('epic and sub-issue decomposition helpers', () => {
     assert.ok(content);
     assert.match(content, /orch_decompose/);
     assert.match(content, /# Decompose prompt/);
-    assert.match(content, /# Spec body/);
+    assert.match(content, /Read the spec files listed above from the project working directory/);
   });
 
   it('writes sub-issue decomposition request for Needs decomposition targets only', async () => {
@@ -5562,10 +5562,9 @@ describe('orchestrateCommandWithDeps multi-file spec', () => {
     const decomposeFile = Object.keys(writtenFiles).find((k) => k.includes('decompose-epics.md'));
     assert.ok(decomposeFile, 'decompose-epics.md should be queued');
     const content = writtenFiles[decomposeFile];
-    assert.ok(content.includes('Master Spec'), 'should include master spec content');
-    assert.ok(content.includes('Auth Slice'), 'should include auth slice content');
-    assert.ok(content.includes('<!-- spec: SPEC.md -->'), 'should include spec file header for master');
-    assert.ok(content.includes('<!-- spec: auth.md -->'), 'should include spec file header for auth');
+    assert.ok(content.includes('orch_decompose'), 'should include decompose agent frontmatter');
+    assert.ok(content.includes('Spec Files'), 'should reference spec files by path');
+    assert.ok(content.includes('Read the spec files listed above'), 'should instruct agent to read files');
   });
 });
 
