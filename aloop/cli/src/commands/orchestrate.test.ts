@@ -6555,7 +6555,6 @@ describe('applyEstimateResults adapter path', () => {
     await applyEstimateResults(state, results, {
       adapter,
       repo: 'owner/repo',
-      execGh: async () => { throw new Error('execGh should not be called'); },
     });
     const updateCalls = adapter.calls.filter((c) => c.method === 'updateIssue');
     assert.equal(updateCalls.length, 1);
@@ -6577,7 +6576,6 @@ describe('applyEstimateResults adapter path', () => {
       adapter,
       repo: 'owner/repo',
       sessionId: 'orch-session-1',
-      execGhIssueCreate: async () => { throw new Error('execGhIssueCreate should not be called'); },
     });
     const createCalls = adapter.calls.filter((c) => c.method === 'createIssue');
     assert.equal(createCalls.length, 2);

@@ -1139,7 +1139,6 @@ export async function orchestrateCommandWithDeps(
     try {
       const estimateResults = JSON.parse(responseContent) as EstimateResult[];
       await applyEstimateResults(state, estimateResults, {
-        execGh: deps.execGh,
         now: deps.now,
         repo: filterRepo ?? undefined,
         sessionId,
@@ -2082,14 +2081,12 @@ export function resolveRefinementBudgetAction(
  *  - If DoR passes: sets dor_validated=true and transitions status to 'Ready'
  *  - If DoR fails: keeps status at 'Needs refinement' and records gaps
  *
- * Optionally creates aloop/spec-question issues for DoR gaps when execGhIssueCreate is provided.
+ * Optionally creates aloop/spec-question issues for DoR gaps when adapter is provided.
  */
 export async function applyEstimateResults(
   state: OrchestratorState,
   results: EstimateResult[],
   deps?: {
-    execGhIssueCreate?: (repo: string, sessionId: string, title: string, body: string, labels: string[]) => Promise<number>;
-    execGh?: (args: string[]) => Promise<{ stdout: string; stderr: string }>;
     appendLog?: (sessionDir: string, entry: Record<string, unknown>) => void;
     now?: () => Date;
     repo?: string;
