@@ -27,6 +27,7 @@ interface LoopSettings {
   cost_per_iteration_usd?: number;
   budget_approaching_threshold?: number;
   qa_coverage_gate_max_untested_pct?: number;
+  concurrency_cap?: number;
 }
 
 interface LoopPlan {
@@ -322,6 +323,7 @@ async function readLoopSettingsFromPipeline(
       { key: 'cost_per_iteration_usd', set: (s, v) => { s.cost_per_iteration_usd = v; } },
       { key: 'budget_approaching_threshold', set: (s, v) => { s.budget_approaching_threshold = v; } },
       { key: 'qa_coverage_gate_max_untested_pct', set: (s, v) => { s.qa_coverage_gate_max_untested_pct = v; } },
+      { key: 'concurrency_cap', set: (s, v) => { s.concurrency_cap = v; } },
     ];
     for (const { key, set } of numFields) {
       if (typeof loop[key] === 'number') {

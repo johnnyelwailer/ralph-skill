@@ -114,6 +114,10 @@ $script:PhaseRetriesMin = 2
 $script:CostPerIterationUsd = 0.50
 $script:BudgetApproachingThreshold = 0.8
 $script:QaCoverageGateMaxUntestedPct = 30
+$script:TriageInterval = 5
+$script:ScanPassThrottleMs = 30000
+$script:ConcurrencyCap = 3
+$script:RateLimitBackoff = 'fixed'
 
 function Load-LoopSettings {
     $loopPlanFile = Join-Path $SessionDir 'loop-plan.json'
@@ -137,6 +141,12 @@ function Load-LoopSettings {
         if ($null -ne $s.cost_per_iteration_usd) { $script:CostPerIterationUsd = [double]$s.cost_per_iteration_usd }
         if ($null -ne $s.budget_approaching_threshold) { $script:BudgetApproachingThreshold = [double]$s.budget_approaching_threshold }
         if ($null -ne $s.qa_coverage_gate_max_untested_pct) { $script:QaCoverageGateMaxUntestedPct = [int]$s.qa_coverage_gate_max_untested_pct }
+        if ($null -ne $s.triage_interval) { $script:TriageInterval = [int]$s.triage_interval }
+        if ($null -ne $s.scan_pass_throttle_ms) { $script:ScanPassThrottleMs = [int]$s.scan_pass_throttle_ms }
+        if ($null -ne $s.concurrency_cap) { $script:ConcurrencyCap = [int]$s.concurrency_cap }
+        if ($s.rate_limit_backoff -and $s.rate_limit_backoff -in @('exponential', 'linear', 'fixed')) {
+            $script:RateLimitBackoff = $s.rate_limit_backoff
+        }
         if ($s.cooldown_ladder -and $s.cooldown_ladder.Count -ge 2) {
             $script:CooldownLadder = @($s.cooldown_ladder | ForEach-Object { [int]$_ })
         }
@@ -170,6 +180,12 @@ function Refresh-LoopSettingsFromMeta {
         if ($null -ne $s.cost_per_iteration_usd) { $script:CostPerIterationUsd = [double]$s.cost_per_iteration_usd }
         if ($null -ne $s.budget_approaching_threshold) { $script:BudgetApproachingThreshold = [double]$s.budget_approaching_threshold }
         if ($null -ne $s.qa_coverage_gate_max_untested_pct) { $script:QaCoverageGateMaxUntestedPct = [int]$s.qa_coverage_gate_max_untested_pct }
+        if ($null -ne $s.triage_interval) { $script:TriageInterval = [int]$s.triage_interval }
+        if ($null -ne $s.scan_pass_throttle_ms) { $script:ScanPassThrottleMs = [int]$s.scan_pass_throttle_ms }
+        if ($null -ne $s.concurrency_cap) { $script:ConcurrencyCap = [int]$s.concurrency_cap }
+        if ($s.rate_limit_backoff -and $s.rate_limit_backoff -in @('exponential', 'linear', 'fixed')) {
+            $script:RateLimitBackoff = $s.rate_limit_backoff
+        }
         if ($s.cooldown_ladder -and $s.cooldown_ladder.Count -ge 2) {
             $script:CooldownLadder = @($s.cooldown_ladder | ForEach-Object { [int]$_ })
         }

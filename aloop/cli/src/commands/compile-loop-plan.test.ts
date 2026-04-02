@@ -867,6 +867,7 @@ test('compileLoopPlan — includes loopSettings from pipeline.yml in loop-plan.j
       '  scan_pass_throttle_ms: 45000',
       '  rate_limit_backoff: exponential',
       '  provider_timeout: 10800',
+      '  concurrency_cap: 7',
     ].join('\n'),
     'utf8',
   );
@@ -893,6 +894,7 @@ test('compileLoopPlan — includes loopSettings from pipeline.yml in loop-plan.j
   assert.equal(loopPlanJson.loopSettings.scan_pass_throttle_ms, 45000);
   assert.equal(loopPlanJson.loopSettings.rate_limit_backoff, 'exponential');
   assert.equal(loopPlanJson.loopSettings.provider_timeout, 10800);
+  assert.equal(loopPlanJson.loopSettings.concurrency_cap, 7);
 });
 
 test('compileLoopPlan — omits loopSettings when pipeline.yml has no loop section', async () => {
