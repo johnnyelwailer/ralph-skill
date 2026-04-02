@@ -286,7 +286,7 @@ load_loop_settings() {
     if [ ! -f "$LOOP_PLAN_FILE" ] || ! command -v python3 >/dev/null 2>&1; then
         return
     fi
-    python3 - "$LOOP_PLAN_FILE" <<'PY'
+    python3 - "$LOOP_PLAN_FILE" <<'PY' | while IFS= read -r line; do eval "$line"; done
 import json, sys
 path = sys.argv[1]
 with open(path) as f:
@@ -332,7 +332,6 @@ if isinstance(hl, list) and len(hl) >= 2:
     if vals:
         print(f'HEALTH_LOCK_RETRY_DELAYS=({vals})')
 PY
-    | while IFS= read -r line; do eval "$line"; done
 }
 
 # Initialize configurable settings with defaults
@@ -363,7 +362,7 @@ refresh_loop_settings_from_meta() {
     if [ ! -f "$meta_file" ] || ! command -v python3 >/dev/null 2>&1; then
         return
     fi
-    python3 - "$meta_file" <<'PY'
+    python3 - "$meta_file" <<'PY' | while IFS= read -r line; do eval "$line"; done
 import json, sys
 path = sys.argv[1]
 with open(path) as f:
@@ -409,7 +408,6 @@ if isinstance(hl, list) and len(hl) >= 2:
     if vals:
         print(f'HEALTH_LOCK_RETRY_DELAYS=({vals})')
 PY
-    | while IFS= read -r line; do eval "$line"; done
 }
 
 # Re-read provider list from meta.json each iteration (supports hot-reload)
