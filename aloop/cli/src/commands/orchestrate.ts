@@ -18,6 +18,17 @@ import {
 import { deriveComponentLabels } from '../lib/labels.js';
 import { buildPrBody } from '../lib/issue-metadata.js';
 
+// Configurable priority mapping — loaded from loop-plan.json or pipeline.yml
+let _priorityCritical = 100;
+let _priorityHigh = 50;
+let _priorityLow = -10;
+
+function loadPriorityFromSettings(loopSettings: Record<string, unknown>): void {
+  if (typeof loopSettings.priority_critical === 'number') _priorityCritical = loopSettings.priority_critical;
+  if (typeof loopSettings.priority_high === 'number') _priorityHigh = loopSettings.priority_high;
+  if (typeof loopSettings.priority_low === 'number') _priorityLow = loopSettings.priority_low;
+}
+
 export interface OrchestrateCommandOptions {
   spec?: string;
   concurrency?: string;
@@ -550,6 +561,9 @@ export interface OrchestratorSettings {
   triage_interval: number;
   scan_pass_throttle_ms: number;
   rate_limit_backoff: 'exponential' | 'linear' | 'fixed';
+  priority_critical: number;
+  priority_high: number;
+  priority_low: number;
 }
 
 export async function resolveOrchestratorSettingsFromConfig(
@@ -591,7 +605,24 @@ export async function resolveOrchestratorSettingsFromConfig(
     rateLimitBackoff = fromYml ? parseRateLimitBackoff(fromYml) : DEFAULT_LOOP_SETTINGS.rate_limit_backoff;
   }
 
-  return { concurrency_cap: concurrencyCap, triage_interval: triageInterval, scan_pass_throttle_ms: scanPassThrottleMs, rate_limit_backoff: rateLimitBackoff };
+  const parsePriority = (key: string, fallback: number): number => {
+    const fromYml = parseConfigScalar(ymlContent, key);
+    if (fromYml) {
+      const n = Number(fromYml);
+      if (!Number.isNaN(n)) return n;
+    }
+    return fallback;
+  };
+
+  return {
+    concurrency_cap: concurrencyCap,
+    triage_interval: triageInterval,
+    scan_pass_throttle_ms: scanPassThrottleMs,
+    rate_limit_backoff: rateLimitBackoff,
+    priority_critical: parsePriority('priority_critical', DEFAULT_LOOP_SETTINGS.priority_critical),
+    priority_high: parsePriority('priority_high', DEFAULT_LOOP_SETTINGS.priority_high),
+    priority_low: parsePriority('priority_low', DEFAULT_LOOP_SETTINGS.priority_low),
+  };
 }
 
 export function validateDependencyGraph(issues: DecompositionPlanIssue[]): void {
@@ -1051,6 +1082,7 @@ export async function orchestrateCommandWithDeps(
   const autonomyLevel = await resolveOrchestratorAutonomyLevel(options, homeDir, deps);
   const autoMergeToMain = await resolveAutoMerge(options, homeDir, deps);
   const orchSettings = await resolveOrchestratorSettingsFromConfig(options, projectRoot, deps);
+  loadPriorityFromSettings(orchSettings as unknown as Record<string, unknown>);
   const concurrencyCap = orchSettings.concurrency_cap;
   const triageInterval = orchSettings.triage_interval;
   const rateLimitBackoff = orchSettings.rate_limit_backoff;
@@ -1253,9 +1285,9 @@ export async function orchestrateCommandWithDeps(
           // Extract priority from labels
           const labelNames = (gi.labels ?? []).map((l: any) => l.name ?? l);
           let priority = 0;
-          if (labelNames.includes('aloop/priority-critical')) priority = 100;
-          else if (labelNames.includes('aloop/priority-high')) priority = 50;
-          else if (labelNames.includes('aloop/priority-low')) priority = -10;
+          if (labelNames.includes('aloop/priority-critical')) priority = _priorityCritical;
+          else if (labelNames.includes('aloop/priority-high')) priority = _priorityHigh;
+          else if (labelNames.includes('aloop/priority-low')) priority = _priorityLow;
 
           state.issues.push({
             number: gi.number,
@@ -5341,9 +5373,9 @@ async function fetchAndApplyBulkIssueState(
         // Sync priority from labels
         if (fetched.labels) {
           let pri = 0;
-          if (fetched.labels.includes('aloop/priority-critical')) pri = 100;
-          else if (fetched.labels.includes('aloop/priority-high')) pri = 50;
-          else if (fetched.labels.includes('aloop/priority-low')) pri = -10;
+          if (fetched.labels.includes('aloop/priority-critical')) pri = _priorityCritical;
+          else if (fetched.labels.includes('aloop/priority-high')) pri = _priorityHigh;
+          else if (fetched.labels.includes('aloop/priority-low')) pri = _priorityLow;
           (issue as any).priority = pri;
         }
 

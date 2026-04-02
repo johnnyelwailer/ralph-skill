@@ -42,4 +42,21 @@ export const DEFAULT_LOOP_SETTINGS = {
 
   // QA coverage gate (finalizer)
   qa_coverage_gate_max_untested_pct: 30, // block exit if untested features exceed this %
+
+  // Git/CLI timeouts (milliseconds)
+  git_fetch_timeout_ms: 30000,
+  git_merge_base_timeout_ms: 10000,
+  gh_cli_timeout_ms: 30000,
+
+  // GitHub watch/monitoring
+  gh_watch_interval_secs: 60,
+  gh_watch_max_concurrent: 3,
+  gh_feedback_max_iterations: 5,
+  gh_ci_failure_persistence_limit: 3,
+  gh_etag_cache_ttl_ms: 300000,
+
+  // Priority mapping from issue labels
+  priority_critical: 100,
+  priority_high: 50,
+  priority_low: -10,
 } as const;

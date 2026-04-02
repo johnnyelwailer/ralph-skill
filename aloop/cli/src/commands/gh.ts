@@ -9,6 +9,7 @@ import { listActiveSessions, resolveHomeDir, stopSession, type SessionInfo } fro
 import { normalizeCiDetailForSignature } from '../lib/ci-utils.js';
 import { withErrorHandling } from '../lib/error-handling.js';
 import { buildPrBody } from '../lib/issue-metadata.js';
+import { parseYaml } from '../lib/yaml.js';
 
 const execFileAsync = promisify(execFile);
 const GH_PATH_HARDENING_BLOCK_MESSAGE = 'blocked by aloop PATH hardening';
@@ -252,10 +253,15 @@ const defaultGhStartDeps: GhStartDeps = {
 
 const GH_WATCH_VERSION = 1 as const;
 const GH_WATCH_DEFAULT_LABEL = 'aloop';
-const GH_WATCH_DEFAULT_INTERVAL_SECONDS = 60;
-const GH_WATCH_DEFAULT_MAX_CONCURRENT = 3;
-const GH_FEEDBACK_DEFAULT_MAX_ITERATIONS = 5;
-const GH_SAME_CI_FAILURE_LIMIT = 3;
+
+// Configurable defaults — overridden by pipeline.yml settings when available
+let _ghWatchIntervalSecs = 60;
+let _ghWatchMaxConcurrent = 3;
+let _ghFeedbackMaxIterations = 5;
+let _ghCiFailureLimit = 3;
+
+/** Default value for feedback max iterations — for use in tests and initialization */
+export const DEFAULT_GH_FEEDBACK_MAX_ITERATIONS = 5;
 
 export const ghLoopRuntime = {
   listActiveSessions: async (homeDir: string): Promise<SessionInfo[]> => listActiveSessions(homeDir),
@@ -310,7 +316,7 @@ function normalizeWatchIssueEntry(value: unknown): GhWatchIssueEntry | null {
     created_at: typeof candidate.created_at === 'string' && candidate.created_at.trim() ? candidate.created_at : ghLoopRuntime.now(),
     updated_at: typeof candidate.updated_at === 'string' && candidate.updated_at.trim() ? candidate.updated_at : ghLoopRuntime.now(),
     feedback_iteration: typeof candidate.feedback_iteration === 'number' && Number.isInteger(candidate.feedback_iteration) && candidate.feedback_iteration >= 0 ? candidate.feedback_iteration : 0,
-    max_feedback_iterations: parsePositiveInteger(candidate.max_feedback_iterations) ?? GH_FEEDBACK_DEFAULT_MAX_ITERATIONS,
+    max_feedback_iterations: parsePositiveInteger(candidate.max_feedback_iterations) ?? _ghFeedbackMaxIterations,
     processed_comment_ids: extractPositiveIntegers(candidate.processed_comment_ids),
     processed_issue_comment_ids: extractPositiveIntegers(candidate.processed_issue_comment_ids),
     processed_run_ids: extractPositiveIntegers(candidate.processed_run_ids),
@@ -414,7 +420,7 @@ function watchEntryFromStartResult(result: GhStartResult): GhWatchIssueEntry {
     created_at: now,
     updated_at: now,
     feedback_iteration: 0,
-    max_feedback_iterations: GH_FEEDBACK_DEFAULT_MAX_ITERATIONS,
+    max_feedback_iterations: _ghFeedbackMaxIterations,
     processed_comment_ids: [],
     processed_issue_comment_ids: [],
     processed_run_ids: [],
@@ -453,7 +459,7 @@ function enqueueIssue(state: GhWatchState, issue: GhWatchIssue): void {
     created_at: existing?.created_at ?? now,
     updated_at: now,
     feedback_iteration: existing?.feedback_iteration ?? 0,
-    max_feedback_iterations: existing?.max_feedback_iterations ?? GH_FEEDBACK_DEFAULT_MAX_ITERATIONS,
+    max_feedback_iterations: existing?.max_feedback_iterations ?? _ghFeedbackMaxIterations,
     processed_comment_ids: existing?.processed_comment_ids ?? [],
     processed_issue_comment_ids: existing?.processed_issue_comment_ids ?? [],
     processed_run_ids: existing?.processed_run_ids ?? [],
@@ -918,7 +924,7 @@ async function checkAndApplyPrFeedback(
     entry.last_ci_failure_signature = ciSignature;
     entry.last_ci_failure_summary = buildCiFailureSummary(feedback.failed_checks);
     entry.same_ci_failure_count = nextSameFailureCount;
-    if (nextSameFailureCount >= GH_SAME_CI_FAILURE_LIMIT) {
+    if (nextSameFailureCount >= _ghCiFailureLimit) {
       markFeedbackProcessed(entry, feedback);
       entry.status = 'stopped';
       entry.completion_state = 'persistent_ci_failure';
@@ -1007,7 +1013,7 @@ export {
   checkAndApplyPrFeedback,
   fetchPrReviewComments,
   fetchPrCheckRuns,
-  GH_FEEDBACK_DEFAULT_MAX_ITERATIONS,
+  _ghFeedbackMaxIterations,
   normalizeWatchIssueEntry,
   normalizeWatchState,
   loadWatchState,
@@ -1158,7 +1164,7 @@ async function finalizeWatchEntry(
 }
 
 async function runGhWatchCycle(options: GhWatchCommandOptions): Promise<GhWatchCycleSummary> {
-  const maxConcurrent = parsePositiveIntegerOption(options.maxConcurrent, GH_WATCH_DEFAULT_MAX_CONCURRENT, '--max-concurrent');
+  const maxConcurrent = parsePositiveIntegerOption(options.maxConcurrent, _ghWatchMaxConcurrent, '--max-concurrent');
   const state = loadWatchState(options.homeDir);
   await refreshWatchState(options.homeDir, state);
 
@@ -1220,8 +1226,26 @@ async function runGhWatchCycle(options: GhWatchCommandOptions): Promise<GhWatchC
 }
 
 async function ghWatchCommand(options: GhWatchCommandOptions): Promise<void> {
+  // Load configurable settings from pipeline.yml if available
+  if (options.projectRoot) {
+    try {
+      const pipelinePath = path.join(options.projectRoot, '.aloop', 'pipeline.yml');
+      if (fs.existsSync(pipelinePath)) {
+        const raw = fs.readFileSync(pipelinePath, 'utf8');
+        const parsed = parseYaml(raw);
+        const loop = parsed?.loop;
+        if (loop && typeof loop === 'object') {
+          if (typeof loop.gh_watch_interval_secs === 'number') _ghWatchIntervalSecs = loop.gh_watch_interval_secs;
+          if (typeof loop.gh_watch_max_concurrent === 'number') _ghWatchMaxConcurrent = loop.gh_watch_max_concurrent;
+          if (typeof loop.gh_feedback_max_iterations === 'number') _ghFeedbackMaxIterations = loop.gh_feedback_max_iterations;
+          if (typeof loop.gh_ci_failure_persistence_limit === 'number') _ghCiFailureLimit = loop.gh_ci_failure_persistence_limit;
+        }
+      }
+    } catch { /* use defaults */ }
+  }
+
   const outputMode = options.output ?? 'text';
-  const intervalSeconds = parsePositiveIntegerOption(options.interval, GH_WATCH_DEFAULT_INTERVAL_SECONDS, '--interval');
+  const intervalSeconds = parsePositiveIntegerOption(options.interval, _ghWatchIntervalSecs, '--interval');
   const runOnce = options.once === true;
 
   if (runOnce) {
@@ -1467,8 +1491,8 @@ ghCommand
   .option('--label <label...>', 'Issue labels to match (default: aloop)')
   .option('--assignee <assignee>', 'Only include issues assigned to this user')
   .option('--milestone <milestone>', 'Only include issues in this milestone')
-  .option('--max-concurrent <number>', 'Max running GH-linked loops', String(GH_WATCH_DEFAULT_MAX_CONCURRENT))
-  .option('--interval <seconds>', 'Polling interval in seconds', String(GH_WATCH_DEFAULT_INTERVAL_SECONDS))
+  .option('--max-concurrent <number>', 'Max running GH-linked loops', String(_ghWatchMaxConcurrent))
+  .option('--interval <seconds>', 'Polling interval in seconds', String(_ghWatchIntervalSecs))
   .option('--repo <owner/repo>', 'Explicit GitHub repository (default: current)')
   .option('--provider <provider>', 'Provider override for spawned loops')
   .option('--max <number>', 'Max iteration override for spawned loops')

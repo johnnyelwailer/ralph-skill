@@ -28,6 +28,17 @@ interface LoopSettings {
   budget_approaching_threshold?: number;
   qa_coverage_gate_max_untested_pct?: number;
   concurrency_cap?: number;
+  git_fetch_timeout_ms?: number;
+  git_merge_base_timeout_ms?: number;
+  gh_cli_timeout_ms?: number;
+  gh_watch_interval_secs?: number;
+  gh_watch_max_concurrent?: number;
+  gh_feedback_max_iterations?: number;
+  gh_ci_failure_persistence_limit?: number;
+  gh_etag_cache_ttl_ms?: number;
+  priority_critical?: number;
+  priority_high?: number;
+  priority_low?: number;
 }
 
 interface LoopPlan {
@@ -324,6 +335,17 @@ async function readLoopSettingsFromPipeline(
       { key: 'budget_approaching_threshold', set: (s, v) => { s.budget_approaching_threshold = v; } },
       { key: 'qa_coverage_gate_max_untested_pct', set: (s, v) => { s.qa_coverage_gate_max_untested_pct = v; } },
       { key: 'concurrency_cap', set: (s, v) => { s.concurrency_cap = v; } },
+      { key: 'git_fetch_timeout_ms', set: (s, v) => { s.git_fetch_timeout_ms = v; } },
+      { key: 'git_merge_base_timeout_ms', set: (s, v) => { s.git_merge_base_timeout_ms = v; } },
+      { key: 'gh_cli_timeout_ms', set: (s, v) => { s.gh_cli_timeout_ms = v; } },
+      { key: 'gh_watch_interval_secs', set: (s, v) => { s.gh_watch_interval_secs = v; } },
+      { key: 'gh_watch_max_concurrent', set: (s, v) => { s.gh_watch_max_concurrent = v; } },
+      { key: 'gh_feedback_max_iterations', set: (s, v) => { s.gh_feedback_max_iterations = v; } },
+      { key: 'gh_ci_failure_persistence_limit', set: (s, v) => { s.gh_ci_failure_persistence_limit = v; } },
+      { key: 'gh_etag_cache_ttl_ms', set: (s, v) => { s.gh_etag_cache_ttl_ms = v; } },
+      { key: 'priority_critical', set: (s, v) => { s.priority_critical = v; } },
+      { key: 'priority_high', set: (s, v) => { s.priority_high = v; } },
+      { key: 'priority_low', set: (s, v) => { s.priority_low = v; } },
     ];
     for (const { key, set } of numFields) {
       if (typeof loop[key] === 'number') {

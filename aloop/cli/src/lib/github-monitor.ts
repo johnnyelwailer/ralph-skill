@@ -66,7 +66,15 @@ export interface BulkFetchResult {
 // --- ETag Cache ---
 
 const CACHE_VERSION = 1;
-const DEFAULT_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+let _cacheTtlMs = 5 * 60 * 1000; // 5 minutes — configurable via setCacheTtlMs
+
+/**
+ * Override the default ETag cache TTL. Call once at startup if pipeline.yml
+ * provides a custom gh_etag_cache_ttl_ms value.
+ */
+export function setCacheTtlMs(ttlMs: number): void {
+  _cacheTtlMs = ttlMs;
+}
 
 export class EtagCache {
   private state: EtagCacheState;
@@ -149,7 +157,7 @@ export class EtagCache {
     this.dirty = true;
   }
 
-  isFresh(key: string, ttlMs: number = DEFAULT_CACHE_TTL_MS): boolean {
+  isFresh(key: string, ttlMs: number = _cacheTtlMs): boolean {
     const entry = this.state.entries[key];
     if (!entry) return false;
     const age = Date.now() - new Date(entry.cachedAt).getTime();
@@ -177,7 +185,7 @@ export async function ghApiWithEtag(
   execGh: GhExecFn,
   options: { ttlMs?: number; method?: string; extraArgs?: string[] } = {},
 ): Promise<ConditionalRequestResult> {
-  const { ttlMs = DEFAULT_CACHE_TTL_MS, method = 'GET', extraArgs = [] } = options;
+  const { ttlMs = _cacheTtlMs, method = 'GET', extraArgs = [] } = options;
   const cacheKey = `${method}:${endpoint}`;
 
   // Check if cache is still fresh — skip network entirely

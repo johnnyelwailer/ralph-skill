@@ -3,6 +3,7 @@ import { readFile, readdir, unlink, writeFile, mkdir, cp, stat, rm } from 'node:
 import { spawn, spawnSync } from 'node:child_process';
 import path from 'node:path';
 import { resolveHomeDir } from './session.js';
+import { loadLoopSettings } from '../lib/loop-settings.js';
 import {
   runOrchestratorScanPass,
   applyDecompositionPlan,
@@ -183,13 +184,16 @@ export function syncMasterToTrunk(
   aloopRoot: string,
   trunkBranch: string,
   deps: SyncMasterToTrunkDeps,
+  timeouts?: { gitFetchTimeoutMs?: number; gitMergeBaseTimeoutMs?: number },
 ): void {
   const { spawnSync } = deps;
+  const fetchTimeout = timeouts?.gitFetchTimeoutMs ?? 30000;
+  const mergeBaseTimeout = timeouts?.gitMergeBaseTimeoutMs ?? 10000;
   try {
-    const fetchR = spawnSync('git', ['-C', projectRoot, 'fetch', 'origin', 'master', trunkBranch], { encoding: 'utf8', timeout: 30000 });
+    const fetchR = spawnSync('git', ['-C', projectRoot, 'fetch', 'origin', 'master', trunkBranch], { encoding: 'utf8', timeout: fetchTimeout });
     if (fetchR.status !== 0) throw new Error('fetch failed');
-    const mergeBase = spawnSync('git', ['-C', projectRoot, 'merge-base', `origin/master`, `origin/${trunkBranch}`], { encoding: 'utf8', timeout: 10000 });
-    const masterHead = spawnSync('git', ['-C', projectRoot, 'rev-parse', 'origin/master'], { encoding: 'utf8', timeout: 10000 });
+    const mergeBase = spawnSync('git', ['-C', projectRoot, 'merge-base', `origin/master`, `origin/${trunkBranch}`], { encoding: 'utf8', timeout: mergeBaseTimeout });
+    const masterHead = spawnSync('git', ['-C', projectRoot, 'rev-parse', 'origin/master'], { encoding: 'utf8', timeout: mergeBaseTimeout });
     const mbSha = mergeBase.stdout?.trim();
     const mhSha = masterHead.stdout?.trim();
     if (mbSha && mhSha && mbSha.length >= 7 && mhSha.length >= 7 && mbSha !== mhSha) {
@@ -228,7 +232,10 @@ export async function syncChildBranches(
   trunkBranch: string,
   aloopRoot: string,
   deps: ChildBranchSyncDeps,
+  timeouts?: { gitFetchTimeoutMs?: number; gitMergeBaseTimeoutMs?: number },
 ): Promise<boolean> {
+  const fetchTimeout = timeouts?.gitFetchTimeoutMs ?? 30000;
+  const mergeBaseTimeout = timeouts?.gitMergeBaseTimeoutMs ?? 10000;
   let stateChanged = false;
   for (const issue of issues) {
     if (!issue.child_session) continue;
@@ -238,11 +245,11 @@ export async function syncChildBranches(
     if (!deps.existsSync(childWorktree)) continue;
 
     // Fetch and check if diverged
-    const fetchResult = deps.spawnSync('git', ['-C', childWorktree, 'fetch', 'origin', trunkBranch], { encoding: 'utf8', timeout: 30000 });
+    const fetchResult = deps.spawnSync('git', ['-C', childWorktree, 'fetch', 'origin', trunkBranch], { encoding: 'utf8', timeout: fetchTimeout });
     if (fetchResult.status !== 0) continue;
 
-    const mergeBase = deps.spawnSync('git', ['-C', childWorktree, 'merge-base', 'HEAD', `origin/${trunkBranch}`], { encoding: 'utf8', timeout: 10000 });
-    const remoteHead = deps.spawnSync('git', ['-C', childWorktree, 'rev-parse', `origin/${trunkBranch}`], { encoding: 'utf8', timeout: 10000 });
+    const mergeBase = deps.spawnSync('git', ['-C', childWorktree, 'merge-base', 'HEAD', `origin/${trunkBranch}`], { encoding: 'utf8', timeout: mergeBaseTimeout });
+    const remoteHead = deps.spawnSync('git', ['-C', childWorktree, 'rev-parse', `origin/${trunkBranch}`], { encoding: 'utf8', timeout: mergeBaseTimeout });
     const mbSha = mergeBase.stdout?.trim();
     const rhSha = remoteHead.stdout?.trim();
     if (!mbSha || !rhSha || mbSha.length < 7 || rhSha.length < 7) continue;
@@ -312,9 +319,13 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
   const repo = state.filter_repo ?? null;
   let stateChanged = false;
 
+  // Load configurable loop settings from loop-plan.json
+  const loopPlanPath = path.join(sessionDir, 'loop-plan.json');
+  const settings = loadLoopSettings(loopPlanPath);
+
   // execGh must be defined early — used by refine/estimate result handlers
   const execGh = async (args: string[]): Promise<{ stdout: string; stderr: string }> => {
-    const r = spawnSync('gh', args, { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true, timeout: 30000 });
+    const r = spawnSync('gh', args, { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true, timeout: settings.gh_cli_timeout_ms });
     if (r.status === null && r.signal) throw new Error(`gh timed out (${r.signal})`);
     return { stdout: r.stdout ?? '', stderr: r.stderr ?? '' };
   };
@@ -553,7 +564,10 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
 
   // ── Phase 2b: Forward-merge master → agent/trunk (pick up human changes) ──
   const trunkBranch = state.trunk_branch ?? 'agent/trunk';
-  syncMasterToTrunk(projectRoot, aloopRoot, trunkBranch, { spawnSync });
+  syncMasterToTrunk(projectRoot, aloopRoot, trunkBranch, { spawnSync }, {
+    gitFetchTimeoutMs: settings.git_fetch_timeout_ms,
+    gitMergeBaseTimeoutMs: settings.git_merge_base_timeout_ms,
+  });
 
   // ── Phase 2c: Sync child branches with base branch ──
   {
@@ -566,6 +580,9 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
         const r = spawnSync(cmd, a, o as any);
         return { status: r.status, stdout: r.stdout?.toString() ?? '', stderr: r.stderr?.toString() ?? '' };
       },
+    }, {
+      gitFetchTimeoutMs: settings.git_fetch_timeout_ms,
+      gitMergeBaseTimeoutMs: settings.git_merge_base_timeout_ms,
     });
     if (childSyncChanged) stateChanged = true;
   }
@@ -793,7 +810,7 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
   if (Math.random() < 0.1) {
     try {
       const findResult = spawnSync('find', ['/tmp', '-maxdepth', '2', '-name', '.da*.so', '-mmin', '+60', '-delete'], {
-        encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'], timeout: 10000,
+        encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'], timeout: settings.git_merge_base_timeout_ms,
       });
       if (findResult.status === 0) {
         console.log('[process-requests] Cleaned stale V8 cache files from /tmp (HACK — see #164)');

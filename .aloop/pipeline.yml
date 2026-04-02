@@ -67,6 +67,23 @@ loop:
   # QA coverage gate (finalizer)
   qa_coverage_gate_max_untested_pct: 30  # block exit if untested features exceed this %
 
+  # Git/CLI timeouts (milliseconds) — used by process-requests and orchestrate
+  git_fetch_timeout_ms: 30000            # git fetch timeout
+  git_merge_base_timeout_ms: 10000       # git merge-base / rev-parse timeout
+  gh_cli_timeout_ms: 30000               # gh CLI command timeout
+
+  # GitHub watch/monitoring
+  gh_watch_interval_secs: 60             # seconds between watch scan passes
+  gh_watch_max_concurrent: 3             # max concurrent watch sessions
+  gh_feedback_max_iterations: 5          # max feedback iterations before stopping
+  gh_ci_failure_persistence_limit: 3     # same CI failure retries before PR close
+  gh_etag_cache_ttl_ms: 300000           # GitHub API ETag cache TTL (ms)
+
+  # Priority mapping from issue labels (used by orchestrator)
+  priority_critical: 100
+  priority_high: 50
+  priority_low: -10
+
 orchestrator_events:
   refine:
     prompt: PROMPT_orch_refine.md

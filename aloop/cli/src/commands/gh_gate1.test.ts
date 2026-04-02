@@ -7,7 +7,7 @@ import {
   ghCommand,
   ghExecutor,
   ghLoopRuntime,
-  GH_FEEDBACK_DEFAULT_MAX_ITERATIONS,
+  DEFAULT_GH_FEEDBACK_MAX_ITERATIONS as GH_FEEDBACK_DEFAULT_MAX_ITERATIONS,
   type GhWatchIssueEntry,
   type GhWatchIssueStatus,
 } from './gh.js';
