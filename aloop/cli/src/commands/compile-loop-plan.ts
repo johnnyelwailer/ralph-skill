@@ -21,6 +21,12 @@ interface LoopSettings {
   triage_interval?: number;
   scan_pass_throttle_ms?: number;
   rate_limit_backoff?: 'exponential' | 'linear' | 'fixed';
+  retry_backoff_linear_step_secs?: number;
+  retry_backoff_exponential_base?: number;
+  phase_retries_min?: number;
+  cost_per_iteration_usd?: number;
+  budget_approaching_threshold?: number;
+  qa_coverage_gate_max_untested_pct?: number;
 }
 
 interface LoopPlan {
@@ -310,6 +316,12 @@ async function readLoopSettingsFromPipeline(
       { key: 'provider_timeout', set: (s, v) => { s.provider_timeout = v; } },
       { key: 'triage_interval', set: (s, v) => { s.triage_interval = v; } },
       { key: 'scan_pass_throttle_ms', set: (s, v) => { s.scan_pass_throttle_ms = v; } },
+      { key: 'retry_backoff_linear_step_secs', set: (s, v) => { s.retry_backoff_linear_step_secs = v; } },
+      { key: 'retry_backoff_exponential_base', set: (s, v) => { s.retry_backoff_exponential_base = v; } },
+      { key: 'phase_retries_min', set: (s, v) => { s.phase_retries_min = v; } },
+      { key: 'cost_per_iteration_usd', set: (s, v) => { s.cost_per_iteration_usd = v; } },
+      { key: 'budget_approaching_threshold', set: (s, v) => { s.budget_approaching_threshold = v; } },
+      { key: 'qa_coverage_gate_max_untested_pct', set: (s, v) => { s.qa_coverage_gate_max_untested_pct = v; } },
     ];
     for (const { key, set } of numFields) {
       if (typeof loop[key] === 'number') {

@@ -304,6 +304,12 @@ mappings = [
     ("request_poll_interval", "REQUEST_POLL_INTERVAL", int),
     ("unavailable_sleep", "UNAVAILABLE_SLEEP", int),
     ("provider_timeout", "PROVIDER_TIMEOUT", int),
+    ("retry_backoff_linear_step_secs", "RETRY_BACKOFF_LINEAR_STEP_SECS", int),
+    ("retry_backoff_exponential_base", "RETRY_BACKOFF_EXPONENTIAL_BASE", int),
+    ("phase_retries_min", "PHASE_RETRIES_MIN", int),
+    ("cost_per_iteration_usd", "COST_PER_ITERATION_USD", str),
+    ("budget_approaching_threshold", "BUDGET_APPROACHING_THRESHOLD", str),
+    ("qa_coverage_gate_max_untested_pct", "QA_COVERAGE_GATE_MAX_UNTESTED_PCT", int),
 ]
 for key, var, cast in mappings:
     if key in s and s[key] is not None:
@@ -330,6 +336,12 @@ UNAVAILABLE_SLEEP=60
 CONCURRENT_CAP_COOLDOWN=120
 PHASE_RETRIES_MULTIPLIER=2
 COOLDOWN_LADDER="0,120,300,900,1800,3600"
+RETRY_BACKOFF_LINEAR_STEP_SECS=5
+RETRY_BACKOFF_EXPONENTIAL_BASE=2
+PHASE_RETRIES_MIN=2
+COST_PER_ITERATION_USD="0.50"
+BUDGET_APPROACHING_THRESHOLD="0.8"
+QA_COVERAGE_GATE_MAX_UNTESTED_PCT=30
 
 # Load settings from loop-plan.json at startup
 load_loop_settings
@@ -358,6 +370,12 @@ mappings = [
     ("request_poll_interval", "REQUEST_POLL_INTERVAL", int),
     ("unavailable_sleep", "UNAVAILABLE_SLEEP", int),
     ("provider_timeout", "PROVIDER_TIMEOUT", int),
+    ("retry_backoff_linear_step_secs", "RETRY_BACKOFF_LINEAR_STEP_SECS", int),
+    ("retry_backoff_exponential_base", "RETRY_BACKOFF_EXPONENTIAL_BASE", int),
+    ("phase_retries_min", "PHASE_RETRIES_MIN", int),
+    ("cost_per_iteration_usd", "COST_PER_ITERATION_USD", str),
+    ("budget_approaching_threshold", "BUDGET_APPROACHING_THRESHOLD", str),
+    ("qa_coverage_gate_max_untested_pct", "QA_COVERAGE_GATE_MAX_UNTESTED_PCT", int),
 ]
 for key, var, cast in mappings:
     if key in s and s[key] is not None:
@@ -805,8 +823,8 @@ register_iteration_failure() {
         local backoff="${EFFECTIVE_RETRY_BACKOFF:-none}"
         local backoff_secs=0
         case "$backoff" in
-            linear)      backoff_secs=$(( PHASE_RETRY_CONSECUTIVE * 5 )) ;;
-            exponential) backoff_secs=$(( 2 ** PHASE_RETRY_CONSECUTIVE )) ;;
+            linear)      backoff_secs=$(( PHASE_RETRY_CONSECUTIVE * RETRY_BACKOFF_LINEAR_STEP_SECS )) ;;
+            exponential) backoff_secs=$(( RETRY_BACKOFF_EXPONENTIAL_BASE ** PHASE_RETRY_CONSECUTIVE )) ;;
         esac
         if [ "$backoff_secs" -gt 0 ]; then
             echo "Retry backoff ($backoff): sleeping ${backoff_secs}s before next attempt"
@@ -2008,13 +2026,13 @@ if [ "$PROVIDER" = "round-robin" ]; then
         provider_count=1
     fi
     calculated_retries=$((provider_count * PHASE_RETRIES_MULTIPLIER))
-    if [ "$calculated_retries" -lt 2 ]; then
-        MAX_PHASE_RETRIES=2
+    if [ "$calculated_retries" -lt "$PHASE_RETRIES_MIN" ]; then
+        MAX_PHASE_RETRIES="$PHASE_RETRIES_MIN"
     else
         MAX_PHASE_RETRIES="$calculated_retries"
     fi
 else
-    MAX_PHASE_RETRIES=2
+    MAX_PHASE_RETRIES="$PHASE_RETRIES_MIN"
 fi
 
 # Setup remote backup

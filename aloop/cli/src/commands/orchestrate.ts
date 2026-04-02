@@ -4074,7 +4074,7 @@ export interface FinalReport {
 }
 
 /** Default cost-per-iteration estimate in USD (configurable per-provider in future). */
-const DEFAULT_COST_PER_ITERATION_USD = 0.50;
+const DEFAULT_COST_PER_ITERATION_USD = DEFAULT_LOOP_SETTINGS.cost_per_iteration_usd;
 
 export interface BudgetDeps {
   readFile: (path: string, encoding: BufferEncoding) => Promise<string>;
@@ -4185,7 +4185,7 @@ export async function aggregateChildCosts(
     total_estimated_cost_usd: totalCost,
     children,
     budget_exceeded: budgetCap !== null && totalCost >= budgetCap,
-    budget_approaching: budgetCap !== null && totalCost >= budgetCap * 0.8 && totalCost < budgetCap,
+    budget_approaching: budgetCap !== null && totalCost >= budgetCap * DEFAULT_LOOP_SETTINGS.budget_approaching_threshold && totalCost < budgetCap,
   };
 }
 

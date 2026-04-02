@@ -55,6 +55,18 @@ loop:
   rate_limit_backoff: fixed         # Backoff strategy: exponential, linear, or fixed
   concurrency_cap: 3                # Max concurrent child loops
 
+  # Phase retry behavior
+  retry_backoff_linear_step_secs: 5    # linear backoff: consecutive * this value (seconds)
+  retry_backoff_exponential_base: 2    # exponential backoff: base ^ consecutive (seconds)
+  phase_retries_min: 2                 # minimum MAX_PHASE_RETRIES (floor for single-provider)
+
+  # Budget estimation (orchestrator)
+  cost_per_iteration_usd: 0.50         # default cost estimate per iteration (USD) when no real token data
+  budget_approaching_threshold: 0.8    # fraction of budget cap that triggers pause warning (0.0–1.0)
+
+  # QA coverage gate (finalizer)
+  qa_coverage_gate_max_untested_pct: 30  # block exit if untested features exceed this %
+
 orchestrator_events:
   refine:
     prompt: PROMPT_orch_refine.md

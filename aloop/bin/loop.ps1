@@ -108,6 +108,12 @@ $script:ConcurrentCapCooldown = 120
 $script:PhaseRetriesMultiplier = 2
 $script:CooldownLadder = @(0, 120, 300, 900, 1800, 3600)
 $script:healthLockRetryDelaysMs = @(50, 100, 150, 200, 250)
+$script:RetryBackoffLinearStepSecs = 5
+$script:RetryBackoffExponentialBase = 2
+$script:PhaseRetriesMin = 2
+$script:CostPerIterationUsd = 0.50
+$script:BudgetApproachingThreshold = 0.8
+$script:QaCoverageGateMaxUntestedPct = 30
 
 function Load-LoopSettings {
     $loopPlanFile = Join-Path $SessionDir 'loop-plan.json'
@@ -125,6 +131,12 @@ function Load-LoopSettings {
         if ($null -ne $s.request_poll_interval) { $script:RequestPollInterval = [int]$s.request_poll_interval }
         if ($null -ne $s.unavailable_sleep) { $script:UnavailableSleep = [int]$s.unavailable_sleep }
         if ($null -ne $s.provider_timeout) { $script:ProviderTimeoutSec = [int]$s.provider_timeout }
+        if ($null -ne $s.retry_backoff_linear_step_secs) { $script:RetryBackoffLinearStepSecs = [int]$s.retry_backoff_linear_step_secs }
+        if ($null -ne $s.retry_backoff_exponential_base) { $script:RetryBackoffExponentialBase = [int]$s.retry_backoff_exponential_base }
+        if ($null -ne $s.phase_retries_min) { $script:PhaseRetriesMin = [int]$s.phase_retries_min }
+        if ($null -ne $s.cost_per_iteration_usd) { $script:CostPerIterationUsd = [double]$s.cost_per_iteration_usd }
+        if ($null -ne $s.budget_approaching_threshold) { $script:BudgetApproachingThreshold = [double]$s.budget_approaching_threshold }
+        if ($null -ne $s.qa_coverage_gate_max_untested_pct) { $script:QaCoverageGateMaxUntestedPct = [int]$s.qa_coverage_gate_max_untested_pct }
         if ($s.cooldown_ladder -and $s.cooldown_ladder.Count -ge 2) {
             $script:CooldownLadder = @($s.cooldown_ladder | ForEach-Object { [int]$_ })
         }
@@ -152,6 +164,12 @@ function Refresh-LoopSettingsFromMeta {
         if ($null -ne $s.request_poll_interval) { $script:RequestPollInterval = [int]$s.request_poll_interval }
         if ($null -ne $s.unavailable_sleep) { $script:UnavailableSleep = [int]$s.unavailable_sleep }
         if ($null -ne $s.provider_timeout) { $script:ProviderTimeoutSec = [int]$s.provider_timeout }
+        if ($null -ne $s.retry_backoff_linear_step_secs) { $script:RetryBackoffLinearStepSecs = [int]$s.retry_backoff_linear_step_secs }
+        if ($null -ne $s.retry_backoff_exponential_base) { $script:RetryBackoffExponentialBase = [int]$s.retry_backoff_exponential_base }
+        if ($null -ne $s.phase_retries_min) { $script:PhaseRetriesMin = [int]$s.phase_retries_min }
+        if ($null -ne $s.cost_per_iteration_usd) { $script:CostPerIterationUsd = [double]$s.cost_per_iteration_usd }
+        if ($null -ne $s.budget_approaching_threshold) { $script:BudgetApproachingThreshold = [double]$s.budget_approaching_threshold }
+        if ($null -ne $s.qa_coverage_gate_max_untested_pct) { $script:QaCoverageGateMaxUntestedPct = [int]$s.qa_coverage_gate_max_untested_pct }
         if ($s.cooldown_ladder -and $s.cooldown_ladder.Count -ge 2) {
             $script:CooldownLadder = @($s.cooldown_ladder | ForEach-Object { [int]$_ })
         }
@@ -986,9 +1004,9 @@ function Check-FinalizerQaCoverageGate {
         }
     }
 
-    if ($untestedPct -gt 30) {
+    if ($untestedPct -gt $script:QaCoverageGateMaxUntestedPct) {
         $blocked = $true
-        Append-PlanTaskIfMissing "[qa/P1] [finalizer-qa-gate] Reduce UNTESTED QA coverage to <=30% (currently $untested/$total, $untestedPct%)"
+        Append-PlanTaskIfMissing "[qa/P1] [finalizer-qa-gate] Reduce UNTESTED QA coverage to <=$script:QaCoverageGateMaxUntestedPct% (currently $untested/$total, $untestedPct%)"
     }
 
     if ($blocked) {
@@ -1045,7 +1063,7 @@ $script:phaseRetryState = @{
     consecutive = 0
     failureReasons = @()
 }
-$script:maxPhaseRetries = if ($Provider -eq 'round-robin') { [Math]::Max(2, $RoundRobinProviders.Count * 2) } else { 2 }
+$script:maxPhaseRetries = if ($Provider -eq 'round-robin') { [Math]::Max($script:PhaseRetriesMin, $RoundRobinProviders.Count * $script:PhaseRetriesMultiplier) } else { $script:PhaseRetriesMin }
 
 function Advance-CyclePosition {
     if ($script:cycleLength -gt 0) {
@@ -1100,8 +1118,8 @@ function Register-IterationFailure {
         $backoff = if ($script:effectiveRetryBackoff) { $script:effectiveRetryBackoff } else { 'none' }
         $backoffSecs = 0
         switch ($backoff) {
-            'linear'      { $backoffSecs = $script:phaseRetryState.consecutive * 5 }
-            'exponential' { $backoffSecs = [Math]::Pow(2, $script:phaseRetryState.consecutive) }
+            'linear'      { $backoffSecs = $script:phaseRetryState.consecutive * $script:RetryBackoffLinearStepSecs }
+            'exponential' { $backoffSecs = [Math]::Pow($script:RetryBackoffExponentialBase, $script:phaseRetryState.consecutive) }
         }
         if ($backoffSecs -gt 0) {
             Write-Host "Retry backoff ($backoff): sleeping ${backoffSecs}s before next attempt"
