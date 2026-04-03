@@ -55,3 +55,6 @@ proof-artifacts/
 # Opencode fixture binaries
 aloop/cli/dashboard/e2e/fixtures/home/.cache/
 aloop/cli/dashboard/e2e/fixtures/home/.local/
+
+# Aloop working artifacts (not for PR)
+RESEARCH.md
