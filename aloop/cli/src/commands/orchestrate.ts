@@ -966,33 +966,13 @@ export async function orchestrateCommandWithDeps(
 
         // Fetch project status for each issue to avoid re-estimating
         const projectStatusMap = new Map<number, string>();
-        const ghExec = deps.execGh;
-        if (ghExec) {
-          try {
-            const owner = filterRepo.split('/')[0];
-            // Find aloop project number dynamically
-            let projNumber = 0;
-            const projListResult = await ghExec(['project', 'list', '--owner', owner, '--format', 'json']);
+        if (deps.adapter?.getIssueStatus) {
+          for (const gi of ghIssues) {
             try {
-              const projects = JSON.parse(projListResult.stdout ?? '{}').projects ?? [];
-              const aloopProj = projects.find((p: any) => p.title?.toLowerCase().includes('aloop'));
-              if (aloopProj) projNumber = aloopProj.number;
-            } catch { /* ignore */ }
-            if (projNumber === 0) throw new Error('No aloop project found');
-            state.gh_project_number = projNumber;
-            const gqlQuery = `{ user(login: "${owner}") { projectV2(number: ${projNumber}) { items(first: 100) { nodes { content { ... on Issue { number } } fieldValueByName(name: "Status") { ... on ProjectV2ItemFieldSingleSelectValue { name } } } } } } }`;
-            const projResult = await ghExec(['api', 'graphql', '-f', `query=${gqlQuery}`]);
-            if (projResult.stdout) {
-              const projData = JSON.parse(projResult.stdout);
-              console.log(`[orchestrate] Project status query returned ${projResult.stdout.length} bytes`);
-              const items = projData?.data?.user?.projectV2?.items?.nodes ?? [];
-              for (const item of items) {
-                const num = item?.content?.number;
-                const status = item?.fieldValueByName?.name;
-                if (num && status) projectStatusMap.set(num, status);
-              }
-            }
-          } catch (e) { console.error(`[orchestrate] Project status fetch failed: ${e}`); }
+              const status = await deps.adapter.getIssueStatus(gi.number);
+              if (status) projectStatusMap.set(gi.number, status);
+            } catch { /* ignore individual failures */ }
+          }
         }
 
         for (const gi of ghIssues) {

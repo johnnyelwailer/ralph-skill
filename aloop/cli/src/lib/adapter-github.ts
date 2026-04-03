@@ -9,7 +9,7 @@ import type { GhExecFn, BulkFetchResult } from './github-monitor.js';
 import { fetchBulkIssueState } from './github-monitor.js';
 import type { AdapterConfig, OrchestratorAdapter, PrChecksResult } from './adapter-interface.js';
 import type { ProjectStatusContext } from './adapter-github-project.js';
-import { setIssueStatusViaProject } from './adapter-github-project.js';
+import { setIssueStatusViaProject, resolveProjectStatusContext } from './adapter-github-project.js';
 
 export class GitHubAdapter implements OrchestratorAdapter {
   private readonly repo: string;
@@ -23,6 +23,42 @@ export class GitHubAdapter implements OrchestratorAdapter {
 
   async setIssueStatus(number: number, status: string): Promise<void> {
     await setIssueStatusViaProject(this.repo, this.execGh, this.projectStatusContextCache, number, status);
+  }
+
+  async getIssueStatus(number: number): Promise<string | null> {
+    const context = await resolveProjectStatusContext(this.repo, this.execGh, this.projectStatusContextCache, number);
+    if (!context) return null;
+    const query = 'query($owner:String!,$repo:String!,$number:Int!){repository(owner:$owner,name:$repo){issue(number:$number){projectItems(first:20){nodes{id project{id} fieldValueByName(name:"Status"){... on ProjectV2ItemFieldSingleSelectValue{name}}}}}}}';
+    const response = await this.execGh([
+      'api', 'graphql',
+      '-f', `query=${query}`,
+      '-F', `owner=${this.repo.split('/')[0]}`,
+      '-F', `repo=${this.repo.split('/')[1]}`,
+      '-F', `number=${number}`,
+    ]);
+    try {
+      const parsed = JSON.parse(response.stdout) as {
+        data?: {
+          repository?: {
+            issue?: {
+              projectItems?: {
+                nodes?: Array<{
+                  id?: string;
+                  project?: { id?: string };
+                  fieldValueByName?: { name?: string };
+                }>;
+              };
+            };
+          };
+        };
+      };
+      const nodes = parsed.data?.repository?.issue?.projectItems?.nodes;
+      if (!Array.isArray(nodes)) return null;
+      const statusNode = nodes.find(n => n.id === context.itemId);
+      return statusNode?.fieldValueByName?.name ?? null;
+    } catch {
+      return null;
+    }
   }
 
   async createIssue(title: string, body: string, labels: string[]): Promise<{ number: number; url: string }> {
