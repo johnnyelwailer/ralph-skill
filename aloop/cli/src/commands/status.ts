@@ -1,4 +1,5 @@
 import { resolveHomeDir, listActiveSessions, readProviderHealth } from './session.js';
+import { DEFAULT_LOOP_SETTINGS } from '../lib/defaults.js';
 
 export type OutputMode = 'json' | 'text';
 
@@ -8,7 +9,7 @@ export interface StatusCommandOptions {
   watch?: boolean;
 }
 
-const WATCH_INTERVAL_MS = 2000;
+const WATCH_INTERVAL_MS = DEFAULT_LOOP_SETTINGS.status_watch_interval_ms;
 
 export function formatRelativeTime(isoString: string | null | undefined): string {
   if (!isoString) return 'unknown';

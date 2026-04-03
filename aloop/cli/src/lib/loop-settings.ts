@@ -57,6 +57,19 @@ export interface LoopSettings {
   priority_critical: number;
   priority_high: number;
   priority_low: number;
+
+  // Dashboard server limits and intervals
+  dashboard_max_log_bytes: number;
+  dashboard_max_body_bytes: number;
+  dashboard_heartbeat_interval_ms: number;
+  dashboard_request_poll_interval_ms: number;
+  dashboard_cost_poll_interval_minutes: number;
+
+  // Status command
+  status_watch_interval_ms: number;
+
+  // Orchestrator refinement
+  refinement_budget_cap: number;
 }
 
 type DeepReadonly<T> = { readonly [K in keyof T]: DeepReadonly<T[K]> };
@@ -174,6 +187,19 @@ export function loadLoopSettings(loopPlanPath: string): ReadonlyLoopSettings {
     priority_critical: readNumber(raw, 'priority_critical', DEFAULTS.priority_critical),
     priority_high: readNumber(raw, 'priority_high', DEFAULTS.priority_high),
     priority_low: readNumber(raw, 'priority_low', DEFAULTS.priority_low),
+
+    // Dashboard server limits and intervals
+    dashboard_max_log_bytes: readNumber(raw, 'dashboard_max_log_bytes', DEFAULTS.dashboard_max_log_bytes),
+    dashboard_max_body_bytes: readNumber(raw, 'dashboard_max_body_bytes', DEFAULTS.dashboard_max_body_bytes),
+    dashboard_heartbeat_interval_ms: readNumber(raw, 'dashboard_heartbeat_interval_ms', DEFAULTS.dashboard_heartbeat_interval_ms),
+    dashboard_request_poll_interval_ms: readNumber(raw, 'dashboard_request_poll_interval_ms', DEFAULTS.dashboard_request_poll_interval_ms),
+    dashboard_cost_poll_interval_minutes: readNumber(raw, 'dashboard_cost_poll_interval_minutes', DEFAULTS.dashboard_cost_poll_interval_minutes),
+
+    // Status command
+    status_watch_interval_ms: readNumber(raw, 'status_watch_interval_ms', DEFAULTS.status_watch_interval_ms),
+
+    // Orchestrator refinement
+    refinement_budget_cap: readNumber(raw, 'refinement_budget_cap', DEFAULTS.refinement_budget_cap),
   };
 
   return Object.freeze(s);

@@ -59,4 +59,17 @@ export const DEFAULT_LOOP_SETTINGS = {
   priority_critical: 100,
   priority_high: 50,
   priority_low: -10,
+
+  // Dashboard server limits and intervals
+  dashboard_max_log_bytes: 1048576,
+  dashboard_max_body_bytes: 65536,
+  dashboard_heartbeat_interval_ms: 15000,
+  dashboard_request_poll_interval_ms: 1000,
+  dashboard_cost_poll_interval_minutes: 5,
+
+  // Status command
+  status_watch_interval_ms: 2000,
+
+  // Orchestrator refinement
+  refinement_budget_cap: 5,
 } as const;

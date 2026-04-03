@@ -2439,7 +2439,7 @@ export interface EstimateResult {
   priority?: 'P0' | 'P1' | 'P2';
 }
 
-export const REFINEMENT_BUDGET_CAP = 5;
+export const REFINEMENT_BUDGET_CAP = DEFAULT_LOOP_SETTINGS.refinement_budget_cap;
 
 export interface ApplyEstimateResultsOutcome {
   updated: number[];

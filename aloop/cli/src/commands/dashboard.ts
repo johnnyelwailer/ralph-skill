@@ -60,10 +60,11 @@ interface DashboardRuntimeOptions {
 }
 
 const DOC_FILES = ['TODO.md', 'SPEC.md', 'RESEARCH.md', 'REVIEW_LOG.md', 'STEERING.md'];
-const MAX_LOG_BYTES = 1024 * 1024;
-const MAX_BODY_BYTES = 64 * 1024;
-const DEFAULT_HEARTBEAT_INTERVAL_MS = 15_000;
-const DEFAULT_REQUEST_POLL_INTERVAL_MS = 1_000;
+const MAX_LOG_BYTES = DEFAULT_LOOP_SETTINGS.dashboard_max_log_bytes;
+const MAX_BODY_BYTES = DEFAULT_LOOP_SETTINGS.dashboard_max_body_bytes;
+const DEFAULT_HEARTBEAT_INTERVAL_MS = DEFAULT_LOOP_SETTINGS.dashboard_heartbeat_interval_ms;
+const DEFAULT_REQUEST_POLL_INTERVAL_MS = DEFAULT_LOOP_SETTINGS.dashboard_request_poll_interval_ms;
+const DEFAULT_COST_POLL_INTERVAL_MINUTES = DEFAULT_LOOP_SETTINGS.dashboard_cost_poll_interval_minutes;
 
 interface GhCommandRunnerResult {
   exitCode: number;
@@ -577,8 +578,6 @@ interface CostAggregateCache {
   data: { total_usd: number; by_model: { model: string; cost_usd: number }[] };
   expiresAt: number;
 }
-
-const DEFAULT_COST_POLL_INTERVAL_MINUTES = 5;
 
 function isOpencodeCli(): boolean {
   const result = spawnSync('opencode', ['--version'], { encoding: 'utf8', timeout: 5000 });
