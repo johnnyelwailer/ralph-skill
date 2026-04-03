@@ -1687,6 +1687,110 @@ skip_stuck_task() {
     STUCK_COUNT=0
 }
 
+append_plan_task_if_missing() {
+    local task_text="$1"
+    if [ -z "$task_text" ] || [ ! -f "$PLAN_FILE" ]; then
+        return
+    fi
+    if grep -qF "$task_text" "$PLAN_FILE" 2>/dev/null; then
+        return
+    fi
+    echo "" >> "$PLAN_FILE"
+    echo "- [ ] $task_text" >> "$PLAN_FILE"
+}
+
+check_finalizer_qa_coverage_gate() {
+    FINALIZER_QA_GATE_REASON=""
+    FINALIZER_QA_GATE_MESSAGE=""
+    FINALIZER_QA_TOTAL=0
+    FINALIZER_QA_UNTESTED=0
+    FINALIZER_QA_FAIL=0
+
+    local coverage_file="$WORK_DIR/QA_COVERAGE.md"
+    if [ ! -f "$coverage_file" ]; then
+        FINALIZER_QA_GATE_REASON="qa_coverage_missing"
+        FINALIZER_QA_GATE_MESSAGE="QA_COVERAGE.md is missing — skipping enforcement"
+        return 0
+    fi
+
+    local total=0
+    local untested=0
+    local fail=0
+    local fail_features=""
+
+    while IFS= read -r line; do
+        if [[ ! "$line" =~ ^\| ]]; then
+            continue
+        fi
+        IFS='|' read -ra cols <<< "$line"
+        if [ ${#cols[@]} -lt 6 ]; then
+            continue
+        fi
+        local feature="${cols[1]}"
+        feature="${feature// /}"
+        feature="${feature//$'\t'/}"
+        local status="${cols[5]}"
+        status="${status// /}"
+        status="${status//$'\t'/}"
+        status="${status^^}"
+        if [ -z "$feature" ] || [ "$feature" = "Feature" ]; then
+            continue
+        fi
+        if [[ "$status" != "PASS" && "$status" != "FAIL" && "$status" != "UNTESTED" ]]; then
+            continue
+        fi
+        ((total++))
+        if [ "$status" = "UNTESTED" ]; then
+            ((untested++))
+        fi
+        if [ "$status" = "FAIL" ]; then
+            ((fail++))
+            if [ -n "$fail_features" ]; then
+                fail_features="$fail_features|$feature"
+            else
+                fail_features="$feature"
+            fi
+        fi
+    done < "$coverage_file"
+
+    FINALIZER_QA_TOTAL=$total
+    FINALIZER_QA_UNTESTED=$untested
+    FINALIZER_QA_FAIL=$fail
+
+    if [ "$total" -le 0 ]; then
+        FINALIZER_QA_GATE_REASON="qa_coverage_unparseable"
+        FINALIZER_QA_GATE_MESSAGE="QA_COVERAGE.md did not contain parseable PASS/FAIL/UNTESTED rows"
+        append_plan_task_if_missing "[qa/P1] [finalizer-qa-gate] Fix QA_COVERAGE.md table format so finalizer can enforce coverage"
+        return 1
+    fi
+
+    local untested_pct=$((untested * 100 / total))
+    local blocked=0
+
+    if [ "$fail" -gt 0 ]; then
+        blocked=1
+        IFS='|' read -ra features <<< "$fail_features"
+        for f in "${features[@]}"; do
+            append_plan_task_if_missing "[qa/P1] [finalizer-qa-gate] Resolve FAIL coverage item: $f"
+        done
+    fi
+
+    if [ "$untested_pct" -gt "$QA_COVERAGE_GATE_MAX_UNTESTED_PCT" ]; then
+        blocked=1
+        append_plan_task_if_missing "[qa/P1] [finalizer-qa-gate] Reduce UNTESTED QA coverage to <=${QA_COVERAGE_GATE_MAX_UNTESTED_PCT}% (currently $untested/$total, ${untested_pct}%)"
+    fi
+
+    if [ "$blocked" -eq 1 ]; then
+        FINALIZER_QA_GATE_REASON="qa_coverage_blocked"
+        FINALIZER_QA_GATE_MESSAGE="QA coverage gate blocked exit (UNTESTED=$untested/$total, FAIL=$fail)"
+        return 1
+    fi
+
+    FINALIZER_QA_GATE_REASON="qa_coverage_pass"
+    FINALIZER_QA_GATE_MESSAGE="QA coverage gate passed (UNTESTED=$untested/$total, FAIL=$fail)"
+    return 0
+}
+
 # ============================================================================
 # ITERATION SUMMARY
 # ============================================================================
@@ -2227,6 +2331,30 @@ while [ "$ITERATION" -lt "$MAX_ITERATIONS" ]; do
     # Finalizer mode: run finalizer prompts instead of normal cycle
     if [ "$FINALIZER_MODE" = "true" ]; then
         if [ "$FINALIZER_POSITION" -ge "$FINALIZER_LENGTH" ]; then
+            check_finalizer_qa_coverage_gate
+            local qa_coverage_passed=$?
+            write_log_entry "finalizer_qa_coverage_check" \
+                "iteration" "$ITERATION" \
+                "passed" "$([ $qa_coverage_passed -eq 0 ] && echo 'true' || echo 'false')" \
+                "reason" "$FINALIZER_QA_GATE_REASON" \
+                "message" "$FINALIZER_QA_GATE_MESSAGE" \
+                "qa_total" "$FINALIZER_QA_TOTAL" \
+                "qa_untested" "$FINALIZER_QA_UNTESTED" \
+                "qa_fail" "$FINALIZER_QA_FAIL"
+            if [ $qa_coverage_passed -ne 0 ]; then
+                FINALIZER_MODE=false
+                FINALIZER_POSITION=0
+                ALL_TASKS_MARKED_DONE=false
+                persist_loop_plan_state
+                write_log_entry "finalizer_aborted" \
+                    "iteration" "$ITERATION" \
+                    "reason" "$FINALIZER_QA_GATE_REASON" \
+                    "qa_total" "$FINALIZER_QA_TOTAL" \
+                    "qa_untested" "$FINALIZER_QA_UNTESTED" \
+                    "qa_fail" "$FINALIZER_QA_FAIL"
+                echo "[Finalizer aborted — $FINALIZER_QA_GATE_MESSAGE]"
+                continue
+            fi
             write_log_entry "finalizer_completed" "iteration" "$ITERATION"
             echo "[Finalizer sequence completed — all tasks done]"
             write_status "$ITERATION" "finalizer" "$(resolve_iteration_provider $ITERATION)" 0 "completed"
