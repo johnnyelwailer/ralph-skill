@@ -1025,12 +1025,12 @@ Don't over-abstract before a second adapter exists. Extract `execGh` calls into 
 
 ### Acceptance Criteria
 
-- [ ] `OrchestratorAdapter` interface defined in `src/lib/adapter.ts`
-- [ ] `GitHubAdapter` wraps all existing `gh` CLI calls
-- [ ] `orchestrate.ts` uses adapter interface, not raw `execGh`
-- [ ] Adapter selection configurable in `meta.json` (`adapter: "github" | "local"`)
-- [ ] `LocalAdapter` stores issues as JSON files in `.aloop/issues/`, PRs as branches
-- [ ] All GitHub URL construction derives from adapter, never hardcoded
+- [x] `OrchestratorAdapter` interface defined in `src/lib/adapter.ts`
+- [x] `GitHubAdapter` wraps all existing `gh` CLI calls
+- [x] `orchestrate.ts` uses adapter interface, not raw `execGh`
+- [x] Adapter selection configurable in `meta.json` (`adapter: "github" | "local"`)
+- [ ] `LocalAdapter` stores issues as JSON files in `.aloop/issues/`, PRs as branches (deferred per spec)
+- [x] All GitHub URL construction derives from adapter, never hardcoded
 
 ---
 
