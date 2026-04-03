@@ -307,20 +307,11 @@ mappings = [
     ("retry_backoff_linear_step_secs", "RETRY_BACKOFF_LINEAR_STEP_SECS", int),
     ("retry_backoff_exponential_base", "RETRY_BACKOFF_EXPONENTIAL_BASE", int),
     ("phase_retries_min", "PHASE_RETRIES_MIN", int),
-    ("cost_per_iteration_usd", "COST_PER_ITERATION_USD", str),
-    ("budget_approaching_threshold", "BUDGET_APPROACHING_THRESHOLD", str),
     ("qa_coverage_gate_max_untested_pct", "QA_COVERAGE_GATE_MAX_UNTESTED_PCT", int),
-    ("triage_interval", "TRIAGE_INTERVAL", int),
-    ("scan_pass_throttle_ms", "SCAN_PASS_THROTTLE_MS", int),
-    ("concurrency_cap", "CONCURRENCY_CAP", int),
 ]
 for key, var, cast in mappings:
     if key in s and s[key] is not None:
         print(f'export {var}="{cast(s[key])}"')
-# rate_limit_backoff is a string enum
-rlb = s.get("rate_limit_backoff")
-if isinstance(rlb, str) and rlb in ("exponential", "linear", "fixed"):
-    print(f'export RATE_LIMIT_BACKOFF="{rlb}"')
 cl = s.get("cooldown_ladder")
 if isinstance(cl, list) and len(cl) >= 2:
     vals = ",".join(str(int(v)) for v in cl if isinstance(v, (int, float)))
@@ -345,13 +336,7 @@ COOLDOWN_LADDER="0,120,300,900,1800,3600"
 RETRY_BACKOFF_LINEAR_STEP_SECS=5
 RETRY_BACKOFF_EXPONENTIAL_BASE=2
 PHASE_RETRIES_MIN=2
-COST_PER_ITERATION_USD="0.50"
-BUDGET_APPROACHING_THRESHOLD="0.8"
 QA_COVERAGE_GATE_MAX_UNTESTED_PCT=30
-TRIAGE_INTERVAL=5
-SCAN_PASS_THROTTLE_MS=30000
-CONCURRENCY_CAP=3
-RATE_LIMIT_BACKOFF="fixed"
 
 # Load settings from loop-plan.json at startup
 load_loop_settings
@@ -383,20 +368,11 @@ mappings = [
     ("retry_backoff_linear_step_secs", "RETRY_BACKOFF_LINEAR_STEP_SECS", int),
     ("retry_backoff_exponential_base", "RETRY_BACKOFF_EXPONENTIAL_BASE", int),
     ("phase_retries_min", "PHASE_RETRIES_MIN", int),
-    ("cost_per_iteration_usd", "COST_PER_ITERATION_USD", str),
-    ("budget_approaching_threshold", "BUDGET_APPROACHING_THRESHOLD", str),
     ("qa_coverage_gate_max_untested_pct", "QA_COVERAGE_GATE_MAX_UNTESTED_PCT", int),
-    ("triage_interval", "TRIAGE_INTERVAL", int),
-    ("scan_pass_throttle_ms", "SCAN_PASS_THROTTLE_MS", int),
-    ("concurrency_cap", "CONCURRENCY_CAP", int),
 ]
 for key, var, cast in mappings:
     if key in s and s[key] is not None:
         print(f'export {var}="{cast(s[key])}"')
-# rate_limit_backoff is a string enum
-rlb = s.get("rate_limit_backoff")
-if isinstance(rlb, str) and rlb in ("exponential", "linear", "fixed"):
-    print(f'export RATE_LIMIT_BACKOFF="{rlb}"')
 cl = s.get("cooldown_ladder")
 if isinstance(cl, list) and len(cl) >= 2:
     vals = ",".join(str(int(v)) for v in cl if isinstance(v, (int, float)))
