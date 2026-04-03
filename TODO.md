@@ -12,7 +12,7 @@
   - Test 5 needs `hasWorkflows: async () => true` on the adapter (getPrChecks returns empty checks → pending)
   - Test 6 needs `hasWorkflows: async () => true` on the adapter (getPrChecks throws → fail)
 
-- [ ] [qa/P2] Add unit tests for `closePR` and `getPrDiff` in `adapter.test.ts` (priority: normal)
+- [x] [qa/P2] Add unit tests for `closePR` and `getPrDiff` in `adapter.test.ts` (priority: normal)
   - **Where**: `aloop/cli/src/lib/adapter.test.ts` — after the `mergePR` describe block (~line 300)
   - `closePR`: verify `gh pr close <number> --repo owner/repo` is called; with optional `--comment <text>` when comment is provided
   - `getPrDiff`: verify `gh pr diff <number> --repo owner/repo` is called and stdout is returned

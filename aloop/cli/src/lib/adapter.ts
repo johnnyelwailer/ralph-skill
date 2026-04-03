@@ -56,6 +56,10 @@ export interface OrchestratorAdapter {
 
   // Bulk fetch (optional — not all adapters support GraphQL-based bulk fetching)
   fetchBulkIssueState?(opts?: { states?: string[]; since?: string; issueNumbers?: number[] }): Promise<BulkFetchResult>;
+
+  // Repository queries (optional — not all adapters support these)
+  hasWorkflows?(): Promise<boolean>;
+  branchExists?(branchName: string): Promise<boolean>;
 }
 
 // ----- GitHubAdapter -----
@@ -413,6 +417,27 @@ export class GitHubAdapter implements OrchestratorAdapter {
       since: opts?.since,
       issueNumbers: opts?.issueNumbers,
     });
+  }
+
+  async hasWorkflows(): Promise<boolean> {
+    try {
+      const response = await this.execGh([
+        'api', `repos/${this.repo}/actions/workflows`, '--method', 'GET', '--jq', '.total_count',
+      ]);
+      const total = Number(response.stdout.trim());
+      return Number.isFinite(total) && total > 0;
+    } catch {
+      return false;
+    }
+  }
+
+  async branchExists(branchName: string): Promise<boolean> {
+    try {
+      await this.execGh(['api', `repos/${this.repo}/branches/${branchName}`, '--jq', '.name']);
+      return true;
+    } catch {
+      return false;
+    }
   }
 }
 

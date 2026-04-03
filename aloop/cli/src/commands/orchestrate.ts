@@ -3102,7 +3102,6 @@ export interface PrMergeResult {
 }
 
 export interface PrLifecycleDeps {
-  execGh?: (args: string[]) => Promise<{ stdout: string; stderr: string }>;
   readFile: (path: string, encoding: BufferEncoding) => Promise<string>;
   writeFile: (path: string, data: string, encoding: BufferEncoding) => Promise<void>;
   now: () => Date;
@@ -3114,14 +3113,10 @@ export interface PrLifecycleDeps {
 
 const ORCHESTRATOR_CI_PERSISTENCE_LIMIT = 3;
 
-async function hasGithubActionsWorkflows(repo: string, deps: PrLifecycleDeps): Promise<boolean> {
-  if (!deps.execGh) return false;
+async function hasGithubActionsWorkflows(deps: PrLifecycleDeps): Promise<boolean> {
+  if (!deps.adapter?.hasWorkflows) return false;
   try {
-    const response = await deps.execGh([
-      'api', `repos/${repo}/actions/workflows`, '--method', 'GET', '--jq', '.total_count',
-    ]);
-    const total = Number(response.stdout.trim());
-    return Number.isFinite(total) && total > 0;
+    return await deps.adapter.hasWorkflows();
   } catch {
     return false;
   }
@@ -3137,7 +3132,7 @@ export async function checkPrGates(
   deps: PrLifecycleDeps,
 ): Promise<PrGatesResult> {
   const gates: PrGateResult[] = [];
-  const ciWorkflowsConfigured = await hasGithubActionsWorkflows(repo, deps);
+  const ciWorkflowsConfigured = await hasGithubActionsWorkflows(deps);
 
   // Gate 1: Mergeability (conflict check)
   let mergeable = false;
@@ -3907,7 +3902,6 @@ export interface MonitorChildDeps {
   existsSync: (path: string) => boolean;
   readFile: (path: string, encoding: BufferEncoding) => Promise<string>;
   writeFile: (path: string, data: string, encoding: BufferEncoding) => Promise<void>;
-  execGh?: (args: string[]) => Promise<{ stdout: string; stderr: string }>;
   now: () => Date;
   appendLog: (sessionDir: string, entry: Record<string, unknown>) => void;
   aloopRoot: string;
@@ -3943,11 +3937,12 @@ async function createPrForChild(
   // Determine base branch: prefer agent/trunk, fall back to trunk_branch
   const baseBranch = state.trunk_branch || 'agent/trunk';
 
-  // Check if base branch exists remotely (no adapter equivalent — keep as raw execGh)
+  // Check if base branch exists remotely via adapter
   let effectiveBase = baseBranch;
-  if (deps.execGh) {
+  if (deps.adapter?.branchExists) {
     try {
-      await deps.execGh(['api', `repos/${repo}/branches/${baseBranch}`, '--jq', '.name']);
+      const exists = await deps.adapter.branchExists(baseBranch);
+      if (!exists) effectiveBase = 'main';
     } catch {
       effectiveBase = 'main';
     }
@@ -5121,7 +5116,6 @@ export async function runOrchestratorScanPass(
           existsSync: deps.existsSync,
           readFile: deps.readFile,
           writeFile: deps.writeFile,
-          execGh: deps.execGh,
           now: deps.now,
           appendLog: deps.appendLog,
           aloopRoot: deps.aloopRoot,

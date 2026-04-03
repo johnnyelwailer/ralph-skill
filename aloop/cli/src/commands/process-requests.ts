@@ -998,7 +998,6 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
     aloopRoot,
     adapter,
     prLifecycleDeps: adapter ? {
-      execGh,
       readFile: (p: string, enc: BufferEncoding) => readFile(p, enc),
       writeFile: (p: string, data: string, enc: BufferEncoding) => writeFile(p, data, enc),
       now: () => new Date(),

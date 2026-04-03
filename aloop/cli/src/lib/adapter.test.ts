@@ -299,6 +299,39 @@ describe('GitHubAdapter', () => {
     });
   });
 
+  describe('closePR', () => {
+    it('calls gh pr close with repo', async () => {
+      let calledArgs: string[] = [];
+      const execGh: GhExecFn = async (args) => { calledArgs = args; return { stdout: '', stderr: '' }; };
+      const adapter = new GitHubAdapter(config, execGh);
+      await adapter.closePR(42);
+      assert.deepEqual(calledArgs, ['pr', 'close', '42', '--repo', 'owner/repo']);
+    });
+
+    it('includes comment when provided', async () => {
+      let calledArgs: string[] = [];
+      const execGh: GhExecFn = async (args) => { calledArgs = args; return { stdout: '', stderr: '' }; };
+      const adapter = new GitHubAdapter(config, execGh);
+      await adapter.closePR(42, 'Closing as obsolete');
+      assert.ok(calledArgs.includes('--comment'));
+      assert.ok(calledArgs.includes('Closing as obsolete'));
+    });
+  });
+
+  describe('getPrDiff', () => {
+    it('calls gh pr diff and returns stdout', async () => {
+      let calledArgs: string[] = [];
+      const execGh: GhExecFn = async (args) => {
+        calledArgs = args;
+        return { stdout: 'diff --git a/file.ts b/file.ts\n--- a/file.ts\n+++ b/file.ts\n', stderr: '' };
+      };
+      const adapter = new GitHubAdapter(config, execGh);
+      const diff = await adapter.getPrDiff(7);
+      assert.deepEqual(calledArgs, ['pr', 'diff', '7', '--repo', 'owner/repo']);
+      assert.ok(diff.includes('diff --git'));
+    });
+  });
+
   describe('getPRStatus', () => {
     it('parses mergeable status with passing CI', async () => {
       const execGh = mockGh({
