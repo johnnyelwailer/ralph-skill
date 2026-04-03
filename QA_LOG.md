@@ -485,3 +485,61 @@ $ rm -rf /tmp/qa-test-c2arNn /tmp/qa-test2-fY2TaE /tmp/aloop-test-install-RpOWqK
 - Hot-reload non-functional: meta.json must have `loop_settings` (snake_case dict) but aloop start never writes it
 - pipeline.yml max_iterations comment bug is fixed (prior FAIL → now PASS)
 - All new pipeline.yml settings correctly stored in loop-plan.json loopSettings
+
+## QA Session — 2026-04-03 (issue-94, iter ba6d799da)
+
+### Test Environment
+- Binary under test: `/tmp/aloop-test-install-xg74Xu/bin/aloop`
+- Version: 1.0.0
+- Commit: ba6d799da
+- Temp dirs: /tmp/qa-test-WP8GqI, /tmp/qa-allfields-x4LK7y
+- Features tested: 4
+
+### Results
+- PASS: Gate4 — dead vars removed from loop.sh/loop.ps1
+- PASS: Gate3a — 18 loopSettings field assertions, all 23 fields compiled correctly
+- FAIL: Gate3b — loop-settings.test.ts does not exist
+- FAIL: hot-reload qa/P1 — loop_settings still absent from meta.json (not fixed)
+
+### Bugs Filed
+- None new — existing qa/P1 (hot-reload) still open, no new bugs found
+
+### Command Transcript
+
+```
+# Install from source
+ALOOP_BIN=$(npm --prefix aloop/cli run --silent test-install -- --keep 2>/dev/null | tail -1)
+# → /tmp/aloop-test-install-xg74Xu/bin/aloop
+
+aloop --version
+# → 1.0.0
+
+# Gate4: check installed loop.sh for dead variables
+grep TRIAGE_INTERVAL /tmp/aloop-test-install-xg74Xu/lib/node_modules/aloop-cli/dist/bin/loop.sh
+# (all 6 vars) → 0 occurrences in loop.sh and loop.ps1 ✓
+
+# Gate3a: run compile-loop-plan unit tests
+npm --prefix aloop/cli test -- --test-name-pattern "compile-loop-plan"
+# → ok 36 - compileLoopPlan — includes loopSettings from pipeline.yml ✓
+
+# Gate3a: integration — start with 23-field pipeline.yml
+aloop start --in-place --max-iterations 1 --provider claude --mode plan --project-root /tmp/qa-allfields-x4LK7y &
+# Session: qa-allfields-x4lk7y-20260403-081137
+# loop-plan.json loopSettings field count: 23
+# git_merge_base_timeout_ms: 30000 ✓
+# gh_cli_timeout_ms: 45000 ✓
+# gh_watch_max_concurrent: 2 ✓
+# gh_ci_failure_persistence_limit: 5 ✓
+# gh_etag_cache_ttl_ms: 10000 ✓
+# priority_critical: 1 ✓
+# priority_high: 2 ✓
+# priority_low: 3 ✓
+
+# Gate3b: check loop-settings.test.ts
+ls aloop/cli/src/lib/loop-settings.test.ts
+# → NOT FOUND ✗
+
+# hot-reload qa/P1: check meta.json
+python3 -c "import json; d=json.load(open('~/.aloop/sessions/qa-allfields-x4lk7y.../meta.json')); print('loop_settings' in d)"
+# → False ✗ (still not written to meta.json)
+```
