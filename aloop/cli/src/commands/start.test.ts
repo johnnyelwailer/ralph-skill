@@ -2365,3 +2365,69 @@ test('resolveStartDeps falls back to defaultDeps for non-object', () => {
   const result = resolveStartDeps('not-an-object');
   assert.ok(typeof result.discoverWorkspace === 'function');
 });
+
+test('startCommandWithDeps writes loop_settings to meta.json from pipeline.yml', async () => {
+  const fixture = await setupWorkspace('aloop-start-loop-settings-meta-');
+  await writeFile(
+    fixture.discovery.setup.config_path,
+    [
+      "provider: 'claude'",
+      "mode: 'plan-build'",
+      'on_start:',
+      "  monitor: 'none'",
+      '',
+    ].join('\n'),
+    'utf8',
+  );
+
+  const pipelineDir = path.join(fixture.projectRoot, '.aloop');
+  await mkdir(pipelineDir, { recursive: true });
+  await writeFile(
+    path.join(pipelineDir, 'pipeline.yml'),
+    [
+      'pipeline:',
+      '  - agent: plan',
+      '  - agent: build',
+      'loop:',
+      '  max_iterations: 42',
+      '  max_stuck: 7',
+      '  inter_iteration_sleep: 5',
+      '  cooldown_ladder: [0, 60, 120]',
+      '',
+    ].join('\n'),
+    'utf8',
+  );
+
+  const result = await startCommandWithDeps(
+    { homeDir: fixture.homeDir, projectRoot: fixture.projectRoot, inPlace: true },
+    {
+      discoverWorkspace: async () => fixture.discovery,
+      readFile,
+      writeFile,
+      mkdir,
+      cp: async (src, dest) => {
+        await mkdir(dest, { recursive: true });
+        const content = await readFile(path.join(src, 'PROMPT_plan.md'), 'utf8');
+        await writeFile(path.join(dest, 'PROMPT_plan.md'), content, 'utf8');
+      },
+      existsSync,
+      spawn: (() => ({ pid: 1234, unref() {} }) as any) as any,
+      spawnSync: (() => ({ status: 0, stdout: '', stderr: '' }) as any) as any,
+      platform: 'linux',
+      nodePath: '/usr/bin/node',
+      aloopPath: '/usr/local/bin/aloop',
+      env: process.env,
+      now: () => new Date('2026-03-01T12:34:56.000Z'),
+    },
+  );
+
+  assert.ok(result.session_id, 'should have session_id');
+
+  const meta = JSON.parse(await readFile(path.join(result.session_dir, 'meta.json'), 'utf8')) as Record<string, unknown>;
+  assert.ok(meta.loop_settings, 'meta.json should contain loop_settings');
+  const ls = meta.loop_settings as Record<string, unknown>;
+  assert.equal(ls.max_iterations, 42, 'loop_settings.max_iterations should match pipeline.yml');
+  assert.equal(ls.max_stuck, 7, 'loop_settings.max_stuck should match pipeline.yml');
+  assert.equal(ls.inter_iteration_sleep, 5, 'loop_settings.inter_iteration_sleep should match pipeline.yml');
+  assert.deepEqual(ls.cooldown_ladder, [0, 60, 120], 'loop_settings.cooldown_ladder should match pipeline.yml');
+});

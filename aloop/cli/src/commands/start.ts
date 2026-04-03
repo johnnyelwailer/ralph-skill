@@ -8,6 +8,7 @@ import { resolveHomeDir } from './session.js';
 import type { OutputMode } from './status.js';
 import { compileLoopPlan } from './compile-loop-plan.js';
 import { DEFAULT_LOOP_SETTINGS } from '../lib/defaults.js';
+import { loadLoopSettings, type ReadonlyLoopSettings } from '../lib/loop-settings.js';
 
 type ProviderName = 'claude' | 'codex' | 'gemini' | 'copilot' | 'opencode';
 type LoopProvider = ProviderName | 'round-robin';
@@ -454,6 +455,7 @@ interface SessionMeta {
   max_iterations: number;
   max_stuck: number;
   pid?: number;
+  loop_settings?: ReadonlyLoopSettings;
 }
 
 async function readSessionMeta(sessionDir: string, deps: StartDeps): Promise<SessionMeta | null> {
@@ -880,6 +882,8 @@ export async function startCommandWithDeps(options: StartCommandOptions = {}, de
     existsSync: deps.existsSync,
   });
 
+  const loopSettings = loadLoopSettings(path.join(sessionDir, 'loop-plan.json'));
+
   const modelProviders = collectModelProviders(enabledProviders, selectedProvider);
   const roundRobinCsv = roundRobinOrder.join(',');
   const loopBinDir = path.join(aloopRoot, 'bin');
@@ -1001,6 +1005,7 @@ export async function startCommandWithDeps(options: StartCommandOptions = {}, de
     round_robin_order: roundRobinOrder,
     warnings,
     created_at: startedAt,
+    loop_settings: loopSettings,
   };
 
   await deps.writeFile(metaPath, `${JSON.stringify(meta, null, 2)}\n`, 'utf8');
