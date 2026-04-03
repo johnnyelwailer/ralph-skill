@@ -372,3 +372,116 @@ $ rm -rf /tmp/qa-test-1xNJOF /tmp/aloop-test-install-WMzm0d
 - One open bug remains: `.aloop/pipeline.yml:31` comment "(set 0 for unlimited)" contradicts runtime validation
 - All other tested features pass
 - No source code read during testing
+
+---
+
+## QA Session — 2026-04-03 (issue-94, iter 5)
+
+### Test Environment
+- Binary under test: `/tmp/aloop-test-install-RpOWqK/bin/aloop`
+- Version: 1.0.0
+- Commit: d6e3e7e49 (HEAD)
+- Temp dirs: /tmp/qa-test-c2arNn, /tmp/qa-test2-fY2TaE (cleaned up)
+- Features tested: 3
+
+### Results
+- FAIL: hot-reload of loopSettings from meta.json — bug filed [qa/P1]
+- PASS: .aloop/pipeline.yml:31 max_iterations comment — prior FAIL is now fixed
+- PASS: loopSettings 16-field integration (remaining hardcoded settings extracted to pipeline.yml)
+
+### Bugs Filed
+- [qa/P1] Hot-reload loop settings from meta.json is non-functional: meta.json never gets `loop_settings` key
+
+### Command Transcript
+
+```
+# Install
+$ npm --prefix aloop/cli run --silent test-install -- --keep 2>/dev/null | tail -1
+/tmp/aloop-test-install-RpOWqK/bin/aloop
+# EXIT: 0 ✓
+
+$ /tmp/aloop-test-install-RpOWqK/bin/aloop --version
+1.0.0
+# EXIT: 0 ✓
+
+# Test 1: Hot-reload of loopSettings from meta.json
+# Created /tmp/qa-test-c2arNn with pipeline.yml containing:
+#   loop: triage_interval: 12, scan_pass_throttle_ms: 55000, rate_limit_backoff: exponential
+#         provider_timeout: 7200, max_iterations: 10, max_stuck: 5, concurrency_cap: 3
+
+$ cd /tmp/qa-test-c2arNn && aloop scaffold && aloop start --output json --in-place
+# Session: qa-test-c2arnn-20260403-073126
+# EXIT: 0 ✓
+
+# loop-plan.json has correct loopSettings:
+# { max_iterations: 10, max_stuck: 5, provider_timeout: 7200, triage_interval: 12,
+#   scan_pass_throttle_ms: 55000, rate_limit_backoff: "exponential" }
+# EXIT: 0 ✓
+
+# meta.json has NO loop_settings key:
+$ python3 -c "import json; m=json.load(open('/home/pj/.aloop/sessions/qa-test-c2arnn-20260403-073126/meta.json')); print(list(m.keys()))"
+# → ['session_id', 'project_name', 'project_root', 'max_iterations', 'max_stuck', 'provider_timeout', ...]
+# No 'loop_settings' key in meta.json!
+
+# Verified hot-reload is a no-op using the Python snippet from installed loop.sh:
+$ python3 << 'EOF'
+import json, sys
+m = json.load(open('/home/pj/.aloop/sessions/qa-test-c2arnn-20260403-073126/meta.json'))
+s = m.get("loop_settings")
+if not s:
+    print("EXIT: loop_settings not found — hot-reload is a no-op")
+EOF
+# → EXIT: loop_settings not found — hot-reload is a no-op
+# FAIL: README says "changes to meta.json take effect on next iteration" — false
+
+# Additional observations:
+# - loop.sh's refresh_loop_settings_from_meta() looks for m.get("loop_settings") (snake_case)
+# - loop-plan.json uses "loopSettings" (camelCase) — naming inconsistency
+# - meta.json has max_iterations: 50 (DEFAULT, not pipeline.yml value of 10) at top level
+# - If user sets loop_settings in meta.json manually, hot-reload DOES work (verified)
+# Bug filed: [qa/P1] in TODO.md
+
+# Test 2: pipeline.yml max_iterations comment (re-test of prior FAIL)
+$ grep max_iterations /home/pj/.aloop/sessions/orchestrator-20260321-172932-issue-94-20260402-174555/worktree/.aloop/pipeline.yml
+  max_iterations: 50            # Max iterations before auto-stopping (must be a positive integer)
+# PASS: comment now says "(must be a positive integer)" — prior FAIL is fixed ✓
+
+# Test 3: 16-field loopSettings from pipeline.yml
+# Added comprehensive pipeline.yml with 16 settings (new settings from 95ca1e7b7):
+# retry_backoff_linear_step_secs=8, retry_backoff_exponential_base=3, phase_retries_min=4
+# cost_per_iteration_usd=0.75, budget_approaching_threshold=0.9
+# qa_coverage_gate_max_untested_pct=20, git_fetch_timeout_ms=25000
+# gh_watch_interval_secs=90, gh_feedback_max_iterations=3
+
+$ aloop start --output json --in-place
+# Session: qa-test-c2arnn-20260403-073652
+# EXIT: 0 ✓
+
+$ cat /home/pj/.aloop/sessions/qa-test-c2arnn-20260403-073652/loop-plan.json
+# loopSettings has all 16 values — all match pipeline.yml input
+# retry_backoff_linear_step_secs: 8 ✓  retry_backoff_exponential_base: 3 ✓
+# phase_retries_min: 4 ✓  cost_per_iteration_usd: 0.75 ✓
+# budget_approaching_threshold: 0.9 ✓  qa_coverage_gate_max_untested_pct: 20 ✓
+# git_fetch_timeout_ms: 25000 ✓  gh_watch_interval_secs: 90 ✓
+# gh_feedback_max_iterations: 3 ✓
+# PASS ✓
+
+# Verified loop.sh handles 6 new settings (grep confirmed):
+# RETRY_BACKOFF_LINEAR_STEP_SECS, RETRY_BACKOFF_EXPONENTIAL_BASE, PHASE_RETRIES_MIN
+# COST_PER_ITERATION_USD, BUDGET_APPROACHING_THRESHOLD, QA_COVERAGE_GATE_MAX_UNTESTED_PCT
+# git/gh timeout settings are in loop-plan.json and referenced in index.js (TypeScript orchestrator)
+
+# Orchestrate reads pipeline.yml settings:
+$ aloop orchestrate --plan-only --output json
+# state.concurrency_cap: 3, state.triage_interval: 12, state.scan_pass_throttle_ms: 55000
+# state.rate_limit_backoff: "exponential"
+# PASS ✓
+
+# Cleanup
+$ rm -rf /tmp/qa-test-c2arNn /tmp/qa-test2-fY2TaE /tmp/aloop-test-install-RpOWqK /tmp/qa-meta-test.json
+```
+
+### Notes
+- Hot-reload non-functional: meta.json must have `loop_settings` (snake_case dict) but aloop start never writes it
+- pipeline.yml max_iterations comment bug is fixed (prior FAIL → now PASS)
+- All new pipeline.yml settings correctly stored in loop-plan.json loopSettings
