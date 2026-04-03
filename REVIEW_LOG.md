@@ -169,3 +169,43 @@
 - **Gate 9 (partial)**: `README.md` fixes are accurate and verified. One stale comment remains in `.aloop/pipeline.yml` (see finding above).
 
 ---
+
+## Review — 2026-04-03 — commits 850ccc63e..a1f7707f3 (issue #94 new config fields + hot-reload)
+
+**Verdict: FAIL** (3 findings → written to TODO.md as [review] tasks)
+**Scope:** `aloop/bin/loop.sh`, `aloop/bin/loop.ps1`, `aloop/cli/src/lib/loop-settings.ts`, `aloop/cli/src/commands/compile-loop-plan.ts`, `aloop/cli/src/commands/orchestrate.ts`, `aloop/cli/src/commands/process-requests.ts`, `aloop/cli/src/lib/github-monitor.ts`, `aloop/cli/src/commands/gh.ts`, `.aloop/pipeline.yml`, `aloop/cli/src/lib/defaults.ts`, `README.md`
+
+### What the build implemented
+
+- **`08d6aea79`**: Added 6 new config fields (retry_backoff_linear_step_secs, retry_backoff_exponential_base, phase_retries_min, cost_per_iteration_usd, budget_approaching_threshold, qa_coverage_gate_max_untested_pct) to pipeline.yml, defaults.ts, compile-loop-plan.ts, loop.sh, and loop.ps1. Orchestrate.ts references DEFAULT_LOOP_SETTINGS for cost/budget constants.
+- **`450795d9a`**: Added orchestrator settings (triage_interval, scan_pass_throttle_ms, concurrency_cap, rate_limit_backoff) back to loop.sh/loop.ps1 load functions and compile-loop-plan.ts interface.
+- **`123929beb`**: Fixed heredoc pipe syntax in loop.sh (PY delimiter was indented, causing bash syntax error).
+- **`95ca1e7b7`**: Added 12 more config fields (git/gh timeouts, watch/monitoring constants, priority mapping). Created new `loop-settings.ts` utility (180 lines). Updated process-requests.ts, gh.ts, github-monitor.ts to use configurable values.
+- **`d6e3e7e49`**: Added `mergeLoopSettingsFromMeta` to orchestrate.ts. `runOrchestratorScanPass` now hot-reloads from meta.json. 6 unit tests with exact value assertions.
+- **`a1f7707f3`** (QA): Found hot-reload non-functional (meta.json never contains `loop_settings`). Filed `[qa/P1]`. Confirmed pipeline.yml comment fix and 16-field loopSettings integration pass.
+- **`1f951bb86`**: Fixed pipeline.yml max_iterations comment.
+- **`ba99a8591`**: Extended README with pipeline cycle, finalizer, orchestrator events docs.
+
+### Findings
+
+- **Gate 4 REGRESSION**: `loop.sh` lines 313–315, 323, 348–354 and `loop.ps1` — `TRIAGE_INTERVAL`, `SCAN_PASS_THROTTLE_MS`, `CONCURRENCY_CAP`, `RATE_LIMIT_BACKOFF`, `COST_PER_ITERATION_USD`, `BUDGET_APPROACHING_THRESHOLD` are initialized and loaded from config but **never referenced in any actual loop logic**. These are orchestrator-level settings. This is the exact dead code removed by commit `66abdb0` (prior Gate 4 fix), re-introduced by commits `450795d9a` and `08d6aea79`. → written as `[review]` task.
+
+- **Gate 3**: `compile-loop-plan.ts` added 18 new fields to `numFields` — none are exercised by the roundtrip test at `compile-loop-plan.test.ts:847`. The pipeline.yml fixture (lines 854–871) only covers the 10 previously-tested fields. Zero assertions for retry_backoff_linear_step_secs, retry_backoff_exponential_base, phase_retries_min, cost_per_iteration_usd, budget_approaching_threshold, qa_coverage_gate_max_untested_pct, git_fetch_timeout_ms, git_merge_base_timeout_ms, gh_cli_timeout_ms, gh_watch_interval_secs, gh_watch_max_concurrent, gh_feedback_max_iterations, gh_ci_failure_persistence_limit, gh_etag_cache_ttl_ms, priority_critical, priority_high, priority_low, and the reverted concurrency_cap. → written as `[review]` task.
+
+- **Gate 3**: `aloop/cli/src/lib/loop-settings.ts` — new 180-line module, zero tests. `readNumber`, `readStringEnum`, `readNumberArray` (including inline-array-string branch), and `loadLoopSettings` with try/catch fallback are all untested. → written as `[review]` task.
+
+### Gates that passed
+
+- **Gate 1**: Prior FAIL finding (pipeline.yml `max_iterations` comment) resolved by `1f951bb86`. ✅
+- **Gate 2**: `mergeLoopSettingsFromMeta` tests at `orchestrate.test.ts:4772–4828` — 6 tests with exact value assertions covering null input, no loop_settings, field override, field preservation, invalid JSON, and invalid enum value. Thorough. ✅
+- **Gate 2 (partial)**: `gh.ts` export refactor (`GH_FEEDBACK_DEFAULT_MAX_ITERATIONS` → mutable `_ghFeedbackMaxIterations` + constant `DEFAULT_GH_FEEDBACK_MAX_ITERATIONS`) is semantically sound. Test imports alias correctly. However, mutable module-global state is a testability risk if future tests call `ghWatchCommand`.
+- **Gate 5**: 32 pre-existing failures (same baseline). Type-check passes. ✅
+- **Gate 6**: Internal plumbing — no proof artifacts expected. ✅
+- **Gates 7–8**: N/A.
+- **Gate 9**: `README.md` additions (pipeline cycle, orchestrator events, new CLI commands, expanded loop settings table) appear accurate. Pipeline.yml comment fix verified. ✅
+
+### Open tracked gap (not a new finding)
+
+`[qa/P1]` task in TODO.md: `aloop start` never writes `loop_settings` to meta.json, so `refresh_loop_settings_from_meta()` in loop.sh silently no-ops. The orchestrator's `mergeLoopSettingsFromMeta` is similarly blocked. This is a pre-existing QA finding with specific fix instructions already in TODO.md.
+
+---
