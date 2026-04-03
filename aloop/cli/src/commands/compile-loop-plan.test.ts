@@ -868,6 +868,23 @@ test('compileLoopPlan — includes loopSettings from pipeline.yml in loop-plan.j
       '  rate_limit_backoff: exponential',
       '  provider_timeout: 10800',
       '  concurrency_cap: 7',
+      '  retry_backoff_linear_step_secs: 10',
+      '  retry_backoff_exponential_base: 3',
+      '  phase_retries_min: 5',
+      '  cost_per_iteration_usd: 0.75',
+      '  budget_approaching_threshold: 0.9',
+      '  qa_coverage_gate_max_untested_pct: 20',
+      '  git_fetch_timeout_ms: 45000',
+      '  git_merge_base_timeout_ms: 15000',
+      '  gh_cli_timeout_ms: 45000',
+      '  gh_watch_interval_secs: 90',
+      '  gh_watch_max_concurrent: 5',
+      '  gh_feedback_max_iterations: 10',
+      '  gh_ci_failure_persistence_limit: 5',
+      '  gh_etag_cache_ttl_ms: 600000',
+      '  priority_critical: 150',
+      '  priority_high: 75',
+      '  priority_low: -20',
     ].join('\n'),
     'utf8',
   );
@@ -895,6 +912,23 @@ test('compileLoopPlan — includes loopSettings from pipeline.yml in loop-plan.j
   assert.equal(loopPlanJson.loopSettings.rate_limit_backoff, 'exponential');
   assert.equal(loopPlanJson.loopSettings.provider_timeout, 10800);
   assert.equal(loopPlanJson.loopSettings.concurrency_cap, 7);
+  assert.equal(loopPlanJson.loopSettings.retry_backoff_linear_step_secs, 10);
+  assert.equal(loopPlanJson.loopSettings.retry_backoff_exponential_base, 3);
+  assert.equal(loopPlanJson.loopSettings.phase_retries_min, 5);
+  assert.equal(loopPlanJson.loopSettings.cost_per_iteration_usd, 0.75);
+  assert.equal(loopPlanJson.loopSettings.budget_approaching_threshold, 0.9);
+  assert.equal(loopPlanJson.loopSettings.qa_coverage_gate_max_untested_pct, 20);
+  assert.equal(loopPlanJson.loopSettings.git_fetch_timeout_ms, 45000);
+  assert.equal(loopPlanJson.loopSettings.git_merge_base_timeout_ms, 15000);
+  assert.equal(loopPlanJson.loopSettings.gh_cli_timeout_ms, 45000);
+  assert.equal(loopPlanJson.loopSettings.gh_watch_interval_secs, 90);
+  assert.equal(loopPlanJson.loopSettings.gh_watch_max_concurrent, 5);
+  assert.equal(loopPlanJson.loopSettings.gh_feedback_max_iterations, 10);
+  assert.equal(loopPlanJson.loopSettings.gh_ci_failure_persistence_limit, 5);
+  assert.equal(loopPlanJson.loopSettings.gh_etag_cache_ttl_ms, 600000);
+  assert.equal(loopPlanJson.loopSettings.priority_critical, 150);
+  assert.equal(loopPlanJson.loopSettings.priority_high, 75);
+  assert.equal(loopPlanJson.loopSettings.priority_low, -20);
 });
 
 test('compileLoopPlan — omits loopSettings when pipeline.yml has no loop section', async () => {
