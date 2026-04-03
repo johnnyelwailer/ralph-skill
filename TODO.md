@@ -2,6 +2,20 @@
 
 ## Tasks
 
-- [ ] Implement as described in the issue
-- [ ] [qa/P1] checkPrGates subtests 5+6 fail — stale execGh in PrLifecycleDeps test mocks: orchestrate.test.ts uses `execGh` in `Partial<PrLifecycleDeps>` at ~20 locations after execGh was removed from that type (commit 46ad13bc6). Causes TS2353 errors + 2 runtime failures (checkPrGates subtests 5 "returns pending when workflows exist but checks are not yet reported" and 6 "fails CI gate when workflows exist and check query errors"). Fix: update test mocks to use adapter.getPrChecks/getPRStatus instead of execGh. Tested at current HEAD d525d05e6. (priority: high)
-- [ ] [qa/P2] getPrDiff and closePR adapter methods lack unit tests: methods added in 46ad13bc6 are not covered in adapter.test.ts — only tested indirectly via orchestrate.test.ts mocks. Add unit tests for closePR (calls gh pr close with comment) and getPrDiff (calls gh pr diff). Tested at current HEAD d525d05e6.
+### In Progress
+
+### Up Next
+- [x] [qa/P1] Fix checkPrGates test mocks that pass `execGh` in `Partial<PrLifecycleDeps>` overrides (priority: high)
+  - **Where**: `orchestrate.test.ts` lines 2974 and 2993 — subtests 5 ("returns pending when workflows exist but checks are not yet reported") and 6 ("fails CI gate when workflows exist and check query errors")
+  - **Problem**: `PrLifecycleDeps` (orchestrate.ts:3104) has no `execGh` field — passing it causes TS2353 and runtime failures
+  - **Fix**: Replace `execGh: async (args) => ...` in each `createMockPrDeps` override with a `createMockAdapter` that overrides `hasWorkflows` to return `true`, since `hasGithubActionsWorkflows` (orchestrate.ts:3116) now uses `deps.adapter.hasWorkflows()`
+  - Test 5 needs `hasWorkflows: async () => true` on the adapter (getPrChecks returns empty checks → pending)
+  - Test 6 needs `hasWorkflows: async () => true` on the adapter (getPrChecks throws → fail)
+
+- [ ] [qa/P2] Add unit tests for `closePR` and `getPrDiff` in `adapter.test.ts` (priority: normal)
+  - **Where**: `aloop/cli/src/lib/adapter.test.ts` — after the `mergePR` describe block (~line 300)
+  - `closePR`: verify `gh pr close <number> --repo owner/repo` is called; with optional `--comment <text>` when comment is provided
+  - `getPrDiff`: verify `gh pr diff <number> --repo owner/repo` is called and stdout is returned
+
+### Completed
+- [x] Implement as described in the issue — adapter interface, GitHubAdapter, and PrLifecycleDeps using adapter are all in place

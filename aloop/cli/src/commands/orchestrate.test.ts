@@ -2781,7 +2781,6 @@ function createMockPrDeps(overrides: Partial<PrLifecycleDeps> = {}): PrLifecycle
   const writtenFiles: Record<string, string> = {};
   const mockAdapter = createMockAdapter();
   return {
-    execGh: async () => ({ stdout: '', stderr: '' }),
     readFile: async () => '',
     writeFile: async (p: string, data: string) => { writtenFiles[p] = data; },
     now: () => new Date('2026-03-09T12:00:00Z'),
@@ -2964,21 +2963,14 @@ describe('checkPrGates', () => {
 
   it('returns pending when workflows exist but checks are not yet reported', async () => {
     const adapter = createMockAdapter({
+      hasWorkflows: async () => true,
       getPrChecks: async () => ({
         passed: false,
         pending: false,
         checks: [],
       }),
     });
-    const deps = createMockPrDeps({
-      adapter,
-      execGh: async (args) => {
-        if (args[0] === 'api' && args[1]?.includes('/actions/workflows')) {
-          return { stdout: '2', stderr: '' };
-        }
-        return { stdout: '', stderr: '' };
-      },
-    });
+    const deps = createMockPrDeps({ adapter });
     const result = await checkPrGates(100, 'owner/repo', deps);
     assert.equal(result.all_passed, false);
     assert.equal(result.gates[1].status, 'pending');
@@ -2987,17 +2979,10 @@ describe('checkPrGates', () => {
 
   it('fails CI gate when workflows exist and check query errors', async () => {
     const adapter = createMockAdapter({
+      hasWorkflows: async () => true,
       getPrChecks: async () => { throw new Error('checks api unavailable'); },
     });
-    const deps = createMockPrDeps({
-      adapter,
-      execGh: async (args) => {
-        if (args[0] === 'api' && args[1]?.includes('/actions/workflows')) {
-          return { stdout: '1', stderr: '' };
-        }
-        return { stdout: '', stderr: '' };
-      },
-    });
+    const deps = createMockPrDeps({ adapter });
     const result = await checkPrGates(100, 'owner/repo', deps);
     assert.equal(result.all_passed, false);
     assert.equal(result.gates[1].status, 'fail');
@@ -3035,10 +3020,7 @@ describe('checkPrGates', () => {
 describe('checkPrGates adapter path', () => {
   it('uses adapter.getPRStatus and adapter.getPrChecks when adapter present', async () => {
     const adapter = createMockAdapter();
-    const deps = createMockPrDeps({
-      execGh: async () => { throw new Error('execGh should not be called'); },
-      adapter,
-    });
+    const deps = createMockPrDeps({ adapter });
     const result = await checkPrGates(100, 'owner/repo', deps);
     assert.equal(result.all_passed, true);
     assert.equal(result.mergeable, true);
@@ -3059,10 +3041,7 @@ describe('checkPrGates adapter path', () => {
         return { mergeable: false, ci_status: 'success' as const, reviews: [] };
       },
     });
-    const deps = createMockPrDeps({
-      execGh: async () => { throw new Error('execGh should not be called'); },
-      adapter,
-    });
+    const deps = createMockPrDeps({ adapter });
     const result = await checkPrGates(100, 'owner/repo', deps);
     assert.equal(result.mergeable, false);
     assert.equal(result.gates[0].status, 'fail');
@@ -3079,10 +3058,7 @@ describe('checkPrGates adapter path', () => {
         ],
       }),
     });
-    const deps = createMockPrDeps({
-      execGh: async () => { throw new Error('execGh should not be called'); },
-      adapter,
-    });
+    const deps = createMockPrDeps({ adapter });
     const result = await checkPrGates(100, 'owner/repo', deps);
     assert.equal(result.all_passed, false);
     assert.equal(result.gates[1].status, 'pending');
@@ -3100,10 +3076,7 @@ describe('checkPrGates adapter path', () => {
         ],
       }),
     });
-    const deps = createMockPrDeps({
-      execGh: async () => { throw new Error('execGh should not be called'); },
-      adapter,
-    });
+    const deps = createMockPrDeps({ adapter });
     const result = await checkPrGates(100, 'owner/repo', deps);
     assert.equal(result.gates[1].status, 'fail');
     assert.ok(result.gates[1].detail.includes('lint'));
@@ -3124,9 +3097,7 @@ describe('checkPrGates adapter path', () => {
 
 describe('reviewPrDiff', () => {
   it('flags for human when no agent reviewer configured', async () => {
-    const deps = createMockPrDeps({
-      execGh: async () => ({ stdout: 'diff --git a/file.ts b/file.ts\n+hello', stderr: '' }),
-    });
+    const deps = createMockPrDeps();
     const result = await reviewPrDiff(100, 'owner/repo', deps);
     assert.equal(result.verdict, 'flag-for-human');
     assert.ok(result.summary.includes('No agent reviewer configured'));
@@ -3134,7 +3105,6 @@ describe('reviewPrDiff', () => {
 
   it('delegates to agent reviewer when configured', async () => {
     const deps = createMockPrDeps({
-      execGh: async () => ({ stdout: 'diff content', stderr: '' }),
       invokeAgentReview: async (prNum, _repo, diff) => ({
         pr_number: prNum,
         verdict: 'request-changes',
@@ -3198,12 +3168,6 @@ describe('processPrLifecycle', () => {
     const adapter = createMockAdapter();
     const deps = createMockPrDeps({
       adapter,
-      execGh: async (args) => {
-        if (args.includes('diff')) {
-          return { stdout: 'diff content', stderr: '' };
-        }
-        return { stdout: '', stderr: '' };
-      },
       invokeAgentReview: async (prNum) => ({
         pr_number: prNum,
         verdict: 'approve' as const,
@@ -3262,12 +3226,6 @@ describe('processPrLifecycle', () => {
     const adapter = createMockAdapter();
     const deps = createMockPrDeps({
       adapter,
-      execGh: async (args) => {
-        if (args.includes('diff')) {
-          return { stdout: 'diff', stderr: '' };
-        }
-        return { stdout: '', stderr: '' };
-      },
       invokeAgentReview: async (prNum) => ({
         pr_number: prNum,
         verdict: 'request-changes' as const,
@@ -3284,12 +3242,6 @@ describe('processPrLifecycle', () => {
     const adapter = createMockAdapter();
     const deps = createMockPrDeps({
       adapter,
-      execGh: async (args) => {
-        if (args.includes('diff')) {
-          return { stdout: 'diff', stderr: '' };
-        }
-        return { stdout: '', stderr: '' };
-      },
       invokeAgentReview: async (prNum) => ({
         pr_number: prNum,
         verdict: 'flag-for-human' as const,
@@ -3305,12 +3257,6 @@ describe('processPrLifecycle', () => {
     const adapter = createMockAdapter();
     const deps = createMockPrDeps({
       adapter,
-      execGh: async (args) => {
-        if (args.includes('diff')) {
-          return { stdout: 'diff', stderr: '' };
-        }
-        return { stdout: '', stderr: '' };
-      },
       invokeAgentReview: async (prNum) => ({
         pr_number: prNum,
         verdict: 'pending' as const,
@@ -3364,18 +3310,7 @@ describe('processPrLifecycle', () => {
         checks: [{ name: 'build', status: 'COMPLETED', conclusion: 'FAILURE' }],
       }),
     });
-    const deps = createMockPrDeps({
-      adapter,
-      execGh: async (args) => {
-        if (args[0] === 'api' && args[1]?.includes('/actions/workflows')) {
-          return { stdout: '1', stderr: '' };
-        }
-        if (args.includes('close')) {
-          return { stdout: '', stderr: '' };
-        }
-        return { stdout: '', stderr: '' };
-      },
-    });
+    const deps = createMockPrDeps({ adapter });
     const result = await processPrLifecycle(state.issues[0], state, '/state.json', '/session', 'owner/repo', deps);
     assert.equal(result.action, 'closed_for_retry');
     assert.equal(state.issues[0].state, 'pending');
@@ -3391,12 +3326,6 @@ describe('processPrLifecycle', () => {
     });
     const deps = createMockPrDeps({
       adapter,
-      execGh: async (args) => {
-        if (args.includes('diff')) {
-          return { stdout: 'diff', stderr: '' };
-        }
-        return { stdout: '', stderr: '' };
-      },
       invokeAgentReview: async (prNum) => ({
         pr_number: prNum,
         verdict: 'approve' as const,
@@ -3414,12 +3343,6 @@ describe('processPrLifecycle', () => {
     const adapter = createMockAdapter();
     const deps = createMockPrDeps({
       adapter,
-      execGh: async (args) => {
-        if (args.includes('diff')) {
-          return { stdout: 'diff', stderr: '' };
-        }
-        return { stdout: '', stderr: '' };
-      },
       invokeAgentReview: async (prNum) => ({
         pr_number: prNum,
         verdict: 'approve' as const,
@@ -6832,10 +6755,7 @@ describe('adapter-branch tests', () => {
   describe('mergePr adapter path', () => {
     it('uses adapter.mergePR on success', async () => {
       const adapter = createMockAdapter();
-      const deps = createMockPrDeps({
-        execGh: async () => { throw new Error('execGh should not be called'); },
-        adapter,
-      });
+      const deps = createMockPrDeps({ adapter });
       const result = await mergePr(100, 'owner/repo', deps);
       assert.equal(result.merged, true);
       assert.equal(result.pr_number, 100);
@@ -6850,10 +6770,7 @@ describe('adapter-branch tests', () => {
       const adapter = createMockAdapter({
         mergePR: async () => { throw new Error('Merge conflict'); },
       });
-      const deps = createMockPrDeps({
-        execGh: async () => { throw new Error('execGh should not be called'); },
-        adapter,
-      });
+      const deps = createMockPrDeps({ adapter });
       const result = await mergePr(100, 'owner/repo', deps);
       assert.equal(result.merged, false);
       assert.ok(result.error?.includes('Merge conflict'));
@@ -6863,10 +6780,7 @@ describe('adapter-branch tests', () => {
   describe('flagForHuman adapter path', () => {
     it('uses adapter.postComment and adapter.updateIssue', async () => {
       const adapter = createMockAdapter();
-      const deps = createMockPrDeps({
-        execGh: async () => { throw new Error('execGh should not be called'); },
-        adapter,
-      });
+      const deps = createMockPrDeps({ adapter });
       const issue: OrchestratorIssue = { number: 42, title: 'Test', wave: 1, state: 'pr_open', child_session: 's1', pr_number: 100, depends_on: [] };
       await flagForHuman(issue, 'owner/repo', 'test reason', deps);
 
@@ -6885,23 +6799,7 @@ describe('adapter-branch tests', () => {
     it('uses adapter.postComment for flag-for-human when no agent reviewer configured', async () => {
       const adapter = createMockAdapter();
       const state = makeOrchestratorState([{ number: 42, pr_number: 100, state: 'pr_open' }]);
-      const deps = createMockPrDeps({
-        execGh: async (args) => {
-          if (args.includes('mergeable,mergeStateStatus')) {
-            return { stdout: JSON.stringify({ mergeable: 'MERGEABLE' }), stderr: '' };
-          }
-          if (args.includes('checks')) {
-            return { stdout: JSON.stringify([
-              { name: 'build', state: 'COMPLETED', conclusion: 'SUCCESS' },
-            ]), stderr: '' };
-          }
-          if (args.includes('diff')) {
-            return { stdout: 'diff content', stderr: '' };
-          }
-          return { stdout: '', stderr: '' };
-        },
-        adapter,
-      });
+      const deps = createMockPrDeps({ adapter });
 
       const result = await processPrLifecycle(state.issues[0], state, '/state.json', '/session', 'owner/repo', deps);
       assert.equal(result.action, 'flagged_for_human');
@@ -6924,24 +6822,12 @@ describe('adapter-branch tests', () => {
       const adapter = createMockAdapter();
       const state = makeOrchestratorState([{ number: 42, pr_number: 100, state: 'pr_open' }]);
       const deps = createMockPrDeps({
-        execGh: async (args) => {
-          if (args.includes('mergeable,mergeStateStatus')) {
-            return { stdout: JSON.stringify({ mergeable: 'MERGEABLE' }), stderr: '' };
-          }
-          if (args.includes('checks')) {
-            return { stdout: JSON.stringify([{ name: 'ci', state: 'COMPLETED', conclusion: 'SUCCESS' }]), stderr: '' };
-          }
-          if (args.includes('diff')) {
-            return { stdout: 'diff', stderr: '' };
-          }
-          return { stdout: '', stderr: '' };
-        },
+        adapter,
         invokeAgentReview: async (prNum) => ({
           pr_number: prNum,
           verdict: 'request-changes' as const,
           summary: 'Missing test coverage',
         }),
-        adapter,
       });
 
       const result = await processPrLifecycle(state.issues[0], state, '/state.json', '/session', 'owner/repo', deps);
