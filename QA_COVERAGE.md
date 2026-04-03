@@ -46,3 +46,12 @@
 | tsc --noEmit --skipLibCheck | 2026-04-02 | d83d21ca1 | PASS | Zero type errors |
 | orchestrate.test.ts remaining failures (pre-existing) | 2026-04-02 | d83d21ca1 | FAIL (pre-existing) | 7 failures: launchChildLoop (2 subtests), queueGapAnalysisForIssues (1 subtest: test expects embedded spec but impl correctly uses file paths per SPEC-ADDENDUM), epic decomposition (2 subtests: same reason), orchestrateCommandWithDeps multi-file spec (2 subtests), prompt content verification — all pre-existing before d83d21ca1 |
 | Dead execGh fallback branches removed | 2026-04-02 | d83d21ca1 | PASS | No dual if(adapter)/else(execGh) patterns remain for standard issue/PR/comment operations; syncIssueProjectStatus and related dead code removed |
+| TypeScript build (npm run build) | 2026-04-03 | d525d05e6 | PASS | Build clean exit 0 (iter 17); all steps complete |
+| tsc --noEmit --skipLibCheck (non-test files) | 2026-04-03 | d525d05e6 | PASS | Zero type errors in non-test files; production code type-safe |
+| tsc --noEmit --skipLibCheck (with test files) | 2026-04-03 | d525d05e6 | FAIL | 20+ TS2353 errors in orchestrate.test.ts: execGh used in Partial<PrLifecycleDeps> after execGh removed from that type; bug filed |
+| adapter.test.ts unit tests | 2026-04-03 | d525d05e6 | PASS | 45/45 pass; includes listPRs (4 subtests), setIssueStatus (5 subtests) |
+| process-requests.ts full suite | 2026-04-03 | d525d05e6 | PASS | 42/42 pass (stable) |
+| github-monitor.test.ts (EtagCache) | 2026-04-03 | d525d05e6 | PASS | 33/33 pass; EtagCache renamed to github-etag-cache.json works correctly |
+| orchestrate.test.ts full suite | 2026-04-03 | d525d05e6 | FAIL | 377/379 pass, 2 fail — checkPrGates subtests 5+6 ("returns pending when workflows exist but checks are not yet reported" and "fails CI gate when workflows exist and check query errors"); regression from execGh removal in 46ad13bc6; bug filed |
+| listPRs adapter method | 2026-04-03 | d525d05e6 | PASS | 4/4 subtests pass in adapter.test.ts: lists with default filters, filters by head branch, passes state filter, returns empty array when none found |
+| getPrDiff and closePR adapter methods | 2026-04-03 | d525d05e6 | FAIL (gap) | Methods added in 46ad13bc6 have no unit tests in adapter.test.ts; only tested indirectly via orchestrate.test.ts mocks; bug filed as P2 |

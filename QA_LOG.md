@@ -1,3 +1,88 @@
+## QA Session — 2026-04-03 (iteration 17)
+
+### Test Environment
+- Binary under test: /tmp/aloop-test-install-B8Dpk7/bin/aloop (installed via npm pack + npm install -g)
+- Version: 1.0.0
+- Commit under test: d525d05e6
+- Changes since iter 16 baseline (d83d21ca1):
+  - 23378e5c1: feat(adapter): setIssueStatus (already in iter 16)
+  - b9248616f: feat(adapter): add listPRs to OrchestratorAdapter + GitHubAdapter
+  - 46ad13bc6: refactor(adapter): add getPrDiff/closePR, replace remaining execGh calls in PR lifecycle
+  - b1b553527: test: fix 5 adapter-related test failures
+  - 60c78d76b: test: fix 2 template content test failures
+  - 90dcab8d0: chore: remove dead execGh/execGhIssueCreate from applyEstimateResults deps
+  - d525d05e6: fix: rename EtagCache file to github-etag-cache.json
+- Features tested: 5
+
+### Results
+- PASS: TypeScript build (npm run build) — exit 0
+- PASS: adapter.test.ts — 45/45 pass (was 41/41; +4 for listPRs subtests)
+- PASS: process-requests.test.ts — 42/42 pass (stable)
+- PASS: github-monitor.test.ts — 33/33 pass (EtagCache rename fix works)
+- PASS: listPRs adapter method — 4/4 subtests pass
+- PASS: tsc --noEmit --skipLibCheck (non-test files) — zero errors in production code
+- FAIL: orchestrate.test.ts — 377/379 pass, 2 fail (checkPrGates subtests 5+6, NEW regression)
+- FAIL: tsc --noEmit --skipLibCheck (with test files) — 20+ TS2353 errors (stale execGh in test mocks)
+- FAIL (gap): getPrDiff/closePR — no unit tests in adapter.test.ts
+
+### Bugs Filed
+- [qa/P1] checkPrGates subtests 5+6 fail — stale execGh in PrLifecycleDeps test mocks
+- [qa/P2] getPrDiff and closePR adapter methods lack unit tests
+
+### Regression Analysis
+- Iter 16 baseline (d83d21ca1): 372/379 pass, 7 fail in orchestrate.test.ts
+- b1b553527 fixed 5 of 7 pre-existing failures
+- 60c78d76b fixed remaining 2 pre-existing failures
+- 46ad13bc6 removed execGh from PrLifecycleDeps but left stale test mocks → 2 NEW failures in checkPrGates
+- Net: 377/379 pass, 2 fail (down from 7 but 2 are new regressions vs 0 from the fixed set)
+
+### Command Transcript
+```
+# Install binary
+ALOOP_BIN=$(npm --prefix aloop/cli run --silent test-install -- --keep 2>/dev/null | tail -1)
+# Output: /tmp/aloop-test-install-B8Dpk7/bin/aloop
+/tmp/aloop-test-install-B8Dpk7/bin/aloop --version
+# Output: 1.0.0
+
+# adapter.test.ts
+npx tsx --test src/lib/adapter.test.ts
+# tests 45 / pass 45 / fail 0
+# listPRs: 4/4 subtests (lists with default filters, filters by head branch, passes state filter, returns empty array)
+
+# process-requests.test.ts
+npx tsx --test src/commands/process-requests.test.ts
+# tests 42 / pass 42 / fail 0
+
+# orchestrate.test.ts
+npx tsx --test src/commands/orchestrate.test.ts
+# tests 379 / pass 377 / fail 2
+# FAIL: checkPrGates > subtest 5 "returns pending when workflows exist but checks are not yet reported"
+#   AssertionError: true !== false (actual: true, expected: false) @ orchestrate.test.ts:2982
+# FAIL: checkPrGates > subtest 6 "fails CI gate when workflows exist and check query errors"
+#   AssertionError: true !== false (actual: true, expected: false) @ orchestrate.test.ts:3001
+
+# github-monitor.test.ts
+npx tsx --test src/lib/github-monitor.test.ts
+# tests 33 / pass 33 / fail 0
+# EtagCache creates/reads 'github-etag-cache.json' — matches test expectations
+
+# TypeScript check — production code only
+npx tsc --noEmit --skipLibCheck 2>&1 | grep -v "\.test\.ts"
+# (no output) — production code is type-safe
+
+# TypeScript check — all files
+npx tsc --noEmit --skipLibCheck; echo "TSC exit: $?"
+# TSC exit: 2
+# 20+ TS2353: 'execGh' does not exist in type 'Partial<PrLifecycleDeps>' in orchestrate.test.ts
+# Affected lines: 2974, 2993, 3038, 3062, 3082, 3103, 3127, 3136, 3200, 3264, 3286, 3307, 3368, 3393, 3416, 6835, 6853, 6866, 6888, 6926
+
+# Build
+npm run build; echo "exit: $?"
+# exit: 0
+```
+
+---
+
 ## QA Session — 2026-04-02 (Issue #177 — iter 16, qa triggered after setIssueStatus + execGh removal commits)
 
 ### Test Environment
