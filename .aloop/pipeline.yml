@@ -19,3 +19,33 @@ finalizer:
   - PROMPT_final-review.md
   - PROMPT_final-qa.md
   - PROMPT_proof.md
+
+# Orchestrator event→prompt mapping.
+# process-requests scans issue state, matches filters, queues the prompt.
+# No hardcoded agent knowledge in the runtime.
+orchestrator_events:
+  refine:
+    prompt: PROMPT_orch_refine.md
+    batch: 3
+    filter:
+      status: "Needs refinement"
+      refined: false
+      dor_validated: false
+    result_pattern: "refine-result-{issue_number}.json"
+
+  estimate:
+    prompt: PROMPT_orch_estimate.md
+    batch: 5
+    filter:
+      status: "Needs refinement"
+      refined: true
+      dor_validated: false
+    result_pattern: "estimate-result-{issue_number}.json"
+
+  cr_analysis:
+    prompt: PROMPT_orch_cr_analysis.md
+    batch: 2
+    filter:
+      is_change_request: true
+      cr_spec_updated: false
+    result_pattern: "cr-analysis-result-{issue_number}.json"

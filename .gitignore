@@ -39,6 +39,7 @@ aloop/cli/dashboard/test-results/
 *-proof.json
 *-verification.txt
 *.tgz
+.mcp.json
 
 # Aloop working artifacts (not for PR)
 TODO.md
@@ -46,4 +47,10 @@ STEERING.md
 QA_COVERAGE.md
 QA_LOG.md
 REVIEW_LOG.md
-TASK_SPEC.md
+
+# Proof screenshots (ephemeral test artifacts)
+proof-artifacts/
+
+# Opencode fixture binaries
+aloop/cli/dashboard/e2e/fixtures/home/.cache/
+aloop/cli/dashboard/e2e/fixtures/home/.local/

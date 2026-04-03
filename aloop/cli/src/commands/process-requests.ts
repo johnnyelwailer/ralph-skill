@@ -1,5 +1,5 @@
-import { existsSync } from 'node:fs';
-import { readFile, readdir, unlink, writeFile, mkdir, cp } from 'node:fs/promises';
+import { existsSync, readFileSync } from 'node:fs';
+import { readFile, readdir, unlink, writeFile, mkdir, cp, stat, rm } from 'node:fs/promises';
 import { spawn, spawnSync } from 'node:child_process';
 import path from 'node:path';
 import { resolveHomeDir } from './session.js';
@@ -8,14 +8,278 @@ import {
   applyDecompositionPlan,
   type ScanLoopDeps,
   type OrchestratorState,
+  type OrchestratorIssue,
   type DecompositionPlan,
 } from './orchestrate.js';
+import { processCrResultFiles, type CrResultDeps } from './cr-pipeline.js';
+export type { CrResultDeps };
+export { processCrResultFiles };
 import { EtagCache } from '../lib/github-monitor.js';
+import { deriveComponentLabels } from '../lib/labels.js';
+import { buildPrBody, ensureMetadataSection, buildIssueLabels } from '../lib/issue-metadata.js';
+
+// --- Orchestrator event system (data-driven from pipeline.yml) ---
+
+interface OrchestratorEvent {
+  agent: string;
+  prompt: string;
+  batch: number;
+  filter: Record<string, unknown>;
+  resultPattern: string;
+}
+
+function loadOrchestratorEvents(pipelineYmlPath: string): OrchestratorEvent[] {
+  if (!existsSync(pipelineYmlPath)) return [];
+  try {
+    const content = readFileSync(pipelineYmlPath, 'utf8');
+    // Minimal YAML parser for orchestrator_events section
+    const eventsMatch = content.match(/^orchestrator_events:\s*\n((?:[\s#].*\n?)*)/m);
+    if (!eventsMatch) return [];
+
+    const events: OrchestratorEvent[] = [];
+    const lines = eventsMatch[1].split('\n');
+    let current: Partial<OrchestratorEvent> | null = null;
+    let inFilter = false;
+    let filter: Record<string, unknown> = {};
+
+    for (const line of lines) {
+      const trimmed = line.replace(/#.*$/, '').trimEnd();
+      if (!trimmed || trimmed.match(/^\s*$/)) continue;
+
+      const indent = line.search(/\S/);
+      // Top-level event name (2-space indent)
+      const stripped = trimmed.trim();
+      if (indent === 2 && stripped.endsWith(':') && !stripped.slice(0, -1).includes(' ')) {
+        if (current?.agent && current?.prompt) {
+          events.push({ ...current, filter, resultPattern: current.resultPattern ?? '' } as OrchestratorEvent);
+        }
+        current = { agent: stripped.replace(':', '') };
+        filter = {};
+        inFilter = false;
+        continue;
+      }
+
+      const kvMatch = trimmed.match(/^\s+(\w+):\s*(.+)$/);
+      if (!kvMatch) {
+        if (trimmed.match(/^\s+filter:\s*$/)) { inFilter = true; continue; }
+        continue;
+      }
+      const [, key, rawVal] = kvMatch;
+      const val = rawVal.replace(/^["']|["']$/g, '').trim();
+
+      if (inFilter && indent >= 6) {
+        filter[key] = val === 'true' ? true : val === 'false' ? false : val;
+      } else {
+        inFilter = false;
+        if (current) {
+          if (key === 'prompt') current.prompt = val;
+          else if (key === 'batch') current.batch = Number(val);
+          else if (key === 'result_pattern') current.resultPattern = val;
+        }
+      }
+    }
+    if (current?.agent && current?.prompt) {
+      events.push({ ...current, filter, resultPattern: current.resultPattern ?? '' } as OrchestratorEvent);
+    }
+    return events;
+  } catch {
+    return [];
+  }
+}
+
+function buildQueuePrompt(agent: string, issue: any, promptContent: string, outputPath: string): string {
+  return [
+    '---',
+    `agent: ${agent}`,
+    `reasoning: high`,
+    '---',
+    '',
+    promptContent,
+    '',
+    `## Issue #${issue.number}: ${issue.title}`,
+    '',
+    issue.body ?? '(no body)',
+    '',
+    `**Wave:** ${issue.wave}`,
+    `**Dependencies:** ${issue.depends_on?.length > 0 ? issue.depends_on.map((d: number) => `#${d}`).join(', ') : 'none'}`,
+    '',
+    `## Output — REQUIRED`,
+    '',
+    `Write your result as a JSON file using the Write tool:`,
+    '',
+    `**Path:** \`${outputPath}\``,
+    '',
+    `Create the \`.aloop/output/\` directory if it does not exist.`,
+    `Without this file, the pipeline cannot continue.`,
+  ].join('\n');
+}
 
 export interface ProcessRequestsOptions {
   sessionDir: string;
   homeDir?: string;
   output?: string;
+}
+
+interface ReviewCommentLike {
+  author?: { login?: string | null } | null;
+  createdAt?: string | null;
+  body?: string | null;
+}
+
+export function formatReviewCommentHistory(comments: ReviewCommentLike[]): string {
+  const blocks: string[] = [];
+  for (const comment of comments) {
+    const body = (comment.body ?? '').trim();
+    if (!body) continue;
+    const author = comment.author?.login ?? 'unknown';
+    const createdAt = comment.createdAt ?? '';
+    const heading = createdAt ? `### @${author} at ${createdAt}` : `### @${author}`;
+    blocks.push(`${heading}\n\n${body}`);
+  }
+  if (blocks.length === 0) return '';
+  return `${blocks.join('\n\n---\n\n')}\n`;
+}
+
+export async function getDirectorySizeBytes(dir: string): Promise<number> {
+  if (!existsSync(dir)) return 0;
+  let total = 0;
+  const entries = await readdir(dir, { withFileTypes: true });
+  for (const entry of entries) {
+    const fullPath = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      total += await getDirectorySizeBytes(fullPath);
+      continue;
+    }
+    if (entry.isFile()) {
+      total += (await stat(fullPath)).size;
+    }
+  }
+  return total;
+}
+
+export async function pruneLargeV8CacheDir(dir: string, thresholdBytes: number): Promise<{ sizeBytes: number; pruned: boolean }> {
+  if (!existsSync(dir)) return { sizeBytes: 0, pruned: false };
+  const sizeBytes = await getDirectorySizeBytes(dir);
+  if (sizeBytes < thresholdBytes) return { sizeBytes, pruned: false };
+  await rm(dir, { recursive: true, force: true });
+  return { sizeBytes, pruned: true };
+}
+
+export interface SyncMasterToTrunkDeps {
+  spawnSync: typeof import('node:child_process').spawnSync;
+}
+
+/**
+ * Phase 2b: Forward-merge master → agent/trunk (pick up human changes).
+ *
+ * Three cases:
+ * 1. Fast-forward: origin/master is a linear descendant of origin/<trunk> →
+ *    git push origin origin/master:refs/heads/<trunk> (no --force)
+ * 2. Diverged: branches have each moved forward → tmp worktree merge + push
+ * 3. Trunk ahead or equal: merge-base == master HEAD → no-op
+ */
+export function syncMasterToTrunk(
+  projectRoot: string,
+  aloopRoot: string,
+  trunkBranch: string,
+  deps: SyncMasterToTrunkDeps,
+): void {
+  const { spawnSync } = deps;
+  try {
+    const fetchR = spawnSync('git', ['-C', projectRoot, 'fetch', 'origin', 'master', trunkBranch], { encoding: 'utf8', timeout: 30000 });
+    if (fetchR.status !== 0) throw new Error('fetch failed');
+    const mergeBase = spawnSync('git', ['-C', projectRoot, 'merge-base', `origin/master`, `origin/${trunkBranch}`], { encoding: 'utf8', timeout: 10000 });
+    const masterHead = spawnSync('git', ['-C', projectRoot, 'rev-parse', 'origin/master'], { encoding: 'utf8', timeout: 10000 });
+    const mbSha = mergeBase.stdout?.trim();
+    const mhSha = masterHead.stdout?.trim();
+    if (mbSha && mhSha && mbSha.length >= 7 && mhSha.length >= 7 && mbSha !== mhSha) {
+      // master has commits that trunk doesn't — forward merge
+      const mergeResult = spawnSync('git', ['-C', projectRoot, 'push', 'origin', `origin/master:refs/heads/${trunkBranch}`], { encoding: 'utf8' });
+      if (mergeResult.status !== 0) {
+        // Can't fast-forward — need a real merge via worktree
+        const tmpMerge = path.join(aloopRoot, 'tmp-trunk-merge');
+        spawnSync('git', ['-C', projectRoot, 'worktree', 'add', tmpMerge, trunkBranch], { encoding: 'utf8' });
+        const result = spawnSync('git', ['-C', tmpMerge, 'merge', 'origin/master', '--no-edit', '-m', 'Merge master into agent/trunk'], { encoding: 'utf8' });
+        if (result.status === 0) {
+          spawnSync('git', ['-C', tmpMerge, 'push', 'origin', 'HEAD'], { encoding: 'utf8' });
+          console.log(`[process-requests] Forward-merged master → ${trunkBranch}`);
+        } else {
+          spawnSync('git', ['-C', tmpMerge, 'merge', '--abort'], { encoding: 'utf8' });
+        }
+        spawnSync('git', ['-C', projectRoot, 'worktree', 'remove', '--force', tmpMerge], { encoding: 'utf8' });
+        spawnSync('git', ['-C', projectRoot, 'worktree', 'prune'], { encoding: 'utf8' });
+      } else {
+        console.log(`[process-requests] Fast-forwarded ${trunkBranch} to master`);
+      }
+    }
+  } catch { /* best effort */ }
+}
+
+export interface ChildBranchSyncDeps {
+  existsSync: (p: string) => boolean;
+  readFile: (p: string, enc: BufferEncoding) => Promise<string>;
+  writeFile: (p: string, data: string, enc: BufferEncoding) => Promise<void>;
+  mkdir: (p: string, o?: { recursive?: boolean }) => Promise<void>;
+  spawnSync: (cmd: string, args: string[], opts?: Record<string, unknown>) => { status: number | null; stdout: string; stderr: string };
+}
+
+export async function syncChildBranches(
+  issues: OrchestratorIssue[],
+  trunkBranch: string,
+  aloopRoot: string,
+  deps: ChildBranchSyncDeps,
+): Promise<boolean> {
+  let stateChanged = false;
+  for (const issue of issues) {
+    if (!issue.child_session) continue;
+    if (issue.state !== 'in_progress' && issue.state !== 'pr_open') continue;
+    const childDir = path.join(aloopRoot, 'sessions', issue.child_session);
+    const childWorktree = path.join(childDir, 'worktree');
+    if (!deps.existsSync(childWorktree)) continue;
+
+    // Fetch and check if diverged
+    const fetchResult = deps.spawnSync('git', ['-C', childWorktree, 'fetch', 'origin', trunkBranch], { encoding: 'utf8', timeout: 30000 });
+    if (fetchResult.status !== 0) continue;
+
+    const mergeBase = deps.spawnSync('git', ['-C', childWorktree, 'merge-base', 'HEAD', `origin/${trunkBranch}`], { encoding: 'utf8', timeout: 10000 });
+    const remoteHead = deps.spawnSync('git', ['-C', childWorktree, 'rev-parse', `origin/${trunkBranch}`], { encoding: 'utf8', timeout: 10000 });
+    const mbSha = mergeBase.stdout?.trim();
+    const rhSha = remoteHead.stdout?.trim();
+    if (!mbSha || !rhSha || mbSha.length < 7 || rhSha.length < 7) continue;
+    if (mbSha === rhSha) continue; // Up to date
+
+    // Commit any dirty files and remove working artifacts before rebase
+    const statusResult = deps.spawnSync('git', ['-C', childWorktree, 'status', '--porcelain'], { encoding: 'utf8' });
+    if (statusResult.stdout?.trim()) {
+      for (const art of ['TODO.md', 'STEERING.md', 'QA_COVERAGE.md', 'QA_LOG.md', 'REVIEW_LOG.md']) {
+        deps.spawnSync('git', ['-C', childWorktree, 'rm', '-f', '--cached', art], { encoding: 'utf8' });
+      }
+      deps.spawnSync('git', ['-C', childWorktree, 'add', '-A'], { encoding: 'utf8' });
+      deps.spawnSync('git', ['-C', childWorktree, 'commit', '--allow-empty', '-m', 'chore: save work-in-progress before rebase'], { encoding: 'utf8' });
+    }
+
+    // Try rebase
+    const rebaseResult = deps.spawnSync('git', ['-C', childWorktree, 'rebase', `origin/${trunkBranch}`], { encoding: 'utf8' });
+    if (rebaseResult.status === 0) {
+      deps.spawnSync('git', ['-C', childWorktree, 'push', 'origin', 'HEAD', '--force-with-lease'], { encoding: 'utf8' });
+      console.log(`[process-requests] Synced #${issue.number} with ${trunkBranch}`);
+    } else {
+      // Conflict — abort rebase, queue merge agent
+      deps.spawnSync('git', ['-C', childWorktree, 'rebase', '--abort'], { encoding: 'utf8' });
+      const mergeQueueFile = path.join(childDir, 'queue', '000-merge-conflict.md');
+      if (!deps.existsSync(mergeQueueFile)) {
+        const mergePromptPath = path.join(childDir, 'prompts', 'PROMPT_merge.md');
+        const mergePrompt = deps.existsSync(mergePromptPath) ? await deps.readFile(mergePromptPath, 'utf8') : '# Merge Conflict Resolution';
+        await deps.mkdir(path.join(childDir, 'queue'), { recursive: true });
+        await deps.writeFile(mergeQueueFile, `---\nagent: merge\nreasoning: high\n---\n\n${mergePrompt}\n\n## Conflict\n\nRebase onto \`origin/${trunkBranch}\` failed.\nRun \`git fetch origin ${trunkBranch} && git rebase origin/${trunkBranch}\`, resolve conflicts, then \`git rebase --continue && git push origin HEAD --force-with-lease\`.\n`, 'utf8');
+        console.log(`[process-requests] Merge conflict on #${issue.number} — queued merge agent`);
+        // Trigger child restart so it processes the queued merge agent
+        (issue as any).needs_redispatch = true;
+        stateChanged = true;
+      }
+    }
+  }
+  return stateChanged;
 }
 
 /**
@@ -47,6 +311,31 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
   const requestsDir = path.join(sessionDir, 'requests');
   const repo = state.filter_repo ?? null;
   let stateChanged = false;
+
+  // execGh must be defined early — used by refine/estimate result handlers
+  const execGh = async (args: string[]): Promise<{ stdout: string; stderr: string }> => {
+    const r = spawnSync('gh', args, { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true, timeout: 30000 });
+    if (r.status === null && r.signal) throw new Error(`gh timed out (${r.signal})`);
+    return { stdout: r.stdout ?? '', stderr: r.stderr ?? '' };
+  };
+
+  // ── Phase 0: Bridge agent output → requests ──
+  // Agents write to worktree/.aloop/output/ (inside their sandbox).
+  // Runtime moves files to session_dir/requests/ for processing.
+  const agentOutputDir = path.join(sessionDir, 'worktree', '.aloop', 'output');
+  if (existsSync(agentOutputDir)) {
+    try {
+      const outputFiles = await readdir(agentOutputDir);
+      for (const file of outputFiles.filter(f => f.endsWith('.json'))) {
+        const src = path.join(agentOutputDir, file);
+        const dest = path.join(requestsDir, file);
+        const content = await readFile(src, 'utf8');
+        await writeFile(dest, content, 'utf8');
+        await unlink(src);
+        console.log(`[process-requests] Bridged agent output: ${file}`);
+      }
+    } catch { /* best-effort */ }
+  }
 
   // ── Phase 1: Apply agent-produced result files ──
 
@@ -92,8 +381,19 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
         let nextNum = Math.max(0, ...state.issues.map((i: any) => i.number ?? 0)) + 1;
         for (const sub of subIssues) {
           const subTitle = sub.title;
-          const subBody = `Part of #${parentNum}: ${parent.title}\n\n${sub.body ?? ''}`;
-          const ghNumber = repo ? await createGhIssue(repo, subTitle, subBody, ['aloop/auto'], requestsDir) : nextNum++;
+          const subBodyBase = `Part of #${parentNum}: ${parent.title}\n\n${sub.body ?? ''}`;
+          const subBody = ensureMetadataSection(subBodyBase, {
+            wave: parent.wave,
+            type: 'sub-issue',
+            files: sub.file_hints ?? [],
+            depends_on: sub.depends_on ?? [],
+          });
+          const subLabels = buildIssueLabels({
+            wave: parent.wave,
+            is_sub_issue: true,
+            component_labels: deriveComponentLabels(sub.file_hints ?? []),
+          });
+          const ghNumber = repo ? await createGhIssue(repo, subTitle, subBody, subLabels, requestsDir) : nextNum++;
           state.issues.push({
             number: ghNumber || nextNum++,
             title: subTitle, body: subBody, file_hints: sub.file_hints ?? [],
@@ -118,29 +418,130 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
     }
   }
 
-  // 1c. Estimate results → apply to state (per-issue files)
-  for (const file of allFiles.filter(f => f.match(/^estimate-result-\d+\.json$/))) {
+  // 1c. Refine results → update GH issue body and mark refined
+  for (const file of allFiles.filter(f => f.match(/^refine-result-\d+\.json$/))) {
     const filePath = path.join(requestsDir, file);
     try {
       const result = JSON.parse(await readFile(filePath, 'utf8'));
       const issue = state.issues.find((i: any) => i.number === result.issue_number);
-      if (issue) {
-        issue.dor_validated = result.dor_passed ?? true;
-        (issue as any).complexity_tier = result.complexity_tier;
-        (issue as any).iteration_estimate = result.iteration_estimate;
-        if (result.dor_passed) issue.status = 'Ready';
-        stateChanged = true;
-        console.log(`[process-requests] Issue #${result.issue_number}: ${result.dor_passed ? 'Ready' : 'needs work'}`);
+      if (issue && result.updated_body && repo) {
+        // Update GH issue body via temp file (body can be large)
+        try {
+          const bodyFile = path.join(requestsDir, `_body-${issue.number}.md`);
+          await writeFile(bodyFile, result.updated_body, 'utf8');
+          await execGh(['issue', 'edit', String(issue.number), '--repo', repo, '--body-file', bodyFile]);
+          await unlink(bodyFile).catch(() => {});
+          issue.body = result.updated_body;
+          (issue as any).refined = true;
+          stateChanged = true;
+          console.log(`[process-requests] Refined #${issue.number} — updated body with constraints`);
+        } catch (e) {
+          console.warn(`[process-requests] Failed to update GH issue #${issue.number}: ${e}`);
+        }
       }
       await archiveRequestFile(requestsDir, filePath);
     } catch { /* skip malformed */ }
   }
 
+  // 1d. CR analysis results → apply spec changes (autonomous) or block (non-autonomous)
+  const crFiles = allFiles.filter(f => f.match(/^cr-analysis-result-\d+\.json$/))
+    .map(f => path.join(requestsDir, f));
+  if (crFiles.length > 0) {
+    const crChanged = await processCrResultFiles(crFiles, state.issues, state.autonomy_level ?? 'balanced', projectRoot, repo, state.trunk_branch ?? 'agent/trunk', requestsDir, {
+      existsSync, readFile: (p, e) => readFile(p, e), writeFile: (p, d, e) => writeFile(p, d, e),
+      unlink: (p) => unlink(p).catch(() => {}),
+      execGh,
+      execGit: (args) => { spawnSync('git', args, { encoding: 'utf8' }); },
+      archiveFile: (rDir, fp) => archiveRequestFile(rDir, fp),
+    });
+    if (crChanged) stateChanged = true;
+  }
+
+  // 1e. Estimate results → apply to state (per-issue files)
+  for (const file of allFiles.filter(f => f.match(/^estimate-result-\d+\.json$/))) {
+    const filePath = path.join(requestsDir, file);
+    try {
+      const result = JSON.parse(await readFile(filePath, 'utf8'));
+      const issueNum = result.issue_number ?? result.issue ?? Number(file.match(/\d+/)?.[0]);
+      const issue = state.issues.find((i: any) => i.number === issueNum);
+      if (issue) {
+        const dorPassed = result.dor_passed ?? result.definition_of_ready?.passes ?? true;
+        issue.dor_validated = dorPassed;
+        (issue as any).complexity_tier = result.complexity_tier;
+        (issue as any).iteration_estimate = result.iteration_estimate ?? result.estimated_child_loop_iterations;
+        if (dorPassed) issue.status = 'Ready';
+        stateChanged = true;
+        console.log(`[process-requests] Issue #${issueNum}: ${dorPassed ? 'Ready' : 'needs work'}`);
+      }
+      await archiveRequestFile(requestsDir, filePath);
+    } catch { /* skip malformed */ }
+  }
+
+  // 1d. Queue refine prompts for "Needs refinement" issues that haven't been refined yet
+  //     Then queue estimate prompts for refined issues that need DoR validation
+  {
+    const queueDir = path.join(sessionDir, 'queue');
+    const queueFiles = existsSync(queueDir) ? await readdir(queueDir) : [];
+    const pendingQueue = new Set(
+      queueFiles
+        .filter(f => f.startsWith('refine-issue-') || f.startsWith('estimate-issue-'))
+        .map(f => Number(f.replace(/^(refine|estimate)-issue-/, '').replace('.md', ''))),
+    );
+    const pendingResults = new Set(
+      allFiles
+        .filter(f => f.match(/^(refine|estimate)-result-\d+\.json$/))
+        .map(f => Number(f.replace(/^(refine|estimate)-result-/, '').replace('.json', ''))),
+    );
+
+    // Process orchestrator events from pipeline.yml
+    const pipelineYmlPath = path.join(sessionDir, 'worktree', '.aloop', 'pipeline.yml');
+    const orchEvents = loadOrchestratorEvents(pipelineYmlPath);
+    for (const event of orchEvents) {
+      const matching = state.issues.filter((i: any) => {
+        if (i.refinement_budget_exceeded) return false;
+        if (pendingQueue.has(i.number) || pendingResults.has(i.number)) return false;
+        for (const [key, val] of Object.entries(event.filter)) {
+          const actual = (i as any)[key];
+          // Treat undefined as false for boolean filters
+          const normalized = actual === undefined && typeof val === 'boolean' ? false : actual;
+          if (normalized !== val) return false;
+        }
+        return true;
+      });
+      if (matching.length === 0) continue;
+
+      const promptPath = path.join(sessionDir, 'prompts', event.prompt);
+      if (!existsSync(promptPath)) continue;
+      const promptContent = await readFile(promptPath, 'utf8');
+
+      const batch = matching.slice(0, event.batch);
+      for (const issue of batch) {
+        const resultFile = event.resultPattern.replace('{issue_number}', String(issue.number));
+        const outputPath = `.aloop/output/${resultFile}`;
+        const queueContent = buildQueuePrompt(event.agent, issue, promptContent, outputPath);
+        const queueFile = `${event.agent}-issue-${issue.number}.md`;
+        await writeFile(path.join(queueDir, queueFile), queueContent, 'utf8');
+      }
+      console.log(`[process-requests] Queued ${batch.length} ${event.agent} prompts (${matching.length} total matching)`);
+    }
+  }
+
   // ── Phase 2: Create GH issues for state entries with number=0 ──
   if (repo) {
     for (const issue of state.issues.filter((i: any) => i.number === 0)) {
-      const labels = (issue as any).parent_issue ? ['aloop/auto'] : ['aloop/epic', 'aloop/auto'];
-      const ghNum = await createGhIssue(repo, issue.title, issue.body ?? '', labels, requestsDir);
+      const isEpic = !(issue as any).parent_issue;
+      const labels = buildIssueLabels({
+        wave: issue.wave,
+        is_epic: isEpic,
+        is_sub_issue: !isEpic,
+        component_labels: deriveComponentLabels(issue.file_hints ?? []),
+      });
+      const bodyWithMeta = ensureMetadataSection(issue.body ?? '', {
+        wave: issue.wave,
+        type: isEpic ? 'epic' : 'sub-issue',
+        files: issue.file_hints ?? [],
+      });
+      const ghNum = await createGhIssue(repo, issue.title, bodyWithMeta, labels, requestsDir);
       if (ghNum > 0) {
         issue.number = ghNum;
         (issue as any).gh_number = ghNum;
@@ -152,82 +553,21 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
 
   // ── Phase 2b: Forward-merge master → agent/trunk (pick up human changes) ──
   const trunkBranch = state.trunk_branch ?? 'agent/trunk';
-  try {
-    const fetchR = spawnSync('git', ['-C', projectRoot, 'fetch', 'origin', 'master', trunkBranch], { encoding: 'utf8', timeout: 30000 });
-    if (fetchR.status !== 0) throw new Error('fetch failed');
-    const mergeBase = spawnSync('git', ['-C', projectRoot, 'merge-base', `origin/master`, `origin/${trunkBranch}`], { encoding: 'utf8', timeout: 10000 });
-    const masterHead = spawnSync('git', ['-C', projectRoot, 'rev-parse', 'origin/master'], { encoding: 'utf8', timeout: 10000 });
-    const mbSha = mergeBase.stdout?.trim();
-    const mhSha = masterHead.stdout?.trim();
-    if (mbSha && mhSha && mbSha.length >= 7 && mhSha.length >= 7 && mbSha !== mhSha) {
-      // master has commits that trunk doesn't — forward merge
-      const mergeResult = spawnSync('git', ['-C', projectRoot, 'push', 'origin', `origin/master:refs/heads/${trunkBranch}`], { encoding: 'utf8' });
-      if (mergeResult.status !== 0) {
-        // Can't fast-forward — need a real merge via worktree
-        const tmpMerge = path.join(aloopRoot, 'tmp-trunk-merge');
-        spawnSync('git', ['-C', projectRoot, 'worktree', 'add', tmpMerge, trunkBranch], { encoding: 'utf8' });
-        const result = spawnSync('git', ['-C', tmpMerge, 'merge', 'origin/master', '--no-edit', '-m', 'Merge master into agent/trunk'], { encoding: 'utf8' });
-        if (result.status === 0) {
-          spawnSync('git', ['-C', tmpMerge, 'push', 'origin', 'HEAD'], { encoding: 'utf8' });
-          console.log(`[process-requests] Forward-merged master → ${trunkBranch}`);
-        } else {
-          spawnSync('git', ['-C', tmpMerge, 'merge', '--abort'], { encoding: 'utf8' });
-        }
-        spawnSync('git', ['-C', projectRoot, 'worktree', 'remove', '--force', tmpMerge], { encoding: 'utf8' });
-        spawnSync('git', ['-C', projectRoot, 'worktree', 'prune'], { encoding: 'utf8' });
-      } else {
-        console.log(`[process-requests] Fast-forwarded ${trunkBranch} to master`);
-      }
-    }
-  } catch { /* best effort */ }
+  syncMasterToTrunk(projectRoot, aloopRoot, trunkBranch, { spawnSync });
 
   // ── Phase 2c: Sync child branches with base branch ──
-  for (const issue of state.issues) {
-    if (!issue.child_session) continue;
-    if (issue.state !== 'in_progress' && issue.state !== 'pr_open') continue;
-    const childDir = path.join(aloopRoot, 'sessions', issue.child_session);
-    const childWorktree = path.join(childDir, 'worktree');
-    if (!existsSync(childWorktree)) continue;
-
-    // Fetch and check if diverged
-    const fetchResult = spawnSync('git', ['-C', childWorktree, 'fetch', 'origin', trunkBranch], { encoding: 'utf8', timeout: 30000 });
-    if (fetchResult.status !== 0) continue;
-
-    const mergeBase = spawnSync('git', ['-C', childWorktree, 'merge-base', 'HEAD', `origin/${trunkBranch}`], { encoding: 'utf8', timeout: 10000 });
-    const remoteHead = spawnSync('git', ['-C', childWorktree, 'rev-parse', `origin/${trunkBranch}`], { encoding: 'utf8', timeout: 10000 });
-    const mbSha = mergeBase.stdout?.trim();
-    const rhSha = remoteHead.stdout?.trim();
-    if (!mbSha || !rhSha || mbSha.length < 7 || rhSha.length < 7) continue; // Invalid output, skip
-    if (mbSha === rhSha) continue; // Up to date
-
-    // Commit any dirty files and remove working artifacts before rebase
-    const statusResult = spawnSync('git', ['-C', childWorktree, 'status', '--porcelain'], { encoding: 'utf8' });
-    if (statusResult.stdout?.trim()) {
-      // Untrack working artifacts from git (keep on disk — child still needs them)
-      for (const art of ['TODO.md', 'STEERING.md', 'QA_COVERAGE.md', 'QA_LOG.md', 'REVIEW_LOG.md']) {
-        spawnSync('git', ['-C', childWorktree, 'rm', '-f', '--cached', art], { encoding: 'utf8' });
-      }
-      spawnSync('git', ['-C', childWorktree, 'add', '-A'], { encoding: 'utf8' });
-      spawnSync('git', ['-C', childWorktree, 'commit', '--allow-empty', '-m', 'chore: save work-in-progress before rebase'], { encoding: 'utf8' });
-    }
-
-    // Try rebase
-    const rebaseResult = spawnSync('git', ['-C', childWorktree, 'rebase', `origin/${trunkBranch}`], { encoding: 'utf8' });
-    if (rebaseResult.status === 0) {
-      spawnSync('git', ['-C', childWorktree, 'push', 'origin', 'HEAD', '--force-with-lease'], { encoding: 'utf8' });
-      console.log(`[process-requests] Synced #${issue.number} with ${trunkBranch}`);
-    } else {
-      // Conflict — abort rebase, queue merge agent
-      spawnSync('git', ['-C', childWorktree, 'rebase', '--abort'], { encoding: 'utf8' });
-      const mergeQueueFile = path.join(childDir, 'queue', '000-merge-conflict.md');
-      if (!existsSync(mergeQueueFile)) {
-        const mergePromptPath = path.join(childDir, 'prompts', 'PROMPT_merge.md');
-        const mergePrompt = existsSync(mergePromptPath) ? await readFile(mergePromptPath, 'utf8') : '# Merge Conflict Resolution';
-        await mkdir(path.join(childDir, 'queue'), { recursive: true });
-        await writeFile(mergeQueueFile, `---\nagent: merge\nreasoning: high\n---\n\n${mergePrompt}\n\n## Conflict\n\nRebase onto \`origin/${trunkBranch}\` failed.\nRun \`git fetch origin ${trunkBranch} && git rebase origin/${trunkBranch}\`, resolve conflicts, then \`git rebase --continue && git push origin HEAD --force-with-lease\`.\n`, 'utf8');
-        console.log(`[process-requests] Merge conflict on #${issue.number} — queued merge agent`);
-      }
-    }
+  {
+    const childSyncChanged = await syncChildBranches(state.issues, trunkBranch, aloopRoot, {
+      existsSync: (p: string) => existsSync(p),
+      readFile: (p: string, e: BufferEncoding) => readFile(p, e),
+      writeFile: (p: string, d: string, e: BufferEncoding) => writeFile(p, d, e),
+      mkdir: (p: string, o?: { recursive?: boolean }) => mkdir(p, o).then(() => undefined),
+      spawnSync: (cmd: string, a: string[], o?: Record<string, unknown>) => {
+        const r = spawnSync(cmd, a, o as any);
+        return { status: r.status, stdout: r.stdout?.toString() ?? '', stderr: r.stderr?.toString() ?? '' };
+      },
+    });
+    if (childSyncChanged) stateChanged = true;
   }
 
   // ── Phase 2c: Create PRs for completed children ──
@@ -242,7 +582,7 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
         if (existsSync(childStatusFile)) {
           try {
             const childStatus = JSON.parse(await readFile(childStatusFile, 'utf8'));
-            if (childStatus.state === 'completed' || childStatus.state === 'stopped') {
+            if (childStatus.state === 'completed') {
               const branch = `aloop/issue-${issue.number}`;
               const trunkBranch = state.trunk_branch ?? 'agent/trunk';
               const childWorktree = path.join(childDir, 'worktree');
@@ -258,15 +598,40 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
                 spawnSync('git', ['-C', childWorktree, 'push', 'origin', 'HEAD'], { encoding: 'utf8' });
               }
 
-              // Create PR
-              const prResult = spawnSync('gh', [
+              // Create PR — use PR_DESCRIPTION.md from child worktree if present, else build rich body
+              const prDescriptionFile = path.join(childWorktree, 'PR_DESCRIPTION.md');
+              const wave = issue.wave ?? 1;
+              const componentLabels = deriveComponentLabels(issue.file_hints ?? []);
+              const prLabels = buildIssueLabels({ wave, component_labels: componentLabels });
+              const richPrBody = buildPrBody({
+                issue_number: issue.number,
+                issue_title: issue.title,
+                wave,
+                labels: prLabels,
+                child_session: issue.child_session,
+                file_hints: issue.file_hints ?? [],
+                scope_summary: (issue.body ?? '').split('\n').slice(0, 3).join(' ').substring(0, 200),
+              });
+              let prBody = richPrBody;
+              if (existsSync(prDescriptionFile)) {
+                try {
+                  const agentBody = await readFile(prDescriptionFile, 'utf8');
+                  // If agent provided a PR description, use it but ensure it has Closes reference
+                  prBody = agentBody.includes(`Closes #${issue.number}`) ? agentBody : `${agentBody}\n\nCloses #${issue.number}`;
+                } catch { /* use rich body */ }
+              }
+              const prArgs = [
                 'pr', 'create',
                 '--repo', repo,
                 '--title', `#${issue.number}: ${issue.title}`,
-                '--body', `Closes #${issue.number}\n\nAutomated PR from child loop session \`${issue.child_session}\`.`,
+                '--body', prBody,
                 '--head', branch,
                 '--base', trunkBranch,
-              ], { encoding: 'utf8' });
+              ];
+              for (const label of prLabels) {
+                prArgs.push('--label', label);
+              }
+              const prResult = spawnSync('gh', prArgs, { encoding: 'utf8' });
 
               if (prResult.status === 0 && prResult.stdout) {
                 const urlMatch = prResult.stdout.match(/\/pull\/(\d+)/);
@@ -306,26 +671,39 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
     if (childPid && !existsSync(`/proc/${childPid}`)) {
       // PID dead — check child status.json for completion
       const childStatusFile = path.join(aloopRoot, 'sessions', issue.child_session, 'status.json');
+      let childState = 'unknown';
       if (existsSync(childStatusFile)) {
         try {
           const cs = JSON.parse(await readFile(childStatusFile, 'utf8'));
-          if (cs.state === 'completed') continue; // Will be handled by PR creation
-          if (cs.state === 'stopped') {
-            // Stopped — re-queue via needs_redispatch
-            (issue as any).needs_redispatch = true;
-            (issue as any).review_feedback = `Child stopped after ${cs.iteration ?? '?'} iterations. Resume and continue.`;
-            stateChanged = true;
-            continue;
-          }
+          childState = cs.state ?? 'unknown';
         } catch { /* fall through */ }
       }
-      // Dead with no clear status — reset to Ready for fresh dispatch
-      issue.state = 'pending';
-      issue.status = 'Ready';
-      issue.child_session = null;
-      (issue as any).child_pid = null;
-      stateChanged = true;
-      console.log(`[process-requests] Dead child detected for #${issue.number} — reset to Ready`);
+
+      if (issue.pr_number) {
+        // Has PR — transition to review regardless of child state
+        issue.state = 'pr_open';
+        issue.status = 'In review';
+        issue.child_session = null;
+        (issue as any).child_pid = null;
+        stateChanged = true;
+        console.log(`[process-requests] Dead child for #${issue.number} (${childState}) — has PR #${issue.pr_number}, moved to pr_open`);
+      } else if (childState === 'completed' || childState === 'stopped') {
+        // No PR but child finished — reset for fresh dispatch
+        issue.state = 'pending';
+        issue.status = 'Ready';
+        issue.child_session = null;
+        (issue as any).child_pid = null;
+        stateChanged = true;
+        console.log(`[process-requests] Dead child for #${issue.number} (${childState}) — no PR, reset to Ready`);
+      } else {
+        // Dead with unknown status — reset to Ready
+        issue.state = 'pending';
+        issue.status = 'Ready';
+        issue.child_session = null;
+        (issue as any).child_pid = null;
+        stateChanged = true;
+        console.log(`[process-requests] Dead child for #${issue.number} (${childState}) — reset to Ready`);
+      }
     }
   }
 
@@ -516,6 +894,7 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
   // triage, dispatch, child monitoring, PR lifecycle, wave advancement, budget, etc.
 
   const loopPlanFile = path.join(sessionDir, 'loop-plan.json');
+  const reviewPendingUpdates = new Map<number, number>();
   let iteration = 1;
   try {
     if (existsSync(loopPlanFile)) {
@@ -532,12 +911,7 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
   const etagCache = new EtagCache(path.join(aloopRoot, '.cache'));
   await etagCache.load();
 
-  const execGh = async (args: string[]): Promise<{ stdout: string; stderr: string }> => {
-    // Call gh CLI directly with timeout (not aloop gh which is the request protocol handler)
-    const r = spawnSync('gh', args, { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true, timeout: 30000 });
-    if (r.status === null && r.signal) throw new Error(`gh timed out (${r.signal})`);
-    return { stdout: r.stdout ?? '', stderr: r.stderr ?? '' };
-  };
+  // execGh already defined earlier (before result handlers)
 
   const execGit = async (args: string[], cwd?: string): Promise<{ stdout: string; stderr: string }> => {
     const r = spawnSync('git', args, { encoding: 'utf8', cwd: cwd ?? projectRoot, stdio: ['pipe', 'pipe', 'pipe'] });
@@ -563,10 +937,12 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
       now: () => new Date(),
       appendLog: (dir: string, entry: Record<string, unknown>) => { appendLog(dir, entry); },
       invokeAgentReview: async (prNumber: number, _repo: string, diff: string) => {
-        // 1. Check for result files (agent wrote verdict)
+        // Check for result file — the ONLY source of truth for review verdicts.
+        // No fallback regex extraction. If the file doesn't exist, the review
+        // agent hasn't run yet — return pending and let the queue do its job.
         const resultFile = path.join(requestsDir, `review-result-${prNumber}.json`);
-        const worktreeResultFile = path.join(sessionDir, 'worktree', 'requests', `review-result-${prNumber}.json`);
-        const actualResultFile = existsSync(resultFile) ? resultFile : existsSync(worktreeResultFile) ? worktreeResultFile : null;
+        const agentOutputFile = path.join(sessionDir, 'worktree', '.aloop', 'output', `review-result-${prNumber}.json`);
+        const actualResultFile = existsSync(resultFile) ? resultFile : existsSync(agentOutputFile) ? agentOutputFile : null;
         if (actualResultFile) {
           try {
             const content = await readFile(actualResultFile, 'utf8');
@@ -578,112 +954,7 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
           }
         }
 
-        // 2. Fallback: scan per-iteration output for verdict text
-        const artifactsDir = path.join(sessionDir, 'artifacts');
-        if (existsSync(artifactsDir)) {
-          try {
-            const iterDirs = await readdir(artifactsDir);
-            const sorted = iterDirs.filter(d => d.startsWith('iter-')).sort().reverse().slice(0, 3);
-            for (const iterDir of sorted) {
-              const outputFile = path.join(artifactsDir, iterDir, 'output.txt');
-              if (!existsSync(outputFile)) continue;
-              const output = await readFile(outputFile, 'utf8');
-              if (!output.includes(String(prNumber)) && !output.includes(`PR #${prNumber}`)) continue;
-              const verdictMatch = output.match(/\*\*(?:Review\s+)?[Vv]erdict[:\s]+(approve|request-changes|flag-for-human)\*\*/i)
-                ?? output.match(/(?:review\s+)?verdict[:\s]+"?(approve|request-changes|flag-for-human)"?/i)
-                ?? (output.match(new RegExp(`PR\\s*#?${prNumber}.*review\\s+approved`, 'i')) ? [null, 'approve'] as unknown as RegExpMatchArray : null)
-                ?? (output.match(new RegExp(`merge-pr-${prNumber}`, 'i')) ? [null, 'approve'] as unknown as RegExpMatchArray : null);
-              if (verdictMatch) {
-                const verdict = verdictMatch[1].toLowerCase();
-                const summaryMatch = output.match(/(?:summary|reason|feedback|issues?)[:\s]+([^\n]{10,300})/i);
-                const summary = summaryMatch ? summaryMatch[1].trim() : `Agent verdict: ${verdict}`;
-                return { pr_number: prNumber, verdict, summary };
-              }
-            }
-          } catch { /* ignore */ }
-        }
-
-        // 2b. Also check raw log (last 10KB) — scan agent may produce verdict inline
-        const rawLogFile = path.join(sessionDir, 'log.jsonl.raw');
-        if (existsSync(rawLogFile)) {
-          try {
-            const rawLog = await readFile(rawLogFile, 'utf8');
-            const recent = rawLog.slice(-10000);
-            if (recent.includes(String(prNumber)) || recent.includes(`PR #${prNumber}`)) {
-              const verdictMatch = recent.match(new RegExp(`PR\\s*#?${prNumber}[^\\n]*(?:review\\s+)?verdict[:\\s]+(approve|request-changes|flag-for-human)`, 'i'))
-                ?? recent.match(new RegExp(`\\*\\*(?:Review\\s+)?[Vv]erdict[:\\s]+(approve|request-changes|flag-for-human)\\*\\*[^\\n]*PR\\s*#?${prNumber}`, 'i'))
-                ?? recent.match(new RegExp(`\\*\\*(?:Review\\s+)?[Vv]erdict[:\\s]+(approve|request-changes|flag-for-human)\\*\\*.*?${prNumber}`, 'is'))
-                ?? (recent.match(new RegExp(`PR\\s*#?${prNumber}.*review\\s+approved`, 'i')) ? [null, 'approve'] as unknown as RegExpMatchArray : null);
-              if (verdictMatch && verdictMatch[1]) {
-                const verdict = verdictMatch[1].toLowerCase();
-                return { pr_number: prNumber, verdict, summary: `Verdict from scan agent output` };
-              }
-            }
-          } catch { /* ignore */ }
-        }
-
-        // 2c. Last resort: queue a verdict extraction prompt for the agent
-        // The scan agent produced review text but we couldn't parse the verdict — ask an agent to extract it
-        const rawLogFile2 = path.join(sessionDir, 'log.jsonl.raw');
-        if (existsSync(rawLogFile2)) {
-          try {
-            const rawLog = await readFile(rawLogFile2, 'utf8');
-            const recent = rawLog.slice(-8000);
-            // Only if the raw log mentions this PR
-            if (recent.includes(String(prNumber)) || recent.includes(`PR #${prNumber}`)) {
-              const extractQueueFile = path.join(sessionDir, 'queue', `000-extract-verdict-${prNumber}.md`);
-              if (!existsSync(extractQueueFile)) {
-                const relResultPath = `requests/review-result-${prNumber}.json`;
-                await mkdir(path.join(sessionDir, 'queue'), { recursive: true });
-                await writeFile(extractQueueFile, `---
-agent: verdict_extract
-reasoning: low
----
-
-# Extract Review Verdict for PR #${prNumber}
-
-## How the Aloop orchestrator works
-
-The orchestrator review agent produces a verdict for each PR. The verdict must be written as a JSON file so the orchestrator runtime can read it and proceed (merge on approve, redispatch on request-changes).
-
-**Without this file, the PR review is stuck and the pipeline cannot continue.**
-
-## Your task
-
-1. Read the agent output below
-2. Find the review verdict for PR #${prNumber} (look for "verdict", "approve", "request-changes", or similar)
-3. Write the JSON file using the Write tool to:
-
-**Path:** \`${relResultPath}\`
-
-(This is relative to your working directory. Create the \`requests/\` directory if needed.)
-
-File content must be valid JSON:
-\`\`\`json
-{"pr_number": ${prNumber}, "verdict": "approve", "summary": "one line reason"}
-\`\`\`
-
-Valid verdicts: "approve", "request-changes", "flag-for-human"
-
-4. If you cannot find a clear verdict for PR #${prNumber}, write:
-\`\`\`json
-{"pr_number": ${prNumber}, "verdict": "approve", "summary": "No explicit verdict found — auto-approving"}
-\`\`\`
-
-**You MUST use the Write tool to create the file. Do NOT just print the JSON as text.**
-
-## Recent Agent Output
-
-\`\`\`
-${recent.slice(-4000)}
-\`\`\`
-`, 'utf8');
-              }
-            }
-          } catch { /* ignore */ }
-        }
-
-        // 3. Queue review prompt with PR comments history
+        // Queue review prompt if not already queued
         const queueFile = path.join(sessionDir, 'queue', `000-review-${prNumber}.md`);
         const legacyQueueFile = path.join(sessionDir, 'queue', `review-${prNumber}.md`);
         if (!existsSync(queueFile) && !existsSync(legacyQueueFile)) {
@@ -691,10 +962,7 @@ ${recent.slice(-4000)}
           if (existsSync(reviewPath)) {
             const prompt = await readFile(reviewPath, 'utf8');
             await mkdir(path.join(sessionDir, 'queue'), { recursive: true });
-            // Write to requests/ inside the worktree (agent's working dir) — process-requests checks both locations
-            const worktreeRequestsDir = path.join(sessionDir, 'worktree', 'requests');
-            const resultPath = path.join(worktreeRequestsDir, `review-result-${prNumber}.json`);
-            const outputInstr = `\n\n## Output — CRITICAL\n\nYou MUST use the Write tool to create this file:\n\n**Path:** \`requests/review-result-${prNumber}.json\`\n\n(This is relative to your working directory. Full path: \`${resultPath}\`)\n\n**Content (valid JSON):**\n\`\`\`json\n{"pr_number": ${prNumber}, "verdict": "approve", "summary": "one line reason"}\n\`\`\`\n\nValid verdicts: \`approve\`, \`request-changes\`, \`flag-for-human\`\n\n**Without this file, the pipeline is stuck. Do NOT just print the verdict — WRITE THE FILE.**\n`;
+            const outputInstr = `\n\n## Output — CRITICAL\n\nYou MUST use the Write tool to create this file:\n\n**Path:** \`.aloop/output/review-result-${prNumber}.json\`\n\n(This is relative to your working directory. Create the \`.aloop/output/\` directory if needed.)\n\n**Content (valid JSON):**\n\`\`\`json\n{"pr_number": ${prNumber}, "verdict": "approve", "summary": "one line reason"}\n\`\`\`\n\nValid verdicts: \`approve\`, \`request-changes\`, \`flag-for-human\`\n\n**Without this file, the pipeline is stuck. Do NOT just print the verdict — WRITE THE FILE.**\n`;
 
             // Fetch existing PR comments for context
             let commentHistory = '';
@@ -711,10 +979,12 @@ ${recent.slice(-4000)}
           }
         }
         // Track pending cycles — retry → troubleshoot → escalate
-        const stateIssue2 = state.issues.find((i: any) => i.pr_number === prNumber);
-        if (stateIssue2) {
-          const pendingCount = ((stateIssue2 as any).review_pending_count ?? 0) + 1;
-          (stateIssue2 as any).review_pending_count = pendingCount;
+        // Note: we write to reviewPendingUpdates map (not state) because
+        // runOrchestratorScanPass has its own state copy that would overwrite ours
+        const prevCount = reviewPendingUpdates.get(prNumber) ?? 0;
+        const pendingCount = prevCount + 1;
+        reviewPendingUpdates.set(prNumber, pendingCount);
+        {
 
           // 1-3: retry (move to back of queue — other PRs get a chance)
           // 4-5: troubleshoot agent investigates
@@ -756,6 +1026,25 @@ ${recent.slice(-4000)}
   const result = await runOrchestratorScanPass(
     stateFile, sessionDir, projectRoot, sessionId, promptsDir, aloopRoot, repo, iteration, scanDeps,
   );
+
+  // Re-read state after scan pass (scan pass writes its own copy)
+  // and apply any pending review tracking from the invokeAgentReview closure
+  if (reviewPendingUpdates.size > 0) {
+    try {
+      const postScanState: OrchestratorState = JSON.parse(await readFile(stateFile, 'utf8'));
+      let changed = false;
+      for (const [prNum, count] of reviewPendingUpdates) {
+        const issue = postScanState.issues.find((i: any) => i.pr_number === prNum);
+        if (issue) {
+          (issue as any).review_pending_count = count;
+          changed = true;
+        }
+      }
+      if (changed) {
+        await writeFile(stateFile, `${JSON.stringify(postScanState, null, 2)}\n`, 'utf8');
+      }
+    } catch { /* best-effort */ }
+  }
 
   await etagCache.save();
 
@@ -823,3 +1112,4 @@ async function updateParentTasklist(repo: string, parentNum: number, issues: any
     console.log(`[process-requests] Updated epic #${parentNum} with ${subNums.length} sub-issue tasklist`);
   } catch { /* non-critical */ }
 }
+

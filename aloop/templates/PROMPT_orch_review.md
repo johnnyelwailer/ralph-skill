@@ -23,24 +23,13 @@ The orchestrator review is NOT a line-by-line code review (the child's own revie
 4. Evaluate each of the 5 review dimensions above.
 5. Write your verdict.
 
-## Output — CRITICAL
+## PR Description Verification
 
-You MUST write a JSON file with your verdict. The exact path is provided in the "Output" section below.
-
-Use the Write tool to create the file. Example:
-
-```json
-{
-  "pr_number": 123,
-  "verdict": "request-changes",
-  "summary": "PR violates constitution rule #1 — added business logic to a component that should stay minimal. Also missing tests for the new retry path."
-}
-```
-
-Valid verdicts:
-- `approve` — all 5 dimensions pass, merge it
-- `request-changes` — issues found, describe what needs fixing in summary
-- `flag-for-human` — too complex or risky for automated review
+If the PR body contains a **Verification** section with acceptance criteria checkboxes:
+- Scan for any criteria marked `- [ ]` (unchecked) or containing `NOT verified`.
+- If ANY acceptance criterion is listed as NOT verified, the verdict MUST be `request-changes`.
+- List each unverified criterion in your summary so the child loop knows exactly what to fix.
+- Only `approve` when all acceptance criteria are checked `- [x]` or explicitly verified.
 
 ## Rules
 
@@ -48,6 +37,6 @@ Valid verdicts:
 - A PR that passes CI but violates the constitution is still rejected.
 - A PR without tests for new behavior is rejected.
 - A PR that implements something different from what the issue asked is rejected.
+- A PR whose body lists any acceptance criterion as NOT verified is rejected.
 - Provide actionable feedback — tell the child exactly what to fix, not just "this is wrong."
 - Keep summary concise but specific (2-5 sentences).
-- Do NOT just print the verdict as text — you MUST write the JSON file.

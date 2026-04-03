@@ -74,7 +74,7 @@ export class EtagCache {
   private dirty: boolean;
 
   constructor(cacheDir: string) {
-    this.cacheFile = path.join(cacheDir, 'github-etag-cache.json');
+    this.cacheFile = path.join(cacheDir, 'etag-cache.json');
     this.state = { version: CACHE_VERSION, entries: {} };
     this.dirty = false;
   }

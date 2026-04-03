@@ -15,7 +15,8 @@ Study specifications and existing code, then generate or update a prioritized im
 ## Process
 
 0a. Study specification files: {{SPEC_FILES}}
-0b. Study @TODO.md (if it exists) to see the current plan
+0b. Study @CONSTITUTION.md — non-negotiable rules you must follow
+0c. Study @TODO.md (if it exists) to see the current plan
 0c. Read `RESEARCH.md` (if it exists) — this is your **persistent research log**. Check what has already been investigated before doing any new research.
    - Entries **less than 30 days old**: treat as current — do not re-investigate.
    - Entries **30 days or older**: treat as potentially stale. Quickly recheck (e.g. version numbers, API shape, file locations) and append a follow-up entry noting whether it still holds or what changed. Do not delete the original entry.

@@ -14,6 +14,8 @@ import {
   detectIssueChanges,
   type BulkIssueState,
 } from '../lib/github-monitor.js';
+import { deriveComponentLabels } from '../lib/labels.js';
+import { buildPrBody } from '../lib/issue-metadata.js';
 
 export interface OrchestrateCommandOptions {
   spec?: string;
@@ -656,11 +658,24 @@ export async function applyDecompositionPlan(
 
   for (const planIssue of plan.issues) {
     const wave = waveMap.get(planIssue.id)!;
-    const labels = ['aloop', `aloop/wave-${wave}`];
+    const labels = ['aloop', `aloop/wave-${wave}`, `wave/${wave}`];
+    const componentLabels = deriveComponentLabels(planIssue.file_hints ?? []);
+    labels.push(...componentLabels);
+
+    // Enrich body with dependency references (AC #6)
+    let enrichedBody = planIssue.body;
+    if (planIssue.depends_on.length > 0) {
+      const depRefs = planIssue.depends_on
+        .map((depId) => `#${idToGhNumber.get(depId) ?? depId}`)
+        .join(', ');
+      if (!enrichedBody.includes('Depends on')) {
+        enrichedBody = `${enrichedBody}\n\nDepends on ${depRefs}`;
+      }
+    }
 
     let ghNumber: number;
     if (deps.execGhIssueCreate && repo) {
-      ghNumber = await deps.execGhIssueCreate(repo, path.basename(sessionDir), planIssue.title, planIssue.body, labels);
+      ghNumber = await deps.execGhIssueCreate(repo, path.basename(sessionDir), planIssue.title, enrichedBody, labels);
     } else {
       // When no GH executor is available (plan-only without repo, or no executor),
       // use the plan ID as a placeholder number
@@ -672,7 +687,7 @@ export async function applyDecompositionPlan(
     updatedIssues.push({
       number: ghNumber,
       title: planIssue.title,
-      body: planIssue.body,
+      body: enrichedBody,
       file_hints: planIssue.file_hints ?? [],
       sandbox: normalizeTaskSandbox(planIssue.sandbox),
       requires: normalizeTaskRequires(planIssue.requires),
@@ -941,9 +956,15 @@ Run one lightweight monitoring pass:
 - Read \`CONSTITUTION.md\` from your working directory — these are non-negotiable invariants for all work.
 - Read \`${sessionDir}/orchestrator.json\` to understand current state (issues, waves, dependencies).
 - Check \`${sessionDir}/queue/\` for override prompts to prioritize.
-- Write any required side effects into \`${sessionDir}/requests/*.json\`.
+- Write dispatch/state requests into \`.aloop/output/\` in your working directory.
 - You can read project files (SPEC.md, source code) from your working directory.
 - Keep this step reactive and minimal; avoid large speculative planning.
+
+**You must NOT:**
+- Write \`review-result-*.json\` files. PR reviews are handled by the dedicated review agent.
+- Write \`refine-result-*.json\` files. Refinement is handled by the dedicated refine agent.
+- Write \`estimate-result-*.json\` files. Estimation is handled by the dedicated estimate agent.
+- Auto-approve or auto-merge any PR. You are a monitor, not a reviewer.
 `;
 }
 
@@ -1163,6 +1184,13 @@ export async function orchestrateCommandWithDeps(
             if (projStatus === 'Done') issueState = 'merged';
           }
 
+          // Extract priority from labels
+          const labelNames = (gi.labels ?? []).map((l: any) => l.name ?? l);
+          let priority = 0;
+          if (labelNames.includes('aloop/priority-critical')) priority = 100;
+          else if (labelNames.includes('aloop/priority-high')) priority = 50;
+          else if (labelNames.includes('aloop/priority-low')) priority = -10;
+
           state.issues.push({
             number: gi.number,
             title: gi.title,
@@ -1177,6 +1205,7 @@ export async function orchestrateCommandWithDeps(
             blocked_on_human: false,
             processed_comment_ids: [],
             dor_validated: dorValidated,
+            priority,
           } as any);
         }
         if (state.current_wave === 0) state.current_wave = 1;
@@ -1381,8 +1410,11 @@ export async function orchestrateCommand(options: OrchestrateCommandOptions = {}
       }
     } else {
       workDir = worktreePath;
-      // Pull latest into existing worktree so it has fresh CONSTITUTION.md, SPEC.md, etc.
-      nodeSpawnSync('git', ['-C', worktreePath, 'pull', '--rebase', '--autostash'], { encoding: 'utf8' });
+      // Merge latest trunk into worktree so it has fresh CONSTITUTION.md, SPEC.md, etc.
+      // Use merge (not rebase) to avoid conflicts with untracked files.
+      const trunkBranch = state.trunk_branch ?? 'agent/trunk';
+      nodeSpawnSync('git', ['-C', worktreePath, 'fetch', 'origin', trunkBranch], { encoding: 'utf8' });
+      nodeSpawnSync('git', ['-C', worktreePath, 'merge', `origin/${trunkBranch}`, '--no-edit'], { encoding: 'utf8' });
     }
 
     // Reset loop-plan iteration counter to continue from current state
@@ -2304,6 +2336,7 @@ export interface EstimateResult {
   risk_flags?: string[];
   confidence?: 'high' | 'medium' | 'low';
   gaps?: string[];
+  priority?: 'P0' | 'P1' | 'P2';
 }
 
 export const REFINEMENT_BUDGET_CAP = 5;
@@ -2378,6 +2411,22 @@ export async function applyEstimateResults(
       issue.dor_validated = true;
       if (issue.status === 'Needs refinement') {
         issue.status = 'Ready';
+      }
+      // Apply complexity and priority labels via GH
+      if (deps?.execGh && deps.repo) {
+        const labelsToAdd: string[] = [];
+        if (result.complexity_tier) {
+          labelsToAdd.push(`complexity/${result.complexity_tier}`);
+        }
+        if (result.priority) {
+          labelsToAdd.push(result.priority);
+        }
+        if (labelsToAdd.length > 0) {
+          await deps.execGh([
+            'issue', 'edit', String(result.issue_number), '--repo', deps.repo,
+            ...labelsToAdd.flatMap(l => ['--add-label', l]),
+          ]);
+        }
       }
       if (deps?.execGh && deps.repo) {
         await syncIssueProjectStatus(result.issue_number, deps.repo, 'Ready', {
@@ -2803,7 +2852,7 @@ export function getDispatchableIssues(state: OrchestratorState): OrchestratorIss
     issueByNumber.set(issue.number, issue);
   }
 
-  return state.issues.filter((issue) => {
+  const eligible = state.issues.filter((issue) => {
     if (issue.wave !== state.current_wave) return false;
 
     // Primary signal: Project status 'Ready'
@@ -2826,6 +2875,18 @@ export function getDispatchableIssues(state: OrchestratorState): OrchestratorIss
       if (!dep || dep.state !== 'merged') return false;
     }
     return true;
+  });
+
+  // Sort by priority (higher first), then complexity (S before XL), then issue number
+  const complexityOrder: Record<string, number> = { S: 0, M: 1, L: 2, XL: 3 };
+  return eligible.sort((a, b) => {
+    const priA = (a as any).priority ?? 0;
+    const priB = (b as any).priority ?? 0;
+    if (priA !== priB) return priB - priA; // higher priority first
+    const compA = complexityOrder[(a as any).complexity_tier ?? 'M'] ?? 1;
+    const compB = complexityOrder[(b as any).complexity_tier ?? 'M'] ?? 1;
+    if (compA !== compB) return compA - compB; // smaller first
+    return a.number - b.number; // stable tiebreaker
   });
 }
 
@@ -3038,6 +3099,15 @@ export async function launchChildLoop(
   // If the remote branch doesn't exist yet, unset upstream entirely — push -u will create it correctly
   deps.spawnSync('git', ['-C', worktreePath, 'config', '--unset', `branch.${branchName}.merge`], { encoding: 'utf8' });
   deps.spawnSync('git', ['-C', worktreePath, 'config', '--unset', `branch.${branchName}.remote`], { encoding: 'utf8' });
+
+  // Remove .mcp.json if present — prevents tessl MCP hangs in child loops
+  const mcpJsonPath = path.join(worktreePath, '.mcp.json');
+  if (deps.existsSync(mcpJsonPath)) {
+    try { const { unlink: unlinkFile } = await import('node:fs/promises'); await unlinkFile(mcpJsonPath); } catch { /* best-effort */ }
+  }
+
+  // Create .aloop/output/ for agent result file bridge
+  await deps.mkdir(path.join(worktreePath, '.aloop', 'output'), { recursive: true });
 
   // Seed TODO.md in worktree from issue body (gitignored — working artifact only)
   const todoContent = `# Issue #${issue.number}: ${issue.title}\n\n## Tasks\n\n- [ ] Implement as described in the issue\n`;
@@ -3393,10 +3463,11 @@ export async function checkPrGates(
     const prData = JSON.parse(viewResult.stdout);
     mergeable = prData.mergeable === 'MERGEABLE';
     const mergeState = prData.mergeStateStatus ?? 'UNKNOWN';
+    const mergeUnknown = prData.mergeable === 'UNKNOWN' || mergeState === 'UNKNOWN';
     gates.push({
       gate: 'merge_conflicts',
-      status: mergeable ? 'pass' : 'fail',
-      detail: mergeable ? 'No merge conflicts' : `Merge state: ${mergeState}`,
+      status: mergeable ? 'pass' : mergeUnknown ? 'pending' : 'fail',
+      detail: mergeable ? 'No merge conflicts' : mergeUnknown ? 'Mergeability not yet computed' : `Merge state: ${mergeState}`,
     });
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
@@ -3460,7 +3531,7 @@ export async function checkPrGates(
 
 /**
  * Run agent review on PR diff.
- * If no invokeAgentReview dep is provided, auto-approves (for headless/test scenarios).
+ * If no invokeAgentReview dep is provided, flags for human review.
  */
 export async function reviewPrDiff(
   prNumber: number,
@@ -3486,11 +3557,11 @@ export async function reviewPrDiff(
     return deps.invokeAgentReview(prNumber, repo, diff);
   }
 
-  // Default: auto-approve when no agent reviewer is configured
+  // No reviewer configured — flag for human, never auto-approve
   return {
     pr_number: prNumber,
-    verdict: 'approve',
-    summary: 'Auto-approved (no agent reviewer configured)',
+    verdict: 'flag-for-human',
+    summary: 'No agent reviewer configured — requires human review',
   };
 }
 
@@ -4258,8 +4329,17 @@ async function createPrForChild(
   }
 
   const issueTitle = issue.title || `Issue ${issue.number}`;
-  const prTitle = `[aloop] ${issueTitle}`;
-  const prBody = `Automated implementation for issue #${issue.number}.\n\nCloses #${issue.number}`;
+  const prTitle = `#${issue.number}: ${issueTitle}`;
+  const componentLabels = deriveComponentLabels(issue.file_hints ?? []);
+  const prBody = buildPrBody({
+    issue_number: issue.number,
+    issue_title: issueTitle,
+    wave: issue.wave,
+    labels: ['aloop', `aloop/wave-${issue.wave}`, ...componentLabels],
+    child_session: childSession,
+    file_hints: issue.file_hints ?? [],
+    scope_summary: (issue.body ?? '').split('\n').slice(0, 3).join(' ').substring(0, 200),
+  });
 
   try {
     const result = await deps.execGh([
@@ -5178,6 +5258,15 @@ async function fetchAndApplyBulkIssueState(
           issue.pr_number = fetched.pr.number;
         }
 
+        // Sync priority from labels
+        if (fetched.labels) {
+          let pri = 0;
+          if (fetched.labels.includes('aloop/priority-critical')) pri = 100;
+          else if (fetched.labels.includes('aloop/priority-high')) pri = 50;
+          else if (fetched.labels.includes('aloop/priority-low')) pri = -10;
+          (issue as any).priority = pri;
+        }
+
         deps.appendLog(sessionDir, {
           timestamp: deps.now().toISOString(),
           event: 'bulk_fetch_issue_changed',
@@ -5329,21 +5418,37 @@ export async function runOrchestratorScanPass(
 
   // 2. Dispatch child loops for ready issues
   if (deps.dispatchDeps && !state.plan_only) {
-    const dispatchable = getDispatchableIssues(state);
-    const capabilityResult = filterByHostCapabilities(dispatchable, deps.dispatchDeps);
-    const eligible = filterByFileOwnership(capabilityResult.eligible, state);
+    // Focus mode: prefer redispatch over fresh work.
+    // Don't start new issues while there are pending redispatches waiting for slots.
+    const pendingRedispatches = state.issues.filter((i) => (i as any).needs_redispatch).length;
     const slots = availableSlots(state);
-    const toDispatch = eligible.slice(0, slots);
 
-    for (const blocked of capabilityResult.blocked) {
+    let toDispatch: OrchestratorIssue[] = [];
+    if (pendingRedispatches > 0 && slots <= pendingRedispatches) {
+      // All slots will be used for redispatch — skip fresh dispatch
       deps.appendLog(sessionDir, {
         timestamp: deps.now().toISOString(),
-        event: 'scan_dispatch_blocked_requirements',
+        event: 'dispatch_deferred_for_redispatch',
         iteration,
-        issue_number: blocked.issue.number,
-        requires: normalizeTaskRequires(blocked.issue.requires),
-        missing: blocked.missing,
+        pending_redispatches: pendingRedispatches,
+        available_slots: slots,
       });
+    } else {
+      const dispatchable = getDispatchableIssues(state);
+      const capabilityResult = filterByHostCapabilities(dispatchable, deps.dispatchDeps);
+      const eligible = filterByFileOwnership(capabilityResult.eligible, state);
+      toDispatch = eligible.slice(0, Math.max(0, slots - pendingRedispatches));
+
+      for (const blocked of capabilityResult.blocked) {
+        deps.appendLog(sessionDir, {
+          timestamp: deps.now().toISOString(),
+          event: 'scan_dispatch_blocked_requirements',
+          iteration,
+          issue_number: blocked.issue.number,
+          requires: normalizeTaskRequires(blocked.issue.requires),
+          missing: blocked.missing,
+        });
+      }
     }
 
     for (const issue of toDispatch) {
