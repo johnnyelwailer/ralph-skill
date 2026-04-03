@@ -5410,6 +5410,32 @@ async function fetchAndApplyBulkIssueState(
 }
 
 /**
+ * Merge loop settings from meta.json into orchestrator state.
+ * This enables runtime configuration changes by editing meta.json's loop_settings field.
+ * Settings from meta.json take precedence over orchestrator.json.
+ */
+export function mergeLoopSettingsFromMeta(state: OrchestratorState, metaContent: string | null): OrchestratorState {
+  if (!metaContent) return state;
+  try {
+    const meta = JSON.parse(metaContent);
+    const s = meta?.loop_settings;
+    if (!s || typeof s !== 'object') return state;
+
+    const merged = { ...state };
+    if (typeof s.triage_interval === 'number') merged.triage_interval = s.triage_interval;
+    if (typeof s.scan_pass_throttle_ms === 'number') merged.scan_pass_throttle_ms = s.scan_pass_throttle_ms;
+    if (typeof s.concurrency_cap === 'number') merged.concurrency_cap = s.concurrency_cap;
+    if (typeof s.max_iterations === 'number') merged.max_iterations = s.max_iterations;
+    if (s.rate_limit_backoff === 'exponential' || s.rate_limit_backoff === 'linear' || s.rate_limit_backoff === 'fixed') {
+      merged.rate_limit_backoff = s.rate_limit_backoff;
+    }
+    return merged;
+  } catch {
+    return state;
+  }
+}
+
+/**
  * Run a single scan pass: triage monitoring, dispatch, PR lifecycle, wave advancement.
  * Reads state from disk, performs all scan actions, writes state back.
  */
@@ -5425,7 +5451,16 @@ export async function runOrchestratorScanPass(
   deps: ScanLoopDeps,
 ): Promise<ScanPassResult> {
   const stateContent = await deps.readFile(stateFile, 'utf8');
-  const state: OrchestratorState = JSON.parse(stateContent);
+  let state: OrchestratorState = JSON.parse(stateContent);
+
+  // Hot-reload loop settings from meta.json if present (enables runtime config changes)
+  const metaPath = path.join(sessionDir, 'meta.json');
+  try {
+    const metaContent = await deps.readFile(metaPath, 'utf8');
+    state = mergeLoopSettingsFromMeta(state, metaContent);
+  } catch {
+    // meta.json missing or unreadable — use state as-is
+  }
 
   const result: ScanPassResult = {
     iteration,

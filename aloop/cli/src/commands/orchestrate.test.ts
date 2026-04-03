@@ -69,6 +69,7 @@ import {
   createTrunkToMainPr,
   resolveAutoMerge,
   resolveOrchestratorSettingsFromConfig,
+  mergeLoopSettingsFromMeta,
   type EstimateResult,
   type OrchestrateCommandOptions,
   type OrchestrateDeps,
@@ -4768,6 +4769,57 @@ describe('resolveOrchestratorSettingsFromConfig', () => {
     const result = await resolveOrchestratorSettingsFromConfig({}, '/proj', deps);
     assert.equal(result.concurrency_cap, 3);
     assert.equal(result.triage_interval, 5);
+  });
+});
+
+describe('mergeLoopSettingsFromMeta', () => {
+  it('returns state unchanged when metaContent is null', () => {
+    const state = { concurrency_cap: 3, triage_interval: 5, trunk_branch: 'main', current_wave: 0, plan_only: false, issues: [], completed_waves: [], filter_issues: null, filter_label: null, filter_repo: null, budget_cap: null, created_at: '', updated_at: '', spec_file: '' };
+    const result = mergeLoopSettingsFromMeta(state, null);
+    assert.equal(result.concurrency_cap, 3);
+    assert.equal(result.triage_interval, 5);
+  });
+
+  it('returns state unchanged when meta has no loop_settings', () => {
+    const state = { concurrency_cap: 3, triage_interval: 5, trunk_branch: 'main', current_wave: 0, plan_only: false, issues: [], completed_waves: [], filter_issues: null, filter_label: null, filter_repo: null, budget_cap: null, created_at: '', updated_at: '', spec_file: '' };
+    const meta = JSON.stringify({ session_id: 'test', pid: 123 });
+    const result = mergeLoopSettingsFromMeta(state, meta);
+    assert.equal(result.concurrency_cap, 3);
+    assert.equal(result.triage_interval, 5);
+  });
+
+  it('overrides state with loop_settings from meta', () => {
+    const state = { concurrency_cap: 3, triage_interval: 5, scan_pass_throttle_ms: 30000, trunk_branch: 'main', current_wave: 0, plan_only: false, issues: [], completed_waves: [], filter_issues: null, filter_label: null, filter_repo: null, budget_cap: null, created_at: '', updated_at: '', spec_file: '' };
+    const meta = JSON.stringify({ loop_settings: { concurrency_cap: 7, triage_interval: 15, scan_pass_throttle_ms: 60000, rate_limit_backoff: 'exponential', max_iterations: 100 } });
+    const result = mergeLoopSettingsFromMeta(state, meta);
+    assert.equal(result.concurrency_cap, 7);
+    assert.equal(result.triage_interval, 15);
+    assert.equal(result.scan_pass_throttle_ms, 60000);
+    assert.equal(result.rate_limit_backoff, 'exponential');
+    assert.equal(result.max_iterations, 100);
+  });
+
+  it('preserves state fields not in loop_settings', () => {
+    const state = { concurrency_cap: 3, trunk_branch: 'agent/trunk', current_wave: 2, plan_only: false, issues: [], completed_waves: [1], filter_issues: null, filter_label: null, filter_repo: null, budget_cap: null, created_at: '', updated_at: '', spec_file: '' };
+    const meta = JSON.stringify({ loop_settings: { concurrency_cap: 5 } });
+    const result = mergeLoopSettingsFromMeta(state, meta);
+    assert.equal(result.concurrency_cap, 5);
+    assert.equal(result.trunk_branch, 'agent/trunk');
+    assert.equal(result.current_wave, 2);
+    assert.deepEqual(result.completed_waves, [1]);
+  });
+
+  it('handles invalid JSON gracefully', () => {
+    const state = { concurrency_cap: 3, trunk_branch: 'main', current_wave: 0, plan_only: false, issues: [], completed_waves: [], filter_issues: null, filter_label: null, filter_repo: null, budget_cap: null, created_at: '', updated_at: '', spec_file: '' };
+    const result = mergeLoopSettingsFromMeta(state, 'not valid json');
+    assert.equal(result.concurrency_cap, 3);
+  });
+
+  it('ignores invalid rate_limit_backoff values', () => {
+    const state = { concurrency_cap: 3, rate_limit_backoff: 'fixed' as const, trunk_branch: 'main', current_wave: 0, plan_only: false, issues: [], completed_waves: [], filter_issues: null, filter_label: null, filter_repo: null, budget_cap: null, created_at: '', updated_at: '', spec_file: '' };
+    const meta = JSON.stringify({ loop_settings: { rate_limit_backoff: 'invalid' } });
+    const result = mergeLoopSettingsFromMeta(state, meta);
+    assert.equal(result.rate_limit_backoff, 'fixed');
   });
 });
 

@@ -15,7 +15,7 @@ import {
 import { processCrResultFiles, type CrResultDeps } from './cr-pipeline.js';
 export type { CrResultDeps };
 export { processCrResultFiles };
-import { EtagCache } from '../lib/github-monitor.js';
+import { EtagCache, setCacheTtlMs } from '../lib/github-monitor.js';
 import { deriveComponentLabels } from '../lib/labels.js';
 import { buildPrBody, ensureMetadataSection, buildIssueLabels } from '../lib/issue-metadata.js';
 
@@ -322,6 +322,7 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
   // Load configurable loop settings from loop-plan.json
   const loopPlanPath = path.join(sessionDir, 'loop-plan.json');
   const settings = loadLoopSettings(loopPlanPath);
+  setCacheTtlMs(settings.gh_etag_cache_ttl_ms);
 
   // execGh must be defined early — used by refine/estimate result handlers
   const execGh = async (args: string[]): Promise<{ stdout: string; stderr: string }> => {
