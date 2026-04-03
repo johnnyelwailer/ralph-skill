@@ -16,7 +16,8 @@ import { processCrResultFiles, type CrResultDeps } from './cr-pipeline.js';
 export type { CrResultDeps };
 export { processCrResultFiles };
 import { EtagCache } from '../lib/github-monitor.js';
-import { createAdapter, type OrchestratorAdapter } from '../lib/adapter.js';
+import type { OrchestratorAdapter } from '../lib/adapter-interface.js';
+import { createAdapter } from '../lib/adapter-github.js';
 
 // --- Orchestrator event system (data-driven from pipeline.yml) ---
 

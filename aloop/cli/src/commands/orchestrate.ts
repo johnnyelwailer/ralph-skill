@@ -16,7 +16,8 @@ import {
   detectIssueChanges,
   type BulkIssueState,
 } from '../lib/github-monitor.js';
-import { createAdapter, type OrchestratorAdapter } from '../lib/adapter.js';
+import type { OrchestratorAdapter } from '../lib/adapter-interface.js';
+import { createAdapter } from '../lib/adapter-github.js';
 
 export interface OrchestrateCommandOptions {
   spec?: string;
