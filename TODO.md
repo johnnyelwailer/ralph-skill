@@ -8,7 +8,7 @@
 spec-gap analysis (2026-03-31): 2 gaps found
 
 - [x] [spec-gap] P2: Agent templates in `aloop/agents/opencode/` use `provider: openrouter` which is not a valid provider. Valid providers are: `claude`, `codex`, `gemini`, `copilot`, `opencode`. SPEC.md line 42 lists the 5 valid CLI providers; `ProviderName` union in `aloop/cli/src/commands/start.ts:11` confirms `openrouter` is absent. Fix: change `provider: openrouter` → `provider: opencode` in `aloop/agents/opencode/code-critic.md:5`, `aloop/agents/opencode/error-analyst.md:5`, `aloop/agents/opencode/vision-reviewer.md:5`. (Note: `openrouter/` is a *model* prefix used with opencode, not a standalone provider.)
-- [ ] [spec-gap] P2: `aloop/bin/loop.sh:33` defaults Claude model to `sonnet` (`ALOOP_CLAUDE_MODEL:-sonnet`) but `aloop/config.yml:21` specifies `claude: opus`. `loop.ps1:34` is correct (`'opus'`). Fix: change line 33 of loop.sh from `sonnet` to `opus` to match config.yml and loop.ps1.
+- [x] [spec-gap] P2: `aloop/bin/loop.sh:33` defaults Claude model to `sonnet` (`ALOOP_CLAUDE_MODEL:-sonnet`) but `aloop/config.yml:21` specifies `claude: opus`. `loop.ps1:34` is correct (`'opus'`). Fix: change line 33 of loop.sh from `sonnet` to `opus` to match config.yml and loop.ps1.
 
 spec-review (2026-03-31): all flock locking requirements confirmed implemented — writes use flock -x, reads use flock -s, 5-attempt backoff (50–250ms), stale-dir cleanup, health_lock_failed logged on failure, all-providers-cooldown sleep — APPROVED
 
