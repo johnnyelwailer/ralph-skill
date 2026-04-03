@@ -55,3 +55,11 @@
 | orchestrate.test.ts full suite | 2026-04-03 | d525d05e6 | FAIL | 377/379 pass, 2 fail — checkPrGates subtests 5+6 ("returns pending when workflows exist but checks are not yet reported" and "fails CI gate when workflows exist and check query errors"); regression from execGh removal in 46ad13bc6; bug filed |
 | listPRs adapter method | 2026-04-03 | d525d05e6 | PASS | 4/4 subtests pass in adapter.test.ts: lists with default filters, filters by head branch, passes state filter, returns empty array when none found |
 | getPrDiff and closePR adapter methods | 2026-04-03 | d525d05e6 | FAIL (gap) | Methods added in 46ad13bc6 have no unit tests in adapter.test.ts; only tested indirectly via orchestrate.test.ts mocks; bug filed as P2 |
+| TypeScript build (npm run build) | 2026-04-03 | 628991a06 | PASS | Build clean exit 0 (iter 18); all steps complete |
+| tsc --noEmit --skipLibCheck (with test files) | 2026-04-03 | 628991a06 | PASS | Zero type errors including test files; TS2353 on execGh in PrLifecycleDeps overrides fixed |
+| checkPrGates subtests 5+6 regression fix | 2026-04-03 | 628991a06 | PASS | "returns pending when workflows exist but checks not yet reported" and "fails CI gate when workflows exist and check query errors" both pass (8d0091dec fix) |
+| orchestrate.test.ts full suite | 2026-04-03 | 628991a06 | PASS | 379/379 pass — all tests green, no failures remaining (7 pre-existing failures resolved) |
+| adapter.test.ts unit tests | 2026-04-03 | 628991a06 | PASS | 48/48 pass; includes closePR (2 subtests) and getPrDiff (1 subtest) added by 628991a06 |
+| getPrDiff adapter unit tests | 2026-04-03 | 628991a06 | PASS | calls gh pr diff <number> --repo owner/repo; stdout returned correctly (bug P2 resolved) |
+| closePR adapter unit tests | 2026-04-03 | 628991a06 | PASS | calls gh pr close <number> --repo owner/repo; optional --comment flag included when provided (bug P2 resolved) |
+| process-requests.ts full suite | 2026-04-03 | 628991a06 | PASS | 42/42 pass (stable) |

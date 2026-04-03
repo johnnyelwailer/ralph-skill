@@ -156,3 +156,63 @@ npm test → 1201 tests / 1186 pass / 14 fail / 1 skipped
 # Stash showed "No local changes to save" (clean HEAD)
 # stash+checkout ee3edf463 showed same failures: launchChildLoop, queueGapAnalysis, epic decomposition, multi-file spec, prompt verification
 ```
+
+## QA Session — 2026-04-03 (iteration 18)
+
+### Test Environment
+- Commit under test: 628991a06
+- Working dir: aloop/cli
+- Binary: not installed (unit test + build validation only)
+
+### Features Tested
+1. checkPrGates subtests 5+6 fix (8d0091dec)
+2. closePR and getPrDiff unit tests (628991a06)
+3. TypeScript full type-check including test files
+
+### Results
+- PASS: TypeScript build (`npm run build`) — clean exit 0
+- PASS: `tsc --noEmit --skipLibCheck` — zero type errors including test files (TS2353 regression fixed)
+- PASS: adapter.test.ts — 48/48 (was 45; +3 new closePR/getPrDiff tests)
+- PASS: orchestrate.test.ts — 379/379 (was 377; all tests now green)
+- PASS: process-requests.test.ts — 42/42 (stable)
+- PASS: checkPrGates subtests 5+6 specifically re-tested — both pass
+- PASS: closePR unit tests — 2 subtests (calls gh pr close; optional --comment)
+- PASS: getPrDiff unit tests — 1 subtest (calls gh pr diff; returns stdout)
+
+### Bugs Resolved This Iteration
+- [qa/P1] checkPrGates subtests 5+6 — FIXED by 8d0091dec (replaced invalid execGh overrides with hasWorkflows adapter mock)
+- [qa/P2] getPrDiff and closePR had no unit tests — FIXED by 628991a06 (3 new tests added)
+
+### Command Transcript
+```
+# Build check
+$ cd aloop/cli && npm run build
+# Exit 0; ✓ 1851 modules transformed, ✓ built in 1.33s
+
+# Type check (full)
+$ npx tsc --noEmit --skipLibCheck
+# Exit 0; no output (zero errors)
+
+# adapter.test.ts
+$ npx tsx --test src/lib/adapter.test.ts
+# tests 48 / suites 21 / pass 48 / fail 0
+
+# orchestrate.test.ts
+$ npx tsx --test src/commands/orchestrate.test.ts
+# tests 379 / suites 73 / pass 379 / fail 0
+
+# process-requests.test.ts
+$ npx tsx --test src/commands/process-requests.test.ts
+# tests 42 / suites 12 / pass 42 / fail 0
+
+# checkPrGates targeted run
+$ npx tsx --test --test-name-pattern "checkPrGates" src/commands/orchestrate.test.ts
+# tests 13 / pass 13 / fail 0 — subtests 5+6 confirmed passing
+
+# closePR + getPrDiff targeted run
+$ npx tsx --test --test-name-pattern "closePR|getPrDiff" src/lib/adapter.test.ts
+# tests 3 / pass 3 / fail 0
+```
+
+### Summary
+All 3 test suites fully green at 628991a06. Both P1 and P2 bugs from iter 17 are resolved. No new regressions detected. The issue #177 refactoring work is complete with 379/379 orchestrate tests passing.
