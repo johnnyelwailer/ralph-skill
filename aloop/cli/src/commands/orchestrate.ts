@@ -2409,7 +2409,7 @@ export async function applyEstimateResults(
 
     if (result.dor_passed) {
       issue.dor_validated = true;
-      if (issue.status === 'Needs refinement') {
+      if (issue.status === 'Needs refinement' || issue.status === 'Needs decomposition') {
         issue.status = 'Ready';
       }
       // Apply complexity and priority labels via GH

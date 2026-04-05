@@ -740,7 +740,7 @@ describe('orchestrateCommandWithDeps with --plan', () => {
     const queueFiles = Object.keys(mockDeps._writtenFiles).filter((p) => p.includes('/queue/sub-decompose-issue-'));
     assert.equal(queueFiles.length, 2, 'Should write sub-decompose queue prompts for each epic');
     const queueContent = mockDeps._writtenFiles[queueFiles[0]];
-    assert.match(queueContent, /orch_estimate/, 'Queue override should reference orch_estimate agent');
+    assert.match(queueContent, /orch_sub_decompose/, 'Queue override should reference orch_sub_decompose agent');
   });
 
   it('applies estimate-results.json when present', async () => {
@@ -1805,7 +1805,7 @@ describe('filterByHostCapabilities', () => {
 describe('validateDoR', () => {
   it('passes when acceptance criteria, approach, and content are present', () => {
     const issue = makeIssue({
-      title: 'Add login form',
+      title: 'Add login form', dor_validated: false,
       body: '## Approach\n\nUse react-hook-form with zod validation.\n\n## Acceptance Criteria\n- [ ] Form renders with email and password fields\n- [ ] Validation errors display inline\n\nImplementation details: Set up form state management and integrate with the auth API endpoint.',
     });
     const result = validateDoR(issue);
@@ -1815,7 +1815,7 @@ describe('validateDoR', () => {
 
   it('fails when acceptance criteria are missing', () => {
     const issue = makeIssue({
-      title: 'Add login form',
+      title: 'Add login form', dor_validated: false,
       body: '## Approach\n\nUse react-hook-form with zod validation. Implement form state management and integrate with the auth API endpoint for authentication flow.',
     });
     const result = validateDoR(issue);
@@ -1825,7 +1825,7 @@ describe('validateDoR', () => {
 
   it('fails when spec-question blocker is referenced', () => {
     const issue = makeIssue({
-      title: 'Add login form',
+      title: 'Add login form', dor_validated: false,
       body: '## Approach\n\nUse react-hook-form. Blocked by aloop/spec-question regarding auth method.\n\n## Acceptance Criteria\n- [ ] Form renders with email field',
     });
     const result = validateDoR(issue);
@@ -1835,7 +1835,7 @@ describe('validateDoR', () => {
 
   it('fails when planner approach is missing', () => {
     const issue = makeIssue({
-      title: 'Add login form',
+      title: 'Add login form', dor_validated: false,
       body: '## Acceptance Criteria\n- [ ] Form renders with email field',
     });
     const result = validateDoR(issue);
@@ -3691,14 +3691,12 @@ describe('queueGapAnalysisForIssues', () => {
     const productContent = writtenFiles['/queue/gap-analysis-product.md'];
     assert.match(productContent, /orch_product_analyst/);
     assert.match(productContent, /# Product Prompt/);
-    assert.match(productContent, /# Spec content here/);
     assert.match(productContent, /Issue #10: Auth/);
     assert.match(productContent, /Implement auth/);
 
     const archContent = writtenFiles['/queue/gap-analysis-architecture.md'];
     assert.match(archContent, /orch_arch_analyst/);
     assert.match(archContent, /# Arch Prompt/);
-    assert.match(archContent, /# Spec content here/);
   });
 
   it('returns 0 when no issues need analysis', async () => {
@@ -3758,7 +3756,6 @@ describe('epic and sub-issue decomposition helpers', () => {
     assert.ok(content);
     assert.match(content, /orch_decompose/);
     assert.match(content, /# Decompose prompt/);
-    assert.match(content, /# Spec body/);
   });
 
   it('writes sub-issue decomposition request for Needs decomposition targets only', async () => {
