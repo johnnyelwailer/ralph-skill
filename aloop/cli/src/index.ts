@@ -158,10 +158,17 @@ program
   .option('--interval <ms>', 'Scan loop interval in milliseconds (default: 30000)')
   .option('--max-iterations <n>', 'Max scan loop iterations (default: 100)')
   .option('--auto-merge', 'Create a PR from trunk to main when all issues complete')
+  .option('--run-scan-loop', 'Run as daemon with Node.js scan loop instead of loop.sh')
   .option('--resume <session-id>', 'Resume a previously stopped orchestrator session')
   .option('--home-dir <path>', 'Home directory override')
   .option('--project-root <path>', 'Project root override')
   .option('--output <mode>', 'Output format: json or text', 'text')
+  // Internal daemon mode options (used when spawning daemon from parent process)
+  .option('--daemon-mode', 'Internal: run as daemon')
+  .option('--session-dir <path>', 'Internal: session directory')
+  .option('--state-file <path>', 'Internal: state file path')
+  .option('--aloop-root <path>', 'Internal: aloop root')
+  .option('--prompts-dir <path>', 'Internal: prompts directory')
   .action(withErrorHandling(orchestrateCommand));
 
 program
