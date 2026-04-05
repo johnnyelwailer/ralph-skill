@@ -26,130 +26,30 @@ import { useLongPress } from '@/hooks/useLongPress';
 import { parseTodoProgress } from '../../src/lib/parseTodoProgress';
 import { ResponsiveLayout, useResponsiveLayout } from '@/components/layout/ResponsiveLayout';
 
-// ── ANSI + Markdown rendering ──
-// Strip ANSI escape codes from text (for compact log entries)
-const STRIP_ANSI_RE = /\x1b\[[0-9;]*[A-Za-z]/g;
-export function stripAnsi(text: string): string {
-  return text.replace(STRIP_ANSI_RE, '');
-}
-// Parses ANSI SGR escape codes into styled segments, runs each segment's
-// text through marked (markdown→HTML), and wraps the result in <span>s
-// with inline styles. Based on ansi_up's palette and SGR handling.
+import {
+  stripAnsi, renderAnsiToHtml,
+} from './lib/ansi';
 
-// 256-color palette — indices 0-15: standard, 16-231: 6x6x6 RGB, 232-255: grayscale
-const PALETTE_256: [number, number, number][] = (() => {
-  const p: [number, number, number][] = [];
-  // Standard colors (0-7 normal, 8-15 bright)
-  const std: [number, number, number][] = [
-    [0, 0, 0], [187, 0, 0], [0, 187, 0], [187, 187, 0],
-    [0, 0, 187], [187, 0, 187], [0, 187, 187], [187, 187, 187],
-    [85, 85, 85], [255, 85, 85], [0, 255, 0], [255, 255, 85],
-    [85, 85, 255], [255, 85, 255], [85, 255, 255], [255, 255, 255],
-  ];
-  for (const c of std) p.push(c);
-  // 6x6x6 RGB cube (16-231)
-  for (const r of [0, 95, 135, 175, 215, 255])
-    for (const g of [0, 95, 135, 175, 215, 255])
-      for (const b of [0, 95, 135, 175, 215, 255])
-        p.push([r, g, b]);
-  // Grayscale ramp (232-255)
-  for (let i = 0; i < 24; i++) {
-    const v = 8 + i * 10;
-    p.push([v, v, v]);
-  }
-  return p;
-})();
+import {
+  isRecord, str, numStr, toSession, formatTime, formatTimeShort, formatSecs, formatDuration, formatDateKey, relativeTime,
+  type SessionSummary,
+} from './lib/format';
 
-export function rgbStr(r: number, g: number, b: number): string {
-  return `${r},${g},${b}`;
-}
+import {
+  StatusDot,
+} from './components/shared/StatusDot';
 
-interface AnsiStyle {
-  fg?: string;      // "r,g,b"
-  bg?: string;      // "r,g,b"
-  bold?: boolean;
-  faint?: boolean;
-  italic?: boolean;
-  underline?: boolean;
-}
+import {
+  PhaseBadge,
+} from './components/shared/PhaseBadge';
 
-export function parseAnsiSegments(text: string): { text: string; style: AnsiStyle }[] {
-  const segments: { text: string; style: AnsiStyle }[] = [];
-  let style: AnsiStyle = {};
-  let last = 0;
-  const re = /\x1b\[([0-9;]*)m/g;
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(text)) !== null) {
-    if (m.index > last) segments.push({ text: text.slice(last, m.index), style: { ...style } });
-    const cmds = m[1] ? m[1].split(';') : ['0'];
-    let i = 0;
-    while (i < cmds.length) {
-      const num = parseInt(cmds[i], 10);
-      if (isNaN(num) || num === 0) {
-        style = {};
-      } else if (num === 1) { style.bold = true; }
-      else if (num === 2) { style.faint = true; }
-      else if (num === 3) { style.italic = true; }
-      else if (num === 4) { style.underline = true; }
-      else if (num === 21) { style.bold = false; }
-      else if (num === 22) { style.bold = false; style.faint = false; }
-      else if (num === 23) { style.italic = false; }
-      else if (num === 24) { style.underline = false; }
-      else if (num === 39) { style.fg = undefined; }
-      else if (num === 49) { style.bg = undefined; }
-      else if (num >= 30 && num < 38) { style.fg = rgbStr(...PALETTE_256[num - 30]); }
-      else if (num >= 40 && num < 48) { style.bg = rgbStr(...PALETTE_256[num - 40]); }
-      else if (num >= 90 && num < 98) { style.fg = rgbStr(...PALETTE_256[num - 90 + 8]); }
-      else if (num >= 100 && num < 108) { style.bg = rgbStr(...PALETTE_256[num - 100 + 8]); }
-      else if (num === 38 || num === 48) {
-        const isFg = num === 38;
-        const mode = cmds[i + 1];
-        if (mode === '5' && i + 2 < cmds.length) {
-          // 256-color palette: 38;5;N or 48;5;N
-          const idx = parseInt(cmds[i + 2], 10);
-          if (idx >= 0 && idx <= 255) {
-            const c = rgbStr(...PALETTE_256[idx]);
-            if (isFg) style.fg = c; else style.bg = c;
-          }
-          i += 2;
-        } else if (mode === '2' && i + 4 < cmds.length) {
-          // True color: 38;2;R;G;B or 48;2;R;G;B
-          const r = parseInt(cmds[i + 2], 10);
-          const g = parseInt(cmds[i + 3], 10);
-          const b = parseInt(cmds[i + 4], 10);
-          if ([r, g, b].every(v => v >= 0 && v <= 255)) {
-            const c = rgbStr(r, g, b);
-            if (isFg) style.fg = c; else style.bg = c;
-          }
-          i += 4;
-        }
-      }
-      i++;
-    }
-    last = m.index + m[0].length;
-  }
-  if (last < text.length) segments.push({ text: text.slice(last), style: { ...style } });
-  return segments;
-}
+import {
+  ConnectionIndicator, type ConnectionStatus,
+} from './components/shared/ConnectionIndicator';
 
-export function renderAnsiToHtml(text: string, opts: { gfm?: boolean; breaks?: boolean } = {}): string {
-  const segments = parseAnsiSegments(text);
-  const { gfm = true, breaks = true } = opts;
-  return segments.map(({ text: segText, style }) => {
-    const html = marked.parse(segText, { gfm, breaks }) as string;
-    if (!style.fg && !style.bg && !style.bold && !style.faint && !style.italic && !style.underline) {
-      return html;
-    }
-    const styles: string[] = [];
-    if (style.fg) styles.push(`color:rgb(${style.fg})`);
-    if (style.bg) styles.push(`background-color:rgb(${style.bg})`);
-    if (style.bold) styles.push('font-weight:bold');
-    if (style.faint) styles.push('opacity:0.7');
-    if (style.italic) styles.push('font-style:italic');
-    if (style.underline) styles.push('text-decoration:underline');
-    return `<span class="ansi" style="${styles.join(';')}">${html}</span>`;
-  }).join('');
-}
+import {
+  ElapsedTimer,
+} from './components/shared/ElapsedTimer';
 
 // ── Types ──
 
@@ -170,24 +70,6 @@ interface DashboardState {
   artifacts: ArtifactManifest[];
   repoUrl: string | null;
   meta: Record<string, unknown> | null;
-}
-
-interface SessionSummary {
-  id: string;
-  name: string;
-  projectName: string;
-  status: string;
-  phase: string;
-  elapsed: string;
-  iterations: string;
-  isActive: boolean;
-  branch: string;
-  startedAt: string;
-  endedAt: string;
-  pid: string;
-  provider: string;
-  workDir: string;
-  stuckCount: number;
 }
 
 export interface LogEntry {
@@ -264,96 +146,6 @@ interface CostSessionResponse {
 
 // ── Helpers ──
 
-export function isRecord(v: unknown): v is Record<string, unknown> {
-  return typeof v === 'object' && v !== null && !Array.isArray(v);
-}
-
-export function str(source: Record<string, unknown>, keys: string[], fb = ''): string {
-  for (const k of keys) {
-    const v = source[k];
-    if (typeof v === 'string' && v.trim()) return v;
-  }
-  return fb;
-}
-
-export function numStr(source: Record<string, unknown>, keys: string[], fb = '--'): string {
-  for (const k of keys) {
-    const v = source[k];
-    if (typeof v === 'number' && Number.isFinite(v)) return String(v);
-    if (typeof v === 'string' && v.trim()) return v.trim();
-  }
-  return fb;
-}
-
-export function toSession(source: Record<string, unknown>, fallback: string, isActive: boolean): SessionSummary {
-  return {
-    id: str(source, ['session_id', 'id'], fallback),
-    name: str(source, ['session_id', 'name', 'session_name'], fallback),
-    projectName: str(source, ['project_name'], '') || (() => {
-      const root = str(source, ['project_root'], '');
-      if (root) { const parts = root.replace(/[\\/]+$/, '').split(/[\\/]/); return parts[parts.length - 1] || root; }
-      return fallback.split('-').slice(0, -1).join('-') || fallback;
-    })(),
-    status: str(source, ['state', 'status'], 'unknown'),
-    phase: str(source, ['phase', 'mode'], ''),
-    elapsed: str(source, ['elapsed', 'elapsed_time', 'duration'], '--'),
-    iterations: numStr(source, ['iteration', 'iterations']),
-    isActive,
-    branch: str(source, ['branch'], ''),
-    startedAt: str(source, ['started_at'], ''),
-    endedAt: str(source, ['ended_at'], ''),
-    pid: numStr(source, ['pid'], ''),
-    provider: str(source, ['provider'], ''),
-    workDir: str(source, ['work_dir'], ''),
-    stuckCount: typeof source.stuck_count === 'number' ? source.stuck_count : 0,
-  };
-}
-
-export function formatTime(ts: string): string {
-  if (!ts) return '';
-  try { return new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }); }
-  catch { return ts; }
-}
-
-export function formatTimeShort(ts: string): string {
-  if (!ts) return '';
-  try { return new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }); }
-  catch { return ts; }
-}
-
-export function formatSecs(total: number): string {
-  const m = Math.floor(total / 60);
-  const s = Math.round(total % 60);
-  if (m === 0) return `${s}s`;
-  return s > 0 ? `${m}m ${s}s` : `${m}m`;
-}
-
-export function formatDuration(raw: string): string {
-  const match = raw.match(/^(\d+)s$/);
-  if (!match) return raw;
-  return formatSecs(parseInt(match[1], 10));
-}
-
-export function formatDateKey(ts: string): string {
-  if (!ts) return 'Unknown';
-  try { return new Date(ts).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' }); }
-  catch { return 'Unknown'; }
-}
-
-export function relativeTime(ts: string): string {
-  if (!ts) return '';
-  try {
-    const diff = Date.now() - new Date(ts).getTime();
-    const mins = Math.floor(diff / 60000);
-    if (mins < 1) return 'just now';
-    if (mins < 60) return `${mins}m ago`;
-    const hrs = Math.floor(mins / 60);
-    if (hrs < 24) return `${hrs}h ago`;
-    const days = Math.floor(hrs / 24);
-    return `${days}d ago`;
-  } catch { return ''; }
-}
-
 export const SIGNIFICANT_EVENTS = new Set([
   'iteration_complete', 'iteration_error', 'provider_cooldown', 'provider_recovered',
   'review_verdict_read', 'review_verdict_missing', 'session_start', 'session_end', 'session_restart',
@@ -414,19 +206,8 @@ export function parseLogLine(line: string): LogEntry | null {
 
 // ── Phase colors ──
 
-const phaseColors: Record<string, string> = {
-  plan: 'bg-purple-500/20 text-purple-600 dark:text-purple-400 border-purple-500/30',
-  build: 'bg-yellow-500/20 text-yellow-600 dark:text-yellow-400 border-yellow-500/30',
-  proof: 'bg-amber-500/20 text-amber-600 dark:text-amber-400 border-amber-500/30',
-  review: 'bg-cyan-500/20 text-cyan-600 dark:text-cyan-400 border-cyan-500/30',
-};
-
 const phaseBarColors: Record<string, string> = {
   plan: 'bg-purple-500', build: 'bg-yellow-500', proof: 'bg-amber-500', review: 'bg-cyan-500',
-};
-
-const phaseDotColors: Record<string, string> = {
-  plan: 'text-purple-500', build: 'text-yellow-500', proof: 'text-amber-500', review: 'text-cyan-500',
 };
 
 const statusColors: Record<string, string> = {
@@ -435,80 +216,6 @@ const statusColors: Record<string, string> = {
   stopped: 'text-red-600 dark:text-red-400',
   stopping: 'text-orange-600 dark:text-orange-400',
 };
-
-function PhaseBadge({ phase, small }: { phase: string; small?: boolean }) {
-  if (!phase) return null;
-  const colors = phaseColors[phase.toLowerCase()] ?? 'bg-muted text-muted-foreground border-border';
-  const size = small ? 'px-1 py-0 text-[10px]' : 'px-1.5 py-0.5 text-xs';
-  return <span className={`inline-block rounded border font-medium ${colors} ${size}`}>{phase}</span>;
-}
-
-const STATUS_DOT_CONFIG: Record<string, { color: string; label: string }> = {
-  running: { color: 'bg-green-500', label: 'Running' },
-  stopped: { color: 'bg-muted-foreground/50', label: 'Stopped' },
-  exited: { color: 'bg-muted-foreground/50', label: 'Exited' },
-  unhealthy: { color: 'bg-red-500', label: 'Unhealthy' },
-  error: { color: 'bg-red-500', label: 'Error' },
-  stuck: { color: 'bg-orange-500', label: 'Stuck' },
-  unknown: { color: 'bg-muted-foreground/30', label: 'Unknown' },
-};
-
-function StatusDot({ status, className = '' }: { status: string; className?: string }) {
-  const config = STATUS_DOT_CONFIG[status] ?? STATUS_DOT_CONFIG.unknown;
-  const label = config.label;
-
-  const dot = status === 'running' ? (
-    <span className={`relative flex h-2.5 w-2.5 shrink-0 ${className}`}>
-      <span className={`absolute inline-flex h-full w-full animate-pulse-dot rounded-full ${config.color}/70`} />
-      <span className={`relative inline-flex h-2.5 w-2.5 rounded-full ${config.color}`} />
-    </span>
-  ) : (
-    <span className={`inline-flex h-2.5 w-2.5 shrink-0 rounded-full ${config.color} ${className}`} />
-  );
-
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild><span className="inline-flex">{dot}</span></TooltipTrigger>
-      <TooltipContent><p>{label}</p></TooltipContent>
-    </Tooltip>
-  );
-}
-
-type ConnectionStatus = 'connected' | 'connecting' | 'disconnected';
-
-function ConnectionIndicator({ status }: { status: ConnectionStatus }) {
-  const Icon = status === 'connected' ? Zap : status === 'connecting' ? Loader2 : AlertTriangle;
-  const color = status === 'connected' ? 'text-green-500' : status === 'connecting' ? 'text-yellow-500 animate-spin' : 'text-red-500';
-  const label = status === 'connected' ? 'Live' : status === 'connecting' ? 'Connecting...' : 'Disconnected';
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <div className="flex items-center gap-1">
-          <Icon className={`h-3 w-3 ${color}`} />
-          <span className="text-[10px] text-muted-foreground">{label}</span>
-        </div>
-      </TooltipTrigger>
-      <TooltipContent><p>SSE connection: {label}</p></TooltipContent>
-    </Tooltip>
-  );
-}
-
-// ── Elapsed timer ──
-
-function ElapsedTimer({ since }: { since: string }) {
-  const [elapsed, setElapsed] = useState('');
-  useEffect(() => {
-    const start = new Date(since).getTime();
-    const tick = () => {
-      const diff = Math.max(0, Math.floor((Date.now() - start) / 1000));
-      setElapsed(formatSecs(diff));
-    };
-    tick();
-    const id = setInterval(tick, 1000);
-    return () => clearInterval(id);
-  }, [since]);
-  return <>{elapsed}</>;
-}
 
 // ── Token/cost usage helpers ──
 
