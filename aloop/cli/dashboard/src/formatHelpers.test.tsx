@@ -1,16 +1,18 @@
 import { describe, it, expect } from 'vitest';
 import {
-  numStr,
-  toSession,
-  formatSecs,
-  relativeTime,
-  stripAnsi,
   isImageArtifact,
   artifactUrl,
   slugify,
   parseManifest,
   findBaselineIterations,
 } from './AppView';
+import {
+  numStr,
+  toSession,
+  formatSecs,
+  relativeTime,
+} from './lib/format';
+import { stripAnsi } from './lib/ansi';
 
 describe('numStr', () => {
   it('returns number as string', () => {
