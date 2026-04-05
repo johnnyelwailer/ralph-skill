@@ -1352,7 +1352,29 @@ invoke_provider() {
     gh_block_dir="$(setup_gh_block)"
     local saved_path="$PATH"
     export ALOOP_ORIGINAL_PATH="$PATH"
-    PATH="$gh_block_dir:$PATH"
+
+    # Find the provider binary directory and prepend it to PATH AFTER the block
+    # shim. This ensures that the provider binary takes precedence over others
+    # (defense in depth) while still having its co-located gh blocked.
+    local provider_bin
+    case "$provider_name" in
+        claude) provider_bin="claude" ;;
+        codex) provider_bin="codex" ;;
+        gemini) provider_bin="gemini" ;;
+        copilot) provider_bin="copilot" ;;
+        opencode) provider_bin="opencode" ;;
+        *) provider_bin="$provider_name" ;;
+    esac
+
+    local provider_path
+    provider_path=$(command -v "$provider_bin" 2>/dev/null || true)
+    if [ -n "$provider_path" ]; then
+        local provider_dir
+        provider_dir=$(dirname "$provider_path")
+        PATH="$gh_block_dir:$provider_dir:$PATH"
+    else
+        PATH="$gh_block_dir:$PATH"
+    fi
     export PATH
     local invoke_rc=0
     local copilot_output_file=""

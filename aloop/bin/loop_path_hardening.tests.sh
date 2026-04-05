@@ -133,11 +133,12 @@ else
     failed=1
 fi
 
-# Check that the provider dir is STILL on PATH (not stripped)
-if echo "$provider_saw_path" | tr ':' '\n' | grep -Fxq "$fake_provider_dir"; then
-    echo "PASS: provider directory preserved on PATH during execution"
+# Check that the provider directory is prepended to PATH (at second position, after shim)
+second_dir="$(echo "$provider_saw_path" | cut -d: -f2)"
+if [ "$second_dir" = "$fake_provider_dir" ]; then
+    echo "PASS: provider directory prepended to PATH during execution"
 else
-    echo "FAIL: provider directory was removed from PATH during execution"
+    echo "FAIL: provider directory was not prepended to PATH (got: $second_dir, expected: $fake_provider_dir)"
     failed=1
 fi
 

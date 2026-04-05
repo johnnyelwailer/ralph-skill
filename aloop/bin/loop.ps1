@@ -653,7 +653,26 @@ function Invoke-Provider {
     $ghBlockDir = Setup-GhBlock
     $savedPath = $env:PATH
     $env:ALOOP_ORIGINAL_PATH = $env:PATH
-    $env:PATH = "$ghBlockDir$([System.IO.Path]::PathSeparator)$env:PATH"
+
+    # Find the provider binary directory and prepend it to PATH AFTER the block
+    # shim. This ensures that the provider binary takes precedence over others
+    # (defense in depth) while still having its co-located gh blocked.
+    $providerBin = switch ($ProviderName) {
+        'claude'   { 'claude' }
+        'codex'    { 'codex' }
+        'gemini'   { 'gemini' }
+        'copilot'  { 'copilot' }
+        'opencode' { 'opencode' }
+        default    { $ProviderName }
+    }
+
+    $providerPath = (Get-Command $providerBin -ErrorAction SilentlyContinue).Source
+    if ($null -ne $providerPath) {
+        $providerDir = Split-Path $providerPath -Parent
+        $env:PATH = "$ghBlockDir$([System.IO.Path]::PathSeparator)$providerDir$([System.IO.Path]::PathSeparator)$env:PATH"
+    } else {
+        $env:PATH = "$ghBlockDir$([System.IO.Path]::PathSeparator)$env:PATH"
+    }
 
     # Sanitize CLAUDECODE env before spawning child process (inherits env)
     $hadClaudeCode = Test-Path Env:CLAUDECODE

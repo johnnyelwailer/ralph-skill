@@ -336,16 +336,12 @@ fi
 
 provider_saw_path="$(cat "$PROVIDER_PATH_MARKER" 2>/dev/null || true)"
 provider_first_dir="${provider_saw_path%%:*}"
-provider_dir_present=0
-if echo "$provider_saw_path" | tr ':' '\n' | grep -Fxq "$FAKE_PROVIDER_DIR"; then
-    provider_dir_present=1
-fi
-
-if [ "$PATH" = "$pre_success_path" ] && [ -f "$provider_first_dir/gh" ] && grep -q "blocked by aloop" "$provider_first_dir/gh" 2>/dev/null && [ "$provider_dir_present" -eq 1 ]; then
+provider_second_dir="$(echo "$provider_saw_path" | cut -d: -f2)"
+if [ "$PATH" = "$pre_success_path" ] && [ -f "$provider_first_dir/gh" ] && grep -q "blocked by aloop" "$provider_first_dir/gh" 2>/dev/null && [ "$provider_second_dir" = "$FAKE_PROVIDER_DIR" ]; then
     cover_branch "path.invoke.restore_success"
-    pass_case "invoke_provider success restored PATH with shim precedence and preserved provider directory"
+    pass_case "invoke_provider success restored PATH with shim and provider-dir precedence"
 else
-    fail_case "invoke_provider success did not enforce expected PATH behavior"
+    fail_case "invoke_provider success did not enforce expected PATH behavior (got second dir: $provider_second_dir, expected: $FAKE_PROVIDER_DIR)"
 fi
 
 cat > "$FAKE_PROVIDER_DIR/claude" << 'SCRIPT'
