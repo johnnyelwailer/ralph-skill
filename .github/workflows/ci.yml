@@ -60,6 +60,10 @@ jobs:
         working-directory: aloop/cli/dashboard
         run: npm ci
 
+      - name: Type-check dashboard
+        working-directory: aloop/cli/dashboard
+        run: npx tsc --noEmit
+
       - name: Run dashboard unit tests
         working-directory: aloop/cli/dashboard
         run: npm test
