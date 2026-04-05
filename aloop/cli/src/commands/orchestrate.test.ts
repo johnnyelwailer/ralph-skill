@@ -1670,7 +1670,8 @@ describe('getDispatchableIssues', () => {
           wave: 1,
           state: 'pending',
           dor_validated: false,
-          body: 'Approach only, missing testable acceptance criteria.',
+          title: 'Add login form',
+          body: 'Implement login functionality.',
         }),
         makeIssue({
           number: 2,
@@ -1688,7 +1689,7 @@ describe('getDispatchableIssues', () => {
     const state = makeState({
       current_wave: 1,
       issues: [
-        makeIssue({ number: 1, wave: 1, state: 'pending', dor_validated: false }),
+        makeIssue({ number: 1, wave: 1, state: 'pending', dor_validated: false, title: 'Test issue', body: 'Just a short body.' }),
         makeIssue({ number: 2, wave: 1, state: 'pending', dor_validated: true }),
       ],
     });
