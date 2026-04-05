@@ -2318,11 +2318,6 @@ export function validateDoR(issue: OrchestratorIssue): DoRValidationResult {
     gaps.push('Missing planner approach or implementation notes');
   }
 
-  // Criterion 5: Estimation complete
-  if (!issue.dor_validated) {
-    gaps.push('Estimation/DoR validation not completed');
-  }
-
   return { passed: gaps.length === 0, gaps };
 }
 

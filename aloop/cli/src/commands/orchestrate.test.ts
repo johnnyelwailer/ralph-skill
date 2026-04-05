@@ -1859,7 +1859,7 @@ describe('validateDoR', () => {
     });
     const result = validateDoR(issue);
     assert.equal(result.passed, false);
-    assert.ok(result.gaps.length >= 2);
+    assert.ok(result.gaps.length >= 1);
   });
 });
 
