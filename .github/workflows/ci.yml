@@ -2,13 +2,13 @@ name: CI
 
 on:
   push:
-    branches: [master, agent/trunk]
+    branches: [master, agent/*]
   pull_request:
-    branches: [master, agent/trunk]
+    branches: [master, agent/*]
 
 jobs:
-  dashboard-tests:
-    name: Dashboard Unit Tests
+  build-and-test:
+    name: Build and Test
     runs-on: ubuntu-latest
 
     steps:
@@ -18,10 +18,22 @@ jobs:
         with:
           node-version: '22'
 
-      - name: Install dashboard dependencies
+      - name: Install CLI dependencies
+        working-directory: aloop/cli
+        run: npm ci
+
+      - name: Install Dashboard dependencies
         working-directory: aloop/cli/dashboard
         run: npm ci
 
-      - name: Run dashboard unit tests
+      - name: Type-check CLI
+        working-directory: aloop/cli
+        run: npx tsc --noEmit
+
+      - name: Type-check Dashboard
         working-directory: aloop/cli/dashboard
+        run: npx tsc --noEmit
+
+      - name: Run CLI tests
+        working-directory: aloop/cli
         run: npm test
