@@ -1856,6 +1856,7 @@ describe('validateDoR', () => {
     const issue = makeIssue({
       title: 'Todo',
       body: 'Something',
+      dor_validated: false,
     });
     const result = validateDoR(issue);
     assert.equal(result.passed, false);
