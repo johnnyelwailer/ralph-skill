@@ -1563,6 +1563,89 @@ check_all_tasks_complete() {
     return 1
 }
 
+append_plan_task_if_missing() {
+    local task_text="$1"
+    if [ -z "$task_text" ] || [ ! -f "$PLAN_FILE" ]; then return 0; fi
+    if grep -Fq "$task_text" "$PLAN_FILE"; then return 0; fi
+    printf '\n- [ ] %s\n' "$task_text" >> "$PLAN_FILE"
+}
+
+check_finalizer_qa_coverage_gate() {
+    FINALIZER_QA_GATE_REASON=""
+    FINALIZER_QA_GATE_MESSAGE=""
+    FINALIZER_QA_TOTAL=0
+    FINALIZER_QA_UNTESTED=0
+    FINALIZER_QA_FAIL=0
+
+    local coverage_file="$WORK_DIR/QA_COVERAGE.md"
+    if [ ! -f "$coverage_file" ]; then
+        FINALIZER_QA_GATE_REASON="qa_coverage_missing"
+        FINALIZER_QA_GATE_MESSAGE="QA_COVERAGE.md is missing — skipping enforcement"
+        return 0
+    fi
+
+    local total=0
+    local untested=0
+    local fail=0
+    local fail_features=()
+
+    while IFS='|' read -r col1 feature col3 col4 col5 status rest; do
+        # Trim whitespace
+        feature=$(echo "$feature" | awk '{$1=$1};1')
+        status=$(echo "$status" | awk '{$1=$1};1' | tr '[:lower:]' '[:upper:]')
+        
+        if [ -z "$feature" ] || [ "$feature" = "Feature" ]; then continue; fi
+        
+        case "$status" in
+            PASS|FAIL|UNTESTED)
+                total=$((total + 1))
+                if [ "$status" = "UNTESTED" ]; then
+                    untested=$((untested + 1))
+                elif [ "$status" = "FAIL" ]; then
+                    fail=$((fail + 1))
+                    fail_features+=("$feature")
+                fi
+                ;;
+        esac
+    done < <(grep '^|' "$coverage_file" || true)
+
+    FINALIZER_QA_TOTAL=$total
+    FINALIZER_QA_UNTESTED=$untested
+    FINALIZER_QA_FAIL=$fail
+
+    if [ "$total" -le 0 ]; then
+        FINALIZER_QA_GATE_REASON="qa_coverage_unparseable"
+        FINALIZER_QA_GATE_MESSAGE="QA_COVERAGE.md did not contain parseable PASS/FAIL/UNTESTED rows"
+        append_plan_task_if_missing "[qa/P1] [finalizer-qa-gate] Fix QA_COVERAGE.md table format so finalizer can enforce coverage"
+        return 1
+    fi
+
+    local untested_pct=$(( (untested * 100) / total ))
+    local blocked=false
+
+    if [ "$fail" -gt 0 ]; then
+        blocked=true
+        for f in "${fail_features[@]}"; do
+            append_plan_task_if_missing "[qa/P1] [finalizer-qa-gate] Resolve FAIL coverage item: $f"
+        done
+    fi
+
+    if [ "$untested_pct" -gt 30 ]; then
+        blocked=true
+        append_plan_task_if_missing "[qa/P1] [finalizer-qa-gate] Reduce UNTESTED QA coverage to <=30% (currently $untested/$total, ${untested_pct}%)"
+    fi
+
+    if [ "$blocked" = true ]; then
+        FINALIZER_QA_GATE_REASON="qa_coverage_blocked"
+        FINALIZER_QA_GATE_MESSAGE="QA coverage gate blocked exit (UNTESTED=$untested/$total, FAIL=$fail)"
+        return 1
+    fi
+
+    FINALIZER_QA_GATE_REASON="qa_coverage_pass"
+    FINALIZER_QA_GATE_MESSAGE="QA coverage gate passed (UNTESTED=$untested/$total, FAIL=$fail)"
+    return 0
+}
+
 get_current_task() {
     if [ ! -f "$PLAN_FILE" ]; then echo ""; return; fi
     grep '^\s*- \[ \]' "$PLAN_FILE" 2>/dev/null | head -1 | sed 's/.*- \[ \] //' || echo ""
@@ -2315,7 +2398,7 @@ while [ "$ITERATION" -lt "$MAX_ITERATIONS" ]; do
         print_iteration_summary "$ITERATION_START"
 
         # Extract token/cost usage for opencode provider (best-effort, non-blocking)
-        local _usage_json=""
+        _usage_json=""
         if [ "$iter_provider" = "opencode" ]; then
             if extract_opencode_usage; then
                 _usage_json="\"tokens_input\":${_OC_TOKENS_INPUT:-0},\"tokens_output\":${_OC_TOKENS_OUTPUT:-0},\"tokens_cache_read\":${_OC_TOKENS_CACHE_READ:-0},\"cost_usd\":${_OC_COST_USD:-0}"
@@ -2323,7 +2406,7 @@ while [ "$ITERATION" -lt "$MAX_ITERATIONS" ]; do
         fi
 
         # Write iteration_complete with usage data when available (numeric fields)
-        local _ic_json="\"iteration\":\"$ITERATION\",\"mode\":\"$iter_mode\",\"provider\":\"$iter_provider\",\"model\":\"$LAST_PROVIDER_MODEL\",\"duration\":\"$_iter_duration\",\"commits\":\"$ITERATION_COMMIT_COUNT\",\"commit_log\":\"$ITERATION_COMMITS\""
+        _ic_json="\"iteration\":\"$ITERATION\",\"mode\":\"$iter_mode\",\"provider\":\"$iter_provider\",\"model\":\"$LAST_PROVIDER_MODEL\",\"duration\":\"$_iter_duration\",\"commits\":\"$ITERATION_COMMIT_COUNT\",\"commit_log\":\"$ITERATION_COMMITS\""
         if [ -n "$_usage_json" ]; then
             _ic_json="$_ic_json,$_usage_json"
         fi
