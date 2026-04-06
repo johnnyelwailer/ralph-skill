@@ -1,0 +1,5 @@
+agent: merge
+prompt: PROMPT_merge.md
+reasoning:
+  effort: medium
+timeout: 10m
