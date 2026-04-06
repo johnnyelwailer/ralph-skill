@@ -1374,7 +1374,7 @@ export async function orchestrateCommand(options: OrchestrateCommandOptions = {}
     const promptsDir = options.promptsDir!;
     const repo = options.repo ?? null;
     const intervalMs = parseInt(options.interval ?? '30000', 10);
-    const maxIterations = options.maxIterations ? parseInt(options.maxIterations, 10) : 999999;
+    const maxIterations = options.maxIterations ? parseInt(options.maxIterations, 10) : undefined;
 
     // Write status.json to 'running'
     const statusPath = path.join(sessionDir, 'status.json');
@@ -1706,7 +1706,7 @@ export async function orchestrateCommand(options: OrchestrateCommandOptions = {}
       const homeDir = resolveHomeDir(options.homeDir);
       const repo = options.repo ?? null;
       const intervalMs = parseInt(options.interval ?? '30000', 10);
-      const maxIterations = options.maxIterations ? parseInt(options.maxIterations, 10) : 999999;
+      const maxIterations = options.maxIterations ? parseInt(options.maxIterations, 10) : undefined;
 
       const daemonArgs = [
         'orchestrate',
@@ -1718,7 +1718,7 @@ export async function orchestrateCommand(options: OrchestrateCommandOptions = {}
         '--prompts-dir', promptsDir,
         '--aloop-root', aloopRoot,
         '--interval', String(intervalMs),
-        '--max-iterations', String(maxIterations),
+        ...(maxIterations !== undefined ? ['--max-iterations', String(maxIterations)] : []),
         ...(repo ? ['--repo', repo] : []),
       ];
 
@@ -5923,10 +5923,10 @@ export async function runOrchestratorScanLoop(
   aloopRoot: string,
   repo: string | null,
   intervalMs: number,
-  maxIterations: number,
+  maxIterations: number | undefined,
   deps: ScanLoopDeps,
 ): Promise<ScanLoopResult> {
-  // Check if state is plan-only — no loop needed
+  // Check if state is plan_only — no loop needed
   const stateContent = await deps.readFile(stateFile, 'utf8');
   const initialState: OrchestratorState = JSON.parse(stateContent);
   if (initialState.plan_only) {
@@ -5937,7 +5937,10 @@ export async function runOrchestratorScanLoop(
     };
   }
 
-  for (let iter = 1; iter <= maxIterations; iter++) {
+  const maxIters = maxIterations ?? Infinity;
+  let completedIterations = 0;
+  for (let iter = 1; iter <= maxIters; iter++) {
+    completedIterations = iter;
     const passResult = await runOrchestratorScanPass(
       stateFile,
       sessionDir,
@@ -5996,7 +5999,7 @@ export async function runOrchestratorScanLoop(
     }
 
     // Sleep before next iteration (unless this is the last iteration)
-    if (iter < maxIterations && deps.sleep) {
+    if (iter < (maxIterations ?? Infinity) && deps.sleep) {
       await deps.sleep(intervalMs);
     }
   }
@@ -6010,10 +6013,10 @@ export async function runOrchestratorScanLoop(
     timestamp: deps.now().toISOString(),
     event: 'scan_loop_complete',
     reason: 'max_iterations',
-    iterations: maxIterations,
+    iterations: completedIterations,
   });
   const finalContent = await deps.readFile(stateFile, 'utf8');
-  return { iterations: maxIterations, finalState: JSON.parse(finalContent), reason: 'max_iterations' };
+  return { iterations: completedIterations, finalState: JSON.parse(finalContent), reason: 'max_iterations' };
 }
 
 function parseInterval(value: string | undefined): number {
