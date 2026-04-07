@@ -13,7 +13,7 @@ A single autonomous coding session. The default cycle is an 8-step sequence that
 1. **Plan** — Gap analysis between spec and code, outputs prioritized `TODO.md`
 2. **Build** (×5) — Picks one task per step, implements, validates (types/tests/lint), commits
 3. **QA** — Tests features as a real user (never reads source code), files bugs
-4. **Review** — Audits the build against 9 quality gates, writes fix tasks or approves
+4. **Review** — Audits the build against 10 quality gates, writes fix tasks or approves
 
 Between iterations the loop checks for **steering overrides** — live direction changes sent from the dashboard or CLI (`aloop steer`).
 
@@ -72,7 +72,7 @@ aloop dashboard --port 3000 --session-dir ~/.aloop/sessions/<id>
 
 ## Quality Gates
 
-The review agent enforces 9 gates on every build iteration:
+The review agent enforces 10 gates on every build iteration:
 
 | Gate | What it checks |
 |------|---------------|
@@ -211,7 +211,7 @@ The installer deploys skill files to each harness directory and the Aloop runtim
   templates/
     PROMPT_plan.md              # Plan agent template
     PROMPT_build.md             # Build agent template
-    PROMPT_review.md            # Review agent (9 gates)
+    PROMPT_review.md            # Review agent (10 gates)
     PROMPT_qa.md                # QA agent (black-box user testing)
     PROMPT_proof.md             # Proof agent (evidence capture)
     PROMPT_steer.md             # Steering agent template
@@ -243,7 +243,7 @@ The installer deploys skill files to each harness directory and the Aloop runtim
 
 - **Two modes**: Single-session loop for focused work, orchestrator for spec-to-ship parallelism
 - **5 providers**: Claude, Codex, Gemini, Copilot, OpenCode — single or round-robin
-- **9 review gates**: Spec compliance, test depth, coverage, code quality, integration, proof, layout, version compliance, documentation freshness
+- **10 review gates**: Spec compliance, test depth, coverage, code quality, integration, proof, layout, version compliance, documentation freshness
 - **Live steering**: Change direction mid-flight without stopping the loop
 - **Real-time dashboard**: SSE-powered UI with activity log, docs, proof gallery, and steering controls
 - **GitHub integration**: Issue decomposition, PR lifecycle, squash-merge, conflict rebase, agent review
