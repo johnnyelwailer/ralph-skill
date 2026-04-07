@@ -2,11 +2,49 @@ name: CI
 
 on:
   push:
-    branches: [master, agent/trunk]
+    branches: [master, agent/*, aloop/*]
   pull_request:
-    branches: [master, agent/trunk]
+    branches: [master, agent/*, aloop/*]
 
 jobs:
+  type-check:
+    name: Type Check
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install dependencies
+        working-directory: aloop/cli
+        run: npm ci
+
+      - name: Run type check
+        working-directory: aloop/cli
+        run: npm run type-check
+
+  cli-tests:
+    name: CLI Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install dependencies
+        working-directory: aloop/cli
+        run: npm ci
+
+      - name: Run CLI tests
+        working-directory: aloop/cli
+        run: npm test
+
   dashboard-tests:
     name: Dashboard Unit Tests
     runs-on: ubuntu-latest
