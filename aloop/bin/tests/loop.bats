@@ -71,3 +71,40 @@ teardown() {
     [ "$status" -ne 0 ]
     [[ "$output" == *"Mode: plan-build"* ]]
 }
+
+@test "9. Custom --provider should be respected" {
+    run bash "$LOOP_SH" --prompts-dir "$PROMPTS_DIR" --session-dir "$SESSION_DIR" --work-dir "$WORK_DIR" --provider gemini
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"Provider: gemini"* ]]
+}
+
+@test "10. Custom --max-iterations should be respected" {
+    run bash "$LOOP_SH" --prompts-dir "$PROMPTS_DIR" --session-dir "$SESSION_DIR" --work-dir "$WORK_DIR" --max-iterations 10
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"Max iterations: 10"* ]]
+}
+
+@test "11. Custom --max-stuck should be respected" {
+    run bash "$LOOP_SH" --prompts-dir "$PROMPTS_DIR" --session-dir "$SESSION_DIR" --work-dir "$WORK_DIR" --max-stuck 5
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"Stuck threshold: 5"* ]]
+}
+
+@test "12. Valid --launch-mode 'restart' should be accepted" {
+    # It should pass validation and fail later due to missing prompts
+    run bash "$LOOP_SH" --prompts-dir "$PROMPTS_DIR" --session-dir "$SESSION_DIR" --work-dir "$WORK_DIR" --launch-mode restart
+    [ "$status" -ne 0 ]
+    [[ "$output" != *"Error: Invalid launch mode"* ]]
+}
+
+@test "13. Valid --launch-mode 'resume' should be accepted" {
+    run bash "$LOOP_SH" --prompts-dir "$PROMPTS_DIR" --session-dir "$SESSION_DIR" --work-dir "$WORK_DIR" --launch-mode resume
+    [ "$status" -ne 0 ]
+    [[ "$output" != *"Error: Invalid launch mode"* ]]
+}
+
+@test "14. --help should print usage and exit non-zero" {
+    run bash "$LOOP_SH" --help
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"Usage: "* ]]
+}
