@@ -1524,6 +1524,92 @@ get_current_task() {
     grep '^\s*- \[ \]' "$PLAN_FILE" 2>/dev/null | head -1 | sed 's/.*- \[ \] //' || echo ""
 }
 
+append_plan_task_if_missing() {
+    local task="$1"
+    if [ ! -f "$PLAN_FILE" ]; then return 1; fi
+    if ! grep -Fq "$task" "$PLAN_FILE"; then
+        # Ensure file ends with newline before appending
+        [ -n "$(tail -c 1 "$PLAN_FILE" 2>/dev/null)" ] && echo "" >> "$PLAN_FILE"
+        echo "- [ ] $task" >> "$PLAN_FILE"
+    fi
+}
+
+check_finalizer_qa_coverage_gate() {
+    local cov_file="$WORK_DIR/QA_COVERAGE.md"
+    if [ ! -f "$cov_file" ]; then
+        FINALIZER_QA_GATE_REASON="qa_coverage_missing"
+        return 0
+    fi
+
+    local out
+    out=$(python3 - "$cov_file" <<'PY'
+import sys
+path = sys.argv[1]
+total = 0
+untested = 0
+fails = []
+try:
+    with open(path, encoding="utf-8") as f:
+        lines = [l.strip() for l in f.readlines() if l.strip()]
+        if len(lines) < 3: sys.exit(0)
+        # Find Status column index
+        header = [p.strip() for p in lines[0].split("|")]
+        try:
+            status_idx = header.index("Status")
+            feature_idx = header.index("Feature")
+        except ValueError:
+            # Fallback to fixed positions if header mismatch
+            status_idx = 5
+            feature_idx = 1
+        
+        for line in lines[2:]:
+            parts = [p.strip() for p in line.split("|")]
+            if len(parts) <= max(status_idx, feature_idx): continue
+            status = parts[status_idx].upper()
+            feature = parts[feature_idx]
+            total += 1
+            if status == "UNTESTED":
+                untested += 1
+            elif status == "FAIL":
+                fails.append(feature)
+except Exception:
+    sys.exit(0)
+
+if fails:
+    for f in fails:
+        print(f"FAIL:{f}")
+    sys.exit(1)
+
+if total > 0 and (untested / total) > 0.3:
+    print(f"UNTESTED:{untested}/{total}")
+    sys.exit(1)
+PY
+)
+    local rc=$?
+    if [ "$rc" -eq 0 ]; then
+        return 0
+    fi
+
+    # Gate failed, add tasks
+    local has_gate_fail=false
+    while IFS= read -r line; do
+        if [[ "$line" == FAIL:* ]]; then
+            local feat="${line#FAIL:}"
+            append_plan_task_if_missing "[finalizer-qa-gate] Resolve FAIL coverage item: $feat"
+            has_gate_fail=true
+        elif [[ "$line" == UNTESTED:* ]]; then
+            local stats="${line#UNTESTED:}"
+            append_plan_task_if_missing "[finalizer-qa-gate] Reduce UNTESTED QA coverage to <=30% (currently $stats)"
+            has_gate_fail=true
+        fi
+    done <<< "$out"
+
+    if [ "$has_gate_fail" = "true" ]; then
+        return 1
+    fi
+    return 0
+}
+
 
 # ============================================================================
 # STUCK DETECTION
@@ -2131,6 +2217,25 @@ while [ "$ITERATION" -lt "$MAX_ITERATIONS" ]; do
     # Finalizer mode: run finalizer prompts instead of normal cycle
     if [ "$FINALIZER_MODE" = "true" ]; then
         if [ "$FINALIZER_POSITION" -ge "$FINALIZER_LENGTH" ]; then
+            # Enforce QA coverage gate before finalizer completion
+            local qa_coverage_passed=false
+            if check_finalizer_qa_coverage_gate; then
+                qa_coverage_passed=true
+            fi
+            write_log_entry "finalizer_qa_coverage_check" \
+                "iteration" "$ITERATION" \
+                "passed" "$qa_coverage_passed" \
+                "reason" "${FINALIZER_QA_GATE_REASON:-unknown}"
+            if [ "$qa_coverage_passed" = "false" ]; then
+                FINALIZER_MODE=false
+                FINALIZER_POSITION=0
+                ALL_TASKS_MARKED_DONE=false
+                persist_loop_plan_state
+                write_log_entry "finalizer_aborted" "iteration" "$ITERATION" \
+                    "reason" "${FINALIZER_QA_GATE_REASON:-qa_gate_failed}"
+                echo "[Finalizer aborted — QA coverage gate failed: ${FINALIZER_QA_GATE_REASON:-qa_gate_failed}]"
+                continue
+            fi
             write_log_entry "finalizer_completed" "iteration" "$ITERATION"
             echo "[Finalizer sequence completed — all tasks done]"
             write_status "$ITERATION" "finalizer" "$(resolve_iteration_provider $ITERATION)" 0 "completed"

@@ -11,16 +11,27 @@ Test 3-5 features from the spec that are claimed as complete. Verify they actual
 0a. **Study the specification**: {{SPEC_FILES}} — understand what the product is SUPPOSED to do. This is your source of truth for expected behavior.
 0b. **Study README.md and docs/**: Read the README and any docs as a new user would. These are testable artifacts — if the README says "run X" and X doesn't work, that's a bug. Follow setup instructions, quickstart guides, and usage examples literally.
 0c. **Study the plan**: Read @TODO.md to find recently completed `[x]` tasks — these are your test candidates.
-0d. **Check coverage gaps**: Read @QA_COVERAGE.md (create if missing) to find features marked "never" tested or previously "FAIL".
+0d. **Check coverage gaps**: Read @QA_COVERAGE.md (create if missing) to find features marked `UNTESTED` or `FAIL`. If creating `QA_COVERAGE.md` for the first time, use the features listed in SPEC.md as the baseline.
 0e. **Find the dashboard URL**: Read the session's `meta.json` (`$ALOOP_SESSION_DIR/meta.json` or `~/.aloop/sessions/*/meta.json`) for the `dashboard_url` field (typically `http://localhost:4040`).
 {{REFERENCE_FILES}}
 
 1. **Select Test Targets**
-   - Pick 3-5 **recently completed** features to test this session
-   - Prioritize: (1) features marked "never" in QA_COVERAGE.md, (2) recently completed tasks, (3) features that previously failed
-   - Read the SPEC to understand the expected behavior of each feature
+   - Pick 3-5 features to test this session using the **Priority Selection Algorithm**:
+     - **P1:** Features with status `UNTESTED` (never tested)
+     - **P2:** Features with status `FAIL` (re-test to verify fix)
+     - **P3:** Features with status `PASS` but `Criteria Met` < 100% (incomplete coverage)
+     - **P4:** Features with status `PASS` and oldest `Last Tested` date (stale)
+   - **Never test a `PASS` feature if `UNTESTED` features remain** (unless it's a smoke test)
+   - Document **WHY** each feature was selected in your reasoning and in the QA_LOG.md header.
 
-2. **Set Up Test Environment**
+2. **Extract Acceptance Criteria**
+   For each selected feature, BEFORE testing:
+   - Find the acceptance criteria in SPEC.md (look for "- [ ]" checkboxes or "must"/"shall" statements)
+   - Write a test plan in your session log:
+     - [ ] Criterion 1: <exact spec text> → <test command/action>
+     - [ ] Criterion 2: <exact spec text> → <test command/action>
+
+3. **Set Up Test Environment**
    - **Install from source like a real user**: You MUST test the packaged CLI, not `node dist/index.js` directly. This validates the full install path (package.json `files`, `bin` field, shebang, dependencies). Run:
      ```bash
      ALOOP_BIN=$(npm --prefix aloop/cli run --silent test-install -- --keep 2>/dev/null | tail -1)
@@ -39,7 +50,7 @@ Test 3-5 features from the spec that are claimed as complete. Verify they actual
    - The test environment should mirror what a real user would have
    - For web UI testing: ensure Playwright is available (see Browser Testing below)
 
-3. **Test Each Feature**
+4. **Test Each Feature**
    For each feature:
    - **Happy path**: Does it work as the spec describes?
    - **Error paths**: What happens with wrong inputs, missing files, bad config?
@@ -47,7 +58,7 @@ Test 3-5 features from the spec that are claimed as complete. Verify they actual
    - **Integration**: Does it work with other features? Does it break anything?
    - Log EVERY command with exact stdout/stderr/exit code
 
-4. **File Bugs (no duplicates!)**
+5. **File Bugs (no duplicates!)**
    Before filing, **read ALL existing `[qa]` tasks in TODO.md**. If the same bug is already filed (even from a prior iteration), do NOT file it again — instead, add a brief re-test note to the existing entry (e.g., "still failing at iter N").
 
    Only file NEW bugs for issues not already tracked:
@@ -56,23 +67,29 @@ Test 3-5 features from the spec that are claimed as complete. Verify they actual
    ```
    QA bugs are high priority — they get fixed before new features.
 
-5. **Update QA Coverage**
+6. **Update QA Coverage**
    Update @QA_COVERAGE.md with test results:
    ```
-   | Feature | Last Tested | Commit | Result | Notes |
-   |---------|-------------|--------|--------|-------|
-   | aloop start | 2026-03-11 | abc1234 | PASS | happy path + error paths |
-   | aloop setup --spec | 2026-03-11 | abc1234 | FAIL | --spec flag ignored, bug filed |
+   | Feature | Component | Last Tested | Commit | Status | Criteria Met | Notes |
+   |---------|-----------|-------------|--------|--------|--------------|-------|
+   | aloop start | CLI | 2026-03-11 | abc1234 | PASS | 2/2 | happy path + error paths |
+   | aloop setup --spec | CLI | 2026-03-11 | abc1234 | FAIL | 0/1 | --spec flag ignored, bug filed |
    ```
 
-6. **Write Session Log**
+7. **Write Session Log**
    Append to @QA_LOG.md:
    ```
    ## QA Session — <date> (iteration N)
 
    ### Test Environment
+   - Binary under test: <path>
    - Temp dir: /tmp/qa-test-xyz
    - Features tested: 3
+
+   ### Target Selection Reasoning
+   - Feature A: P1 (UNTESTED)
+   - Feature B: P2 (FAIL)
+   - Feature C: P3 (Criteria Met 1/3)
 
    ### Results
    - PASS: aloop start, aloop status
@@ -85,9 +102,9 @@ Test 3-5 features from the spec that are claimed as complete. Verify they actual
    (full commands with stdout/stderr/exit codes)
    ```
 
-7. **Commit** QA artifacts (QA_COVERAGE.md, QA_LOG.md, TODO.md updates)
+8. **Commit** QA artifacts (QA_COVERAGE.md, QA_LOG.md, TODO.md updates)
 
-8. **Exit**
+9. **Exit**
 
 ---
 
