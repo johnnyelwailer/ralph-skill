@@ -333,6 +333,97 @@ except Exception:
     fi
 }
 
+sync_base_branch() {
+    # If a merge is already in progress, don't try to sync again.
+    if [ -f "$WORK_DIR/.git/MERGE_HEAD" ]; then
+        return 0
+    fi
+
+    local meta_file="$SESSION_DIR/meta.json"
+    [ -f "$meta_file" ] || return 0
+
+    local base_branch
+    base_branch=$(python3 -c "
+import json, sys
+try:
+    with open('$meta_file') as f:
+        m = json.load(f)
+    print(m.get('base_branch', ''))
+except Exception:
+    sys.exit(1)
+" 2>/dev/null)
+    
+    [ -z "$base_branch" ] && return 0
+
+    local auto_merge
+    auto_merge=$(python3 -c "
+import json, sys
+try:
+    with open('$meta_file') as f:
+        m = json.load(f)
+    print(str(m.get('auto_merge', True)).lower())
+except Exception:
+    sys.exit(1)
+" 2>/dev/null)
+    [ "$auto_merge" = "false" ] && return 0
+
+    echo "Checking for upstream changes in origin/$base_branch..."
+    git -C "$WORK_DIR" fetch origin "$base_branch" &>/dev/null || {
+        echo "Warning: git fetch origin $base_branch failed" >&2
+        return 0
+    }
+
+    # Check if we are already up to date to avoid unnecessary merge commits
+    local head_sha base_sha merge_base
+    head_sha=$(git -C "$WORK_DIR" rev-parse HEAD 2>/dev/null)
+    base_sha=$(git -C "$WORK_DIR" rev-parse "origin/$base_branch" 2>/dev/null)
+    merge_base=$(git -C "$WORK_DIR" merge-base HEAD "origin/$base_branch" 2>/dev/null)
+    
+    if [ -n "$base_sha" ] && [ -n "$merge_base" ] && [ "$base_sha" = "$merge_base" ]; then
+        # Already has all commits from base
+        return 0
+    fi
+
+    echo "Syncing with base branch: origin/$base_branch"
+    if git -C "$WORK_DIR" merge "origin/$base_branch" --no-edit; then
+        echo "Successfully synced with $base_branch"
+        write_log_entry "base_branch_synced" "base_branch" "$base_branch"
+    else
+        echo "Conflict detected during sync with $base_branch"
+        # Write conflict state
+        mkdir -p "$SESSION_DIR/events"
+        echo "conflict" > "$SESSION_DIR/events/merge_conflict"
+        
+        # Queue PROMPT_merge.md
+        local merge_prompt_template="$PROMPTS_DIR/PROMPT_merge.md"
+        local queue_file="$SESSION_DIR/queue/000-merge-conflict.md"
+        
+        # Avoid duplicate queuing
+        if [ -f "$queue_file" ]; then
+            return 1
+        fi
+
+        mkdir -p "$SESSION_DIR/queue"
+
+        if [ -f "$merge_prompt_template" ]; then
+            cp "$merge_prompt_template" "$queue_file"
+            write_log_entry "merge_conflict_detected" "base_branch" "$base_branch" "queue_file" "000-merge-conflict.md"
+        else
+            # Try ~/.aloop/templates/PROMPT_merge.md as fallback
+            local fallback_template="$HOME/.aloop/templates/PROMPT_merge.md"
+            if [ -f "$fallback_template" ]; then
+                cp "$fallback_template" "$queue_file"
+                write_log_entry "merge_conflict_detected" "base_branch" "$base_branch" "queue_file" "000-merge-conflict.md"
+            else
+                echo "Error: PROMPT_merge.md template not found" >&2
+                write_log_entry "merge_conflict_detected" "base_branch" "$base_branch" "error" "template_missing"
+            fi
+        fi
+        return 1
+    fi
+    return 0
+}
+
 resolve_iteration_provider() {
     local iteration=$1
     if [ "$PROVIDER" = "round-robin" ]; then
@@ -2123,6 +2214,13 @@ while [ "$ITERATION" -lt "$MAX_ITERATIONS" ]; do
         refresh_providers_from_meta
     fi
     iter_provider=$(resolve_iteration_provider $ITERATION)
+
+    # Pre-iteration base branch sync
+    if ! sync_base_branch; then
+        # sync_base_branch returns 1 if a conflict was detected and a merge prompt was queued.
+        # We must continue to the next iteration so the merge prompt can be processed.
+        continue
+    fi
 
     if run_queue_if_present "$iter_provider"; then
         continue

@@ -139,6 +139,12 @@ register_branch "phase_prereq.build.todo_has_unchecked" "check_phase_prerequisit
 register_branch "phase_prereq.plan_passthrough" "check_phase_prerequisites passes through plan phase unchanged"
 register_branch "phase_prereq.review.no_builds" "check_phase_prerequisites forces build when no commits since last plan"
 register_branch "phase_prereq.review.has_builds" "check_phase_prerequisites allows review when commits exist"
+register_branch "sync.no_meta" "sync_base_branch returns 0 when meta.json is missing"
+register_branch "sync.no_branch" "sync_base_branch returns 0 when base_branch is missing in meta.json"
+register_branch "sync.auto_merge_false" "sync_base_branch returns 0 when auto_merge is false"
+register_branch "sync.already_up_to_date" "sync_base_branch returns 0 when already up to date"
+register_branch "sync.success" "sync_base_branch returns 0 on successful merge"
+register_branch "sync.conflict" "sync_base_branch returns 1 and queues merge prompt on conflict"
 
 RESOLVE_FUNC="$(extract_function resolve_healthy_provider)"
 SETUP_FUNC="$(extract_function setup_gh_block)"
@@ -157,14 +163,15 @@ WAIT_FOR_REQUESTS_FUNC="$(extract_function wait_for_requests)"
 RUN_QUEUE_FUNC="$(extract_function run_queue_if_present)"
 RESOLVE_MODE_FUNC="$(extract_function resolve_iteration_mode)"
 DERIVE_MODE_FUNC="$(extract_function derive_mode_from_prompt_name)"
+SYNC_FUNC="$(extract_function sync_base_branch)"
 
 if [ -z "$RESOLVE_FUNC" ] || [ -z "$SETUP_FUNC" ] || [ -z "$CLEANUP_FUNC" ] || [ -z "$INVOKE_FUNC" ] || [ -z "$WAIT_FUNC" ] || [ -z "$KILL_PROVIDER_FUNC" ]; then
     echo "FAIL: could not extract one or more target functions from $LOOP_SH"
     exit 1
 fi
 
-if [ -z "$CYCLE_RESOLVE_FUNC" ] || [ -z "$CHECK_PHASE_PREREQ_FUNC" ] || [ -z "$CHECK_HAS_BUILDS_FUNC" ] || [ -z "$FRONTMATTER_FUNC" ] || [ -z "$DURATION_FUNC" ] || [ -z "$EXEC_CONTROLS_FUNC" ] || [ -z "$ADVANCE_FUNC" ] || [ -z "$WAIT_FOR_REQUESTS_FUNC" ] || [ -z "$RUN_QUEUE_FUNC" ] || [ -z "$RESOLVE_MODE_FUNC" ] || [ -z "$DERIVE_MODE_FUNC" ]; then
-    echo "FAIL: could not extract cycle/frontmatter/duration/exec-controls/advance/requests/queue functions from $LOOP_SH"
+if [ -z "$CYCLE_RESOLVE_FUNC" ] || [ -z "$CHECK_PHASE_PREREQ_FUNC" ] || [ -z "$CHECK_HAS_BUILDS_FUNC" ] || [ -z "$FRONTMATTER_FUNC" ] || [ -z "$DURATION_FUNC" ] || [ -z "$EXEC_CONTROLS_FUNC" ] || [ -z "$ADVANCE_FUNC" ] || [ -z "$WAIT_FOR_REQUESTS_FUNC" ] || [ -z "$RUN_QUEUE_FUNC" ] || [ -z "$RESOLVE_MODE_FUNC" ] || [ -z "$DERIVE_MODE_FUNC" ] || [ -z "$SYNC_FUNC" ]; then
+    echo "FAIL: could not extract cycle/frontmatter/duration/exec-controls/advance/requests/queue/sync functions from $LOOP_SH"
     exit 1
 fi
 
@@ -185,6 +192,7 @@ eval "$WAIT_FOR_REQUESTS_FUNC"
 eval "$RUN_QUEUE_FUNC"
 eval "$RESOLVE_MODE_FUNC"
 eval "$DERIVE_MODE_FUNC"
+eval "$SYNC_FUNC"
 
 ORIGINAL_PATH="$PATH"
 _gh_block_dir=""
@@ -1031,13 +1039,110 @@ if run_queue_if_present "claude"; then
 else
     fail_case "run_queue_if_present failed with unavailable frontmatter provider"
 fi
+unset -f command
 
-rm -rf "$QUEUE_TMPDIR"
+# ---------------------------------------------------------------------------
+# sync_base_branch
+# ---------------------------------------------------------------------------
+
+# sync.no_meta
+SESSION_DIR="$(mktemp -d)"
+WORK_DIR="$(mktemp -d)"
+mkdir -p "$WORK_DIR/.git"
+if sync_base_branch; then
+    cover_branch "sync.no_meta"
+    pass_case "sync_base_branch returns 0 when meta.json is missing"
+else
+    fail_case "sync_base_branch failed when meta.json missing"
+fi
+
+# sync.no_branch
+cat > "$SESSION_DIR/meta.json" << 'EOF'
+{}
+EOF
+if sync_base_branch; then
+    cover_branch "sync.no_branch"
+    pass_case "sync_base_branch returns 0 when base_branch missing"
+else
+    fail_case "sync_base_branch failed when base_branch missing"
+fi
+
+# sync.auto_merge_false
+cat > "$SESSION_DIR/meta.json" << 'EOF'
+{"base_branch": "main", "auto_merge": false}
+EOF
+if sync_base_branch; then
+    cover_branch "sync.auto_merge_false"
+    pass_case "sync_base_branch returns 0 when auto_merge is false"
+else
+    fail_case "sync_base_branch failed when auto_merge is false"
+fi
+
+# Mock git
+git() {
+    if [ "$1" = "-C" ]; then shift 2; fi
+    case "$1" in
+        fetch) return 0 ;;
+        rev-parse)
+            if [ "$2" = "HEAD" ]; then echo "head-sha"; else echo "base-sha"; fi
+            return 0
+            ;;
+        merge-base)
+            if [ "${SYNC_ALREADY_UP_TO_DATE:-false}" = "true" ]; then echo "base-sha"; else echo "old-sha"; fi
+            return 0
+            ;;
+        merge)
+            if [ "${SYNC_CONFLICT:-false}" = "true" ]; then return 1; else return 0; fi
+            ;;
+    esac
+}
+
+# sync.already_up_to_date
+cat > "$SESSION_DIR/meta.json" << 'EOF'
+{"base_branch": "main"}
+EOF
+SYNC_ALREADY_UP_TO_DATE=true
+if sync_base_branch; then
+    cover_branch "sync.already_up_to_date"
+    pass_case "sync_base_branch returns 0 when already up to date"
+else
+    fail_case "sync_base_branch failed when already up to date"
+fi
+
+# sync.success
+SYNC_ALREADY_UP_TO_DATE=false
+if sync_base_branch; then
+    if contains_log "base_branch_synced|base_branch=main"; then
+        cover_branch "sync.success"
+        pass_case "sync_base_branch returns 0 on successful merge"
+    else
+        fail_case "sync_base_branch did not log success"
+    fi
+else
+    fail_case "sync_base_branch failed on successful merge"
+fi
+
+# sync.conflict
+SYNC_CONFLICT=true
+PROMPTS_DIR="$(mktemp -d)"
+echo "merge prompt" > "$PROMPTS_DIR/PROMPT_merge.md"
+if ! sync_base_branch; then
+    if [ -f "$SESSION_DIR/events/merge_conflict" ] && [ -f "$SESSION_DIR/queue/000-merge-conflict.md" ]; then
+        cover_branch "sync.conflict"
+        pass_case "sync_base_branch returns 1 and queues merge prompt on conflict"
+    else
+        fail_case "sync_base_branch did not queue merge prompt correctly"
+    fi
+else
+    fail_case "sync_base_branch returned 0 on conflict"
+fi
+
+unset -f git
+rm -rf "$SESSION_DIR" "$WORK_DIR" "$PROMPTS_DIR"
 
 # ---------------------------------------------------------------------------
 # Final summary
 # ---------------------------------------------------------------------------
-
 covered=0
 total=${#BRANCH_ORDER[@]}
 for branch_id in "${BRANCH_ORDER[@]}"; do

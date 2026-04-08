@@ -218,6 +218,110 @@ function Normalize-ProviderList {
     return $normalized
 }
 
+function Sync-BaseBranch {
+    # If a merge is already in progress, don't try to sync again.
+    $mergeHeadPath = Join-Path $WorkDir ".git" "MERGE_HEAD"
+    if (Test-Path $mergeHeadPath) {
+        return $true
+    }
+
+    $metaFile = Join-Path $SessionDir "meta.json"
+    if (-not (Test-Path $metaFile)) { return $true }
+
+    $baseBranch = ""
+    $autoMerge = $true
+    try {
+        $meta = Get-Content $metaFile -Raw | ConvertFrom-Json
+        $baseBranch = [string]$meta.base_branch
+        if ($null -ne $meta.auto_merge) {
+            if ($meta.auto_merge -is [bool]) {
+                $autoMerge = $meta.auto_merge
+            } else {
+                $autoMerge = ($meta.auto_merge -match 'true')
+            }
+        }
+    } catch {
+        return $true
+    }
+
+    if ([string]::IsNullOrWhiteSpace($baseBranch)) { return $true }
+    if ($autoMerge -eq $false) { return $true }
+
+    Write-Host "Checking for upstream changes in origin/$baseBranch..."
+    try {
+        git -C "$WorkDir" fetch origin "$baseBranch" 2>$null | Out-Null
+    } catch {
+        Write-Warning "git fetch origin $baseBranch failed"
+        return $true
+    }
+
+    # Check if we are already up to date
+    $headSha = ""
+    $baseSha = ""
+    $mergeBase = ""
+    try {
+        $headSha = (git -C "$WorkDir" rev-parse HEAD 2>$null | Out-String).Trim()
+        $baseSha = (git -C "$WorkDir" rev-parse "origin/$baseBranch" 2>$null | Out-String).Trim()
+        $mergeBase = (git -C "$WorkDir" merge-base HEAD "origin/$baseBranch" 2>$null | Out-String).Trim()
+    } catch { }
+
+    if (-not [string]::IsNullOrWhiteSpace($baseSha) -and $baseSha -eq $mergeBase) {
+        return $true
+    }
+
+    Write-Host "Syncing with base branch: origin/$baseBranch" -ForegroundColor Cyan
+    $mergeResult = git -C "$WorkDir" merge "origin/$baseBranch" --no-edit 2>&1
+    if ($LASTEXITCODE -eq 0) {
+        Write-Host "Successfully synced with $baseBranch" -ForegroundColor Green
+        Write-LogEntry -Event "base_branch_synced" -Data @{ base_branch = $baseBranch }
+        return $true
+    } else {
+        Write-Warning "Conflict detected during sync with $baseBranch"
+        # Write conflict state
+        $eventsDir = Join-Path $SessionDir "events"
+        if (-not (Test-Path $eventsDir)) { New-Item -ItemType Directory -Path $eventsDir -Force | Out-Null }
+        "conflict" | Set-Content (Join-Path $eventsDir "merge_conflict") -Encoding utf8
+
+        # Queue PROMPT_merge.md
+        $mergePromptTemplate = Join-Path $PromptsDir "PROMPT_merge.md"
+        $queueDir = Join-Path $SessionDir "queue"
+        $queueFile = Join-Path $queueDir "000-merge-conflict.md"
+
+        # Avoid duplicate queuing
+        if (Test-Path $queueFile) {
+            return $false
+        }
+
+        if (-not (Test-Path $queueDir)) { New-Item -ItemType Directory -Path $queueDir -Force | Out-Null }
+
+        if (Test-Path $mergePromptTemplate) {
+            Copy-Item $mergePromptTemplate $queueFile -Force
+            Write-LogEntry -Event "merge_conflict_detected" -Data @{
+                base_branch = $baseBranch
+                queue_file = "000-merge-conflict.md"
+            }
+        } else {
+            # Try ~/.aloop/templates/PROMPT_merge.md fallback
+            $homeDir = [System.Environment]::GetFolderPath('UserProfile')
+            $fallbackTemplate = Join-Path $homeDir ".aloop" "templates" "PROMPT_merge.md"
+            if (Test-Path $fallbackTemplate) {
+                Copy-Item $fallbackTemplate $queueFile -Force
+                Write-LogEntry -Event "merge_conflict_detected" -Data @{
+                    base_branch = $baseBranch
+                    queue_file = "000-merge-conflict.md"
+                }
+            } else {
+                Write-Warning "PROMPT_merge.md template not found"
+                Write-LogEntry -Event "merge_conflict_detected" -Data @{
+                    base_branch = $baseBranch
+                    error = "template_missing"
+                }
+            }
+        }
+        return $false
+    }
+}
+
 function Resolve-IterationProvider {
     param([int]$IterationNumber)
     if ($Provider -eq 'round-robin') {
@@ -2135,6 +2239,13 @@ try {
             Refresh-ProvidersFromMeta
         }
         $iterationProvider = Resolve-IterationProvider -IterationNumber $iteration
+
+        # Pre-iteration base branch sync
+        if (-not (Sync-BaseBranch)) {
+            # Sync-BaseBranch returns $false if a conflict was detected and a merge prompt was queued.
+            # We must continue to the next iteration so the merge prompt can be processed.
+            continue
+        }
 
         if (Run-QueueIfPresent -IterationProvider $iterationProvider) {
             continue
