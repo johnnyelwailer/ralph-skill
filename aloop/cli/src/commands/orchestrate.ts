@@ -18,6 +18,7 @@ import { deriveComponentLabels } from '../lib/labels.js';
 import { buildPrBody } from '../lib/issue-metadata.js';
 
 export interface OrchestrateCommandOptions {
+  resume?: string;
   spec?: string;
   concurrency?: string;
   trunk?: string;
@@ -35,7 +36,6 @@ export interface OrchestrateCommandOptions {
   maxIterations?: string;
   runScanLoop?: boolean;
   autoMerge?: boolean;
-  resume?: string;
 }
 
 export interface DecompositionPlanIssue {
@@ -202,6 +202,8 @@ export interface OrchestrateDeps {
   mkdir: (path: string, options?: { recursive?: boolean }) => Promise<string | undefined>;
   unlink?: (path: string) => Promise<void>;
   readdirSync?: (path: string) => string[];
+  isProcessAlive?: (pid: number) => boolean;
+  spawnSync?: (command: string, args: string[], options?: { encoding?: BufferEncoding }) => SpawnSyncResult;
   now: () => Date;
   execGhIssueCreate?: (repo: string, sessionId: string, title: string, body: string, labels: string[]) => Promise<number>;
   execGh?: (args: string[]) => Promise<{ stdout: string; stderr: string }>;
@@ -229,6 +231,8 @@ export interface DispatchDeps {
   spawn: (command: string, args: string[], options?: Record<string, unknown>) => ChildProcess;
   platform: string;
   env: Record<string, string | undefined>;
+  repo?: string;
+  execGh?: (args: string[]) => Promise<{ stdout: string; stderr: string }>;
 }
 
 export interface ChildLaunchResult {
@@ -253,6 +257,15 @@ const defaultDeps: OrchestrateDeps = {
   mkdir,
   unlink,
   readdirSync,
+  isProcessAlive: (pid: number) => {
+    if (!Number.isFinite(pid) || pid <= 0) return false;
+    try {
+      process.kill(pid, 0);
+      return true;
+    } catch {
+      return false;
+    }
+  },
   now: () => new Date(),
 };
 
@@ -968,6 +981,312 @@ Run one lightweight monitoring pass:
 `;
 }
 
+// --- Label self-healing ---
+
+export interface RequiredLabel {
+  name: string;
+  color: string;
+  description: string;
+}
+
+export const REQUIRED_LABELS: RequiredLabel[] = [
+  { name: 'aloop/auto', color: '6f42c1', description: 'Managed by aloop orchestrator' },
+  { name: 'aloop/epic', color: '0075ca', description: 'Epic issue tracked by aloop' },
+  { name: 'aloop/sub-issue', color: '0e8a16', description: 'Sub-issue of an aloop epic' },
+  { name: 'aloop/needs-refine', color: 'fbca04', description: 'Needs refinement before work begins' },
+  { name: 'aloop/needs-review', color: 'e4e669', description: 'PR ready for review' },
+  { name: 'aloop/in-progress', color: '1d76db', description: 'Work in progress' },
+  { name: 'aloop/done', color: '0e8a16', description: 'Completed' },
+];
+
+export interface EnsureLabelsResult {
+  created: string[];
+  already_existed: string[];
+  failed: string[];
+}
+
+export interface EnsureLabelsDeps {
+  spawnSync: (command: string, args: string[], options?: Record<string, unknown>) => SpawnSyncResult;
+}
+
+export function ensureLabels(
+  repo: string,
+  deps: EnsureLabelsDeps,
+): EnsureLabelsResult {
+  const result: EnsureLabelsResult = { created: [], already_existed: [], failed: [] };
+
+  // Fetch existing labels
+  let existingNames: Set<string>;
+  try {
+    const listResult = deps.spawnSync(
+      'gh',
+      ['label', 'list', '--repo', repo, '--limit', '200', '--json', 'name'],
+      { encoding: 'utf8' },
+    );
+    if (listResult.status !== 0) {
+      console.warn(`[orchestrate] Failed to list labels: ${listResult.stderr?.substring(0, 200)}`);
+      // Can't determine existing labels — mark all as failed and return
+      for (const label of REQUIRED_LABELS) result.failed.push(label.name);
+      return result;
+    }
+    const labels = JSON.parse(listResult.stdout ?? '[]') as Array<{ name: string }>;
+    existingNames = new Set(labels.map((l) => l.name));
+  } catch (e) {
+    console.warn(`[orchestrate] Failed to parse label list: ${e}`);
+    for (const label of REQUIRED_LABELS) result.failed.push(label.name);
+    return result;
+  }
+
+  for (const label of REQUIRED_LABELS) {
+    if (existingNames.has(label.name)) {
+      result.already_existed.push(label.name);
+      continue;
+    }
+    try {
+      const createResult = deps.spawnSync(
+        'gh',
+        ['label', 'create', label.name, '--repo', repo, '--color', label.color, '--description', label.description],
+        { encoding: 'utf8' },
+      );
+      if (createResult.status === 0) {
+        result.created.push(label.name);
+        console.log(`[orchestrate] Created label: ${label.name}`);
+      } else {
+        result.failed.push(label.name);
+        console.warn(`[orchestrate] Failed to create label ${label.name}: ${createResult.stderr?.substring(0, 200)}`);
+      }
+    } catch (e) {
+      result.failed.push(label.name);
+      console.warn(`[orchestrate] Failed to create label ${label.name}: ${e}`);
+    }
+  }
+
+  if (result.created.length > 0) {
+    console.log(`[orchestrate] Label self-healing: created ${result.created.length}, existed ${result.already_existed.length}, failed ${result.failed.length}`);
+  }
+
+  return result;
+}
+
+export interface HealthCheckResult {
+  check: string;
+  ok: boolean;
+  detail: string;
+}
+
+export interface StartupHealth {
+  labels: EnsureLabelsResult | null;
+  checks: HealthCheckResult[];
+  checked_at: string;
+}
+
+export async function runStartupHealthChecks(
+  projectRoot: string,
+  deps: OrchestrateDeps,
+): Promise<HealthCheckResult[]> {
+  const results: HealthCheckResult[] = [];
+
+  const runSpawn = async (
+    command: string,
+    args: string[],
+    label: string,
+  ): Promise<{ ok: boolean; stdout: string; stderr: string }> => {
+    if (deps.spawnSync) {
+      const r = deps.spawnSync(command, args, { encoding: 'utf8', cwd: projectRoot });
+      return { ok: r.status === 0, stdout: r.stdout ?? '', stderr: r.stderr ?? '' };
+    }
+    try {
+      const { spawnSync: nodeSpawnSync } = await import('node:child_process');
+      const r = toSpawnSyncResult(nodeSpawnSync(command, args, { encoding: 'utf8', cwd: projectRoot } as any));
+      return { ok: r.status === 0, stdout: r.stdout ?? '', stderr: r.stderr ?? '' };
+    } catch (error) {
+      return { ok: false, stdout: '', stderr: String(error) };
+    }
+  };
+
+  // 1. gh auth status
+  const auth = await runSpawn('gh', ['auth', 'status'], 'gh_auth');
+  results.push({
+    check: 'gh_auth',
+    ok: auth.ok,
+    detail: auth.ok
+      ? (auth.stdout || auth.stderr).substring(0, 500).trim()
+      : `gh auth status failed: ${(auth.stderr || auth.stdout).substring(0, 500).trim()}`,
+  });
+
+  // 2. gh repo view
+  const ghHost = process.env.GH_HOST?.trim() || null;
+  const ghHostArgs = ghHost ? ['--hostname', ghHost] : [];
+  const repoView = await runSpawn('gh', ['repo', 'view', '--json', 'nameWithOwner', ...ghHostArgs], 'gh_repo');
+  results.push({
+    check: 'gh_repo',
+    ok: repoView.ok,
+    detail: repoView.ok
+      ? repoView.stdout.substring(0, 500).trim()
+      : `gh repo view failed: ${(repoView.stderr || repoView.stdout).substring(0, 500).trim()}`,
+  });
+
+  // 3. git status
+  const gitSt = await runSpawn('git', ['status', '--porcelain'], 'git_status');
+  const isClean = gitSt.ok && gitSt.stdout.trim() === '';
+  results.push({
+    check: 'git_status',
+    ok: gitSt.ok,
+    detail: gitSt.ok
+      ? (isClean ? 'clean worktree' : `dirty worktree: ${gitSt.stdout.substring(0, 500).trim()}`)
+      : `git status failed: ${(gitSt.stderr || gitSt.stdout).substring(0, 500).trim()}`,
+  });
+
+  for (const r of results) {
+    const icon = r.ok ? '✓' : '✗';
+    console.log(`[orchestrate] Health check ${icon} ${r.check}: ${r.detail.substring(0, 120)}`);
+  }
+
+  return results;
+}
+
+async function readJsonIfExists<T>(
+  filePath: string,
+  deps: Pick<OrchestrateDeps, 'existsSync' | 'readFile'>,
+): Promise<T | null> {
+  if (!deps.existsSync(filePath)) return null;
+  try {
+    return JSON.parse(await deps.readFile(filePath, 'utf8')) as T;
+  } catch {
+    return null;
+  }
+}
+
+function isTerminalChildState(value: string | undefined): boolean {
+  return value === 'completed' || value === 'exited' || value === 'stopped';
+}
+
+async function reconcileResumedChildren(
+  state: OrchestratorState,
+  aloopRoot: string,
+  deps: Pick<OrchestrateDeps, 'existsSync' | 'readFile' | 'isProcessAlive'>,
+): Promise<boolean> {
+  let changed = false;
+  const isAlive = deps.isProcessAlive ?? ((pid: number) => {
+    if (!Number.isFinite(pid) || pid <= 0) return false;
+    try {
+      process.kill(pid, 0);
+      return true;
+    } catch {
+      return false;
+    }
+  });
+
+  for (const issue of state.issues) {
+    if (issue.state !== 'in_progress' || !issue.child_session) continue;
+
+    const childDir = path.join(aloopRoot, 'sessions', issue.child_session);
+    const childMeta = await readJsonIfExists<{ pid?: number | string }>(
+      path.join(childDir, 'meta.json'),
+      deps,
+    );
+    const childStatus = await readJsonIfExists<{ state?: string }>(
+      path.join(childDir, 'status.json'),
+      deps,
+    );
+
+    const pidRaw = childMeta?.pid;
+    const pid = typeof pidRaw === 'string' ? Number.parseInt(pidRaw, 10) : pidRaw;
+    const childTerminal = isTerminalChildState(childStatus?.state);
+    if (typeof pid === 'number' && isAlive(pid)) {
+      continue;
+    }
+    if (childTerminal) {
+      continue;
+    }
+
+    issue.state = 'pending';
+    issue.status = 'Ready';
+    issue.child_session = null;
+    (issue as unknown as { child_pid?: number | null }).child_pid = null;
+    changed = true;
+  }
+
+  return changed;
+}
+
+async function syncResumedStateFromGithub(
+  state: OrchestratorState,
+  deps: Pick<OrchestrateDeps, 'now' | 'spawnSync'>,
+): Promise<boolean> {
+  const repo = state.filter_repo;
+  if (!repo) return false;
+
+  try {
+    const spawnSync = deps.spawnSync ?? ((await import('node:child_process')).spawnSync as OrchestrateDeps['spawnSync']);
+    const listResult = spawnSync(
+      'gh',
+      ['issue', 'list', '--repo', repo, '--label', 'aloop/auto', '--state', 'open', '--limit', '200', '--json', 'number,title,body,labels'],
+      { encoding: 'utf8' },
+    );
+    if (listResult.status !== 0) {
+      return false;
+    }
+
+    const ghIssues = JSON.parse(listResult.stdout ?? '[]') as Array<{
+      number: number;
+      title?: string;
+      body?: string;
+      labels?: Array<{ name?: string } | string>;
+    }>;
+    if (!Array.isArray(ghIssues)) return false;
+
+    const byNumber = new Map<number, OrchestratorIssue>();
+    for (const issue of state.issues) {
+      byNumber.set(issue.number, issue);
+    }
+
+    let changed = false;
+    for (const ghIssue of ghIssues) {
+      const existing = byNumber.get(ghIssue.number);
+      if (existing) {
+        if (typeof ghIssue.title === 'string' && ghIssue.title.length > 0 && existing.title !== ghIssue.title) {
+          existing.title = ghIssue.title;
+          changed = true;
+        }
+        if (typeof ghIssue.body === 'string' && existing.body !== ghIssue.body) {
+          existing.body = ghIssue.body;
+          changed = true;
+        }
+        continue;
+      }
+
+      state.issues.push({
+        number: ghIssue.number,
+        title: ghIssue.title ?? `Issue #${ghIssue.number}`,
+        body: ghIssue.body ?? '',
+        file_hints: [],
+        sandbox: 'container',
+        requires: [],
+        wave: 1,
+        state: 'pending',
+        status: 'Needs refinement',
+        child_session: null,
+        pr_number: null,
+        depends_on: [],
+        blocked_on_human: false,
+        processed_comment_ids: [],
+        triage_log: [],
+        dor_validated: false,
+      });
+      changed = true;
+    }
+
+    if (changed) {
+      state.updated_at = deps.now().toISOString();
+    }
+
+    return changed;
+  } catch {
+    return false;
+  }
+}
+
 export async function orchestrateCommandWithDeps(
   options: OrchestrateCommandOptions = {},
   deps: OrchestrateDeps = defaultDeps,
@@ -975,6 +1294,57 @@ export async function orchestrateCommandWithDeps(
   const homeDir = resolveHomeDir(options.homeDir);
   const aloopRoot = path.join(homeDir, '.aloop');
   const sessionsRoot = path.join(aloopRoot, 'sessions');
+
+  if (options.resume) {
+    const sessionId = path.basename(options.resume);
+    const sessionDir = path.join(sessionsRoot, sessionId);
+    const promptsDir = path.join(sessionDir, 'prompts');
+    const queueDir = path.join(sessionDir, 'queue');
+    const requestsDir = path.join(sessionDir, 'requests');
+    const loopPlanFile = path.join(sessionDir, 'loop-plan.json');
+    const stateFile = path.join(sessionDir, 'orchestrator.json');
+    const metaFile = path.join(sessionDir, 'meta.json');
+
+    if (!deps.existsSync(sessionDir)) {
+      throw new Error(`Orchestrator session not found: ${sessionId}`);
+    }
+    if (!deps.existsSync(stateFile)) {
+      throw new Error(`Missing orchestrator state file: ${stateFile}`);
+    }
+
+    await deps.mkdir(promptsDir, { recursive: true });
+    await deps.mkdir(queueDir, { recursive: true });
+    await deps.mkdir(requestsDir, { recursive: true });
+
+    const state = await readJsonIfExists<OrchestratorState>(stateFile, deps);
+    if (!state) {
+      throw new Error(`Invalid orchestrator state JSON: ${stateFile}`);
+    }
+
+    const meta = await readJsonIfExists<{ project_root?: string }>(metaFile, deps);
+    const projectRoot = options.projectRoot
+      ? path.resolve(options.projectRoot)
+      : path.resolve(meta?.project_root ?? process.cwd());
+
+    const syncedFromGh = await syncResumedStateFromGithub(state, deps);
+    const reconciledChildren = await reconcileResumedChildren(state, aloopRoot, deps);
+    if (syncedFromGh || reconciledChildren) {
+      state.updated_at = deps.now().toISOString();
+      await deps.writeFile(stateFile, `${JSON.stringify(state, null, 2)}\n`, 'utf8');
+    }
+
+    return {
+      session_dir: sessionDir,
+      prompts_dir: promptsDir,
+      queue_dir: queueDir,
+      requests_dir: requestsDir,
+      loop_plan_file: loopPlanFile,
+      state_file: stateFile,
+      state,
+      aloopRoot,
+      projectRoot,
+    };
+  }
 
   const specInput = options.spec ?? 'SPEC.md';
   const projectRoot = options.projectRoot ? path.resolve(options.projectRoot) : process.cwd();
@@ -1352,6 +1722,8 @@ export async function orchestrateCommandWithDeps(
 
 export async function orchestrateCommand(options: OrchestrateCommandOptions = {}, depsOrCommand?: any) {
   const outputMode = options.output ?? 'text';
+  const resumeSessionId = options.resume ? path.basename(options.resume) : null;
+  const isResume = resumeSessionId !== null;
   // Commander passes the Command object as the second argument if not explicitly provided.
   // We check if the provided argument looks like our OrchestrateDeps.
   const deps = (depsOrCommand && typeof depsOrCommand === 'object' && 'existsSync' in depsOrCommand)
@@ -1523,60 +1895,101 @@ export async function orchestrateCommand(options: OrchestrateCommandOptions = {}
       throw new Error(`Loop script not found: ${loopScript}`);
     }
 
-    // Create a git worktree inside the session dir (same as aloop start).
-    // The agent works in the worktree (full project access to SPEC.md, source),
-    // while requests/, queue/, orchestrator.json are siblings at ../
+    // Create a git worktree inside the session dir for fresh sessions.
+    // Resume reuses the existing worktree when present.
     let workDir = result.projectRoot;
     const worktreePath = path.join(result.session_dir, 'worktree');
     const worktreeBranch = `aloop/${path.basename(result.session_dir)}`;
-    const worktreeResult = nodeSpawnSync('git', ['-C', result.projectRoot, 'worktree', 'add', worktreePath, '-b', worktreeBranch], { encoding: 'utf8' });
-    if (worktreeResult.status === 0) {
-      workDir = worktreePath;
+    if (isResume) {
+      if (existsSync(worktreePath)) {
+        workDir = worktreePath;
+      }
     } else {
-      // Worktree failed — fall back to project root
-      console.error(`Warning: Failed to create worktree: ${worktreeResult.stderr?.trim()}`);
+      const worktreeResult = nodeSpawnSync('git', ['-C', result.projectRoot, 'worktree', 'add', worktreePath, '-b', worktreeBranch], { encoding: 'utf8' });
+      if (worktreeResult.status === 0) {
+        workDir = worktreePath;
+      } else {
+        // Worktree failed — fall back to project root
+        console.error(`Warning: Failed to create worktree: ${worktreeResult.stderr?.trim()}`);
+      }
     }
 
-    const args = [
-      '--prompts-dir', result.prompts_dir,
-      '--session-dir', result.session_dir,
-      '--work-dir', workDir,
-      '--mode', 'plan',
-      '--provider', 'claude',
-      '--round-robin', 'claude',
-      '--max-iterations', '999999',
-      '--launch-mode', 'start',
-      '--dangerously-skip-container',
-      '--no-task-exit',
-    ];
+    // If resume points to a live daemon, do not start a second orchestrator loop.
+    const metaPath = path.join(result.session_dir, 'meta.json');
+    if (isResume && existsSync(metaPath)) {
+      try {
+        const existingMeta = JSON.parse(await readFile(metaPath, 'utf8')) as { pid?: number };
+        if (typeof existingMeta.pid === 'number' && existingMeta.pid > 0) {
+          try {
+            process.kill(existingMeta.pid, 0);
+            loopPid = existingMeta.pid;
+          } catch {
+            // stale pid, spawn a new daemon below
+          }
+        }
+      } catch {
+        // ignore invalid meta, spawn new daemon below
+      }
+    }
 
-    const child = nodeSpawn(loopScript, args, {
-      cwd: workDir,
-      detached: true,
-      stdio: 'ignore',
-      env: { ...process.env },
-      windowsHide: true,
-    });
-    child.unref();
-    loopPid = child.pid ?? null;
+    if (!loopPid) {
+      const args = [
+        '--prompts-dir', result.prompts_dir,
+        '--session-dir', result.session_dir,
+        '--work-dir', workDir,
+        '--mode', 'plan',
+        '--provider', 'claude',
+        '--round-robin', 'claude',
+        '--max-iterations', '999999',
+        '--launch-mode', isResume ? 'resume' : 'start',
+        '--dangerously-skip-container',
+        '--no-task-exit',
+      ];
+
+      const child = nodeSpawn(loopScript, args, {
+        cwd: workDir,
+        detached: true,
+        stdio: 'ignore',
+        env: { ...process.env },
+        windowsHide: true,
+      });
+      child.unref();
+      loopPid = child.pid ?? null;
+    }
 
     if (!loopPid) {
       throw new Error('Failed to launch orchestrator loop process.');
     }
 
     // Write meta.json
-    const metaPath = path.join(result.session_dir, 'meta.json');
     const startedAt = new Date().toISOString();
     const meta = {
       session_id: path.basename(result.session_dir),
       project_root: result.projectRoot,
       provider: 'claude',
       mode: 'orchestrate',
-      work_dir: result.projectRoot,
+      launch_mode: isResume ? 'resume' : 'start',
+      work_dir: workDir,
       pid: loopPid,
       started_at: startedAt,
     };
     await writeFile(metaPath, `${JSON.stringify(meta, null, 2)}\n`, 'utf8');
+
+    // Write status.json so `aloop status` and dashboard can track this session
+    const statusPath = path.join(result.session_dir, 'status.json');
+    if (!isResume || !existsSync(statusPath)) {
+      await writeFile(
+        statusPath,
+        `${JSON.stringify({
+          state: 'starting',
+          mode: 'orchestrate',
+          provider: 'claude',
+          iteration: 0,
+          updated_at: startedAt,
+        }, null, 2)}\n`,
+        'utf8',
+      );
+    }
 
     // Register in active.json
     const activePath = path.join(result.aloopRoot, 'active.json');
@@ -1598,7 +2011,7 @@ export async function orchestrateCommand(options: OrchestrateCommandOptions = {}
       session_dir: result.session_dir,
       project_root: result.projectRoot,
       pid: loopPid,
-      work_dir: result.projectRoot,
+      work_dir: workDir,
       started_at: startedAt,
       provider: 'claude',
       mode: 'orchestrate',
@@ -3012,6 +3425,50 @@ function formatChildSessionId(projectName: string, issueNumber: number, now: Dat
   return `${sanitized}-issue-${issueNumber}-${timestamp}`;
 }
 
+async function linkIssueDevelopmentBranch(
+  repo: string,
+  issueNumber: number,
+  branchName: string,
+  execGh: (args: string[]) => Promise<{ stdout: string; stderr: string }>,
+): Promise<void> {
+  const endpoint = `repos/${repo}/issues/${issueNumber}/branches`;
+  const attempts: string[][] = [
+    ['api', '--method', 'POST', endpoint, '-f', `name=${branchName}`],
+    ['api', '--method', 'POST', endpoint, '-f', `branch_name=${branchName}`],
+    ['api', '--method', 'POST', endpoint, '-f', `name=${branchName}`, '-f', 'from_branch=agent/trunk'],
+  ];
+  const errors: string[] = [];
+
+  for (const args of attempts) {
+    try {
+      await execGh(args);
+      return;
+    } catch (e: unknown) {
+      errors.push(e instanceof Error ? e.message : String(e));
+    }
+  }
+
+  const slug = parseRepoSlug(repo);
+  if (slug) {
+    try {
+      await execGh([
+        'issue',
+        'develop',
+        String(issueNumber),
+        '--repo',
+        repo,
+        '--name',
+        branchName,
+      ]);
+      return;
+    } catch (e: unknown) {
+      errors.push(e instanceof Error ? e.message : String(e));
+    }
+  }
+
+  throw new Error(`Failed to link development branch ${branchName} to issue #${issueNumber}: ${errors.join(' | ')}`);
+}
+
 /**
  * Launches a single child loop for the given issue.
  * Creates branch, worktree, seeds TODO.md, launches loop process.
@@ -3091,13 +3548,18 @@ export async function launchChildLoop(
     }
   }
 
-  // CRITICAL: Set upstream to the correct remote branch, not agent/trunk.
-  // git worktree add -b <branch> origin/agent/trunk sets tracking to origin/agent/trunk,
-  // which causes `git push -u origin HEAD` to push directly to agent/trunk.
-  deps.spawnSync('git', ['-C', worktreePath, 'branch', '--set-upstream-to', `origin/${branchName}`], { encoding: 'utf8' });
-  // If the remote branch doesn't exist yet, unset upstream entirely — push -u will create it correctly
+  // CRITICAL: Unset upstream tracking set by `git worktree add -b <branch> origin/agent/trunk`
+  // which would cause `git push -u origin HEAD` to push directly to agent/trunk.
+  // Unset so that push -u will create the correct remote branch tracking.
   deps.spawnSync('git', ['-C', worktreePath, 'config', '--unset', `branch.${branchName}.merge`], { encoding: 'utf8' });
   deps.spawnSync('git', ['-C', worktreePath, 'config', '--unset', `branch.${branchName}.remote`], { encoding: 'utf8' });
+
+  // Ensure the child branch exists on origin before the child loop starts (links branch to GH issue).
+  // Best-effort: if push fails (no origin, no auth), log and continue — rebase-sync will push eventually.
+  const pushResult = deps.spawnSync('git', ['-C', worktreePath, 'push', '-u', 'origin', branchName], { encoding: 'utf8' });
+  if (pushResult.status !== 0) {
+    console.warn(`[orchestrate] Warning: failed to push branch ${branchName} for issue #${issue.number}: ${pushResult.stderr || pushResult.stdout}`);
+  }
 
   // Remove .mcp.json if present — prevents tessl MCP hangs in child loops
   const mcpJsonPath = path.join(worktreePath, '.mcp.json');
@@ -3107,6 +3569,15 @@ export async function launchChildLoop(
 
   // Create .aloop/output/ for agent result file bridge
   await deps.mkdir(path.join(worktreePath, '.aloop', 'output'), { recursive: true });
+
+  if (deps.execGh && deps.repo) {
+    try {
+      await linkIssueDevelopmentBranch(deps.repo, issue.number, branchName, deps.execGh);
+    } catch (e: unknown) {
+      console.error(`[orchestrate] Warning: failed to link development branch ${branchName} to issue #${issue.number}: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
+
 
   // Seed TODO.md in worktree from issue body (gitignored — working artifact only)
   const todoContent = `# Issue #${issue.number}: ${issue.title}\n\n## Tasks\n\n- [ ] Implement as described in the issue\n`;
@@ -3229,6 +3700,7 @@ export async function launchChildLoop(
       '-MaxIterations', '100',
       '-MaxStuck', '3',
       '-LaunchMode', 'start',
+      '-NoTaskExit',
     ];
   } else {
     const loopScript = path.join(loopBinDir, 'loop.sh');
@@ -3242,6 +3714,7 @@ export async function launchChildLoop(
       '--max-iterations', '100',
       '--max-stuck', '3',
       '--launch-mode', 'start',
+      '--no-task-exit',
     ];
   }
 
@@ -4635,7 +5108,7 @@ export async function monitorChildSessions(
     };
 
     // Check for terminal states
-    if (childStatus.state === 'exited') {
+    if (childStatus.state === 'exited' || childStatus.state === 'completed') {
       // Child completed successfully — create PR
       const prResult = await createPrForChild(issue, childSession, childDir, state, repo, deps);
 

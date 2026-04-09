@@ -146,6 +146,7 @@ program
 program
   .command('orchestrate')
   .description('Decompose spec into issues, dispatch child loops, and merge PRs')
+  .option('--resume <session-id>', 'Resume an existing orchestrator session')
   .option('--spec <paths>', 'Spec file(s) or glob pattern (e.g. "SPEC.md specs/*.md")', 'SPEC.md')
   .option('--concurrency <number>', 'Max concurrent child loops', '3')
   .option('--trunk <branch>', 'Target branch for merged PRs', 'agent/trunk')
@@ -159,7 +160,6 @@ program
   .option('--interval <ms>', 'Scan loop interval in milliseconds (default: 30000)')
   .option('--max-iterations <n>', 'Max scan loop iterations (default: 100)')
   .option('--auto-merge', 'Create a PR from trunk to main when all issues complete')
-  .option('--resume <session-id>', 'Resume a previously stopped orchestrator session')
   .option('--home-dir <path>', 'Home directory override')
   .option('--project-root <path>', 'Project root override')
   .option('--output <mode>', 'Output format: json or text', 'text')

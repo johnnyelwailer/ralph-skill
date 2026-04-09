@@ -758,7 +758,8 @@ exit 0
                 $LoopEnv,
                 [int]$MaxIter = 6,
                 [string]$Mode = 'plan-build-review',
-                [string]$LaunchMode = 'start'
+                [string]$LaunchMode = 'start',
+                [switch]$NoTaskExit
             )
             $prevPath  = $env:PATH
             $prevState = $env:FAKE_CLAUDE_STATE
@@ -773,6 +774,9 @@ exit 0
             $env:FAKE_ALOOP_GH_CALLS = $LoopEnv.GhCallsFile
             $env:ALOOP_SKIP_PHASE_GUARDS = 'true'
             try {
+                $extraArgs = @()
+                if ($NoTaskExit) { $extraArgs += '-NoTaskExit' }
+
                 $output = & $pwshPath -NoProfile -File $loopScript `
                     -PromptsDir    $LoopEnv.PromptsDir `
                     -SessionDir    $LoopEnv.SessionDir `
@@ -781,6 +785,7 @@ exit 0
                     -Provider      'claude'             `
                     -LaunchMode    $LaunchMode          `
                     -MaxIterations $MaxIter             `
+                    @extraArgs                            `
                     2>&1
                 return [pscustomobject]@{ ExitCode = $LASTEXITCODE; Output = ($output -join "`n") }
             } finally {
@@ -841,6 +846,15 @@ exit 0
         $events | Should -Contain 'tasks_marked_complete'
         # Loop must NOT have exited before reaching the review gate
         $events | Should -Not -Contain 'all_tasks_complete'
+    }
+
+    It 'NoTaskExit suppresses tasks_marked_complete in build mode' {
+        $e      = New-LoopEnv -Scenario 'approve'
+        $result = Invoke-LoopScript -LoopEnv $e -MaxIter 3 -Mode 'build' -NoTaskExit
+        $events = Get-LogEvents -LogFile $e.LogFile
+
+        $result.ExitCode | Should -Be 0
+        $events | Should -Not -Contain 'tasks_marked_complete'
     }
 
     It 'every log entry contains a consistent run_id (SPEC Known Issue #6)' {

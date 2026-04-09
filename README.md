@@ -18,7 +18,6 @@ A single autonomous coding session. The default cycle is an 8-step sequence that
 Between iterations the loop checks for **steering overrides** — live direction changes sent from the dashboard or CLI (`aloop steer`).
 
 A **Proof** agent template is available for capturing screenshots, API responses, and test output as evidence. It can be invoked via the orchestrator or queued manually but is not part of the default loop cycle.
-
 Each iteration gets fresh context. The loop handles stuck detection, provider failover, and worktree isolation automatically.
 
 ```bash
@@ -29,16 +28,15 @@ aloop start --provider claude
 aloop start --provider round-robin
 
 # Resume a stopped session
-aloop start --launch resume <session-id>
-```
+aloop start --launch resume <session-id>```
 
 ### Orchestrator Mode (`aloop orchestrate`)
 
 A coordination layer that breaks a spec into GitHub issues with dependency graphs, then dispatches parallel child loops — each in its own git worktree.
 
 1. **Decompose** — Reads one or more spec files (including globs), creates GitHub issues with labels and dependency edges
-2. **Dispatch** — Launches child loops per issue, respecting concurrency caps and wave ordering
-3. **PR lifecycle** — Squash-merges completed PRs, rebases on conflict, runs agent review gates
+2. **Dispatch** — Launches child loops per issue, respecting concurrency caps and wave ordering; each child loop auto-pushes its branch to origin and links it to the corresponding GitHub issue
+3. **PR lifecycle** — Child loop PRs are squash-merged into `agent/trunk` (configurable with `--trunk`); rebases on conflict, runs agent review gates
 4. **Budget tracking** — Aggregates cost across child sessions, pauses at 80% of cap
 
 ```bash
@@ -50,6 +48,12 @@ aloop orchestrate --spec "SPEC.md specs/*.md" --plan-only
 
 # Dispatch specific issues
 aloop orchestrate --issues 42,43,44 --concurrency 2
+
+# Resume an existing orchestrator session
+aloop orchestrate --resume <session-id>
+
+# Auto-merge trunk into main when all issues complete
+aloop orchestrate --spec SPEC.md --auto-merge
 ```
 
 The orchestrator enforces role-based GitHub policies — child loops can create PRs and comment, but only the orchestrator can merge PRs and close issues.
@@ -99,8 +103,9 @@ Five AI coding agents supported — use one, or round-robin across multiple:
 | GitHub Copilot | `copilot` | `--yolo` |
 | Gemini CLI | `gemini` | `--yolo` |
 | OpenCode | `opencode` | `run` |
-
 **Round-robin mode** cycles providers each iteration — e.g., Claude plans, Codex builds, Gemini reviews, OpenCode builds.
+
+> **Known gap:** `--provider opencode` is not currently accepted as a direct provider value by the Bash harness (`loop.sh`) — a validation case statement omits it. OpenCode works correctly in round-robin mode and via the PowerShell harness (`loop.ps1`). Fix pending.
 
 ### Shipped Agents (OpenCode)
 
@@ -111,7 +116,6 @@ When OpenCode is enabled, `aloop setup` installs three specialist agents to `.op
 | `code-critic` | Deep code review for subtle bugs and security issues | `anthropic/claude-sonnet-4` (reasoning: xhigh) |
 | `error-analyst` | Parses error logs and stack traces to suggest fixes | `google/gemini-3.1-flash-lite-preview` (reasoning: medium) |
 | `vision-reviewer` | Analyzes screenshots for layout and visual issues | `google/gemini-3.1-flash-lite-preview` (reasoning: medium) |
-
 ```bash
 # Run the code critic on your working directory
 opencode run --agent code-critic
@@ -182,7 +186,6 @@ The installer deploys skill files to each harness directory and the Aloop runtim
 | `aloop devcontainer` | Generate .devcontainer config |
 | `aloop devcontainer-verify` | Verify devcontainer builds and passes checks |
 | `aloop update` | Refresh ~/.aloop runtime from repo checkout |
-
 ### Slash commands (Claude Code / Codex / Copilot)
 
 ```
@@ -211,6 +214,7 @@ The installer deploys skill files to each harness directory and the Aloop runtim
   templates/
     PROMPT_plan.md              # Plan agent template
     PROMPT_build.md             # Build agent template
+    PROMPT_qa.md                # QA agent (black-box user testing)
     PROMPT_review.md            # Review agent (9 gates)
     PROMPT_qa.md                # QA agent (black-box user testing)
     PROMPT_proof.md             # Proof agent (evidence capture)
@@ -218,8 +222,8 @@ The installer deploys skill files to each harness directory and the Aloop runtim
     PROMPT_setup.md             # Setup/discovery agent
     PROMPT_docs.md              # Documentation sync agent
     PROMPT_single.md            # Single-shot mode agent
-    PROMPT_orch_*.md            # Orchestrator agent templates (decompose, review, replan, etc.)
-    conventions/                # Code quality, testing, git conventions
+    PROMPT_orch_*.md            # Orchestrator agent templates (decompose, review, replan, etc.)    conventions/                # Code quality, testing, git conventions
+    instructions/               # Shared instruction fragments (included by QA and review prompts)
   sessions/<session-id>/
     meta.json                   # Session metadata
     status.json                 # Current state (iteration, phase, provider)

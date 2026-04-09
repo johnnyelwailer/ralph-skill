@@ -1886,31 +1886,37 @@ test('startCommandWithDeps parses cost_routing and openrouter_models for opencod
   assert.match(reviewPrompt, /model:\s+openrouter\/anthropic\/claude-opus-4\.6/);
 });
 
-test('Branch Coverage: orchestrate mode throws', async () => {
+test('Branch Coverage: orchestrate mode dispatches to orchestrateCommand', async () => {
   const fixture = await setupWorkspace('aloop-branch-orchestrate-');
   await writeFile(fixture.discovery.setup.config_path, "provider: 'claude'\nmode: 'plan'\n", 'utf8');
-  await assert.rejects(
-    () =>
-      startCommandWithDeps(
-        { homeDir: fixture.homeDir, projectRoot: fixture.projectRoot, mode: 'orchestrate' },
-        {
-          discoverWorkspace: async () => fixture.discovery,
-          readFile,
-          writeFile,
-          mkdir,
-          cp: async () => undefined,
-          existsSync,
-          spawn: (() => ({ pid: 1, unref() {} }) as any) as any,
-          spawnSync: (() => ({ status: 0, stdout: '', stderr: '' }) as any) as any,
-          platform: 'linux',
-          nodePath: '/usr/bin/node',
-          aloopPath: '/usr/local/bin/aloop',
-          env: process.env,
-          now: () => new Date(),
-        }
-      ),
-    /Invalid mode: orchestrate/
-  );
+  // orchestrateCommand will fail (no GitHub setup, etc.) but should NOT throw
+  // "Invalid mode: orchestrate" — it should dispatch to the orchestrate path.
+  try {
+    await startCommandWithDeps(
+      { homeDir: fixture.homeDir, projectRoot: fixture.projectRoot, mode: 'orchestrate' },
+      {
+        discoverWorkspace: async () => fixture.discovery,
+        readFile,
+        writeFile,
+        mkdir,
+        cp: async () => undefined,
+        existsSync,
+        spawn: (() => ({ pid: 1, unref() {} }) as any) as any,
+        spawnSync: (() => ({ status: 0, stdout: '', stderr: '' }) as any) as any,
+        platform: 'linux',
+        nodePath: '/usr/bin/node',
+        aloopPath: '/usr/local/bin/aloop',
+        env: process.env,
+        now: () => new Date(),
+      },
+    );
+  } catch (err: any) {
+    // The old behavior threw "Invalid mode: orchestrate" — that must not happen.
+    assert.ok(
+      !(/Invalid mode: orchestrate/.test(err.message)),
+      `Should not reject with "Invalid mode: orchestrate", got: ${err.message}`,
+    );
+  }
 });
 
 test('Branch Coverage: resolvePowerShellBinary fails if no powershell', async () => {

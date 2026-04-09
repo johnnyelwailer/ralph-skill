@@ -508,6 +508,105 @@ test('monitorSessionState transitions', async (t) => {
     });
   });
 
+  await t.test('periodic scheduling: queues spec-gap and docs on even cycle (cycleCount=2)', async () => {
+    // Clean queue — remove and recreate to handle file-vs-dir edge cases
+    const queueDir = path.join(sessionDir, 'queue');
+    await fs.rm(queueDir, { recursive: true, force: true });
+    await fs.mkdir(queueDir, { recursive: true });
+
+    const specGapPath = path.join(promptsDir, 'PROMPT_spec-gap.md');
+    const docsPath = path.join(promptsDir, 'PROMPT_docs.md');
+    await fs.writeFile(specGapPath, '---\nagent: spec-gap\n---\nspec gap content');
+    await fs.writeFile(docsPath, '---\nagent: docs\n---\ndocs content');
+
+    await fs.writeFile(statusPath, JSON.stringify({ state: 'running', phase: 'plan', iteration: 17 }));
+    await fs.writeFile(todoPath, '# TODO\n- [ ] task 1\n');
+    await writeLoopPlan(sessionDir, {
+      cycle: ['PROMPT_plan.md', 'PROMPT_build.md'],
+      cyclePosition: 0,
+      iteration: 17,
+      version: 1,
+      cycleCount: 2,
+      lastPeriodicCycle: 0,
+    } as any);
+
+    await monitorSessionState({ sessionDir, workdir, promptsDir });
+
+    const files = await fs.readdir(queueDir);
+    assert.ok(files.some(f => f.includes('spec-gap')), 'spec-gap should be queued');
+    assert.ok(files.some(f => f.includes('docs')), 'docs should be queued');
+
+    // Check lastPeriodicCycle was updated
+    const updatedPlan = JSON.parse(await fs.readFile(path.join(sessionDir, 'loop-plan.json'), 'utf8'));
+    assert.equal(updatedPlan.lastPeriodicCycle, 2);
+  });
+
+  await t.test('periodic scheduling: does not queue on odd cycle (cycleCount=3)', async () => {
+    const queueDir = path.join(sessionDir, 'queue');
+    await fs.rm(queueDir, { recursive: true, force: true });
+    await fs.mkdir(queueDir, { recursive: true });
+
+    await fs.writeFile(statusPath, JSON.stringify({ state: 'running', phase: 'plan', iteration: 25 }));
+    await fs.writeFile(todoPath, '# TODO\n- [ ] task 1\n');
+    await writeLoopPlan(sessionDir, {
+      cycle: ['PROMPT_plan.md', 'PROMPT_build.md'],
+      cyclePosition: 0,
+      iteration: 25,
+      version: 1,
+      cycleCount: 3,
+      lastPeriodicCycle: 2,
+    } as any);
+
+    await monitorSessionState({ sessionDir, workdir, promptsDir });
+
+    const files = await fs.readdir(queueDir).catch(() => []);
+    assert.ok(!files.some(f => f.includes('spec-gap')), 'spec-gap should NOT be queued on odd cycle');
+  });
+
+  await t.test('periodic scheduling: does not re-queue if lastPeriodicCycle matches cycleCount', async () => {
+    const queueDir = path.join(sessionDir, 'queue');
+    await fs.rm(queueDir, { recursive: true, force: true });
+    await fs.mkdir(queueDir, { recursive: true });
+
+    await fs.writeFile(statusPath, JSON.stringify({ state: 'running', phase: 'plan', iteration: 17 }));
+    await fs.writeFile(todoPath, '# TODO\n- [ ] task 1\n');
+    await writeLoopPlan(sessionDir, {
+      cycle: ['PROMPT_plan.md', 'PROMPT_build.md'],
+      cyclePosition: 0,
+      iteration: 17,
+      version: 1,
+      cycleCount: 4,
+      lastPeriodicCycle: 4,
+    } as any);
+
+    await monitorSessionState({ sessionDir, workdir, promptsDir });
+
+    const files = await fs.readdir(queueDir).catch(() => []);
+    assert.ok(!files.some(f => f.includes('spec-gap')), 'spec-gap should NOT be re-queued');
+  });
+
+  await t.test('periodic scheduling: does not queue on cycle 0 or 1', async () => {
+    const queueDir = path.join(sessionDir, 'queue');
+    await fs.rm(queueDir, { recursive: true, force: true });
+    await fs.mkdir(queueDir, { recursive: true });
+
+    await fs.writeFile(statusPath, JSON.stringify({ state: 'running', phase: 'plan', iteration: 1 }));
+    await fs.writeFile(todoPath, '# TODO\n- [ ] task 1\n');
+    await writeLoopPlan(sessionDir, {
+      cycle: ['PROMPT_plan.md', 'PROMPT_build.md'],
+      cyclePosition: 0,
+      iteration: 1,
+      version: 1,
+      cycleCount: 0,
+      lastPeriodicCycle: 0,
+    } as any);
+
+    await monitorSessionState({ sessionDir, workdir, promptsDir });
+
+    const files = await fs.readdir(queueDir).catch(() => []);
+    assert.ok(!files.some(f => f.includes('spec-gap')), 'spec-gap should NOT be queued on cycle 0');
+  });
+
   // Cleanup
   await fs.rm(tmpDir, { recursive: true, force: true });
 });

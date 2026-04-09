@@ -10,6 +10,8 @@ export interface LoopPlan {
   allTasksMarkedDone?: boolean;
   finalizer?: string[];
   finalizerPosition?: number;
+  cycleCount?: number;
+  lastPeriodicCycle?: number;
 }
 
 export interface MutateLoopPlanOptions {
@@ -19,6 +21,8 @@ export interface MutateLoopPlanOptions {
   allTasksMarkedDone?: boolean;
   finalizer?: string[];
   finalizerPosition?: number;
+  cycleCount?: number;
+  lastPeriodicCycle?: number;
 }
 
 /**
@@ -59,6 +63,8 @@ export async function mutateLoopPlan(sessionDir: string, options: MutateLoopPlan
   if (options.allTasksMarkedDone !== undefined) plan.allTasksMarkedDone = options.allTasksMarkedDone;
   if (options.finalizer !== undefined) plan.finalizer = options.finalizer;
   if (options.finalizerPosition !== undefined) plan.finalizerPosition = options.finalizerPosition;
+  if (options.cycleCount !== undefined) plan.cycleCount = options.cycleCount;
+  if (options.lastPeriodicCycle !== undefined) plan.lastPeriodicCycle = options.lastPeriodicCycle;
 
   plan.version = (plan.version || 1) + 1;
 

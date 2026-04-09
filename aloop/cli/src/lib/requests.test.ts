@@ -7,6 +7,12 @@ import os from 'node:os';
 import * as child_process from 'node:child_process';
 import { processAgentRequests, validateRequest, type RequestProcessorOptions } from './requests.js';
 
+function parseQueueFrontmatter(queueContent: string): Record<string, unknown> {
+  const match = queueContent.match(/^---\n([\s\S]*?)\n---\n/);
+  assert.ok(match, 'queue content should include JSON frontmatter');
+  return JSON.parse(match[1]);
+}
+
 async function setupTestEnv() {
   const tmpBase = path.join(os.tmpdir(), `aloop-test-${Date.now()}`);
   await fs.mkdir(tmpBase, { recursive: true });
@@ -233,9 +239,12 @@ test('processAgentRequests - create_issues', async () => {
     assert.strictEqual(queueFiles.length, 1);
     
     const content = await fs.readFile(path.join(env.sessionDir, 'queue', queueFiles[0]), 'utf8');
-    assert.ok(content.includes('status": "success"'));
-    assert.ok(content.includes('"number": 101'));
-    assert.ok(content.includes('"skipped_titles": []'));
+    const frontmatter = parseQueueFrontmatter(content);
+    assert.strictEqual(frontmatter.status, 'success');
+    assert.deepStrictEqual(frontmatter.payload, {
+      issues: [{ number: 101, url: 'http://gh/101' }],
+      skipped_titles: [],
+    });
   } finally {
     await env.cleanup();
   }
@@ -274,8 +283,12 @@ test('processAgentRequests - create_issues dedups existing orchestrator state ti
     assert.deepStrictEqual(createdTitles, ['Brand New Issue']);
     const queueFiles = await fs.readdir(path.join(env.sessionDir, 'queue'));
     const queueContent = await fs.readFile(path.join(env.sessionDir, 'queue', queueFiles[0]), 'utf8');
-    assert.ok(queueContent.includes('"skipped_titles": ['));
-    assert.ok(queueContent.includes('"  Existing Issue  "'));
+    const frontmatter = parseQueueFrontmatter(queueContent);
+    assert.strictEqual(frontmatter.status, 'success');
+    assert.deepStrictEqual(frontmatter.payload, {
+      issues: [{ number: 102, url: 'http://gh/102' }],
+      skipped_titles: ['  Existing Issue  '],
+    });
 
     const logContent = await fs.readFile(env.logPath, 'utf8');
     assert.ok(logContent.includes('gh_request_skipped_existing_issue_title'));
@@ -498,8 +511,13 @@ test('processAgentRequests - post_comment skips when request marker already exis
     const queueFiles = await fs.readdir(path.join(env.sessionDir, 'queue'));
     assert.strictEqual(queueFiles.length, 1);
     const queueContent = await fs.readFile(path.join(env.sessionDir, 'queue', queueFiles[0]), 'utf8');
-    assert.ok(queueContent.includes('"status": "skipped"'));
-    assert.ok(queueContent.includes('"reason": "duplicate_comment_marker"'));
+    const frontmatter = parseQueueFrontmatter(queueContent);
+    assert.strictEqual(frontmatter.status, 'success');
+    assert.deepStrictEqual(frontmatter.payload, {
+      status: 'skipped',
+      reason: 'duplicate_comment_marker',
+      issue_number: 101,
+    });
   } finally {
     await env.cleanup();
   }
@@ -758,10 +776,17 @@ test('processAgentRequests - create_pr idempotent skip on duplicate head', async
     assert.strictEqual(createCalls, 0);
     const queueFiles = await fs.readdir(path.join(env.sessionDir, 'queue'));
     assert.strictEqual(queueFiles.length, 1);
-    const content = await fs.readFile(path.join(env.sessionDir, 'queue', queueFiles[0]), 'utf8');
-    assert.ok(content.includes('"skipped": true'));
-    assert.ok(content.includes('"idempotent": true'));
-    assert.ok(content.includes('"number": 88'));
+    const queueContent = await fs.readFile(path.join(env.sessionDir, 'queue', queueFiles[0]), 'utf8');
+    const frontmatter = parseQueueFrontmatter(queueContent);
+    assert.strictEqual(frontmatter.status, 'success');
+    assert.deepStrictEqual(frontmatter.payload, {
+      status: 'skipped',
+      reason: 'duplicate_pr_head_base',
+      existing_pr: { number: 777, url: 'https://github.com/o/r/pull/777' },
+    });
+
+    const logContent = await fs.readFile(env.logPath, 'utf8');
+    assert.ok(logContent.includes('gh_request_skipped_existing_pr'));
   } finally {
     await env.cleanup();
   }
@@ -829,7 +854,13 @@ test('processAgentRequests - merge_pr skips already merged', async () => {
     const queueFiles = await fs.readdir(path.join(env.sessionDir, 'queue'));
     assert.strictEqual(queueFiles.length, 1);
     const queueContent = await fs.readFile(path.join(env.sessionDir, 'queue', queueFiles[0]), 'utf8');
-    assert.ok(queueContent.includes('already_merged'));
+    const frontmatter = parseQueueFrontmatter(queueContent);
+    assert.strictEqual(frontmatter.status, 'success');
+    assert.deepStrictEqual(frontmatter.payload, {
+      status: 'skipped',
+      reason: 'already_merged',
+      pr_number: 303,
+    });
 
     const logContent = await fs.readFile(env.logPath, 'utf8');
     assert.ok(logContent.includes('gh_request_skipped_already_merged'));
@@ -1060,7 +1091,10 @@ test('processAgentRequests - steer_child no active.json', async () => {
     const queueFiles = await fs.readdir(path.join(env.sessionDir, 'queue'));
     assert.strictEqual(queueFiles.length, 1);
     const queueContent = await fs.readFile(path.join(env.sessionDir, 'queue', queueFiles[0]), 'utf8');
-    assert.ok(queueContent.includes('No active sessions found'));
+    const frontmatter = parseQueueFrontmatter(queueContent);
+    assert.strictEqual(frontmatter.status, 'error');
+    assert.strictEqual(frontmatter.request_type, 'steer_child');
+    assert.strictEqual(frontmatter.error, 'No active sessions found');
   } finally {
     await env.cleanup();
   }
@@ -1090,7 +1124,10 @@ test('processAgentRequests - steer_child child not found anywhere', async () => 
     assert.ok(failedFiles.includes('req-steer-notfound.json'));
     const queueFiles = await fs.readdir(path.join(env.sessionDir, 'queue'));
     const queueContent = await fs.readFile(path.join(env.sessionDir, 'queue', queueFiles[0]), 'utf8');
-    assert.ok(queueContent.includes('Could not find child session for issue #101'));
+    const frontmatter = parseQueueFrontmatter(queueContent);
+    assert.strictEqual(frontmatter.status, 'error');
+    assert.strictEqual(frontmatter.request_type, 'steer_child');
+    assert.strictEqual(frontmatter.error, 'Could not find child session for issue #101');
   } finally {
     await env.cleanup();
   }
@@ -1181,7 +1218,10 @@ test('processAgentRequests - dispatch_child spawn failure', async () => {
     assert.ok(failedFiles.includes('req-dispatch-fail.json'));
     const queueFiles = await fs.readdir(path.join(env.sessionDir, 'queue'));
     const queueContent = await fs.readFile(path.join(env.sessionDir, 'queue', queueFiles[0]), 'utf8');
-    assert.ok(queueContent.includes('Failed to dispatch child'));
+    const frontmatter = parseQueueFrontmatter(queueContent);
+    assert.strictEqual(frontmatter.status, 'error');
+    assert.strictEqual(frontmatter.request_type, 'dispatch_child');
+    assert.strictEqual(frontmatter.error, 'Failed to dispatch child: dispatch error');
   } finally {
     await env.cleanup();
   }
@@ -1207,7 +1247,10 @@ test('processAgentRequests - dispatch_child spawn failure stderr fallback to std
 
     const queueFiles = await fs.readdir(path.join(env.sessionDir, 'queue'));
     const queueContent = await fs.readFile(path.join(env.sessionDir, 'queue', queueFiles[0]), 'utf8');
-    assert.ok(queueContent.includes('stdout error info'));
+    const frontmatter = parseQueueFrontmatter(queueContent);
+    assert.strictEqual(frontmatter.status, 'error');
+    assert.strictEqual(frontmatter.request_type, 'dispatch_child');
+    assert.strictEqual(frontmatter.error, 'Failed to dispatch child: stdout error info');
   } finally {
     await env.cleanup();
   }
@@ -1235,7 +1278,10 @@ test('processAgentRequests - stop_child spawn failure', async () => {
     assert.ok(failedFiles.includes('req-stop-fail.json'));
     const queueFiles = await fs.readdir(path.join(env.sessionDir, 'queue'));
     const queueContent = await fs.readFile(path.join(env.sessionDir, 'queue', queueFiles[0]), 'utf8');
-    assert.ok(queueContent.includes('Failed to stop child'));
+    const frontmatter = parseQueueFrontmatter(queueContent);
+    assert.strictEqual(frontmatter.status, 'error');
+    assert.strictEqual(frontmatter.request_type, 'stop_child');
+    assert.strictEqual(frontmatter.error, 'Failed to stop child: stop error');
   } finally {
     await env.cleanup();
   }
@@ -1533,8 +1579,10 @@ test('processAgentRequests - handler failure', async () => {
     const queueFiles = await fs.readdir(path.join(env.sessionDir, 'queue'));
     assert.strictEqual(queueFiles.length, 1);
     const queueContent = await fs.readFile(path.join(env.sessionDir, 'queue', queueFiles[0]), 'utf8');
-    assert.ok(queueContent.includes('status": "error"'));
-    assert.ok(queueContent.includes('GH error'));
+    const frontmatter = parseQueueFrontmatter(queueContent);
+    assert.strictEqual(frontmatter.status, 'error');
+    assert.strictEqual(frontmatter.request_type, 'close_issue');
+    assert.strictEqual(frontmatter.error, 'GH error');
   } finally {
     await env.cleanup();
   }

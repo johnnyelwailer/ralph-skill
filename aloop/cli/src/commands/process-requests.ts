@@ -490,28 +490,28 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
     for (const issue of state.issues) {
       if (!issue.child_session) continue;
       if (issue.pr_number) continue; // PR already exists
-      if (issue.status === 'In progress' || issue.status === 'Ready') {
-        // Check if child is completed
-        const childDir = path.join(aloopRoot, 'sessions', issue.child_session);
-        const childStatusFile = path.join(childDir, 'status.json');
-        if (existsSync(childStatusFile)) {
-          try {
-            const childStatus = JSON.parse(await readFile(childStatusFile, 'utf8'));
-            if (childStatus.state === 'completed') {
-              const branch = `aloop/issue-${issue.number}`;
-              const trunkBranch = state.trunk_branch ?? 'agent/trunk';
-              const childWorktree = path.join(childDir, 'worktree');
+      if (issue.state !== 'in_progress') continue;
+      // Check if child is completed
+      const childDir = path.join(aloopRoot, 'sessions', issue.child_session);
+      const childStatusFile = path.join(childDir, 'status.json');
+      if (existsSync(childStatusFile)) {
+        try {
+          const childStatus = JSON.parse(await readFile(childStatusFile, 'utf8'));
+          if (childStatus.state === 'completed' || childStatus.state === 'stopped') {
+            const branch = `aloop/issue-${issue.number}`;
+            const trunkBranch = state.trunk_branch ?? 'agent/trunk';
+            const childWorktree = path.join(childDir, 'worktree');
 
-              // Clean working artifacts from branch before PR
-              const artifacts = ['TODO.md', 'STEERING.md', 'QA_COVERAGE.md', 'QA_LOG.md', 'REVIEW_LOG.md'];
-              for (const art of artifacts) {
-                spawnSync('git', ['-C', childWorktree, 'rm', '--cached', '--ignore-unmatch', art], { encoding: 'utf8' });
-              }
-              const rmStatus = spawnSync('git', ['-C', childWorktree, 'status', '--porcelain'], { encoding: 'utf8' });
-              if (rmStatus.stdout?.trim()) {
-                spawnSync('git', ['-C', childWorktree, 'commit', '-m', 'chore: remove working artifacts from PR'], { encoding: 'utf8' });
-                spawnSync('git', ['-C', childWorktree, 'push', 'origin', 'HEAD'], { encoding: 'utf8' });
-              }
+            // Clean working artifacts from branch before PR
+            const artifacts = ['TODO.md', 'STEERING.md', 'QA_COVERAGE.md', 'QA_LOG.md', 'REVIEW_LOG.md'];
+            for (const art of artifacts) {
+              spawnSync('git', ['-C', childWorktree, 'rm', '--cached', '--ignore-unmatch', art], { encoding: 'utf8' });
+            }
+            const rmStatus = spawnSync('git', ['-C', childWorktree, 'status', '--porcelain'], { encoding: 'utf8' });
+            if (rmStatus.stdout?.trim()) {
+              spawnSync('git', ['-C', childWorktree, 'commit', '-m', 'chore: remove working artifacts from PR'], { encoding: 'utf8' });
+              spawnSync('git', ['-C', childWorktree, 'push', 'origin', 'HEAD'], { encoding: 'utf8' });
+            }
 
               // Create PR
               const prResult = spawnSync('gh', [
@@ -522,27 +522,25 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
                 '--head', branch,
                 '--base', trunkBranch,
               ], { encoding: 'utf8' });
-
-              if (prResult.status === 0 && prResult.stdout) {
-                const urlMatch = prResult.stdout.match(/\/pull\/(\d+)/);
-                const prNum = urlMatch ? parseInt(urlMatch[1], 10) : 0;
-                if (prNum > 0) {
-                  issue.pr_number = prNum;
-                  issue.state = 'pr_open';
-                  issue.status = 'In review';
-                  stateChanged = true;
-                  console.log(`[process-requests] Created PR #${issue.pr_number} for issue #${issue.number}`);
-                }
-              } else {
-                const err = prResult.stderr?.trim() ?? '';
-                // Don't spam — only log if it's not "no commits" or "already exists"
-                if (!err.includes('already exists') && !err.includes('No commits')) {
-                  console.error(`[process-requests] PR create failed for #${issue.number}: ${err.substring(0, 100)}`);
-                }
+            if (prResult.status === 0 && prResult.stdout) {
+              const urlMatch = prResult.stdout.match(/\/pull\/(\d+)/);
+              const prNum = urlMatch ? parseInt(urlMatch[1], 10) : 0;
+              if (prNum > 0) {
+                issue.pr_number = prNum;
+                issue.state = 'pr_open';
+                issue.status = 'In review';
+                stateChanged = true;
+                console.log(`[process-requests] Created PR #${issue.pr_number} for issue #${issue.number}`);
+              }
+            } else {
+              const err = prResult.stderr?.trim() ?? '';
+              // Don't spam — only log if it's not "no commits" or "already exists"
+              if (!err.includes('already exists') && !err.includes('No commits')) {
+                console.error(`[process-requests] PR create failed for #${issue.number}: ${err.substring(0, 100)}`);
               }
             }
-          } catch { /* skip */ }
-        }
+          }
+        } catch { /* skip */ }
       }
     }
   }
@@ -976,6 +974,8 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
       },
       platform: process.platform,
       env: process.env as Record<string, string | undefined>,
+      repo: repo ?? undefined,
+      execGh,
     },
   };
 

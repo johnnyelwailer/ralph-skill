@@ -13,6 +13,8 @@ interface LoopPlan {
   version: number;
   finalizer: string[];
   finalizerPosition: number;
+  cycleCount: number;
+  lastPeriodicCycle: number;
 }
 
 interface CompileLoopPlanOptions {
@@ -451,6 +453,8 @@ export async function compileLoopPlan(
     version: 1,
     finalizer,
     finalizerPosition: 0,
+    cycleCount: 0,
+    lastPeriodicCycle: 0,
   };
 
   const planPath = path.join(sessionDir, 'loop-plan.json');

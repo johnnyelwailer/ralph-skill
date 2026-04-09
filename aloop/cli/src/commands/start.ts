@@ -7,10 +7,12 @@ import { discoverWorkspace, type DiscoveryResult } from './project.js';
 import { resolveHomeDir } from './session.js';
 import type { OutputMode } from './status.js';
 import { compileLoopPlan } from './compile-loop-plan.js';
+import { orchestrateCommand, type OrchestrateCommandOptions } from './orchestrate.js';
 
 type ProviderName = 'claude' | 'codex' | 'gemini' | 'copilot' | 'opencode';
 type LoopProvider = ProviderName | 'round-robin';
 type LoopMode = 'plan' | 'build' | 'review' | 'plan-build' | 'plan-build-review' | 'single';
+type StartMode = LoopMode | 'orchestrate';
 type LaunchMode = 'start' | 'restart' | 'resume';
 type StartMonitorMode = 'dashboard' | 'terminal' | 'none';
 
@@ -379,7 +381,7 @@ function assertLoopMode(value: string): LoopMode {
   return normalized;
 }
 
-function resolveConfiguredStartMode(value: string): LoopMode {
+function resolveConfiguredStartMode(value: string): StartMode {
   const normalized = value.trim().toLowerCase();
   if (normalized === 'loop') {
     return 'plan-build-review';
@@ -388,7 +390,7 @@ function resolveConfiguredStartMode(value: string): LoopMode {
     return 'single';
   }
   if (normalized === 'orchestrate') {
-    throw new Error('Invalid mode: orchestrate (use `aloop orchestrate` for orchestrator sessions).');
+    return 'orchestrate';
   }
   return assertLoopMode(value);
 }
@@ -713,9 +715,47 @@ export async function startCommandWithDeps(options: StartCommandOptions = {}, de
   }
 
   const forcedMode = resolveModeFromFlags(options);
-  const resolvedMode = forcedMode
+  const resolvedMode: StartMode = forcedMode
     ?? (options.mode ? resolveConfiguredStartMode(options.mode) : null)
     ?? resolveConfiguredStartMode(String(selectValue(projectConfig.values.mode, globalConfig.values.default_mode, 'plan-build-review')));
+
+  // Dispatch to orchestrate mode when config or CLI says mode=orchestrate
+  if (resolvedMode === 'orchestrate') {
+    const orchOptions: OrchestrateCommandOptions = {
+      homeDir: options.homeDir,
+      projectRoot: options.projectRoot,
+      output: options.output,
+    };
+    if (options.maxIterations != null) {
+      orchOptions.maxIterations = String(options.maxIterations);
+    }
+    if (options.launch === 'resume' && options.sessionId) {
+      orchOptions.plan = options.sessionId;
+    }
+    await orchestrateCommand(orchOptions);
+    // Return a sentinel result indicating orchestrate dispatch
+    return {
+      session_id: 'orchestrate-dispatched',
+      session_dir: '',
+      prompts_dir: '',
+      work_dir: discovery.project.root,
+      worktree: false,
+      worktree_path: null,
+      branch: null,
+      provider: 'claude' as LoopProvider,
+      mode: 'plan-build-review' as LoopMode,
+      launch_mode: 'start' as LaunchMode,
+      max_iterations: 0,
+      max_stuck: 0,
+      pid: 0,
+      started_at: deps.now().toISOString(),
+      monitor_mode: 'none' as StartMonitorMode,
+      monitor_auto_open: false,
+      monitor_pid: null,
+      dashboard_url: null,
+      warnings: [],
+    };
+  }
 
   const launchMode: LaunchMode = options.launch ? assertLaunchMode(options.launch) : 'start';
 
@@ -1092,7 +1132,7 @@ export async function startCommandWithDeps(options: StartCommandOptions = {}, de
       worktree_path: worktreePath,
       branch: branchName,
       provider: selectedProvider,
-      mode: resolvedMode,
+      mode: resolvedMode as LoopMode,
       launch_mode: launchMode,
       max_iterations: maxIterations,
       max_stuck: maxStuck,
@@ -1125,6 +1165,11 @@ export async function startCommand(sessionIdArg: string | undefined, options: St
   }
   const outputMode = options.output ?? 'text';
   const result = await startCommandWithDeps(options, deps);
+
+  // orchestrateCommand handles its own output
+  if (result.session_id === 'orchestrate-dispatched') {
+    return;
+  }
 
   if (outputMode === 'json') {
     console.log(JSON.stringify(result, null, 2));

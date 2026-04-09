@@ -46,6 +46,7 @@ param(
     [string]$LaunchMode = 'start',
 
     [switch]$BackupEnabled,
+    [switch]$NoTaskExit,
     [switch]$DryRun,
     [switch]$DangerouslySkipContainer
 )
@@ -378,6 +379,7 @@ function Resolve-CyclePromptFromPlan {
             $script:finalizerLength = 0
         }
         $script:finalizerPosition = if ($null -ne $plan.finalizerPosition) { [int]$plan.finalizerPosition } else { 0 }
+        $script:cycleCount = if ($null -ne $plan.cycleCount) { [int]$plan.cycleCount } else { 0 }
         return (-not [string]::IsNullOrWhiteSpace($script:resolvedPromptName))
     } catch {
         return $false
@@ -497,6 +499,11 @@ function Persist-LoopPlanState {
         $plan.allTasksMarkedDone = [bool]$script:allTasksMarkedDone
         $plan.lastPlanCommit = [string]$script:lastPlanCommit
         $plan.finalizerPosition = [int]$script:finalizerPosition
+        if ($null -eq $plan.cycleCount) {
+            $plan | Add-Member -NotePropertyName cycleCount -NotePropertyValue ([int]$script:cycleCount) -Force
+        } else {
+            $plan.cycleCount = [int]$script:cycleCount
+        }
         $plan | ConvertTo-Json -Depth 12 | Set-Content -Encoding utf8 $loopPlanFile
     } catch { }
 }
@@ -841,6 +848,7 @@ function Get-PlanLines {
 }
 
 function Check-AllTasksComplete {
+    if ($NoTaskExit) { return $false }
     $lines = Get-PlanLines
     if ($lines.Count -eq 0) { return $false }
     $incomplete = ($lines | Where-Object { $_ -match '^\s*-\s+\[ \]' }).Count
@@ -963,7 +971,10 @@ $stuckState = @{ LastTask = ""; StuckCount = 0 }
 $script:allTasksMarkedDone = $false
 $script:lastProofIteration = 0
 $script:lastProviderOutputText = $null
+$script:iterationCommitCount = 0
+$script:iterationCommitLog = ""
 $script:cyclePosition = 0
+$script:cycleCount = 0
 $script:cycleLength = 0
 $script:resolvedPromptName = $null
 $script:finalizerMode = $false
@@ -978,12 +989,17 @@ $script:phaseRetryState = @{
 $script:maxPhaseRetries = if ($Provider -eq 'round-robin') { [Math]::Max(2, $RoundRobinProviders.Count * 2) } else { 2 }
 
 function Advance-CyclePosition {
+    $prevPos = $script:cyclePosition
     if ($script:cycleLength -gt 0) {
         $script:cyclePosition = ($script:cyclePosition + 1) % $script:cycleLength
     } elseif ($Mode -eq 'plan-build') {
         $script:cyclePosition = ($script:cyclePosition + 1) % 2
     } elseif ($Mode -eq 'plan-build-review') {
         $script:cyclePosition = ($script:cyclePosition + 1) % 8
+    }
+    # Increment cycle count when position wraps to 0 (new cycle begins)
+    if ($script:cyclePosition -eq 0 -and $prevPos -ne 0) {
+        $script:cycleCount++
     }
 }
 
@@ -1700,25 +1716,16 @@ function Print-IterationSummary {
 
     Push-Location $WorkDir
     try {
-        $lastCommit = ""
-        $lastCommitTime = 0
-        try { $lastCommit = git log -1 --format="%h %s" } catch { }
-        try { $lastCommitTime = [int](git log -1 --format="%ct") } catch { }
-
-        $commitMsg = ""
-        if ($lastCommitTime -ge $IterationStart) { $commitMsg = $lastCommit }
-
-        $newFiles = @()
-        $modifiedFiles = @()
-        if ($commitMsg) {
-            try {
-                $changes = git diff-tree --no-commit-id --name-status -r HEAD
-                foreach ($line in $changes) {
-                    if ($line -match '^A\s+(.*)$') { $newFiles += $Matches[1] }
-                    if ($line -match '^M\s+(.*)$') { $modifiedFiles += $Matches[1] }
-                }
-            } catch { }
-        }
+        # Collect ALL commits made during this iteration (agent may commit multiple times)
+        $commits = @()
+        $commitCount = 0
+        try {
+            $rawCommits = git log --after="$($IterationStart - 1)" --format="%h %s" 2>$null
+            if ($rawCommits) {
+                $commits = @($rawCommits) | Where-Object { $_ -and $_.Trim() }
+                $commitCount = $commits.Count
+            }
+        } catch { }
 
         $lines = Get-PlanLines
         $completed = ($lines | Where-Object { $_ -match '^\s*-\s+\[x\]' }).Count
@@ -1727,14 +1734,22 @@ function Print-IterationSummary {
 
         Write-Host ""
         Write-Host "=== Iteration $Iteration Complete (${mins}m ${secs}s) ===" -ForegroundColor Green
-        if ($commitMsg) {
-            Write-Host "Commit: $commitMsg"
-            Write-Host ("Files: +" + $newFiles.Count + " new, ~" + $modifiedFiles.Count + " modified")
+        if ($commitCount -gt 0) {
+            if ($commitCount -eq 1) {
+                Write-Host "Commit: $($commits[0])"
+            } else {
+                Write-Host "Commits ($commitCount):"
+                foreach ($c in $commits) { Write-Host "  $c" }
+            }
         } else {
-            Write-Warning "No commit this iteration"
+            Write-Warning "No commits this iteration"
         }
         Write-Host ("Progress: $completed/$total tasks ($pct%)")
         Write-Host "============================================"
+
+        # Export for iteration_complete log entry (pipe-separated for structured logging)
+        $script:iterationCommitCount = $commitCount
+        $script:iterationCommitLog = ($commits | Select-Object -First 10) -join '|'
     }
     finally {
         Pop-Location
@@ -2136,6 +2151,16 @@ try {
         }
         $iterationProvider = Resolve-IterationProvider -IterationNumber $iteration
 
+        # Reset per-iteration commit tracking
+        $script:iterationCommitCount = 0
+        $script:iterationCommitLog = ""
+
+        # Capture HEAD before iteration for auto-push detection
+        $headBefore = ""
+        Push-Location $WorkDir
+        try { $headBefore = (git rev-parse HEAD 2>$null) } catch { }
+        Pop-Location
+
         if (Run-QueueIfPresent -IterationProvider $iterationProvider) {
             continue
         }
@@ -2329,10 +2354,15 @@ try {
             Print-IterationSummary -IterationStart $iterationStart -Iteration $iteration
 
             # Extract token/cost usage for opencode provider (best-effort)
+            $_iterDuration = "$([int][DateTimeOffset]::Now.ToUnixTimeSeconds() - $iterationStart)s"
             $usageData = @{
                 iteration = $iteration
                 mode = $iterationMode
                 provider = $iterationProvider
+                model = [string]$script:frontmatter.model
+                duration = $_iterDuration
+                commits = [string]$script:iterationCommitCount
+                commit_log = [string]$script:iterationCommitLog
             }
             if ($iterationProvider -eq 'opencode') {
                 $ocUsage = Extract-OpenCodeUsage
@@ -2360,6 +2390,21 @@ try {
                 error = "$_"
             }
         }
+
+        # Auto-push to remote after commits (orchestrator child loops)
+        Push-Location $WorkDir
+        try {
+            $headAfter = ""
+            try { $headAfter = (git rev-parse HEAD 2>$null) } catch { }
+            if ($headAfter -and $headBefore -and $headAfter -ne $headBefore) {
+                $hasRemote = $false
+                try { git remote get-url origin 2>$null | Out-Null; $hasRemote = $true } catch { }
+                if ($hasRemote) {
+                    git push -u origin HEAD 2>&1 | Select-Object -Last 1
+                }
+            }
+        } catch { }
+        finally { Pop-Location }
 
         Wait-ForRequests
         Start-Sleep -Seconds 3

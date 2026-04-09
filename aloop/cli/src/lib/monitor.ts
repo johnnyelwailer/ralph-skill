@@ -196,6 +196,41 @@ export async function monitorSessionState(options: MonitorOptions): Promise<void
     }
   }
 
+  // Periodic spec-gap + docs scheduling: every 2nd cycle (cycle 2, 4, 6...)
+  // Queue spec-gap before plan and docs after qa on even cycles.
+  const cycleCount = (plan as Record<string, unknown>).cycleCount as number | undefined ?? 0;
+  const lastPeriodicCycle = (plan as Record<string, unknown>).lastPeriodicCycle as number | undefined ?? 0;
+  if (cycleCount >= 2 && cycleCount % 2 === 0 && lastPeriodicCycle < cycleCount
+      && plan.cyclePosition === 0 && !plan.allTasksMarkedDone) {
+    const queueEntries = await fs.readdir(queueDir).catch(() => []);
+    const specGapAlreadyQueued = queueEntries.some(e => e.includes('spec-gap') || e.includes('PROMPT_spec-gap'));
+    if (!specGapAlreadyQueued) {
+      const specGapPath = path.join(options.promptsDir, 'PROMPT_spec-gap.md');
+      if (existsSync(specGapPath)) {
+        const content = await fs.readFile(specGapPath, 'utf8');
+        await writeQueueOverride(options.sessionDir, '000-PROMPT_spec-gap', content, {
+          agent: 'spec-gap',
+          reason: `periodic_cycle_${cycleCount}`,
+          type: 'periodic_scheduling'
+        });
+        console.log(`[monitor] Periodic spec-gap queued for cycle ${cycleCount}.`);
+      }
+
+      const docsPath = path.join(options.promptsDir, 'PROMPT_docs.md');
+      if (existsSync(docsPath)) {
+        const docsContent = await fs.readFile(docsPath, 'utf8');
+        await writeQueueOverride(options.sessionDir, '005-PROMPT_docs', docsContent, {
+          agent: 'docs',
+          reason: `periodic_cycle_${cycleCount}`,
+          type: 'periodic_scheduling'
+        });
+        console.log(`[monitor] Periodic docs queued for cycle ${cycleCount}.`);
+      }
+
+      await mutateLoopPlan(options.sessionDir, { lastPeriodicCycle: cycleCount });
+    }
+  }
+
   const taskCounts = await getTodoTaskCounts(options.workdir);
   const allTasksDone = taskCounts !== null && taskCounts.incomplete === 0 && taskCounts.completed > 0;
 

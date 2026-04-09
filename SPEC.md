@@ -1574,7 +1574,7 @@ All markdown content (issue bodies, PR descriptions, comments, sub-specs) is pas
 | `close_issue` | `{number, reason}` | Closes issue with comment | None |
 | `create_pr` | `{head, base, title, body_file, issue_number}` | Creates PR via `gh pr create` (reads description from file), links to issue | Gate/review prompt |
 | `merge_pr` | `{number, strategy: "squash"\|"merge"\|"rebase"}` | Merges PR via `gh pr merge` | Downstream dispatch prompts |
-| `dispatch_child` | `{issue_number, branch, pipeline, sub_spec_file}` | Creates worktree, compiles child `loop-plan.json`, seeds sub-spec from file, launches child `loop.sh` | Monitor prompt |
+| `dispatch_child` | _Not used — dispatch is performed directly by the orchestrator runtime via `launchChildLoop()`, not via the request mechanism. This type is reserved but has no handler in `process-requests.ts`._ | N/A | N/A |
 | `steer_child` | `{issue_number, prompt_file}` | Copies prompt file to child's `queue/` | None |
 | `stop_child` | `{issue_number, reason}` | Sends SIGTERM to child loop PID | Cleanup prompt |
 | `post_comment` | `{issue_number, body_file}` | Posts comment on GitHub issue/PR (reads from file) | None |
@@ -1866,6 +1866,8 @@ The orchestrator scan agent identifies `Ready` sub-issues (Project status) and w
    - Creates worktree
    - Seeds child's working directory with sub-spec from issue body
    - Compiles child's `loop-plan.json` with implementation cycle (plan-build-proof-qa-review)
+   - Pushes branch to origin (best-effort: logs warning on failure, does not abort dispatch)
+   - Links branch to GH issue via REST API (`POST /repos/{repo}/issues/{n}/branches`), falling back to `gh issue develop` (best-effort: logs error on full failure, does not abort dispatch)
    - Launches child `loop.sh` instance
    - Sets Project status to `In progress`
 4. Remaining issues queue until a slot opens or dependencies merge
