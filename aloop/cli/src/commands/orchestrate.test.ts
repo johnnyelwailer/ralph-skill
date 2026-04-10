@@ -611,7 +611,7 @@ describe('applyDecompositionPlan', () => {
 
     for (const issue of result.issues) {
       assert.equal(issue.state, 'pending');
-      assert.equal(issue.status, 'Needs refinement');
+      assert.equal(issue.status, 'Needs decomposition');
       assert.equal(issue.dor_validated, false);
       assert.equal(issue.child_session, null);
       assert.equal(issue.pr_number, null);
@@ -736,9 +736,9 @@ describe('orchestrateCommandWithDeps with --plan', () => {
 
     await orchestrateCommandWithDeps({ plan: 'plan.json' }, deps);
 
-    // Regular issues from plan start at Needs refinement — sub-decomposition should NOT be queued
+    // Regular issues from plan start at Needs decomposition — sub-decomposition SHOULD be queued
     const queueFiles = Object.keys(mockDeps._writtenFiles).filter((p) => p.includes('/queue/sub-decompose-issue-'));
-    assert.equal(queueFiles.length, 0, 'Should NOT write sub-decompose queue prompts for regular plan issues');
+    assert.equal(queueFiles.length, 2, 'Should write sub-decompose queue prompts for regular plan issues');
   });
 
   it('applies estimate-results.json when present', async () => {
@@ -769,7 +769,7 @@ describe('orchestrateCommandWithDeps with --plan', () => {
     assert.equal(issue1!.dor_validated, true);
     assert.equal(issue1!.status, 'Ready');
     assert.equal(issue2!.dor_validated, false);
-    assert.equal(issue2!.status, 'Needs refinement');
+    assert.equal(issue2!.status, 'Needs decomposition');
   });
 
   it('throws when spec file does not exist', async () => {
