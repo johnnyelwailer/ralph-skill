@@ -490,10 +490,8 @@ else
 fi
 
 trap - RETURN
-PATH="$ORIGINAL_PATH"
-cleanup_gh_block
-rm -rf "$FAKE_PROVIDER_DIR"
-rm -f "$PROVIDER_PATH_MARKER" "$LOG_FILE" "$LOG_FILE.raw" "$COVERAGE_LOG_FILE"
+# Keep FAKE_PROVIDER_DIR and PATH active for subsequent tests (e.g. run_queue_if_present)
+# We will clean up at the very end of the script.
 
 # ---------------------------------------------------------------------------
 # Cycle resolution branches (resolve_cycle_prompt_from_plan)
@@ -953,6 +951,7 @@ rm -rf "$REQ_TMPDIR"
 # run_queue_if_present branches
 # ---------------------------------------------------------------------------
 
+PATH="$FAKE_PROVIDER_DIR:$ORIGINAL_PATH"
 QUEUE_TMPDIR="$(mktemp -d)"
 SESSION_DIR="$QUEUE_TMPDIR"
 WORK_DIR="$QUEUE_TMPDIR/work"
@@ -1071,6 +1070,15 @@ if [ "$coverage_percent" -lt "$MIN_BRANCH_COVERAGE" ]; then
     echo "FAIL: branch coverage is below threshold ($coverage_percent% < $MIN_BRANCH_COVERAGE%)"
     FAILED=1
 fi
+
+# ---------------------------------------------------------------------------
+# Cleanup
+# ---------------------------------------------------------------------------
+
+PATH="$ORIGINAL_PATH"
+cleanup_gh_block
+rm -rf "$FAKE_PROVIDER_DIR"
+rm -f "$PROVIDER_PATH_MARKER" "$LOG_FILE" "$LOG_FILE.raw" "$COVERAGE_LOG_FILE"
 
 if [ "$FAILED" -ne 0 ]; then
     echo "Shell branch-coverage harness failed."
