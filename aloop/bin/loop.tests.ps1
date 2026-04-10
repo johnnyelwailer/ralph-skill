@@ -1096,25 +1096,26 @@ Describe 'loop.ps1 — finalizer QA coverage gate behavioral' {
         }
     }
 
-    It 'passes when untested coverage is <=30% and there are no FAIL rows' {
+    It 'passes when untested coverage is <=20% and there are no FAIL rows' {
         @'
 | Feature | Component | Last Tested | Commit | Status | Criteria Met | Notes |
 | --- | --- | --- | --- | --- | --- | --- |
 | A | c | 2026-03-22 | abc | PASS | 1/1 | ok |
-| B | c | 2026-03-22 | abc | UNTESTED | 0/1 | pending |
+| B | c | 2026-03-22 | abc | PASS | 1/1 | ok |
 | C | c | 2026-03-22 | abc | PASS | 1/1 | ok |
 | D | c | 2026-03-22 | abc | PASS | 1/1 | ok |
+| E | c | 2026-03-22 | abc | UNTESTED | 0/1 | pending |
 '@ | Set-Content -Path (Join-Path $script:WorkDir 'QA_COVERAGE.md')
 
         $result = Check-FinalizerQaCoverageGate
 
         $result | Should -Be $true
         $script:finalizerQaGateReason | Should -Be 'qa_coverage_pass'
-        $script:finalizerQaGateMessage | Should -Match 'UNTESTED=1/4, FAIL=0'
+        $script:finalizerQaGateMessage | Should -Match 'UNTESTED=1/5, FAIL=0'
         (Get-Content -Path $script:planFile -Raw) | Should -Not -Match '\[finalizer-qa-gate\]'
     }
 
-    It 'blocks when UNTESTED rows exceed 30 percent' {
+    It 'blocks when UNTESTED rows exceed 20 percent' {
         @'
 | Feature | Component | Last Tested | Commit | Status | Criteria Met | Notes |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -1129,7 +1130,7 @@ Describe 'loop.ps1 — finalizer QA coverage gate behavioral' {
         $result | Should -Be $false
         $script:finalizerQaGateReason | Should -Be 'qa_coverage_blocked'
         $script:finalizerQaGateMessage | Should -Match 'UNTESTED=2/3, FAIL=0'
-        $todoContent | Should -Match 'Reduce UNTESTED QA coverage to <=30%'
+        $todoContent | Should -Match 'Reduce UNTESTED QA coverage to <=20%'
     }
 
     It 'blocks when FAIL rows exist and appends a remediation task per failing feature' {

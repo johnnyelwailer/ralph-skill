@@ -916,9 +916,9 @@ function Check-FinalizerQaCoverageGate {
         }
     }
 
-    if ($untestedPct -gt 30) {
+    if ($untestedPct -gt 20) {
         $blocked = $true
-        Append-PlanTaskIfMissing "[qa/P1] [finalizer-qa-gate] Reduce UNTESTED QA coverage to <=30% (currently $untested/$total, $untestedPct%)"
+        Append-PlanTaskIfMissing "[qa/P1] [finalizer-qa-gate] Reduce UNTESTED QA coverage to <=20% (currently $untested/$total, $untestedPct%)"
     }
 
     if ($blocked) {

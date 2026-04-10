@@ -57,9 +57,10 @@ PLAN
 | Feature | Component | Last Tested | Commit | Status | Criteria Met | Notes |
 | --- | --- | --- | --- | --- | --- | --- |
 | A | c | 2026-03-22 | abc | PASS | 1/1 | ok |
-| B | c | 2026-03-22 | abc | UNTESTED | 0/1 | pending |
+| B | c | 2026-03-22 | abc | PASS | 1/1 | ok |
 | C | c | 2026-03-22 | abc | PASS | 1/1 | ok |
 | D | c | 2026-03-22 | abc | PASS | 1/1 | ok |
+| E | c | 2026-03-22 | abc | UNTESTED | 0/1 | pending |
 COV
 
     if ! check_finalizer_qa_coverage_gate; then
@@ -94,7 +95,7 @@ COV
         return 1
     fi
 
-    assert_contains "$PLAN_FILE" "Reduce UNTESTED QA coverage to <=30%" "should append untested coverage blocker task"
+    assert_contains "$PLAN_FILE" "Reduce UNTESTED QA coverage to <=20%" "should append untested coverage blocker task"
     rm -rf "$tmp"
     return 0
 }
@@ -150,8 +151,8 @@ PLAN
     return 0
 }
 
-run_case "finalizer QA gate passes at <=30% untested and 0 fail" case_gate_passes_when_threshold_is_met
-run_case "finalizer QA gate blocks when untested >30%" case_blocks_when_untested_exceeds_threshold
+run_case "finalizer QA gate passes at <=20% untested and 0 fail" case_gate_passes_when_threshold_is_met
+run_case "finalizer QA gate blocks when untested >20%" case_blocks_when_untested_exceeds_threshold
 run_case "finalizer QA gate blocks when FAIL rows exist" case_blocks_when_fail_rows_exist
 run_case "finalizer QA gate skips enforcement when QA_COVERAGE.md is missing" case_skips_enforcement_when_coverage_file_missing
 

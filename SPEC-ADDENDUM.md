@@ -947,9 +947,9 @@ The finalizer's QA pass must check coverage before allowing exit:
 ```
 Before marking allTasksMarkedDone:
 1. Read QA_COVERAGE.md
-2. If UNTESTED features > 30% of total: abort finalizer, file [qa/P1] task
+2. If UNTESTED features > 20% of total: abort finalizer, file [qa/P1] task
 3. If any FAIL features: abort finalizer, file [qa/P1] task for each
-4. Only allow exit when: 0 FAIL, <20% UNTESTED, all P1 criteria met
+4. Only allow exit when: 0 FAIL, <=20% UNTESTED, all P1 criteria met
 ```
 
 ### Cross-Reference
