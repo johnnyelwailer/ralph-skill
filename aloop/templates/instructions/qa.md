@@ -52,11 +52,12 @@ Test 3-5 features from the spec that are claimed as complete. Verify they actual
 
 4. **Test Each Feature**
    For each feature:
+   - **Execute the Criterion Plan**: Systematically run every command/action defined in step 2.
    - **Happy path**: Does it work as the spec describes?
    - **Error paths**: What happens with wrong inputs, missing files, bad config?
    - **Edge cases**: Empty inputs, very long inputs, special characters, concurrent runs
    - **Integration**: Does it work with other features? Does it break anything?
-   - Log EVERY command with exact stdout/stderr/exit code
+   - **Log evidence**: Record exact stdout/stderr/exit code and note pass/fail for each criterion.
 
 5. **File Bugs (no duplicates!)**
    Before filing, **read ALL existing `[qa]` tasks in TODO.md**. If the same bug is already filed (even from a prior iteration), do NOT file it again — instead, add a brief re-test note to the existing entry (e.g., "still failing at iter N").
@@ -93,16 +94,20 @@ Test 3-5 features from the spec that are claimed as complete. Verify they actual
    - Features tested: 3
 
    ### Target Selection Reasoning
-   - Feature A: P1 (UNTESTED)
-   - Feature B: P2 (FAIL)
-   - Feature C: P3 (Criteria Met 1/3)
+   - Feature A: Selected as P1 (UNTESTED)
+   - Feature B: Selected as P2 (re-test after previous FAIL)
+   - Feature C: Selected as P3 (Criteria Met 1/3)
 
    ### Results
-   - PASS: aloop start, aloop status
-   - FAIL: aloop setup --spec (bug filed)
+   - PASS: Feature A
+     - [x] Criterion 1: PASS
+     - [x] Criterion 2: PASS
+   - FAIL: Feature B
+     - [x] Criterion 1: PASS
+     - [ ] Criterion 2: FAIL (bug filed)
 
    ### Bugs Filed
-   - [qa/P1] aloop setup --spec flag ignored
+   - [qa/P1] Feature B criterion 2 failed: <description>
 
    ### Command Transcript
    (full commands with stdout/stderr/exit codes)
