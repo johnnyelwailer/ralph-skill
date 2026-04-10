@@ -49,6 +49,34 @@ describe('syncChildBranches', () => {
     assert.match(deps.writtenFiles[queueKey!], /Rebase onto/);
   });
 
+  it('does not duplicate frontmatter when PROMPT_merge.md exists', async () => {
+    const issue: any = {
+      number: 42, title: 'Test', wave: 1, state: 'in_progress',
+      child_session: 'child-42', pr_number: 100, depends_on: [],
+    };
+    const mergePromptContent = '---\nagent: merge\nprovider: claude\n---\n\n# Existing Prompt';
+    const deps = createMockSyncDeps({
+      existsSync: (p: string) => p.includes('worktree') || p.includes('PROMPT_merge.md'),
+      readFile: async () => mergePromptContent,
+      spawnSync: (_cmd: string, args: string[]) => {
+        if (args.includes('merge-base')) return { status: 0, stdout: 'aaa1110\n', stderr: '' };
+        if (args.includes('rev-parse')) return { status: 0, stdout: 'bbb2220\n', stderr: '' };
+        if (args.includes('rebase') && args.includes('--abort')) return { status: 0, stdout: '', stderr: '' };
+        if (args.includes('rebase')) return { status: 1, stdout: '', stderr: 'CONFLICT' };
+        return { status: 0, stdout: '', stderr: '' };
+      },
+    });
+
+    await syncChildBranches([issue], 'agent/trunk', '/aloop', deps);
+
+    const queueKey = Object.keys(deps.writtenFiles).find(k => k.endsWith('000-merge-conflict.md'));
+    const content = deps.writtenFiles[queueKey!];
+    const frontmatterCount = (content.match(/---/g) || []).length;
+    assert.equal(frontmatterCount, 2, 'Should only have one set of frontmatter (2 separators)');
+    assert.match(content, /Existing Prompt/);
+    assert.match(content, /Rebase onto/);
+  });
+
   it('does not set needs_redispatch or write queue file on rebase success', async () => {
     const issue: any = {
       number: 42, title: 'Test', wave: 1, state: 'in_progress',

@@ -269,9 +269,16 @@ export async function syncChildBranches(
       const mergeQueueFile = path.join(childDir, 'queue', '000-merge-conflict.md');
       if (!deps.existsSync(mergeQueueFile)) {
         const mergePromptPath = path.join(childDir, 'prompts', 'PROMPT_merge.md');
-        const mergePrompt = deps.existsSync(mergePromptPath) ? await deps.readFile(mergePromptPath, 'utf8') : '# Merge Conflict Resolution';
+        let content = '';
+        if (deps.existsSync(mergePromptPath)) {
+          content = await deps.readFile(mergePromptPath, 'utf8');
+        } else {
+          content = `---\nagent: merge\nreasoning: high\n---\n\n# Merge Conflict Resolution\n`;
+        }
+        content += `\n\n## Conflict\n\nRebase onto \`origin/${trunkBranch}\` failed.\nRun \`git fetch origin ${trunkBranch} && git rebase origin/${trunkBranch}\`, resolve conflicts, then \`git rebase --continue && git push origin HEAD --force-with-lease\`.\n`;
+
         await deps.mkdir(path.join(childDir, 'queue'), { recursive: true });
-        await deps.writeFile(mergeQueueFile, `---\nagent: merge\nreasoning: high\n---\n\n${mergePrompt}\n\n## Conflict\n\nRebase onto \`origin/${trunkBranch}\` failed.\nRun \`git fetch origin ${trunkBranch} && git rebase origin/${trunkBranch}\`, resolve conflicts, then \`git rebase --continue && git push origin HEAD --force-with-lease\`.\n`, 'utf8');
+        await deps.writeFile(mergeQueueFile, content, 'utf8');
         console.log(`[process-requests] Merge conflict on #${issue.number} — queued merge agent`);
         // Trigger child restart so it processes the queued merge agent
         (issue as any).needs_redispatch = true;
