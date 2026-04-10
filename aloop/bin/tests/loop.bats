@@ -108,3 +108,10 @@ teardown() {
     [ "$status" -ne 0 ]
     [[ "$output" == *"Usage: "* ]]
 }
+
+@test "15. Default --provider should be claude" {
+    # The script prints "Provider: $PROVIDER" before it fails due to missing prompt files.
+    run bash "$LOOP_SH" --prompts-dir "$PROMPTS_DIR" --session-dir "$SESSION_DIR" --work-dir "$WORK_DIR"
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"Provider: claude"* ]]
+}
