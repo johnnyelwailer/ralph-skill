@@ -465,6 +465,8 @@ function getContentType(filePath: string): string {
       return 'image/svg+xml';
     case '.ico':
       return 'image/x-icon';
+    case '.txt':
+      return 'text/plain; charset=utf-8';
     default:
       return 'application/octet-stream';
   }

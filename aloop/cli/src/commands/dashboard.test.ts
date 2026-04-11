@@ -1763,11 +1763,14 @@ test('getContentType covers various extensions', async () => {
     { name: 't.js', type: 'application/javascript; charset=utf-8' },
     { name: 't.mjs', type: 'application/javascript; charset=utf-8' },
     { name: 't.json', type: 'application/json; charset=utf-8' },
+    { name: 't.png', type: 'image/png' },
     { name: 't.jpg', type: 'image/jpeg' },
+    { name: 't.jpeg', type: 'image/jpeg' },
     { name: 't.gif', type: 'image/gif' },
     { name: 't.webp', type: 'image/webp' },
     { name: 't.svg', type: 'image/svg+xml' },
     { name: 't.ico', type: 'image/x-icon' },
+    { name: 't.txt', type: 'text/plain; charset=utf-8' },
     { name: 't.unknown', type: 'application/octet-stream' },
   ];
 
