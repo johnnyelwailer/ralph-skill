@@ -11,7 +11,10 @@ Test 3-5 features from the spec that are claimed as complete. Verify they actual
 0a. **Study the specification**: {{SPEC_FILES}} — understand what the product is SUPPOSED to do. This is your source of truth for expected behavior.
 0b. **Study README.md and docs/**: Read the README and any docs as a new user would. These are testable artifacts — if the README says "run X" and X doesn't work, that's a bug. Follow setup instructions, quickstart guides, and usage examples literally.
 0c. **Study the plan**: Read @TODO.md to find recently completed `[x]` tasks — these are your test candidates.
-0d. **Check coverage gaps**: Read @QA_COVERAGE.md (create if missing) to find features marked "never" tested or previously "FAIL".
+0d. **Check coverage gaps**: Read @QA_COVERAGE.md.
+   - **If missing**: Create it. Initialize it by reading {{SPEC_FILES}} and extracting all top-level features/capabilities. Mark all as `UNTESTED`.
+   - **Baseline**: The baseline features should come from the "Architecture" or "Features" sections of the spec. Each feature becomes a row in the coverage table.
+   - **Use coverage gaps to find features marked "never" tested or previously "FAIL"**.
 0e. **Find the dashboard URL**: Read the session's `meta.json` (`$ALOOP_SESSION_DIR/meta.json` or `~/.aloop/sessions/*/meta.json`) for the `dashboard_url` field (typically `http://localhost:4040`).
 {{REFERENCE_FILES}}
 
@@ -57,12 +60,12 @@ Test 3-5 features from the spec that are claimed as complete. Verify they actual
    QA bugs are high priority — they get fixed before new features.
 
 5. **Update QA Coverage**
-   Update @QA_COVERAGE.md with test results:
+   Update @QA_COVERAGE.md with test results. Use the following 7-column format (pipe-delimited):
    ```
-   | Feature | Last Tested | Commit | Result | Notes |
-   |---------|-------------|--------|--------|-------|
-   | aloop start | 2026-03-11 | abc1234 | PASS | happy path + error paths |
-   | aloop setup --spec | 2026-03-11 | abc1234 | FAIL | --spec flag ignored, bug filed |
+   | Feature | Component | Last Tested | Commit | Status | Criteria Met | Notes |
+   |---------|-----------|-------------|--------|--------|--------------|-------|
+   | aloop start | cli | 2026-03-11 | abc1234 | PASS | 2/2 | happy path + error paths |
+   | aloop setup --spec | cli | 2026-03-11 | abc1234 | FAIL | 0/1 | --spec flag ignored, bug filed |
    ```
 
 6. **Write Session Log**

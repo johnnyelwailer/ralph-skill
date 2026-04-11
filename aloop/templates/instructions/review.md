@@ -8,10 +8,11 @@ Audit the last build iteration's changes against 10 quality gates. Write actiona
 
 ## Process
 
-0a. Study specification files: SPEC.md
+0a. Study specification files: SPEC.md, SPEC-ADDENDUM.md
 0b. Study @CONSTITUTION.md — non-negotiable architectural rules. Verify the build doesn't violate any.
 0c. Study @TODO.md to understand what was just built (look for recently completed tasks)
-0c. Study @REVIEW_LOG.md to see your prior review history (if the file exists)
+0d. Study @REVIEW_LOG.md to see your prior review history (if the file exists)
+0e. Study @QA_COVERAGE.md and @QA_LOG.md for Gate 10 verification
 RESEARCH.md
 
 1. Read the git log to identify files changed in the last build commit(s)
@@ -136,9 +137,10 @@ RESEARCH.md
 
 - **Read `QA_COVERAGE.md`** — compute coverage percentage as `(PASS + FAIL) / total features`
 - If coverage `< 30%`: FAIL — `"QA coverage critically low, prioritize QA iterations"`
-- **Read `QA_LOG.md`** — determine whether bugs from prior iterations are being fixed
-- If any `[qa/P1]` bug is outstanding for `>3` iterations: FAIL — `"Stale QA bugs not addressed"`
-- Require a trend statement: is coverage growing or shrinking?
+- **Read `QA_LOG.md` and `REVIEW_LOG.md`** — determine whether bugs from prior iterations are being fixed
+- **Bug Fix Rate**: If any `[qa/P1]` bug is outstanding for `>3` iterations (check `QA_LOG.md` history or `TODO.md` notes): FAIL — `"Stale QA bugs not addressed"`
+- **Coverage Trend**: Compare current coverage with the last coverage percentage recorded in `REVIEW_LOG.md`. Is coverage growing or shrinking?
+- **Mandatory Trend Statement**: Your review entry MUST include a trend statement in the verdict: "QA Coverage: X% (Trend: [UP/DOWN/STABLE] from Y% at iter N)".
 
 ## Rejection Flow
 
