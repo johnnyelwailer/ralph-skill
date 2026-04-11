@@ -6,7 +6,7 @@
 
 ## Spec-Gap Analysis Findings
 
-- [ ] **[spec-gap] P2 — CLAUDE_MODEL default drift between config.yml and loop.sh**
+- [x] **[spec-gap] P2 — CLAUDE_MODEL default drift between config.yml and loop.sh**
   - config.yml (line 21) says `claude: opus` and is the documented single source of truth for default model IDs
   - loop.sh line 33 defaults to `CLAUDE_MODEL="${ALOOP_CLAUDE_MODEL:-sonnet}"` — should be `opus`
   - loop.ps1 line 34 correctly defaults to `$ClaudeModel = 'opus'`
