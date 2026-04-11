@@ -64,8 +64,8 @@ jobs:
         working-directory: aloop/cli/dashboard
         run: npm test
 
-  dashboard-type-check:
-    name: Dashboard Type Check
+  type-check:
+    name: Type Check
     runs-on: ubuntu-latest
 
     steps:
@@ -75,13 +75,13 @@ jobs:
         with:
           node-version: '22'
 
-      - name: Install dashboard dependencies
-        working-directory: aloop/cli/dashboard
-        run: npm ci
+      - name: Type-check CLI package
+        working-directory: aloop/cli
+        run: npm ci && npm run type-check
 
-      - name: Run dashboard type check
+      - name: Type-check dashboard package
         working-directory: aloop/cli/dashboard
-        run: npm run type-check
+        run: npm ci && npm run type-check
 
   loop-script-tests:
     name: Loop Script Tests (Linux)
@@ -163,4 +163,3 @@ jobs:
         shell: pwsh
         run: |
           Invoke-Pester -Path aloop/bin/loop.tests.ps1 -Output Detailed
-
