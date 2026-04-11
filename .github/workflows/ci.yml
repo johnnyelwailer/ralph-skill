@@ -2,11 +2,49 @@ name: CI
 
 on:
   push:
-    branches: [master, agent/trunk]
+    branches: [master, agent/*]
   pull_request:
-    branches: [master, agent/trunk]
+    branches: [master, agent/*]
 
 jobs:
+  cli-tests:
+    name: CLI Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install CLI dependencies
+        working-directory: aloop/cli
+        run: bun install
+
+      - name: Run CLI tests
+        working-directory: aloop/cli
+        run: bun test
+
+  cli-type-check:
+    name: CLI Type Check
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install CLI dependencies
+        working-directory: aloop/cli
+        run: bun install
+
+      - name: Run CLI type check
+        working-directory: aloop/cli
+        run: bun run type-check
+
   dashboard-tests:
     name: Dashboard Unit Tests
     runs-on: ubuntu-latest
@@ -26,6 +64,25 @@ jobs:
         working-directory: aloop/cli/dashboard
         run: npm test
 
+  dashboard-type-check:
+    name: Dashboard Type Check
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install dashboard dependencies
+        working-directory: aloop/cli/dashboard
+        run: npm ci
+
+      - name: Run dashboard type check
+        working-directory: aloop/cli/dashboard
+        run: npm run type-check
+
   loop-script-tests:
     name: Loop Script Tests
     runs-on: ubuntu-latest
@@ -39,3 +96,12 @@ jobs:
       - name: Run loop.sh tests
         working-directory: aloop/bin/tests
         run: bats loop.bats
+
+      - name: Run JSON escape tests
+        run: bash aloop/bin/loop_json_escape.tests.sh
+
+      - name: Run path hardening tests
+        run: bash aloop/bin/loop_path_hardening.tests.sh
+
+      - name: Run provenance tests
+        run: bash aloop/bin/loop_provenance.tests.sh
