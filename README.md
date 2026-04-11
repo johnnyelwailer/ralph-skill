@@ -1,4 +1,5 @@
 ![CI](https://github.com/johnnyelwailer/ralph-skill/actions/workflows/ci.yml/badge.svg)
+> **Last updated:** 2026-04-11
 
 # Aloop — Autonomous AI Development System
 
@@ -166,6 +167,8 @@ The installer deploys skill files to each harness directory and the Aloop runtim
 
 ## CLI Commands
 
+### User-facing commands
+
 | Command | Purpose |
 |---------|---------|
 | `aloop setup` | Interactive project configuration and scaffolding |
@@ -184,6 +187,8 @@ The installer deploys skill files to each harness directory and the Aloop runtim
 | `aloop update` | Refresh ~/.aloop runtime from repo checkout |
 
 ### Slash commands (Claude Code / Codex / Copilot)
+
+> **Note:** Slash commands are planned. Currently, use the `aloop` CLI directly or invoke via skill system.
 
 ```
 /aloop:setup          Configure Aloop for the current project
@@ -253,6 +258,48 @@ The installer deploys skill files to each harness directory and the Aloop runtim
 - **Backpressure validation**: Types, tests, and lint gate every commit
 - **Stuck detection**: Auto-skip tasks after N consecutive failures
 - **Persistent logs**: RESEARCH.md and REVIEW_LOG.md survive TODO regenerations
+
+## Feature Status
+
+| Feature | Status | Notes |
+|---------|--------|-------|
+| Loop mode (plan/build/review/qa cycle) | **Implemented** | Core cycle working, finalizer chain functional |
+| Orchestrator mode (daemon) | **Implemented** | Background daemon with scan loop, registers in active.json |
+| 5 provider support | **Implemented** | Claude, Codex, Gemini, Copilot, OpenCode all wired |
+| Round-robin provider rotation | **Implemented** | Per-phase and per-iteration rotation |
+| 9 review gates | **Implemented** | All gates defined in review.md; Gate 10 (QA trend) is planned |
+| Real-time dashboard | **Implemented** | SSE updates, docs panel, steering, stop controls |
+| Dashboard component decomposition | **Partial** | AppView.tsx still ~2000 LOC; SPEC-ADDENDUM refactor pending |
+| Storybook integration | **Spec only** | Not yet configured |
+| Storybook stories per component | **Spec only** | Not yet written |
+| Dashboard auto-launch on `aloop start` | **Implemented** | Via `on_start` config; browser/terminal fallback |
+| Live steering | **Implemented** | Via dashboard UI and `aloop steer` CLI |
+| Auto-open browser on start | **Implemented** | Platform-aware (open/xdg-open/Start-Process) |
+| OpenCode agents (code-critic, error-analyst, vision-reviewer) | **Implemented** | In `.opencode/agents/`; installed by `aloop setup` |
+| Proof-of-work phase | **Implemented** | Runs in finalizer chain only |
+| QA agent | **Implemented** | Black-box testing; coverage matrix (QA_COVERAGE.md) is planned |
+| QA coverage matrix & priority selection | **Spec only** | QA agent exists but no structured coverage tracking yet |
+| Spec-gap analysis agent | **Implemented** | Runs in finalizer chain |
+| Docs sync agent | **Implemented** | Runs in finalizer chain |
+| Orchestrator: spec decomposition | **Implemented** | Creates issues with wave/dependency metadata |
+| Orchestrator: child loop dispatch | **Implemented** | Background daemon spawns worktree-based loops |
+| Orchestrator: PR lifecycle & squash-merge | **Implemented** | Via `aloop gh` commands |
+| Orchestrator: budget tracking | **Implemented** | Aggregates cost, pauses at 80% |
+| Orchestrator: orchestrator review layer | **Partial** | PR review gates exist; full proof validation pending |
+| Orchestrator: comment triage agent | **Spec only** | Designed in SPEC.md; not yet built |
+| Orchestrator: adapter pattern (GitHub/GitLab/Linear) | **Spec only** | Only GitHub (gh CLI) implemented |
+| Orchestrated `aloop start` dispatch | **Partial** | `aloop start --mode orchestrate` currently errors; fix in progress |
+| Branch sync (pre-iteration merge) | **Spec only** | Designed in SPEC.md; not yet in loop.sh/loop.ps1 |
+| Devcontainer generation (`aloop devcontainer`) | **Implemented** | Generates config; auto-route in loop scripts is planned |
+| Provider health system (cooldown/degraded) | **Implemented** | File-based health in `~/.aloop/health/` |
+| Retry-same-phase (phase stays on failure) | **Implemented** | Both loop.sh and loop.ps1 |
+| `aloop gh` subcommands | **Implemented** | Issue, PR, and label operations |
+| `aloop resolve` / `aloop discover` / `aloop scaffold` | **Implemented** | Internal plumbing commands |
+| `aloop session` / `aloop project` / `aloop compile-loop-plan` | **Implemented** | Internal commands |
+| `aloop cr-pipeline` | **Implemented** | Change request pipeline |
+| Bash loop tests (CI) | **Implemented** | 7 test suites run in CI |
+| PowerShell loop tests (CI) | **Spec only** | Tests exist but not yet in CI |
+| Shell lint (shellcheck) | **Spec only** | Not yet added to CI |
 
 ## Development
 
