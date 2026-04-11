@@ -727,7 +727,7 @@ describe('orchestrateCommandWithDeps with --plan', () => {
     assert.equal(persisted.current_wave, 1);
   });
 
-  it('does not automatically queue sub-decomposition for regular plan issues', async () => {
+  it('queues sub-decomposition for epics in Needs decomposition status', async () => {
     const deps = createMockDeps({
       existsSync: () => true,
       readFile: async () => samplePlan,
@@ -736,9 +736,11 @@ describe('orchestrateCommandWithDeps with --plan', () => {
 
     await orchestrateCommandWithDeps({ plan: 'plan.json' }, deps);
 
-    // Regular issues from plan start at Needs decomposition — sub-decomposition SHOULD be queued
+    // Epics start at Needs decomposition — sub-decomposition should be queued
     const queueFiles = Object.keys(mockDeps._writtenFiles).filter((p) => p.includes('/queue/sub-decompose-issue-'));
-    assert.equal(queueFiles.length, 2, 'Should write sub-decompose queue prompts for regular plan issues');
+    assert.equal(queueFiles.length, 2, 'Should write sub-decompose queue prompts for each epic');
+    const queueContent = mockDeps._writtenFiles[queueFiles[0]];
+    assert.match(queueContent, /orch_sub_decompose/, 'Queue override should reference orch_sub_decompose agent');
   });
 
   it('applies estimate-results.json when present', async () => {
