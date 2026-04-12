@@ -62,3 +62,11 @@ export const WithCustomContent: Story = {
     children: 'Custom content',
   },
 };
+
+export const DarkMode: Story = {
+  parameters: {
+    themes: {
+      theme: 'dark',
+    },
+  },
+};
