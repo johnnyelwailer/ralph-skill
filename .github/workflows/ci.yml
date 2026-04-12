@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [master, agent/*, aloop/*]
+    branches: ['master', 'agent/*', 'aloop/*']
   pull_request:
-    branches: [master, agent/*, aloop/*]
+    branches: ['master', 'agent/*', 'aloop/*']
 
 jobs:
   type-check:
@@ -18,12 +18,20 @@ jobs:
         with:
           node-version: '22'
 
-      - name: Install dependencies
+      - name: Install CLI dependencies
         working-directory: aloop/cli
         run: npm ci
 
-      - name: Run type check
+      - name: Run CLI type check
         working-directory: aloop/cli
+        run: npm run type-check
+
+      - name: Install Dashboard dependencies
+        working-directory: aloop/cli/dashboard
+        run: npm ci
+
+      - name: Run Dashboard type check
+        working-directory: aloop/cli/dashboard
         run: npm run type-check
 
   cli-tests:
@@ -77,3 +85,16 @@ jobs:
       - name: Run loop.sh tests
         working-directory: aloop/bin/tests
         run: bats loop.bats
+
+      - name: Run shell script tests
+        run: |
+          chmod +x aloop/bin/loop.sh
+          for f in aloop/bin/*.tests.sh; do
+              echo "Running $f"
+              bash "$f"
+          done
+
+      - name: Run PowerShell script tests
+        shell: pwsh
+        run: |
+          Invoke-Pester ./aloop/bin/loop.tests.ps1 -Output Detailed
