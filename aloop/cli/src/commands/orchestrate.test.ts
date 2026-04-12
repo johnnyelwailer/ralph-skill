@@ -68,6 +68,7 @@ import {
   processQueuedPrompts,
   createTrunkToMainPr,
   resolveAutoMerge,
+  formatSteeringComment,
   type EstimateResult,
   type OrchestrateCommandOptions,
   type OrchestrateDeps,
@@ -6324,6 +6325,316 @@ describe('applyEstimateResults label enrichment', () => {
     // Should not throw
     const outcome = await applyEstimateResults(state, results);
     assert.deepStrictEqual(outcome.updated, [6]);
+  });
+});
+
+// --- Platform-neutral wording tests (Issue #46 ACs) ---
+
+describe('queueEstimateForIssues - platform-neutral wording', () => {
+  const FORBIDDEN_PATTERNS = [
+    /github/i,
+    /\bpr\b/i,
+    /pull request/i,
+    /\/issues\//i,
+    /\/pull\//i,
+    /issue #\d+/i,
+  ];
+
+  function hasForbiddenToken(text: string): string[] {
+    const found: string[] = [];
+    for (const pattern of FORBIDDEN_PATTERNS) {
+      const match = text.match(pattern);
+      if (match) found.push(match[0]);
+    }
+    return found;
+  }
+
+  it('generates prompts without platform-specific tokens', async () => {
+    const state = makeState({
+      issues: [
+        makeIssue({ number: 42, title: 'Test Issue', body: 'Body content', wave: 1, status: 'Needs refinement', dor_validated: false }),
+      ],
+    });
+    const writtenFiles: Record<string, string> = {};
+    const deps = {
+      writeFile: async (path: string, data: string) => { writtenFiles[path] = data; },
+    };
+
+    await queueEstimateForIssues(state.issues, '/queue', 'Estimate prompt', deps);
+
+    const queueFiles = Object.keys(writtenFiles).filter(f => f.includes('estimate-issue-'));
+    assert.equal(queueFiles.length, 1, 'Should write one estimate queue file');
+    const content = writtenFiles[queueFiles[0]];
+    const forbidden = hasForbiddenToken(content);
+    assert.equal(forbidden.length, 0, `Found forbidden tokens: ${forbidden.join(', ')}`);
+  });
+
+  it('uses "Work Item" terminology instead of "Issue"', async () => {
+    const state = makeState({
+      issues: [
+        makeIssue({ number: 42, title: 'Test Issue', body: 'Body', wave: 1, status: 'Needs refinement', dor_validated: false }),
+      ],
+    });
+    const writtenFiles: Record<string, string> = {};
+    const deps = {
+      writeFile: async (path: string, data: string) => { writtenFiles[path] = data; },
+    };
+
+    await queueEstimateForIssues(state.issues, '/queue', 'Estimate prompt', deps);
+
+    const queueFiles = Object.keys(writtenFiles).filter(f => f.includes('estimate-issue-'));
+    const content = writtenFiles[queueFiles[0]];
+    assert.ok(content.includes('Work Item 42'), 'Should use Work Item terminology');
+    assert.ok(!content.includes('Issue #42'), 'Should not use Issue # terminology');
+  });
+
+  it('uses bracket notation for dependencies', async () => {
+    const state = makeState({
+      issues: [
+        makeIssue({ number: 5, title: 'Test', body: 'Body', wave: 1, status: 'Needs refinement', dor_validated: false, depends_on: [1, 2] }),
+      ],
+    });
+    const writtenFiles: Record<string, string> = {};
+    const deps = {
+      writeFile: async (path: string, data: string) => { writtenFiles[path] = data; },
+    };
+
+    await queueEstimateForIssues(state.issues, '/queue', 'Estimate prompt', deps);
+
+    const queueFiles = Object.keys(writtenFiles).filter(f => f.includes('estimate-issue-'));
+    const content = writtenFiles[queueFiles[0]];
+    assert.ok(content.includes('[1]'), 'Should use bracket notation for dependencies');
+    assert.ok(!content.includes('#1'), 'Should not use # notation for dependencies');
+  });
+});
+
+describe('queueGapAnalysisForIssues - platform-neutral wording', () => {
+  const FORBIDDEN_PATTERNS = [
+    /github/i,
+    /\bpr\b/i,
+    /pull request/i,
+    /\/issues\//i,
+    /\/pull\//i,
+    /issue #\d+/i,
+  ];
+
+  function hasForbiddenToken(text: string): string[] {
+    const found: string[] = [];
+    for (const pattern of FORBIDDEN_PATTERNS) {
+      const match = text.match(pattern);
+      if (match) found.push(match[0]);
+    }
+    return found;
+  }
+
+  it('generates prompts without platform-specific tokens', async () => {
+    const state = makeState({
+      issues: [
+        makeIssue({ number: 42, title: 'Test Issue', body: 'Body', wave: 1, status: 'Needs analysis' }),
+      ],
+    });
+    const writtenFiles: Record<string, string> = {};
+    const deps = {
+      writeFile: async (path: string, data: string) => { writtenFiles[path] = data; },
+    };
+
+    await queueGapAnalysisForIssues(state.issues, '/queue', 'Product prompt', 'Arch prompt', '', deps);
+
+    for (const content of Object.values(writtenFiles)) {
+      const forbidden = hasForbiddenToken(content);
+      assert.equal(forbidden.length, 0, `Found forbidden tokens: ${forbidden.join(', ')}`);
+    }
+  });
+
+  it('uses "Work Items" terminology in section headers', async () => {
+    const state = makeState({
+      issues: [
+        makeIssue({ number: 42, title: 'Test', body: 'Body', wave: 1, status: 'Needs analysis' }),
+      ],
+    });
+    const writtenFiles: Record<string, string> = {};
+    const deps = {
+      writeFile: async (path: string, data: string) => { writtenFiles[path] = data; },
+    };
+
+    await queueGapAnalysisForIssues(state.issues, '/queue', 'Product prompt', 'Arch prompt', '', deps);
+
+    for (const content of Object.values(writtenFiles)) {
+      assert.ok(content.includes('Work Items Under Analysis'), 'Should use Work Items Under Analysis');
+      assert.ok(!content.includes('Issues Under Analysis'), 'Should not use Issues Under Analysis');
+    }
+  });
+});
+
+describe('queueSubDecompositionForIssues - platform-neutral wording', () => {
+  const FORBIDDEN_PATTERNS = [
+    /github/i,
+    /\bpr\b/i,
+    /pull request/i,
+    /\/issues\//i,
+    /\/pull\//i,
+    /issue #\d+/i,
+  ];
+
+  function hasForbiddenToken(text: string): string[] {
+    const found: string[] = [];
+    for (const pattern of FORBIDDEN_PATTERNS) {
+      const match = text.match(pattern);
+      if (match) found.push(match[0]);
+    }
+    return found;
+  }
+
+  it('generates prompts without platform-specific tokens', async () => {
+    const state = makeState({
+      issues: [
+        makeIssue({ number: 42, title: 'Epic Issue', body: 'Body', wave: 1, status: 'Needs decomposition', depends_on: [1] }),
+      ],
+    });
+    const writtenFiles: Record<string, string> = {};
+    const deps = {
+      writeFile: async (path: string, data: string) => { writtenFiles[path] = data; },
+    };
+
+    await queueSubDecompositionForIssues(state.issues, '/queue', 'Decompose prompt', deps);
+
+    const queueFiles = Object.keys(writtenFiles).filter(f => f.includes('sub-decompose-issue-'));
+    assert.equal(queueFiles.length, 1, 'Should write one sub-decompose queue file');
+    const content = writtenFiles[queueFiles[0]];
+    const forbidden = hasForbiddenToken(content);
+    assert.equal(forbidden.length, 0, `Found forbidden tokens: ${forbidden.join(', ')}`);
+  });
+
+  it('uses "Work Item" terminology for epic header', async () => {
+    const state = makeState({
+      issues: [
+        makeIssue({ number: 42, title: 'Epic', body: 'Body', wave: 1, status: 'Needs decomposition' }),
+      ],
+    });
+    const writtenFiles: Record<string, string> = {};
+    const deps = {
+      writeFile: async (path: string, data: string) => { writtenFiles[path] = data; },
+    };
+
+    await queueSubDecompositionForIssues(state.issues, '/queue', 'Decompose prompt', deps);
+
+    const queueFiles = Object.keys(writtenFiles).filter(f => f.includes('sub-decompose-issue-'));
+    const content = writtenFiles[queueFiles[0]];
+    assert.ok(content.includes('Epic Work Item 42'), 'Should use Epic Work Item');
+    assert.ok(!content.includes('Epic Issue #42'), 'Should not use Epic Issue #');
+  });
+
+  it('uses "Dependency Work Item Numbers" section header', async () => {
+    const state = makeState({
+      issues: [
+        makeIssue({ number: 42, title: 'Epic', body: 'Body', wave: 1, status: 'Needs decomposition', depends_on: [1, 2] }),
+      ],
+    });
+    const writtenFiles: Record<string, string> = {};
+    const deps = {
+      writeFile: async (path: string, data: string) => { writtenFiles[path] = data; },
+    };
+
+    await queueSubDecompositionForIssues(state.issues, '/queue', 'Decompose prompt', deps);
+
+    const queueFiles = Object.keys(writtenFiles).filter(f => f.includes('sub-decompose-issue-'));
+    const content = writtenFiles[queueFiles[0]];
+    assert.ok(content.includes('Dependency Work Item Numbers'), 'Should use Dependency Work Item Numbers');
+    assert.ok(!content.includes('Dependency Issue Numbers'), 'Should not use Dependency Issue Numbers');
+  });
+});
+
+describe('formatSteeringComment - platform-neutral wording', () => {
+  const FORBIDDEN_PATTERNS = [
+    /github/i,
+    /\bpr\b/i,
+    /pull request/i,
+    /\/issues\//i,
+    /\/pull\//i,
+    /issue #\d+/i,
+  ];
+
+  function hasForbiddenToken(text: string): string[] {
+    const found: string[] = [];
+    for (const pattern of FORBIDDEN_PATTERNS) {
+      const match = text.match(pattern);
+      if (match) found.push(match[0]);
+    }
+    return found;
+  }
+
+  it('uses work item reference instead of issue reference', () => {
+    const comment: TriageComment = {
+      id: 1,
+      author: 'user',
+      body: 'Please fix this bug',
+    };
+    const issue = makeIssue({ number: 42, title: 'Bug Fix', body: 'Fix this', wave: 1 });
+
+    const result = formatSteeringComment(comment, issue);
+    assert.ok(result.includes('work item 42'), 'Should use work item reference');
+    assert.ok(!result.includes('issue #42'), 'Should not use issue # reference');
+  });
+
+  it('does not contain forbidden platform tokens in the header', () => {
+    const comment: TriageComment = {
+      id: 1,
+      author: 'user',
+      body: 'Please implement this feature',
+    };
+    const issue = makeIssue({ number: 42, title: 'Test', body: 'Body', wave: 1 });
+
+    const result = formatSteeringComment(comment, issue);
+    const headerLine = result.split('\n')[0] ?? '';
+    const forbidden = hasForbiddenToken(headerLine);
+    assert.equal(forbidden.length, 0, `Found forbidden tokens in header: ${forbidden.join(', ')}`);
+  });
+});
+
+describe('orchestrateCommandWithDeps - platform-neutral wording in prompt artifacts', () => {
+  const FORBIDDEN_PATTERNS = [
+    /github/i,
+    /\bpr\b/i,
+    /pull request/i,
+    /\/issues\//i,
+    /\/pull\//i,
+    /issue #\d+/i,
+  ];
+
+  function hasForbiddenToken(text: string): string[] {
+    const found: string[] = [];
+    for (const pattern of FORBIDDEN_PATTERNS) {
+      const match = text.match(pattern);
+      if (match) found.push(match[0]);
+    }
+    return found;
+  }
+
+  it('queue files written by orchestrate contain no forbidden tokens', async () => {
+    const samplePlan = JSON.stringify({
+      issues: [
+        { id: 1, title: 'Task A', body: 'Do A', depends_on: [] },
+      ],
+    });
+    const writtenFiles: Record<string, string> = {};
+    const deps = createMockDeps({
+      existsSync: () => true,
+      readFile: async (path: string) => {
+        if (path.endsWith('plan.json')) return samplePlan;
+        if (path.includes('SPEC.md')) return '# SPEC\n\nSome spec content';
+        return '';
+      },
+      writeFile: async (path: string, data: string) => { writtenFiles[path] = data; },
+    });
+
+    await orchestrateCommandWithDeps({ plan: 'plan.json' }, deps);
+
+    const queueFiles = Object.keys(writtenFiles).filter(f => f.includes('/queue/'));
+    for (const file of queueFiles) {
+      const content = writtenFiles[file];
+      const forbidden = hasForbiddenToken(content);
+      assert.equal(forbidden.length, 0, `File ${file} contains forbidden tokens: ${forbidden.join(', ')}`);
+    }
   });
 });
 

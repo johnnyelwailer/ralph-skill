@@ -17,6 +17,7 @@ export { processCrResultFiles };
 import { EtagCache } from '../lib/github-monitor.js';
 import { deriveComponentLabels } from '../lib/labels.js';
 import { buildPrBody, ensureMetadataSection, buildIssueLabels } from '../lib/issue-metadata.js';
+import { formatWorkItemContext } from '../lib/work-item-formatter.js';
 
 // --- Orchestrator event system (data-driven from pipeline.yml) ---
 
@@ -88,6 +89,13 @@ function loadOrchestratorEvents(pipelineYmlPath: string): OrchestratorEvent[] {
 }
 
 function buildQueuePrompt(agent: string, issue: any, promptContent: string, outputPath: string): string {
+  const workItemContext = formatWorkItemContext(
+    issue.number,
+    issue.title,
+    issue.body,
+    issue.wave,
+    issue.depends_on ?? [],
+  );
   return [
     '---',
     `agent: ${agent}`,
@@ -96,12 +104,7 @@ function buildQueuePrompt(agent: string, issue: any, promptContent: string, outp
     '',
     promptContent,
     '',
-    `## Issue #${issue.number}: ${issue.title}`,
-    '',
-    issue.body ?? '(no body)',
-    '',
-    `**Wave:** ${issue.wave}`,
-    `**Dependencies:** ${issue.depends_on?.length > 0 ? issue.depends_on.map((d: number) => `#${d}`).join(', ') : 'none'}`,
+    workItemContext,
     '',
     `## Output — REQUIRED`,
     '',

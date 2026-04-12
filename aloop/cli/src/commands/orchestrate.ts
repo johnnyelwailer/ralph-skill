@@ -16,6 +16,7 @@ import {
 } from '../lib/github-monitor.js';
 import { deriveComponentLabels } from '../lib/labels.js';
 import { buildPrBody } from '../lib/issue-metadata.js';
+import { formatWorkItemContext, sanitizePromptText } from '../lib/work-item-formatter.js';
 
 export interface OrchestrateCommandOptions {
   spec?: string;
@@ -1787,8 +1788,8 @@ function isExternalAuthor(comment: TriageComment): boolean {
   return !trustedAssociations.has(association);
 }
 
-function formatSteeringComment(comment: TriageComment, issue: OrchestratorIssue): string {
-  return `From issue #${issue.number} comment by @${comment.author}:\n\n${comment.body}`;
+export function formatSteeringComment(comment: TriageComment, issue: OrchestratorIssue): string {
+  return `From work item ${issue.number} comment by @${comment.author}:\n\n${comment.body}`;
 }
 
 function formatSteeringContent(comments: TriageComment[], issue: OrchestratorIssue): string {
@@ -2512,14 +2513,13 @@ export async function queueEstimateForIssues(
   if (targets.length === 0) return 0;
 
   for (const issue of targets) {
-    const contextBlock = [
-      `## Issue #${issue.number}: ${issue.title}`,
-      '',
-      issue.body ?? '(no body)',
-      '',
-      `**Wave:** ${issue.wave}`,
-      `**Dependencies:** ${issue.depends_on.length > 0 ? issue.depends_on.map((d) => `#${d}`).join(', ') : 'none'}`,
-    ].join('\n');
+    const contextBlock = formatWorkItemContext(
+      issue.number,
+      issue.title,
+      issue.body,
+      issue.wave,
+      issue.depends_on,
+    );
 
     // Derive session dir from queue dir
     const sessionDir = path.dirname(queueDir);
@@ -2612,7 +2612,7 @@ export async function queueGapAnalysisForIssues(
   const issueContext = targets
     .map(
       (issue) =>
-        `### Issue #${issue.number}: ${issue.title}\n\n${issue.body ?? '(no body)'}\n\n**Wave:** ${issue.wave}`,
+        `### Work Item ${issue.number}: ${issue.title}\n\n${issue.body ?? '(no body)'}\n\n**Wave:** ${issue.wave}`,
     )
     .join('\n\n---\n\n');
 
@@ -2632,7 +2632,7 @@ export async function queueGapAnalysisForIssues(
     '',
     'Read SPEC.md and SPEC-ADDENDUM.md from the project working directory.',
     '',
-    '## Issues Under Analysis',
+    '## Work Items Under Analysis',
     '',
     issueContext,
     '',
@@ -2656,7 +2656,7 @@ export async function queueGapAnalysisForIssues(
     '',
     'Read SPEC.md and SPEC-ADDENDUM.md from the project working directory.',
     '',
-    '## Issues Under Analysis',
+    '## Work Items Under Analysis',
     '',
     issueContext,
     '',
@@ -2782,7 +2782,7 @@ export async function queueSubDecompositionForIssues(
       '',
       subDecomposePrompt,
       '',
-      `## Epic Issue #${issue.number}: ${issue.title}`,
+      `## Epic Work Item ${issue.number}: ${issue.title}`,
       '',
       issue.body ?? '(no body)',
       '',
@@ -2790,7 +2790,7 @@ export async function queueSubDecompositionForIssues(
       '',
       String(issue.wave),
       '',
-      `## Dependency Issue Numbers`,
+      `## Dependency Work Item Numbers`,
       '',
       issue.depends_on.length > 0 ? issue.depends_on.join(', ') : '(none)',
       '',
