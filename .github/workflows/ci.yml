@@ -2,11 +2,57 @@ name: CI
 
 on:
   push:
-    branches: [master, agent/trunk]
+    branches: [master, agent/*, aloop/*]
   pull_request:
-    branches: [master, agent/trunk]
+    branches: [master, agent/*, aloop/*]
 
 jobs:
+  type-check:
+    name: Type Check
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install CLI dependencies
+        working-directory: aloop/cli
+        run: npm ci
+
+      - name: Run CLI type check
+        working-directory: aloop/cli
+        run: npm run type-check
+
+      - name: Install Dashboard dependencies
+        working-directory: aloop/cli/dashboard
+        run: npm ci
+
+      - name: Run Dashboard type check
+        working-directory: aloop/cli/dashboard
+        run: npm run type-check
+
+  cli-tests:
+    name: CLI Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install dependencies
+        working-directory: aloop/cli
+        run: npm ci
+
+      - name: Run CLI tests
+        working-directory: aloop/cli
+        run: npm test
+
   dashboard-tests:
     name: Dashboard Unit Tests
     runs-on: ubuntu-latest
@@ -25,3 +71,23 @@ jobs:
       - name: Run dashboard unit tests
         working-directory: aloop/cli/dashboard
         run: npm test
+
+  loop-script-tests:
+    name: Loop Script Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run shell script tests
+        run: |
+          chmod +x aloop/bin/loop.sh
+          for f in aloop/bin/*.tests.sh; do
+              echo "Running $f"
+              bash "$f"
+          done
+
+      - name: Run PowerShell script tests
+        shell: pwsh
+        run: |
+          Invoke-Pester ./aloop/bin/loop.tests.ps1 -Output Detailed
