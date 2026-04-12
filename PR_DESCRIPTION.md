@@ -6,6 +6,7 @@ Implements a structured QA coverage matrix with priority-based feature selection
 
 - `aloop/bin/loop.sh` — added `append_plan_task_if_missing()` and `check_finalizer_qa_coverage_gate()` functions; QA gate check before finalizer completion (lines 1527-1611, 2219-2238)
 - `aloop/bin/loop_finalizer_qa_coverage.tests.sh` — new test file with 4 test cases for the QA coverage gate
+- `aloop/templates/instructions/review.md` — added Gate 10: QA Coverage & Bug Fix Rate to ensure coverage is maintained and bugs are fixed before completion
 - `aloop/templates/instructions/qa.md` — restructured with priority selection algorithm (P1-P4), acceptance criteria extraction step, structured QA_COVERAGE.md format (7 columns), and per-criterion session logging
 
 ## Verification

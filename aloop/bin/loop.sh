@@ -1551,7 +1551,9 @@ fails = []
 try:
     with open(path, encoding="utf-8") as f:
         lines = [l.strip() for l in f.readlines() if l.strip()]
-        if len(lines) < 3: sys.exit(0)
+        if len(lines) < 3:
+            print("UNPARSEABLE")
+            sys.exit(1)
         # Find Status column index
         header = [p.strip() for p in lines[0].split("|")]
         try:
@@ -1580,6 +1582,10 @@ if fails:
         print(f"FAIL:{f}")
     sys.exit(1)
 
+if total == 0:
+    print("UNPARSEABLE")
+    sys.exit(1)
+
 if total > 0 and (untested / total) > 0.3:
     print(f"UNTESTED:{untested}/{total}")
     sys.exit(1)
@@ -1595,11 +1601,14 @@ PY
     while IFS= read -r line; do
         if [[ "$line" == FAIL:* ]]; then
             local feat="${line#FAIL:}"
-            append_plan_task_if_missing "[finalizer-qa-gate] Resolve FAIL coverage item: $feat"
+            append_plan_task_if_missing "[qa/P1] [finalizer-qa-gate] Resolve FAIL coverage item: $feat"
             has_gate_fail=true
         elif [[ "$line" == UNTESTED:* ]]; then
             local stats="${line#UNTESTED:}"
-            append_plan_task_if_missing "[finalizer-qa-gate] Reduce UNTESTED QA coverage to <=30% (currently $stats)"
+            append_plan_task_if_missing "[qa/P1] [finalizer-qa-gate] Reduce UNTESTED QA coverage to <=30% (currently $stats)"
+            has_gate_fail=true
+        elif [[ "$line" == "UNPARSEABLE" ]]; then
+            append_plan_task_if_missing "[qa/P1] [finalizer-qa-gate] Fix QA_COVERAGE.md table format so finalizer can enforce coverage"
             has_gate_fail=true
         fi
     done <<< "$out"

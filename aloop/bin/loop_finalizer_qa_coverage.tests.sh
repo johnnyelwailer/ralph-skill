@@ -94,7 +94,7 @@ COV
         return 1
     fi
 
-    assert_contains "$PLAN_FILE" "Reduce UNTESTED QA coverage to <=30%" "should append untested coverage blocker task"
+    assert_contains "$PLAN_FILE" "[qa/P1] [finalizer-qa-gate] Reduce UNTESTED QA coverage to <=30%" "should append untested coverage blocker task"
     rm -rf "$tmp"
     return 0
 }
@@ -120,7 +120,7 @@ COV
         return 1
     fi
 
-    assert_contains "$PLAN_FILE" "Resolve FAIL coverage item: Login flow" "should append fail item task"
+    assert_contains "$PLAN_FILE" "[qa/P1] [finalizer-qa-gate] Resolve FAIL coverage item: Login flow" "should append fail item task"
     rm -rf "$tmp"
     return 0
 }
@@ -150,9 +150,34 @@ PLAN
     return 0
 }
 
+case_blocks_when_coverage_unparseable() {
+    local tmp
+    tmp="$(mktemp -d)"
+    WORK_DIR="$tmp"
+    PLAN_FILE="$tmp/TODO.md"
+    cat > "$PLAN_FILE" <<'PLAN'
+- [x] existing completed task
+PLAN
+
+    cat > "$tmp/QA_COVERAGE.md" <<'COV'
+This is not a table.
+It has no pipes.
+COV
+
+    if check_finalizer_qa_coverage_gate; then
+        rm -rf "$tmp"
+        return 1
+    fi
+
+    assert_contains "$PLAN_FILE" "[qa/P1] [finalizer-qa-gate] Fix QA_COVERAGE.md table format" "should append fix table task"
+    rm -rf "$tmp"
+    return 0
+}
+
 run_case "finalizer QA gate passes at <=30% untested and 0 fail" case_gate_passes_when_threshold_is_met
 run_case "finalizer QA gate blocks when untested >30%" case_blocks_when_untested_exceeds_threshold
 run_case "finalizer QA gate blocks when FAIL rows exist" case_blocks_when_fail_rows_exist
+run_case "finalizer QA gate blocks when QA_COVERAGE.md is unparseable" case_blocks_when_coverage_unparseable
 run_case "finalizer QA gate skips enforcement when QA_COVERAGE.md is missing" case_skips_enforcement_when_coverage_file_missing
 
 if [ "$failed" -ne 0 ]; then
