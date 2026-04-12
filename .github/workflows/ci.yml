@@ -84,7 +84,7 @@ jobs:
         run: npm run type-check
 
   loop-script-tests:
-    name: Loop Script Tests
+    name: Loop Script Tests (Linux)
     runs-on: ubuntu-latest
 
     steps:
@@ -105,3 +105,22 @@ jobs:
 
       - name: Run provenance tests
         run: bash aloop/bin/loop_provenance.tests.sh
+
+      - name: Run provider health primitives tests
+        run: bash aloop/bin/loop_provider_health_primitives.tests.sh
+
+      - name: Run provider health tests
+        run: bash aloop/bin/loop_provider_health.tests.sh
+
+  loop-script-tests-windows:
+    name: Loop Script Tests (Windows)
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run PowerShell loop tests
+        shell: pwsh
+        run: |
+          Invoke-Pester -Path aloop/bin/loop.tests.ps1 -Output Detailed
+
