@@ -53,22 +53,6 @@ SESSION_ID=""
 
 usage() {
     echo "Usage: $0 --prompts-dir <path> --session-dir <path> --work-dir <path> [options]"
-    echo ""
-    echo "Required:"
-    echo "  --prompts-dir <path>    Directory containing PROMPT_{plan,build,qa,review}.md"
-    echo "  --session-dir <path>    Directory for session state (status.json, log.jsonl)"
-    echo "  --work-dir <path>       Project working directory"
-    echo ""
-    echo "Options:"
-    echo "  --mode <mode>           plan|build|review|plan-build|plan-build-review|single (default: plan-build-review)"
-    echo "  --provider <provider>   claude|codex|gemini|copilot|round-robin (default: claude)"
-    echo "  --round-robin <list>    Comma-separated provider list (default: claude,opencode,codex,gemini,copilot)"
-    echo "  --max-iterations <n>    Maximum iterations (default: 50)"
-    echo "  --max-stuck <n>         Skip task after N failures (default: 3)"
-    echo "  --launch-mode <mode>    start|restart|resume (default: start)"
-    echo "  --backup                Enable remote git backup"
-    echo "  --dry-run               Print commands without executing"
-    echo "  --dangerously-skip-container  Skip devcontainer routing (agents run on host)"
     exit 1
 }
 
@@ -346,38 +330,44 @@ resolve_iteration_provider() {
 resolve_iteration_mode() {
     local iteration=$1
     RESOLVED_PROMPT_NAME=""
+    ITERATION_FORCED=false
     # Queue overrides replace the old forceReviewNext/forcePlanNext flags.
     # Queue consumption happens in run_queue_if_present() before we get here.
     if resolve_cycle_prompt_from_plan; then
-            RESOLVED_MODE=$(derive_mode_from_prompt_name "$RESOLVED_PROMPT_NAME")
-        else
-            case "$MODE" in
-                plan-build)
-                    if (( CYCLE_POSITION % 2 == 0 )); then RESOLVED_MODE="plan"; else RESOLVED_MODE="build"; fi
-                    ;;
-                plan-build-review)
-                    # 8-step cycle: plan -> build x5 -> qa -> review
-                    local phase=$(( CYCLE_POSITION % 8 ))
-                    case $phase in
-                        0) RESOLVED_MODE="plan" ;;
-                        1|2|3|4|5) RESOLVED_MODE="build" ;;
-                        6) RESOLVED_MODE="qa" ;;
-                        7) RESOLVED_MODE="review" ;;
-                    esac
-                    ;;
-                single)
-                    # One-shot mode: used by orchestrator for single-prompt child loops.
-                    # The prompt is resolved from PROMPT_single.md in the prompts dir.
-                    RESOLVED_MODE="single"
-                    ;;
-                *)
-                    RESOLVED_MODE="$MODE"
-                    ;;
-            esac
-        fi
+        RESOLVED_MODE=$(derive_mode_from_prompt_name "$RESOLVED_PROMPT_NAME")
+    else
+        case "$MODE" in
+            plan-build)
+                if (( CYCLE_POSITION % 2 == 0 )); then RESOLVED_MODE="plan"; else RESOLVED_MODE="build"; fi
+                ;;
+            plan-build-review)
+                # 8-step cycle: plan -> build x5 -> qa -> review
+                local phase=$(( CYCLE_POSITION % 8 ))
+                case $phase in
+                    0) RESOLVED_MODE="plan" ;;
+                    1|2|3|4|5) RESOLVED_MODE="build" ;;
+                    6) RESOLVED_MODE="qa" ;;
+                    7) RESOLVED_MODE="review" ;;
+                esac
+                ;;
+            single)
+                # One-shot mode: used by orchestrator for single-prompt child loops.
+                # The prompt is resolved from PROMPT_single.md in the prompts dir.
+                RESOLVED_MODE="single"
+                ;;
+            *)
+                RESOLVED_MODE="$MODE"
+                ;;
+        esac
+    fi
 
     # Phase prerequisite guards (Rule 2)
+    local requested_mode="$RESOLVED_MODE"
     RESOLVED_MODE=$(check_phase_prerequisites "$RESOLVED_MODE")
+    if [ "$RESOLVED_MODE" != "$requested_mode" ]; then
+        ITERATION_FORCED=true
+        RESOLVED_PROMPT_NAME="" # Force using PROMPT_<RESOLVED_MODE>.md
+    fi
 }
 
 check_phase_prerequisites() {
@@ -657,7 +647,8 @@ register_iteration_success() {
     PHASE_RETRY_FAILURE_REASONS=()
 
     if { [ "$MODE" = "plan-build" ] || [ "$MODE" = "plan-build-review" ]; } \
-        && [ "$was_forced" != true ]; then
+        && [ "$was_forced" != "true" ] \
+        && [[ "$iteration_mode" =~ ^(plan|build|qa|review)$ ]]; then
         advance_cycle_position
     fi
 }
@@ -2247,7 +2238,7 @@ while [ "$ITERATION" -lt "$MAX_ITERATIONS" ]; do
                 echo "[Finalizer aborted — new incomplete tasks found in TODO.md]"
             fi
         else
-            register_iteration_success "$iter_mode" false
+            register_iteration_success "$iter_mode" "$ITERATION_FORCED"
         fi
         if [ "$iter_mode" = "plan" ]; then
             LAST_PLAN_COMMIT=$(git rev-parse HEAD 2>/dev/null || echo "")

@@ -1,16 +1,5 @@
 ﻿#!/usr/bin/env pwsh
 # Aloop Loop — Generic Multi-Provider Autonomous Coding Loop
-# Usage: loop.ps1 -PromptsDir <path> -SessionDir <path> -WorkDir <path> [-Mode plan-build-review] [-Provider claude] [-MaxIterations 50]
-#
-# Modes:
-#   plan               - planning only (gap analysis, update TODO)
-#   build              - building only (implement tasks from TODO)
-#   review             - review only (audit last build against quality gates)
-#   plan-build         - alternating: plan -> build -> plan -> build -> ...
-#   plan-build-review  - full cycle: plan -> build x5 -> qa -> review -> ... (DEFAULT)
-#
-# Providers:
-#   claude, codex, gemini, copilot, round-robin
 
 param(
     [Parameter(Mandatory)]
@@ -30,7 +19,6 @@ param(
 
     [string[]]$RoundRobinProviders = @('claude', 'opencode', 'codex', 'gemini', 'copilot'),
 
-    # Model defaults — keep in sync with ~/.aloop/config.yml (source of truth)
     [string]$ClaudeModel = 'opus',
     [string]$CodexModel = 'gpt-5.3-codex',
     [string]$GeminiModel = 'gemini-3.1-pro-preview',
@@ -232,6 +220,7 @@ function Resolve-IterationMode {
         [int]$IterationNumber
     )
     $script:resolvedPromptName = $null
+    $script:iterationWasForced = $false
     # Queue overrides replace legacy forceReviewNext/forcePlanNext flags.
     # Queue consumption happens in Run-QueueIfPresent before mode resolution.
     $resolvedMode = $null
@@ -265,7 +254,12 @@ function Resolve-IterationMode {
     }
 
     # Phase prerequisite guards (Rule 2)
-    return (Check-PhasePrerequisites -Phase $resolvedMode)
+    $actualMode = (Check-PhasePrerequisites -Phase $resolvedMode)
+    if ($actualMode -ne $resolvedMode) {
+        $script:iterationWasForced = $true
+        $script:resolvedPromptName = $null # Force using PROMPT_<actualMode>.md
+    }
+    return $actualMode
 }
 
 function Check-PhasePrerequisites {
@@ -970,6 +964,7 @@ $script:finalizerMode = $false
 $script:finalizerPosition = 0
 $script:finalizerLength = 0
 $script:frontmatter = @{ provider = ''; model = ''; agent = ''; reasoning = ''; color = ''; trigger = ''; timeout = ''; max_retries = ''; retry_backoff = '' }
+$script:iterationWasForced = $false
 $script:phaseRetryState = @{
     phase = ''
     consecutive = 0
@@ -2306,7 +2301,7 @@ try {
                     Write-Host "[Finalizer aborted — new incomplete tasks found in TODO.md]" -ForegroundColor Yellow
                 }
             } else {
-                Register-IterationSuccess -IterationMode $iterationMode -WasForced $false
+                Register-IterationSuccess -IterationMode $iterationMode -WasForced $script:iterationWasForced
             }
             if ($iterationMode -eq 'plan') {
                 try {
