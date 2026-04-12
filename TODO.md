@@ -13,11 +13,11 @@
   - Both loop scripts have comments saying "keep in sync with ~/.aloop/config.yml (source of truth)"
   - **Fix**: Update loop.sh line 33 default from `sonnet` to `opus`
 
-- [ ] **[spec-gap] P2 — SPEC internal contradiction on proof phase in default pipeline**
-  - SPEC line 717 acceptance criterion says: "Default pipeline becomes: plan → build × 5 → proof → qa → review (9-step)"
-  - SPEC lines 407-409 say: "Proof does NOT run in the cycle — it's expensive and only meaningful as final evidence. Proof runs only at the end"
-  - The loop scripts correctly implement 8-step cycle (no proof): `plan → build×5 → qa → review`
-  - **Fix**: Update SPEC line 717 acceptance criterion to match the architecture — proof is a finalizer-only phase, not part of the cycle. Change to: "Default pipeline is: plan → build × 5 → qa → review (8-step cycle). Proof runs in the finalizer."
+- [x] **[spec-gap] P2 — SPEC internal contradiction on proof phase in default pipeline**
+   - SPEC line 717 acceptance criterion says: "Default pipeline becomes: plan → build × 5 → proof → qa → review (9-step)"
+   - SPEC lines 407-409 say: "Proof does NOT run in the cycle — it's expensive and only meaningful as final evidence. Proof runs only at the end"
+   - The loop scripts correctly implement 8-step cycle (no proof): `plan → build×5 → qa → review`
+   - **Fix**: Update SPEC line 717 acceptance criterion to match the architecture — proof is a finalizer-only phase, not part of the cycle. Change to: "Default pipeline is: plan → build × 5 → qa → review (8-step cycle). Proof runs in the finalizer."
 
 - [ ] **[spec-gap] P3 — Loop script header comments omit `opencode` from provider list**
   - loop.sh line 13: `#   claude, codex, gemini, copilot, round-robin` — missing `opencode`

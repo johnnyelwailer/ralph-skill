@@ -714,7 +714,7 @@ The prompt does NOT prescribe what types of proof to generate or what tools to u
 ### Acceptance Criteria
 
 - [ ] Proof is a first-class phase in the loop cycle, with its own `PROMPT_proof.md` template
-- [ ] Default pipeline becomes: plan → build × 5 → proof → qa → review (9-step)
+- [ ] Default pipeline is: plan → build × 5 → qa → review (8-step cycle). Proof runs in the finalizer.
 - [ ] Proof agent autonomously decides what to prove, how, and whether to skip
 - [ ] Artifacts are saved to `~/.aloop/sessions/<session-id>/artifacts/iter-<N>/`
 - [ ] `proof-manifest.json` is written with structured artifact metadata and skip reasons
