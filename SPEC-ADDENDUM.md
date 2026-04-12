@@ -1317,3 +1317,22 @@ The orchestrator scan loop must never auto-complete based on TODO.md task status
 - [ ] `--no-task-exit` flag accepted by loop.sh and loop.ps1
 - [ ] Orchestrator loop runs indefinitely regardless of TODO.md state
 - [ ] Child loops still complete normally when all tasks are done
+
+
+### Child Session Reconciliation (process-requests)
+
+`process-requests` must reconcile child-loop liveness on every pass using **both** signals:
+
+1. PID existence (`/proc/<pid>`) when `child_pid` is present.
+2. Session marker match in live process command lines (`.../.aloop/sessions/<child_session>...`).
+
+Rules:
+- If an issue is `in_progress` but `child_session` is missing, reset to `pending` + `Ready`.
+- If `child_session` is present but not live by the checks above:
+  - if `pr_number` exists: transition issue to `pr_open` + `In review`.
+  - else transition issue to `pending` + `Ready`.
+  - clear `child_session` and `child_pid`.
+- If dead child `status.json` still says `running`, mark it `stopped` best-effort to prevent stale global "running" counts.
+- Failed issue recovery must use the same liveness check, not PID-only checks.
+
+Concurrency accounting must be based on reconciled live children, not stale JSON pointers.
