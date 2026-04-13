@@ -22,3 +22,25 @@
 - **Gate 1 (MEDIUM)**: `loop-script-tests` job received two extra steps ("Run shell script tests" iterating `aloop/bin/*.tests.sh` and "Run PowerShell script tests" via Pester) beyond what this issue required. Issue #200 scoped work to CI trigger/job polish — not extending the loop-script-tests content. Constitution #12 (one issue, one concern). Written to TODO.md as [review] task.
 
 **Gates that passed:** Gate 2 (N/A — CI config), Gate 3 (N/A), Gate 4 (no dead code), Gate 6 (pure CI config, no observable output to prove — acceptable skip), Gate 7 (N/A — no UI), Gate 8 (Node 22 matches VERSIONS.md, @v4 actions correct), Gate 9 (README badge verified, no other docs needed)
+
+---
+
+## Review — 2026-04-13 12:30 — commit 632fa6d4..9093ab54
+
+**Verdict: PASS** (no findings)
+**Scope:** `.github/workflows/ci.yml`
+
+**Prior findings resolved:**
+- Gate 5 (HIGH) RESOLVED: `cli-tests` build step now uses `npm run clean && npm run build:server && npm run build:shebang && npm run build:templates && npm run build:bin && npm run build:agents` — explicitly excludes `build:dashboard`, so no dashboard deps needed. ci.yml:64.
+- Gate 1 (HIGH) RESOLVED: `dashboard-e2e` job removed. Workflow now has exactly four jobs as required by spec.
+- Gate 1 (MEDIUM) RESOLVED: `loop-script-tests` trimmed to minimal bats-only step: install bats + `bats loop.bats`. No out-of-scope shell/PowerShell steps.
+
+**Gate observations:**
+- Gate 1: All acceptance criteria met — branch triggers `master`, `agent/*`, `aloop/*` on both push and PR (ci.yml:5-7); four jobs with no `needs:` (type-check:14, cli-tests:45, dashboard-tests:70, loop-script-tests:91); `name: CI` stable (ci.yml:1).
+- Gate 4: Workflow is clean — no dead steps, no TODO comments.
+- Gate 8: Node 22 (matches VERSIONS.md), `actions/checkout@v4` and `actions/setup-node@v4` correct.
+- Gate 9: README badge at line 1 targets `https://github.com/johnnyelwailer/ralph-skill/actions/workflows/ci.yml/badge.svg` — correct.
+- Gates 2, 3, 7: N/A (CI config, no code or UI).
+- Gate 6: No proof artifacts — pure CI config with no observable runtime output. Acceptable skip.
+
+---
