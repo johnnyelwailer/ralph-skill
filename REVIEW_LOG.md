@@ -118,6 +118,23 @@
 
 ---
 
+## Review — 2026-04-13 14:30 — commit 37e6130b (unstaged changes to README.md)
+
+**Verdict: FAIL** (2 findings → written to TODO.md as [review] tasks)
+**Scope:** unstaged changes to README.md (outside issue #200 CI scope)
+
+**Changes reviewed:** README.md has unstaged changes (git status shows `modified: README.md`). These are documentation additions made outside the issue #200 CI workflow polish scope.
+
+**Findings:**
+
+- **Gate 9 (HIGH)**: README.md:166-172 documents `aloop gh gate1`, `aloop gh gate2`, `aloop gh gate3`, and `aloop gh pr rebase` — NONE of these exist in `aloop/cli/src/commands/gh.ts:2165-2291`. The `evaluatePolicy` switch handles: `pr-create`, `pr-comment`, `pr-merge`, `issue-comment`, `issue-create`, `issue-close`, `issue-label`, `issue-comments`, `pr-comments`, `branch-delete`. No `gate1`, `gate2`, `gate3`, or `pr-rebase`. README documents hallucinated CLI commands. These are unstaged changes, not part of issue #200's committed work.
+
+- **Gate 9 (MEDIUM)**: README.md:165-166 table shows `aloop gh issue comment` (space-separated) and `aloop gh pr rebase` (space-separated). Actual command names in gh.ts:1509-1518 are `aloop gh issue-comment` and `aloop gh pr-create`/`pr-merge`. The command names in the table are incorrect.
+
+**Gates that passed:** Gate 1-8 are N/A for these unstaged docs-only changes. The committed ci.yml from issue #200 remains unchanged and was verified in the prior PASS review at commit `089a8342..82af4e0b`.
+
+---
+
 ## Review — 2026-04-13 14:15 — commit 089a8342..82af4e0b (no new code since last PASS)
 
 **Verdict: PASS** (no new findings)

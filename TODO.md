@@ -19,6 +19,13 @@ All acceptance criteria for this task are satisfied:
 
 ---
 
+## In Progress
+
+- [ ] [review] Gate 9: README.md:166-172 documents `aloop gh gate1`, `aloop gh gate2`, `aloop gh gate3`, and `aloop gh pr rebase` — none of these four commands exist in `aloop/cli/src/commands/gh.ts:2165-2291` (evaluatePolicy switch). Remove these four rows from the `aloop gh subcommands` table. (priority: high)
+- [ ] [review] Gate 9: README.md:165-166 table shows `aloop gh issue comment` and `aloop gh pr rebase` with spaces. Actual command names are `issue-comment` and `pr-rebase` (hyphenated) per gh.ts:1509-1518. Fix the table to use hyphenated command names. (priority: medium)
+
+---
+
 ## Spec-Gap Analysis (Aloop Runtime)
 
 The following gaps were found by cross-referencing `SPEC.md` against `~/.aloop/bin/loop.sh`, `~/.aloop/bin/loop.ps1`, and `~/.aloop/config.yml`.
