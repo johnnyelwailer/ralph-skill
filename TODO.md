@@ -3,9 +3,10 @@
 ## Tasks
 
 ### Completed
-
-- [x] Add `agent/*` and `aloop/*` branch triggers to both `push` and `pull_request` in `.github/workflows/ci.yml` (replacing the single `agent/trunk` literal) — lines 5–7
-- [x] Add `concurrency` group with `cancel-in-progress: true` to cancel redundant runs on fast-push branches — lines 9–11
-- [x] Add `type-check` job running `tsc --noEmit` for both CLI (`aloop/cli`) and Dashboard (`aloop/cli/dashboard`) — lines 14–43
-- [x] Add `cli-tests` job that builds the full CLI artifact then runs `npm test` — lines 45–68
-- [x] Add `cache` and `cache-dependency-path` to `setup-node` in the existing `dashboard-tests` job — lines 79–82
+- [x] Add `agent/*` and `aloop/*` to `on.push.branches` and `on.pull_request.branches` in `.github/workflows/ci.yml` (verified PASS — QA iter 10, commit 7bfce83b)
+- [x] Ensure workflow `name: CI` is set (verified PASS)
+- [x] Add concurrency block with `cancel-in-progress: true` (verified PASS)
+- [x] Confirm four independent jobs present (`type-check`, `cli-tests`, `dashboard-tests`, `loop-script-tests`) with no `needs:` declarations (verified PASS)
+- [x] Confirm `cli-tests` build step uses explicit scripts only (`build:server`, `build:shebang`, `build:templates`, `build:bin`, `build:agents`) — no `build:dashboard` (verified PASS)
+- [x] Verify README badge URL targets `actions/workflows/ci.yml/badge.svg` (verified PASS)
+- [x] Verify README contains no hallucinated `gh` commands (verified PASS)
