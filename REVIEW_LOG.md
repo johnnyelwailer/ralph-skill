@@ -216,3 +216,25 @@
 **Prior findings:** All three FAIL findings from initial review remain resolved. No regressions introduced.
 
 ---
+
+## Review — 2026-04-13 17:30 — commit 65edb483..697547d9 (docs-only changes since last PASS)
+
+**Verdict: PASS** (no new findings)
+**Scope:** TODO.md only (3 commits: spec-gap documentation added, reformatted, then removed)
+
+**Changes reviewed:** No code or CI config changes. Sequence: `157fa576` added a spec-gap section to TODO.md (P2 CLAUDE_MODEL mismatch, P3 opencode header omission, P3 config.yml `on_start:` gap); `2223c5ae` reformatted that section; `697547d9` removed it entirely, simplifying TODO.md to just the task checklist. Net result: cleaner TODO.md with no spec-gap content. `ci.yml` and `README.md` byte-for-byte identical to prior PASS (empty `git diff 65edb483..HEAD -- .github/workflows/ci.yml`).
+
+**Gate re-verification:**
+- Gate 1: Spec-gap claims that briefly appeared in TODO.md were all factually accurate (verified: loop.sh:33 defaults `sonnet`, loop.ps1:34 defaults `opus`, config.yml:21 specifies `opus`; loop.sh header comment omits `opencode`; config.yml has no `on_start:` block per SPEC.md:1049-1051). Their removal is appropriate — these are out-of-scope for issue #200. ci.yml acceptance criteria all met.
+- Gate 4: TODO.md now clean — no dead entries, no stale comments. Spec-gap entries correctly removed per Constitution scope rules.
+- Gate 6: Docs-only changes — no observable runtime output. Acceptable skip.
+- Gate 7: N/A (no UI changes).
+- Gate 8: No dependency changes since last verified PASS.
+- Gate 9: README.md unchanged. Badge at README.md:1 targets correct URL.
+- Gates 2, 3, 5: N/A — no code changes since last verified PASS.
+
+**Concrete observation:** Gate 4: The spec-gap removal in `697547d9` is correct — filing out-of-scope gaps in issue #200's TODO.md would have violated Constitution rule 12 (one issue, one concern). Removing them is the right call.
+
+**Prior findings:** All three FAIL findings from initial review remain resolved. No regressions.
+
+---
