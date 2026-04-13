@@ -139,6 +139,11 @@ register_branch "phase_prereq.build.todo_has_unchecked" "check_phase_prerequisit
 register_branch "phase_prereq.plan_passthrough" "check_phase_prerequisites passes through plan phase unchanged"
 register_branch "phase_prereq.review.no_builds" "check_phase_prerequisites forces build when no commits since last plan"
 register_branch "phase_prereq.review.has_builds" "check_phase_prerequisites allows review when commits exist"
+register_branch "sync.merged" "sync_branch merges upstream commits and logs branch_sync result=merged"
+register_branch "sync.up_to_date" "sync_branch logs branch_sync result=up_to_date when already current"
+register_branch "sync.fetch_failure" "sync_branch continues non-fatally when git fetch fails"
+register_branch "sync.conflict" "sync_branch logs merge_conflict, writes queue file, aborts merge, returns non-zero"
+register_branch "sync.disabled" "sync_branch skips when auto_merge is false"
 
 RESOLVE_FUNC="$(extract_function resolve_healthy_provider)"
 SETUP_FUNC="$(extract_function setup_gh_block)"
@@ -157,6 +162,7 @@ WAIT_FOR_REQUESTS_FUNC="$(extract_function wait_for_requests)"
 RUN_QUEUE_FUNC="$(extract_function run_queue_if_present)"
 RESOLVE_MODE_FUNC="$(extract_function resolve_iteration_mode)"
 DERIVE_MODE_FUNC="$(extract_function derive_mode_from_prompt_name)"
+SYNC_BRANCH_FUNC="$(extract_function sync_branch)"
 
 if [ -z "$RESOLVE_FUNC" ] || [ -z "$SETUP_FUNC" ] || [ -z "$CLEANUP_FUNC" ] || [ -z "$INVOKE_FUNC" ] || [ -z "$WAIT_FUNC" ] || [ -z "$KILL_PROVIDER_FUNC" ]; then
     echo "FAIL: could not extract one or more target functions from $LOOP_SH"
@@ -165,6 +171,11 @@ fi
 
 if [ -z "$CYCLE_RESOLVE_FUNC" ] || [ -z "$CHECK_PHASE_PREREQ_FUNC" ] || [ -z "$CHECK_HAS_BUILDS_FUNC" ] || [ -z "$FRONTMATTER_FUNC" ] || [ -z "$DURATION_FUNC" ] || [ -z "$EXEC_CONTROLS_FUNC" ] || [ -z "$ADVANCE_FUNC" ] || [ -z "$WAIT_FOR_REQUESTS_FUNC" ] || [ -z "$RUN_QUEUE_FUNC" ] || [ -z "$RESOLVE_MODE_FUNC" ] || [ -z "$DERIVE_MODE_FUNC" ]; then
     echo "FAIL: could not extract cycle/frontmatter/duration/exec-controls/advance/requests/queue functions from $LOOP_SH"
+    exit 1
+fi
+
+if [ -z "$SYNC_BRANCH_FUNC" ]; then
+    echo "FAIL: could not extract sync_branch from $LOOP_SH"
     exit 1
 fi
 
@@ -185,6 +196,7 @@ eval "$WAIT_FOR_REQUESTS_FUNC"
 eval "$RUN_QUEUE_FUNC"
 eval "$RESOLVE_MODE_FUNC"
 eval "$DERIVE_MODE_FUNC"
+eval "$SYNC_BRANCH_FUNC"
 
 ORIGINAL_PATH="$PATH"
 _gh_block_dir=""
@@ -212,6 +224,12 @@ write_log_entry() {
         shift 2
     done
     echo "$line" >> "$COVERAGE_LOG_FILE"
+}
+
+write_log_entry_mixed() {
+    local event="$1"
+    local extra_json="$2"
+    echo "${event}|${extra_json}" >> "$COVERAGE_LOG_FILE"
 }
 
 write_status() { :; }
@@ -1033,6 +1051,156 @@ else
 fi
 
 rm -rf "$QUEUE_TMPDIR"
+
+# ---------------------------------------------------------------------------
+# sync_branch tests
+# ---------------------------------------------------------------------------
+
+# Set up a temporary git repo pair to simulate remote/local branching
+SYNC_WORK_DIR="$(mktemp -d)"
+SYNC_SESSION_DIR="$(mktemp -d)"
+SYNC_PROMPTS_DIR="$(mktemp -d)"
+
+# Create the "remote" bare repo and a local clone
+SYNC_REMOTE_DIR="$(mktemp -d)"
+git init --bare "$SYNC_REMOTE_DIR" >/dev/null 2>&1
+git init "$SYNC_WORK_DIR" >/dev/null 2>&1
+git -C "$SYNC_WORK_DIR" config user.email "test@test.com" >/dev/null 2>&1
+git -C "$SYNC_WORK_DIR" config user.name "Test" >/dev/null 2>&1
+git -C "$SYNC_WORK_DIR" remote add origin "$SYNC_REMOTE_DIR" >/dev/null 2>&1
+# Seed initial commit on main
+echo "init" > "$SYNC_WORK_DIR/init.txt"
+git -C "$SYNC_WORK_DIR" add init.txt >/dev/null 2>&1
+git -C "$SYNC_WORK_DIR" commit -m "init" >/dev/null 2>&1
+git -C "$SYNC_WORK_DIR" branch -M main >/dev/null 2>&1
+git -C "$SYNC_WORK_DIR" push origin main >/dev/null 2>&1
+# Create a feature branch for loop's working branch
+git -C "$SYNC_WORK_DIR" checkout -b feature >/dev/null 2>&1
+
+# Write PROMPT_merge.md into prompts dir
+cat > "$SYNC_PROMPTS_DIR/PROMPT_merge.md" << 'MERGEEOF'
+---
+agent: merge
+trigger: merge_conflict
+---
+Resolve conflicts.
+MERGEEOF
+
+# Save original env values and swap in test values
+_ORIG_WORK_DIR="${WORK_DIR:-}"
+_ORIG_SESSION_DIR="${SESSION_DIR:-}"
+_ORIG_PROMPTS_DIR="${PROMPTS_DIR:-}"
+WORK_DIR="$SYNC_WORK_DIR"
+SESSION_DIR="$SYNC_SESSION_DIR"
+PROMPTS_DIR="$SYNC_PROMPTS_DIR"
+
+# Write meta.json with auto_merge=true and base_branch=main
+cat > "$SYNC_SESSION_DIR/meta.json" << 'METAEOF'
+{"auto_merge": true, "base_branch": "main"}
+METAEOF
+
+# sync.up_to_date — no new commits upstream, result should be up_to_date
+> "$COVERAGE_LOG_FILE"
+if sync_branch; then
+    if grep -q 'branch_sync' "$COVERAGE_LOG_FILE" && grep -q '"result":"up_to_date"' "$COVERAGE_LOG_FILE"; then
+        cover_branch "sync.up_to_date"
+        pass_case "sync_branch logs branch_sync result=up_to_date when already current"
+    else
+        fail_case "sync_branch did not log branch_sync result=up_to_date — log: $(cat $COVERAGE_LOG_FILE)"
+    fi
+else
+    fail_case "sync_branch returned non-zero on up_to_date path"
+fi
+
+# sync.merged — push a new commit to upstream main, then sync
+echo "upstream change" > "$SYNC_WORK_DIR/upstream.txt"
+git -C "$SYNC_WORK_DIR" checkout main >/dev/null 2>&1
+git -C "$SYNC_WORK_DIR" add upstream.txt >/dev/null 2>&1
+git -C "$SYNC_WORK_DIR" commit -m "upstream commit" >/dev/null 2>&1
+git -C "$SYNC_WORK_DIR" push origin main >/dev/null 2>&1
+git -C "$SYNC_WORK_DIR" checkout feature >/dev/null 2>&1
+
+> "$COVERAGE_LOG_FILE"
+if sync_branch; then
+    if grep -q 'branch_sync' "$COVERAGE_LOG_FILE" && grep -q '"result":"merged"' "$COVERAGE_LOG_FILE" && grep -q '"merged_commit_count":1' "$COVERAGE_LOG_FILE"; then
+        cover_branch "sync.merged"
+        pass_case "sync_branch logs branch_sync result=merged with merged_commit_count=1"
+    else
+        fail_case "sync_branch merge log mismatch — log: $(cat $COVERAGE_LOG_FILE)"
+    fi
+else
+    fail_case "sync_branch returned non-zero on successful merge path"
+fi
+
+# sync.fetch_failure — break fetch by pointing origin to nonexistent path, should not fatal
+git -C "$SYNC_WORK_DIR" remote set-url origin /nonexistent/path >/dev/null 2>&1
+> "$COVERAGE_LOG_FILE"
+if sync_branch; then
+    cover_branch "sync.fetch_failure"
+    pass_case "sync_branch continues non-fatally when git fetch fails"
+else
+    fail_case "sync_branch returned non-zero on fetch-failure path (should be non-fatal)"
+fi
+# Restore origin
+git -C "$SYNC_WORK_DIR" remote set-url origin "$SYNC_REMOTE_DIR" >/dev/null 2>&1
+
+# sync.conflict — manufacture a conflict: edit the same line on both branches
+# feature branch: edit a file
+echo "feature version" > "$SYNC_WORK_DIR/conflict.txt"
+git -C "$SYNC_WORK_DIR" add conflict.txt >/dev/null 2>&1
+git -C "$SYNC_WORK_DIR" commit -m "feature edit" >/dev/null 2>&1
+
+# main branch: edit the same file differently
+git -C "$SYNC_WORK_DIR" checkout main >/dev/null 2>&1
+echo "main version" > "$SYNC_WORK_DIR/conflict.txt"
+git -C "$SYNC_WORK_DIR" add conflict.txt >/dev/null 2>&1
+git -C "$SYNC_WORK_DIR" commit -m "main edit" >/dev/null 2>&1
+git -C "$SYNC_WORK_DIR" push origin main >/dev/null 2>&1
+git -C "$SYNC_WORK_DIR" checkout feature >/dev/null 2>&1
+
+mkdir -p "$SYNC_SESSION_DIR/queue"
+> "$COVERAGE_LOG_FILE"
+sync_branch
+sync_rc=$?
+if [ "$sync_rc" -ne 0 ]; then
+    if grep -q 'merge_conflict' "$COVERAGE_LOG_FILE" \
+        && [ -f "$SYNC_SESSION_DIR/queue/000-merge-conflict.md" ]; then
+        # Verify git is clean (merge aborted)
+        if ! git -C "$SYNC_WORK_DIR" diff --name-only --diff-filter=U 2>/dev/null | grep -q .; then
+            cover_branch "sync.conflict"
+            pass_case "sync_branch logs merge_conflict, writes queue file, aborts merge, returns non-zero"
+        else
+            fail_case "sync_branch did not abort merge — conflict markers still present"
+        fi
+    else
+        fail_case "sync_branch conflict path: missing merge_conflict log or queue file"
+    fi
+else
+    fail_case "sync_branch returned 0 on conflict path (expected non-zero)"
+fi
+rm -f "$SYNC_SESSION_DIR/queue/000-merge-conflict.md"
+
+# sync.disabled — set auto_merge=false, should skip immediately
+cat > "$SYNC_SESSION_DIR/meta.json" << 'METAEOF'
+{"auto_merge": false, "base_branch": "main"}
+METAEOF
+> "$COVERAGE_LOG_FILE"
+if sync_branch; then
+    if ! grep -q 'branch_sync' "$COVERAGE_LOG_FILE"; then
+        cover_branch "sync.disabled"
+        pass_case "sync_branch skips when auto_merge is false"
+    else
+        fail_case "sync_branch logged branch_sync despite auto_merge=false"
+    fi
+else
+    fail_case "sync_branch returned non-zero when auto_merge=false"
+fi
+
+# Restore env
+WORK_DIR="$_ORIG_WORK_DIR"
+SESSION_DIR="$_ORIG_SESSION_DIR"
+PROMPTS_DIR="$_ORIG_PROMPTS_DIR"
+rm -rf "$SYNC_WORK_DIR" "$SYNC_REMOTE_DIR" "$SYNC_SESSION_DIR" "$SYNC_PROMPTS_DIR"
 
 # ---------------------------------------------------------------------------
 # Final summary
