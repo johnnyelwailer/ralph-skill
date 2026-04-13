@@ -3,10 +3,9 @@
 ## Tasks
 
 ### Completed
-- [x] Add `agent/*` and `aloop/*` to `on.push.branches` and `on.pull_request.branches` in `.github/workflows/ci.yml` (verified PASS — QA iter 10, commit 7bfce83b)
-- [x] Ensure workflow `name: CI` is set (verified PASS)
-- [x] Add concurrency block with `cancel-in-progress: true` (verified PASS)
-- [x] Confirm four independent jobs present (`type-check`, `cli-tests`, `dashboard-tests`, `loop-script-tests`) with no `needs:` declarations (verified PASS)
-- [x] Confirm `cli-tests` build step uses explicit scripts only (`build:server`, `build:shebang`, `build:templates`, `build:bin`, `build:agents`) — no `build:dashboard` (verified PASS)
-- [x] Verify README badge URL targets `actions/workflows/ci.yml/badge.svg` (verified PASS)
-- [x] Verify README contains no hallucinated `gh` commands (verified PASS)
+
+- [x] Add `agent/*` and `aloop/*` branch patterns to `on.push.branches` in `.github/workflows/ci.yml` (ci.yml:5 — verified: `['master', 'agent/*', 'aloop/*']`)
+- [x] Add `agent/*` and `aloop/*` branch patterns to `on.pull_request.branches` in `.github/workflows/ci.yml` (ci.yml:7 — verified: `['master', 'agent/*', 'aloop/*']`)
+- [x] Ensure all four required jobs exist independently: `type-check` (line 14), `cli-tests` (line 45), `dashboard-tests` (line 70), `loop-script-tests` (line 91) — no `needs:` on any job
+- [x] Workflow `name: CI` is stable (ci.yml:1)
+- [x] README badge targets `actions/workflows/ci.yml/badge.svg` (README.md:1 — verified)
