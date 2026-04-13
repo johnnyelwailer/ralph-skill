@@ -1,6 +1,5 @@
 name: CI
 
-# Issue #200: CI trigger branches include agent/* and aloop/* for orchestrator-managed branches
 on:
   push:
     branches: ['master', 'agent/*', 'aloop/*']
