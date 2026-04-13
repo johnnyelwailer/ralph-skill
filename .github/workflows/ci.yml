@@ -111,4 +111,3 @@ jobs:
         shell: pwsh
         run: |
           Invoke-Pester ./aloop/bin/loop.tests.ps1 -Output Detailed
-  loop-script-tests:
