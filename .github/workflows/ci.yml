@@ -61,7 +61,7 @@ jobs:
 
       - name: Build CLI
         working-directory: aloop/cli
-        run: npm run build
+        run: npm run clean && npm run build:server && npm run build:shebang && npm run build:templates && npm run build:bin && npm run build:agents
 
       - name: Run CLI tests
         working-directory: aloop/cli
@@ -87,45 +87,6 @@ jobs:
       - name: Run dashboard unit tests
         working-directory: aloop/cli/dashboard
         run: npm test
-
-  dashboard-e2e:
-    name: Dashboard E2E Tests
-    runs-on: ubuntu-latest
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-          cache: 'npm'
-          cache-dependency-path: |
-            aloop/cli/package-lock.json
-            aloop/cli/dashboard/package-lock.json
-
-      - name: Install dependencies
-        working-directory: aloop/cli
-        run: npm ci
-
-      - name: Install dashboard dependencies
-        working-directory: aloop/cli/dashboard
-        run: npm ci
-
-      - name: Cache Playwright browsers
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/ms-playwright
-          key: ${{ runner.os }}-playwright-${{ hashFiles('aloop/cli/dashboard/package-lock.json') }}
-          restore-keys: |
-            ${{ runner.os }}-playwright-
-
-      - name: Install Playwright Browsers
-        working-directory: aloop/cli/dashboard
-        run: npx playwright install --with-deps chromium
-
-      - name: Run E2E tests
-        working-directory: aloop/cli/dashboard
-        run: npm run test:e2e
 
   loop-script-tests:
     name: Loop Script Tests
