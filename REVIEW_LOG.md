@@ -98,3 +98,32 @@ All prior [review] tasks resolved.
 - Gate 5: Tests pass 57/57. No regressions.
 - Gate 6: N/A — internal loop behavior, no UI/API observable output. Proof skip acceptable.
 - Gates 7, 8, 9: N/A for shell script changes.
+
+---
+
+## Review — 2026-04-13 — commit cad966ed..31f40abf
+
+**Verdict: FAIL** (1 finding still outstanding — carried from prior review, NOT resolved)
+**Scope:** `aloop/bin/loop.sh`, `aloop/bin/loop.ps1`, `aloop/bin/loop_branch_coverage.tests.sh`, `aloop/bin/loop.tests.ps1`
+
+### Prior findings status
+
+**Finding 2 (infinite conflict loop): RESOLVED ✓**
+`git merge --abort` removed from both loop.sh (line 2167) and loop.ps1 (line 2113). Conflict markers now remain in the working tree for the merge agent to process. The infinite loop is broken.
+
+**Finding 3 (wrong test assertion): RESOLVED ✓**
+`loop_branch_coverage.tests.sh`: assertion now checks `git diff --diff-filter=U | grep -q .` (markers ARE present). `loop.tests.ps1`: `Should -BeNullOrEmpty` → `Should -Not -BeNullOrEmpty`. Both confirmed passing in the test run (57/57 branch coverage, 100%).
+
+**Finding 1 (Constitution Rule 1): STILL OPEN — NOT RESOLVED**
+`loop.sh` is at 2420 LOC (baseline 2329 = +91 LOC net). `loop.ps1` is at 2480 LOC (baseline 2388 = +92 LOC net). The `git merge --abort` removal this iteration only removed 1 line each, leaving +91/+92 net growth. Constitution Rule 1 is unambiguous: "Nothing may be added to loop.sh or loop.ps1. Any PR that touches these files must reduce their line count." The [review] task remains in TODO.md under "In Progress (Review Findings)" and has not been actioned.
+
+### Gate 5
+
+Branch coverage tests: 57/57 PASS. All 5 sync paths (up_to_date, merged, fetch_failure, conflict, disabled) confirmed passing including the now-corrected conflict assertion.
+
+### Gates 2, 3, 4, 6, 7, 8, 9
+
+- Gate 2: Specific, concrete assertions in conflict test. ✓
+- Gate 3: 100% branch coverage confirmed. ✓
+- Gate 4: Dead/wrong code removed (the `git merge --abort` lines). No new code. ✓
+- Gates 6, 7, 8, 9: N/A.
