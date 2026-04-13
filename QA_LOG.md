@@ -1,5 +1,50 @@
 # QA Log
 
+## QA Session — 2026-04-13 (iteration 16)
+
+### Test Environment
+- Worktree: /home/pj/.aloop/sessions/orchestrator-20260321-172932-issue-200-20260413-210916/worktree
+- Branch: aloop/issue-200
+- Commit: f96fe025
+- Features tested: 7 (re-verification — only doc commits since iter 15)
+
+### Results
+- PASS: CI branch triggers (agent/*, aloop/*)
+- PASS: Concurrency control (cancel-in-progress: true)
+- PASS: Four parallel jobs (no needs:)
+- PASS: cli-tests explicit build scripts (no build:dashboard)
+- PASS: No dashboard-e2e job
+- PASS: README badge URL points to ci.yml
+- PASS: No hallucinated gh commands in README
+
+### Bugs Filed
+None — all acceptance criteria verified PASS
+
+### Command Transcript
+```
+Verification method: direct file read + grep checks
+
+git diff af5d802e HEAD -- .github/workflows/ci.yml README.md → no diff (no workflow/README changes)
+git log af5d802e..HEAD → 377a2502 (docs: update completed task listing), f96fe025 (docs: clarify acceptance criteria details)
+
+ci.yml line 1: name: CI → AC name: PASS
+ci.yml line 5: push branches: ['master', 'agent/*', 'aloop/*'] → AC1 push: PASS
+ci.yml line 7: PR branches: ['master', 'agent/*', 'aloop/*'] → AC1 PR: PASS
+Jobs: type-check (line 14), cli-tests (line 45), dashboard-tests (line 70), loop-script-tests (line 91) → PASS
+No needs: declarations → AC no needs: PASS
+cli-tests build: npm run clean && build:server && build:shebang && build:templates && build:bin && build:agents (line 64) → PASS
+No build:dashboard in cli-tests → PASS
+No dashboard-e2e job → PASS
+README: actions/workflows/ci.yml/badge.svg (line 1) → PASS
+No gate1/gate2/gate3/pr-rebase in README → PASS
+
+All CI acceptance criteria: ALL PASS at commit f96fe025
+```
+
+Changes since iter 15 (af5d802e): 377a2502 (docs: update TODO.md), f96fe025 (docs: clarify TODO.md) — no workflow or README changes.
+
+---
+
 ## QA Session — 2026-04-13 (iteration 15)
 
 ### Test Environment
