@@ -45,6 +45,7 @@ LAUNCH_MODE="start"
 PROVIDER_TIMEOUT="${ALOOP_PROVIDER_TIMEOUT:-10800}"
 PROVIDER_HEALTH_DIR="${ALOOP_HEALTH_DIR:-$HOME/.aloop/health}"
 HEALTH_LOCK_RETRY_DELAYS=(0.05 0.10 0.15 0.20 0.25)
+HEALTH_LOCK_STALE_SECONDS=30
 SESSION_ID=""
 
 # ============================================================================
@@ -885,25 +886,48 @@ acquire_provider_health_lock() {
     local lock_dir="${path}.lock"
     local retries=${#HEALTH_LOCK_RETRY_DELAYS[@]}
     local i
+
     for ((i=0; i<retries; i++)); do
         if mkdir "$lock_dir" 2>/dev/null; then
+            printf '%s
+' "$$" > "$lock_dir/pid" 2>/dev/null || true
+            date -u +%Y-%m-%dT%H:%M:%SZ > "$lock_dir/created_at" 2>/dev/null || true
             echo "$lock_dir"
             return 0
         fi
+
+        # Stale lock recovery: remove orphaned or old lock dirs.
+        if [ -d "$lock_dir" ]; then
+            local owner_pid lock_mtime now_epoch age
+            owner_pid=""
+            lock_mtime=""
+            now_epoch=$(date -u +%s)
+
+            if [ -f "$lock_dir/pid" ]; then
+                owner_pid=$(cat "$lock_dir/pid" 2>/dev/null || true)
+            fi
+            lock_mtime=$(stat -c %Y "$lock_dir" 2>/dev/null || true)
+            age=0
+            if [ -n "$lock_mtime" ]; then
+                age=$((now_epoch - lock_mtime))
+            fi
+
+            if { [ -n "$owner_pid" ] && ! kill -0 "$owner_pid" 2>/dev/null; } || [ "$age" -gt "$HEALTH_LOCK_STALE_SECONDS" ]; then
+                rm -rf "$lock_dir" 2>/dev/null || true
+            fi
+        fi
+
         sleep "${HEALTH_LOCK_RETRY_DELAYS[$i]}"
     done
-    write_log_entry "health_lock_failed" \
-        "provider" "$provider_name" \
-        "operation" "$operation_name" \
-        "path" "$path" \
-        "retries" "$retries"
+
+    write_log_entry "health_lock_failed"         "provider" "$provider_name"         "operation" "$operation_name"         "path" "$path"         "retries" "$retries"
     return 1
 }
 
 release_provider_health_lock() {
     local lock_dir="$1"
     if [ -n "$lock_dir" ] && [ -d "$lock_dir" ]; then
-        rmdir "$lock_dir" 2>/dev/null || true
+        rm -rf "$lock_dir" 2>/dev/null || true
     fi
 }
 

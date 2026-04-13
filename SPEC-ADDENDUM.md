@@ -1318,21 +1318,450 @@ The orchestrator scan loop must never auto-complete based on TODO.md task status
 - [ ] Orchestrator loop runs indefinitely regardless of TODO.md state
 - [ ] Child loops still complete normally when all tasks are done
 
+---
 
-### Child Session Reconciliation (process-requests)
+## `process-requests` Phase Pipeline
 
-`process-requests` must reconcile child-loop liveness on every pass using **both** signals:
+`aloop process-requests` is the one-shot command called by `loop.sh` between iterations for orchestrator sessions. It executes four sequential top-level phases on each invocation. Source: `aloop/cli/src/commands/process-requests.ts` lines 110–938.
 
-1. PID existence (`/proc/<pid>`) when `child_pid` is present.
-2. Session marker match in live process command lines (`.../.aloop/sessions/<child_session>...`).
+### Phase 1: Result Intake
 
-Rules:
-- If an issue is `in_progress` but `child_session` is missing, reset to `pending` + `Ready`.
-- If `child_session` is present but not live by the checks above:
-  - if `pr_number` exists: transition issue to `pr_open` + `In review`.
-  - else transition issue to `pending` + `Ready`.
-  - clear `child_session` and `child_pid`.
-- If dead child `status.json` still says `running`, mark it `stopped` best-effort to prevent stale global "running" counts.
-- Failed issue recovery must use the same liveness check, not PID-only checks.
+Reads `<session>/requests/` for agent-produced result files and applies them to orchestrator state:
 
-Concurrency accounting must be based on reconciled live children, not stale JSON pointers.
+- **1a. Epic decomposition** (`epic-decomposition-results.json`) — applied only when `state.issues.length === 0`; calls `applyDecompositionPlan` to populate initial issue list
+- **1b. Sub-decomposition** (`sub-decomposition-result-<N>.json`) — creates sub-issues in state and on GH; sets `decomposed: true` on parent; calls `updateParentTasklist` to update parent body on GH
+- **1c. Refine results** (`refine-result-<N>.json`) — updates GH issue body and marks `dor_validated: true`
+- **1d. Estimate results** (`estimate-result-<N>.json`) — applies wave/complexity estimates to state entries
+
+Each result file is archived (moved out of `requests/`) after processing.
+
+### Phase 2: GH Operations
+
+Phase 2 is a sequence of sub-phases that operate on GH and child worktrees:
+
+| Sub-phase | What it does |
+|-----------|--------------|
+| **2** | Creates GH issues for state entries with `number === 0` |
+| **2b** | Forward-merges `master → agent/trunk` (picks up human changes to trunk) |
+| **2c** | Rebases each `in_progress`/`pr_open` child branch onto `origin/<trunk>` (see Auto-Rebase section) |
+| **2c** | Creates PRs for completed children that don't have one yet; strips working artifacts before PR |
+| **2d** | Detects dead children (PID gone) and transitions state: has PR → `pr_open`; no PR → `pending` |
+| **2d.2** | Recovers `failed` issues with a viable path forward (has PR → `pr_open`; no PR → `pending`) |
+| **2e** | Removes worktrees and V8 cache for issues in `merged` or `failed` state |
+| **2f** | Syncs changed issue statuses to GH project board via GraphQL |
+
+### Phase 3: State Persist
+
+Writes the mutated `OrchestratorState` to `<session>/orchestrator.json`. Also cleans stale entries from `active.json`.
+
+### Phase 4: Scan Pass
+
+Delegates to `runOrchestratorScanPass` (from `orchestrate.ts`) for all remaining orchestration: issue triage, child dispatch, PR lifecycle, wave advancement, budget enforcement, and child monitoring.
+
+### Acceptance Criteria
+
+- [ ] `grep -n "Phase 1\|Phase 2\|Phase 3\|Phase 4" aloop/cli/src/commands/process-requests.ts` returns entries for all four phases
+- [ ] Phase 1 archives result files after processing (no re-processing on next invocation)
+- [ ] Phase 2 sub-phases execute in the order documented above
+- [ ] Phase 3 writes `orchestrator.json` before the scan pass runs
+
+---
+
+## Auto-Rebase Child Branches
+
+The orchestrator automatically rebases child branches onto the trunk branch during Phase 2c of each `process-requests` invocation. Source: `aloop/cli/src/commands/process-requests.ts` lines 356–403.
+
+### Rebase Trigger
+
+For each issue in `in_progress` or `pr_open` state with a `child_session`:
+
+1. `git fetch origin <trunk>` in the child worktree
+2. Compute merge-base of `HEAD` and `origin/<trunk>`
+3. If merge-base equals `origin/<trunk>` tip: branch is up to date — skip
+4. Otherwise: branch is behind — proceed with rebase
+
+### Pre-Rebase Commit
+
+If the child worktree has any dirty/uncommitted files:
+
+1. Remove working artifacts from git index (keep on disk): `git rm -f --cached` for `TODO.md`, `STEERING.md`, `QA_COVERAGE.md`, `QA_LOG.md`, `REVIEW_LOG.md`
+2. Stage all remaining changes: `git add -A`
+3. Commit: `chore: save work-in-progress before rebase`
+
+### Rebase and Push
+
+4. `git rebase origin/<trunk>` in the child worktree
+5. On success: `git push origin HEAD --force-with-lease`
+
+### Conflict Handling
+
+On rebase conflict:
+
+1. `git rebase --abort`
+2. Write `<child-session>/queue/000-merge-conflict.md` with the content of `PROMPT_merge.md` plus explicit rebase instructions
+3. The `000-` prefix guarantees the merge agent picks this up before any other queue file
+
+### Acceptance Criteria
+
+- [ ] `grep -n "force-with-lease\|rebase --abort\|000-merge-conflict" aloop/cli/src/commands/process-requests.ts` returns all three patterns
+- [ ] Artifacts (`TODO.md`, `STEERING.md`, etc.) are removed from git index before the pre-rebase commit
+- [ ] Commit message is exactly `chore: save work-in-progress before rebase`
+- [ ] Conflict queue file is `000-merge-conflict.md` (not any other name)
+
+---
+
+## PR Lifecycle: Gate Checks, Review Verdict, Merge/Request-Changes
+
+The PR lifecycle is managed by `processPrLifecycle` in `orchestrate.ts` (lines 3646–3896), called once per `pr_open` issue on each scan pass. Source: `aloop/cli/src/commands/orchestrate.ts`.
+
+### Step 1: Gate Checks (`checkPrGates`)
+
+`checkPrGates` runs two gates via `gh pr view`:
+
+| Gate | Pass condition | Pending condition | Fail condition |
+|------|---------------|-------------------|----------------|
+| `merge_conflicts` | `mergeable === "MERGEABLE"` | — | Any other mergeable state |
+| `ci_checks` | All checks completed and passed/neutral/skipped | Any check still running | Any check failed/cancelled/timed out |
+
+If no check runs exist and no GitHub Actions workflows are detected, CI gate passes.
+
+### Step 2: Pending CI
+
+If any gate is `pending`, lifecycle returns `gates_pending` and waits for the next scan pass.
+
+### Step 3: Merge Conflicts
+
+If `mergeable` is false (and not an API error), the orchestrator sets `needs_rebase = true` and `needs_redispatch = true`. A child agent (with `agent: merge` frontmatter) is dispatched to resolve the conflict. `rebase_attempts` is incremented for diagnostics.
+
+### Step 4: CI Failures
+
+If CI gate fails:
+
+- Tracks failure signature and retry count (`ci_failure_retries`)
+- If the same CI failure signature persists for `ORCHESTRATOR_CI_PERSISTENCE_LIMIT` (3) attempts: closes the PR with a comment, resets issue to `pending`/`Ready` for fresh dispatch
+- Otherwise: waits for next pass (child may self-heal)
+
+### Step 5: Agent Review (`reviewPrDiff` / `invokeAgentReview`)
+
+Once gates pass, runs agent review:
+
+- **`APPROVED`**: proceeds to merge (Step 6)
+- **`CHANGES_REQUESTED`**: sets `needs_redispatch = true` and `review_feedback = reviewResult.summary`; posts a comment on the PR; tracks `redispatch_failures`; after `ORCHESTRATOR_REDISPATCH_FAILURE_LIMIT` failures, sets `redispatch_paused = true` and adds `aloop/needs-human` label
+- **`flag-for-human`**: calls `flagForHuman`, adds `aloop/needs-human` label
+
+### Step 6: Squash-Merge
+
+On `APPROVED` verdict: `gh pr merge <N> --repo <repo> --squash --delete-branch`. Issue state transitions to `merged`, status to `Done`. GH project status is synced to `Done`. Issue is closed on GH.
+
+### Acceptance Criteria
+
+- [ ] `grep -n "checkPrGates\|processPrLifecycle\|mergePr" aloop/cli/src/commands/orchestrate.ts` returns all three functions
+- [ ] `grep "squash.*delete-branch\|delete-branch.*squash" aloop/cli/src/commands/orchestrate.ts` matches the merge command
+- [ ] CI persistence limit is `ORCHESTRATOR_CI_PERSISTENCE_LIMIT` (3)
+- [ ] Merge conflict → `needs_redispatch = true` (not a passive comment)
+
+---
+
+## Review Re-Dispatch
+
+The orchestrator re-dispatches the child loop via `launchIssues` rather than creating a new session when a review verdict is `CHANGES_REQUESTED` or when a PR has merge conflicts. The dispatch path branches on `issue.needs_rebase`. Source: `aloop/cli/src/commands/orchestrate.ts` lines 5518–5563.
+
+### Mechanism
+
+1. `processPrLifecycle` sets `needs_redispatch = true` on the state issue, plus either:
+   - `review_feedback = <summary>` (when verdict is `CHANGES_REQUESTED`), or
+   - `needs_rebase = true` (when PR has merge conflicts with trunk)
+2. On the next scan pass, `runOrchestratorScanPass` collects all issues with `needs_redispatch && !redispatch_paused`
+3. Calls `launchIssues` for up to `availableSlots(state)` of them — the same dispatch path as initial child dispatch (respects concurrency limits, capability filters, state updates)
+4. After launch, writes a queue file to the child's queue dir — the file chosen depends on the re-dispatch reason (see sub-sections below)
+
+### Sub-path A: Review Feedback (`CHANGES_REQUESTED`)
+
+When `issue.needs_rebase` is not `true`, writes `queue/000-review-fixes.md` with `agent: build` frontmatter.
+
+`000-review-fixes.md` format:
+```
+---
+agent: build
+reasoning: high
+---
+
+# Review Feedback — Fix Required
+
+The orchestrator review agent requested changes on PR #<N>.
+
+## Feedback
+
+<review_feedback content>
+
+## Instructions
+
+Fix the issues described above, commit, and push.
+Do NOT add TODO.md, STEERING.md, TASK_SPEC.md, or other working artifacts to the commit.
+```
+
+### Sub-path B: Merge Conflict Re-Dispatch
+
+When `issue.needs_rebase === true`, writes `queue/000-rebase-conflict.md` with `agent: merge` frontmatter instead, and clears `needs_rebase = false` after launch.
+
+`000-rebase-conflict.md` format:
+```
+---
+agent: merge
+reasoning: high
+---
+
+# Rebase Required
+
+PR #<N> has merge conflicts with `<trunk_branch>`.
+
+Run:
+
+    git fetch origin <trunk_branch>
+    git rebase origin/<trunk_branch>
+
+Resolve all conflict markers, then:
+
+    git rebase --continue
+    git push origin HEAD --force-with-lease
+```
+
+### State Cleanup
+
+After launch, `needs_redispatch` is set to `false` and `review_feedback` is cleared from the state issue. When `needs_rebase === true`, `needs_rebase` is additionally set to `false`.
+
+### Acceptance Criteria
+
+- [ ] `grep -n "000-review-fixes.md" aloop/cli/src/commands/orchestrate.ts` returns the queue file write
+- [ ] `grep -n "000-rebase-conflict" aloop/cli/src/commands/orchestrate.ts` returns the merge-conflict queue file write
+- [ ] `grep -n "needs_redispatch.*false\|needs_redispatch = false" aloop/cli/src/commands/orchestrate.ts` confirms state cleanup
+- [ ] `grep -n "needs_rebase.*false\|needs_rebase = false" aloop/cli/src/commands/orchestrate.ts` confirms `needs_rebase` cleared after merge dispatch
+- [ ] Re-dispatch uses `launchIssues` (not a new `orchestrate` session)
+- [ ] Queue file name is `000-review-fixes.md` for `CHANGES_REQUESTED`; `000-rebase-conflict.md` for merge conflicts
+
+---
+
+## Cleanup: Worktree Removal and V8 Cache Management
+
+Post-completion cleanup runs during Phase 2e of each `process-requests` invocation. Source: `aloop/cli/src/commands/process-requests.ts` lines 574–609.
+
+### Per-Session Cleanup (Phase 2e)
+
+For every issue in `merged` or `failed` state that still has a `child_session`:
+
+1. If `<child-session>/worktree` exists: `git worktree remove --force <worktree-path>` (run in `projectRoot`), then `git worktree prune`
+2. If `<child-session>/.v8-cache` exists: `rm -rf <child-session>/.v8-cache`
+
+Cleanup is best-effort — errors are silently ignored.
+
+### Global /tmp Cleanup (Periodic Hack)
+
+With 10% probability on each `process-requests` invocation, runs:
+
+```
+find /tmp -maxdepth 2 -name '.da*.so' -mmin +60 -delete
+```
+
+This removes V8 code cache `.so` files created by provider CLIs (claude, opencode) that accumulate in `/tmp`. This is a blunt workaround — it may affect files from unrelated processes. Per-session cache is handled cleanly via `NODE_COMPILE_CACHE=<sessionDir>/.v8-cache`.
+
+### Acceptance Criteria
+
+- [ ] `grep -n "worktree remove --force\|worktree prune\|\.v8-cache" aloop/cli/src/commands/process-requests.ts` returns all three patterns
+- [ ] Cleanup triggers only for `merged` or `failed` issues with a `child_session`
+- [ ] Global `/tmp` cleanup runs with ~10% probability (not every pass)
+
+---
+
+## Epic Lifecycle: Tracking State, Sub-Issue Tasklists, Parent References
+
+Issues labeled `aloop/epic` follow a distinct lifecycle from regular issues. Source: `aloop/cli/src/commands/orchestrate.ts` lines 1148–1188; `aloop/cli/src/commands/process-requests.ts` lines 186–214.
+
+### Epics Are Never Dispatched
+
+Epics are tracking issues only. On GH project status preload (restart), if an issue is labeled `aloop/epic`, it is never assigned `issueState = 'in_progress'` regardless of project status. Only non-epics get child sessions.
+
+### Tasklist Epics
+
+An epic is considered a "tasklist epic" if its body contains `[tasklist]`. These have `hasSubIssues = true` and are assigned `status = 'In progress'` (not `'Needs decomposition'`). They are tracking the completion of their sub-issues via the tasklist.
+
+### Sub-Issue Creation
+
+When a sub-decomposition result is applied:
+
+1. Each sub-issue body is prefixed: `Part of #<parentNum>: <parentTitle>\n\n<sub body>`
+2. Sub-issue is created on GH with label `aloop/auto`
+3. Sub-issue state entry gets `wave`, `depends_on`, and other fields from the decomposition result
+4. Parent issue gets `decomposed: true` set on its state entry
+5. Parent body on GH is updated with a markdown tasklist via `updateParentTasklist`
+
+### Parent Reference
+
+Sub-issues store the parent issue number implicitly in their body prefix (`Part of #<N>:`). There is no separate `parent_issue` field on the state entry — the relationship is expressed in the body.
+
+### Acceptance Criteria
+
+- [ ] `grep -n "aloop/epic\|isEpic\|hasSubIssues" aloop/cli/src/commands/orchestrate.ts` returns epic detection logic
+- [ ] `grep -n "Part of #\|updateParentTasklist\|decomposed.*true" aloop/cli/src/commands/process-requests.ts` returns all three patterns
+- [ ] Epics with `isEpic = true` never get `issueState = 'in_progress'` in the preload path
+
+---
+
+## GH Project Status Preloading on Restart
+
+On orchestrator restart (when `state.issues.length === 0` but GH issues exist), the orchestrator fetches GH project status for all issues in a single batch before populating local state. Source: `aloop/cli/src/commands/orchestrate.ts` lines 1118–1193.
+
+### Mechanism
+
+1. Fetches the aloop project number dynamically via `gh project list --owner <owner>`
+2. Runs a single GraphQL query to get all project items with their `Status` field values into a `projectStatusMap`
+3. For each GH issue, looks up the project status and applies it:
+
+| Project status | `dor_validated` | `issueState` |
+|----------------|-----------------|--------------|
+| `Ready` | `true` | `pending` |
+| `In progress` (non-epic) | `true` | `in_progress` |
+| `In review` | `true` | `pr_open` |
+| `Done` | `true` | `merged` |
+| (absent) | `false` | `pending` |
+
+### Purpose
+
+Avoids re-triggering estimation/refinement for issues that were already processed in a prior session. Issues at `Ready`, `In review`, or `Done` skip the `Needs refinement` status that would queue a refinement agent.
+
+### Acceptance Criteria
+
+- [ ] `grep -n "projectStatusMap\|gh_project_number\|projectV2" aloop/cli/src/commands/orchestrate.ts` returns the preload logic
+- [ ] Preload only runs when `state.issues.length === 0` (not on every scan pass)
+- [ ] Project status `Done` maps to `issueState = 'merged'` (not re-dispatched)
+
+---
+
+## Queue Priority: `000-` Prefix
+
+Queue files in `<child-session>/queue/` are processed in lexicographic sort order. Files prefixed with `000-` sort before all others and are therefore processed first. Source: `aloop/cli/src/commands/process-requests.ts` and `aloop/cli/src/commands/orchestrate.ts` throughout.
+
+### Reserved `000-` Queue Files
+
+| File | Written by | Purpose |
+|------|------------|---------|
+| `000-merge-conflict.md` | `process-requests.ts` Phase 2c | Triggers merge agent on rebase conflict |
+| `000-review-fixes.md` | `orchestrate.ts` re-dispatch path | Delivers review feedback to child loop |
+| `000-extract-verdict-<pr>.md` | `orchestrate.ts` | Triggers verdict extraction for stuck reviews |
+| `000-review-<pr>.md` | `process-requests.ts` invokeAgentReview | Triggers review agent for a PR |
+| `000-troubleshoot-review-<pr>.md` | `process-requests.ts` invokeAgentReview | Triggers troubleshoot agent when review is stuck |
+
+### Convention
+
+- Normal queue files use descriptive names without a numeric prefix, or with a higher prefix (e.g., `001-`)
+- `000-` is reserved for high-priority injected prompts that must be picked up before any other work
+- The child loop does not need any special logic — lexicographic ordering handles priority automatically
+
+### Acceptance Criteria
+
+- [ ] `grep -rn "000-merge-conflict\|000-review-fixes\|000-review-\|000-troubleshoot-review\|000-extract-verdict" aloop/cli/src/commands/` returns all `000-` file names
+- [ ] No `000-` file is written by child agents (only by the orchestrator runtime)
+
+---
+
+## Artifact Management: Working Files Excluded from PRs
+
+Five working artifact files must not appear in PRs or rebase operations. They are temporarily removed from the git index before these operations but kept on disk. Source: `aloop/cli/src/commands/process-requests.ts` lines 375–383 (pre-rebase), 423–431 (pre-PR).
+
+### Artifact List
+
+- `TODO.md`
+- `STEERING.md`
+- `QA_COVERAGE.md`
+- `QA_LOG.md`
+- `REVIEW_LOG.md`
+
+### Pre-Rebase Removal
+
+Before committing the pre-rebase WIP snapshot, each artifact is removed from the git index (not disk):
+
+```bash
+git rm -f --cached <artifact>   # in child worktree
+```
+
+This prevents the WIP commit from including artifact files and prevents rebase conflicts on them.
+
+### Pre-PR Removal
+
+Before creating a PR, each artifact is removed from the git index:
+
+```bash
+git rm --cached --ignore-unmatch <artifact>   # in child worktree
+```
+
+If any files were staged by this removal, a commit is made: `chore: remove working artifacts from PR`. The branch is then pushed before the PR is created.
+
+### Why Not `.gitignore`
+
+The artifacts are files the child loop actively writes during its session. They are not ignored globally — they are selectively excluded from specific git operations by the orchestrator runtime.
+
+### Acceptance Criteria
+
+- [ ] `grep -n "TODO.md.*STEERING.md\|working artifacts" aloop/cli/src/commands/process-requests.ts` returns both removal sites
+- [ ] Artifact removal uses `--cached` (not `--` or full delete)
+- [ ] Pre-PR commit message is exactly `chore: remove working artifacts from PR`
+- [ ] Files remain on disk after removal from index
+
+---
+
+## `execGh` Calls `gh` Directly
+
+The `execGh` helper in both `process-requests.ts` and `orchestrate.ts` calls the `gh` CLI binary directly via `spawnSync`. It does NOT call `aloop gh`. Source: `aloop/cli/src/commands/process-requests.ts` lines 141–145.
+
+### Implementation
+
+```typescript
+const execGh = async (args: string[]): Promise<{ stdout: string; stderr: string }> => {
+  const r = spawnSync('gh', args, { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true, timeout: 30000 });
+  if (r.status === null && r.signal) throw new Error(`gh timed out (${r.signal})`);
+  return { stdout: r.stdout ?? '', stderr: r.stderr ?? '' };
+};
+```
+
+### Why Not `aloop gh`
+
+`aloop gh` is a wrapper command for agents running inside child loops that do not have direct `gh` access (Constitution rule 4: agents cannot call external CLIs directly). The orchestrator runtime (`process-requests`, `orchestrate`) runs on the host with direct `gh` access and calls it directly. Using `aloop gh` from within the runtime would be unnecessary indirection and would break if the CLI is not installed or not in `PATH`.
+
+### Acceptance Criteria
+
+- [ ] `grep -n "spawnSync.*'gh'" aloop/cli/src/commands/process-requests.ts` returns the `execGh` definition
+- [ ] `grep -n "aloop gh\|execAloop.*gh" aloop/cli/src/commands/process-requests.ts` returns no matches
+- [ ] Same pattern holds in `aloop/cli/src/commands/orchestrate.ts`
+
+## master ↔ agent/trunk Sync Strategy
+
+### Two-Branch Model
+
+The orchestrator operates with two long-lived branches:
+
+- **`master`** — the human development branch; humans commit directly here
+- **`agent/trunk`** — the agent integration branch; child PRs target this branch; the orchestrator merges into it
+
+These two branches diverge independently and must be kept in sync.
+
+### Four Sync Operations
+
+| # | Operation | Direction | Where | Trigger |
+|---|-----------|-----------|-------|---------|
+| 1 | Child branch-from-trunk | `agent/trunk` → child branch | `orchestrate.ts` `launchChildLoop` | New child session dispatched |
+| 2 | PR merge into trunk | child branch → `agent/trunk` | `orchestrate.ts` `mergePr` | PR approved and gates pass |
+| 3 | Forward-merge master into trunk | `master` → `agent/trunk` | `process-requests.ts` `syncMasterToTrunk` (Phase 2b) | Each `process-requests` run |
+| 4 | Trunk-to-master PR | `agent/trunk` → `master` | `orchestrate.ts` `createTrunkToMainPr` | All issues resolved, `auto_merge_to_main` enabled |
+
+### Phase 2b: `syncMasterToTrunk` Logic
+
+Runs every `process-requests` cycle. Three cases:
+
+1. **Fast-forward** (`merge-base ≠ master HEAD`, FF push succeeds): `origin/master` is a linear descendant of `origin/<trunk>`. Runs `git push origin origin/master:refs/heads/<trunk>` — a standard (non-force) push that fails if non-FF.
+
+2. **Diverged** (`merge-base ≠ master HEAD`, FF push fails): Both branches have independent commits. Creates a temporary worktree checked out at `<trunk>`, runs `git merge origin/master --no-edit`, then pushes. Removes the worktree regardless of outcome.
+
+3. **No-op** (`merge-base == master HEAD`): Trunk already contains all of master's commits. Nothing to do.
+
+### No-Force-Push Invariant
+
+**`git push --force` and `git push --force-with-lease` are never used on `agent/trunk`.** The fast-forward push is a plain refspec push that naturally rejects non-FF updates; the diverged path creates a real merge commit and pushes it conventionally. This invariant must be preserved in all future modifications to `syncMasterToTrunk`.

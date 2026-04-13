@@ -14,6 +14,8 @@ import {
   detectIssueChanges,
   type BulkIssueState,
 } from '../lib/github-monitor.js';
+import { deriveComponentLabels } from '../lib/labels.js';
+import { buildPrBody } from '../lib/issue-metadata.js';
 
 export interface OrchestrateCommandOptions {
   spec?: string;
@@ -656,11 +658,24 @@ export async function applyDecompositionPlan(
 
   for (const planIssue of plan.issues) {
     const wave = waveMap.get(planIssue.id)!;
-    const labels = ['aloop', `aloop/wave-${wave}`];
+    const labels = ['aloop', `aloop/wave-${wave}`, `wave/${wave}`];
+    const componentLabels = deriveComponentLabels(planIssue.file_hints ?? []);
+    labels.push(...componentLabels);
+
+    // Enrich body with dependency references (AC #6)
+    let enrichedBody = planIssue.body;
+    if (planIssue.depends_on.length > 0) {
+      const depRefs = planIssue.depends_on
+        .map((depId) => `#${idToGhNumber.get(depId) ?? depId}`)
+        .join(', ');
+      if (!enrichedBody.includes('Depends on')) {
+        enrichedBody = `${enrichedBody}\n\nDepends on ${depRefs}`;
+      }
+    }
 
     let ghNumber: number;
     if (deps.execGhIssueCreate && repo) {
-      ghNumber = await deps.execGhIssueCreate(repo, path.basename(sessionDir), planIssue.title, planIssue.body, labels);
+      ghNumber = await deps.execGhIssueCreate(repo, path.basename(sessionDir), planIssue.title, enrichedBody, labels);
     } else {
       // When no GH executor is available (plan-only without repo, or no executor),
       // use the plan ID as a placeholder number
@@ -672,7 +687,7 @@ export async function applyDecompositionPlan(
     updatedIssues.push({
       number: ghNumber,
       title: planIssue.title,
-      body: planIssue.body,
+      body: enrichedBody,
       file_hints: planIssue.file_hints ?? [],
       sandbox: normalizeTaskSandbox(planIssue.sandbox),
       requires: normalizeTaskRequires(planIssue.requires),
@@ -2321,6 +2336,7 @@ export interface EstimateResult {
   risk_flags?: string[];
   confidence?: 'high' | 'medium' | 'low';
   gaps?: string[];
+  priority?: 'P0' | 'P1' | 'P2';
 }
 
 export const REFINEMENT_BUDGET_CAP = 5;
@@ -2395,6 +2411,22 @@ export async function applyEstimateResults(
       issue.dor_validated = true;
       if (issue.status === 'Needs refinement') {
         issue.status = 'Ready';
+      }
+      // Apply complexity and priority labels via GH
+      if (deps?.execGh && deps.repo) {
+        const labelsToAdd: string[] = [];
+        if (result.complexity_tier) {
+          labelsToAdd.push(`complexity/${result.complexity_tier}`);
+        }
+        if (result.priority) {
+          labelsToAdd.push(result.priority);
+        }
+        if (labelsToAdd.length > 0) {
+          await deps.execGh([
+            'issue', 'edit', String(result.issue_number), '--repo', deps.repo,
+            ...labelsToAdd.flatMap(l => ['--add-label', l]),
+          ]);
+        }
       }
       if (deps?.execGh && deps.repo) {
         await syncIssueProjectStatus(result.issue_number, deps.repo, 'Ready', {
@@ -4297,8 +4329,17 @@ async function createPrForChild(
   }
 
   const issueTitle = issue.title || `Issue ${issue.number}`;
-  const prTitle = `[aloop] ${issueTitle}`;
-  const prBody = `Automated implementation for issue #${issue.number}.\n\nCloses #${issue.number}`;
+  const prTitle = `#${issue.number}: ${issueTitle}`;
+  const componentLabels = deriveComponentLabels(issue.file_hints ?? []);
+  const prBody = buildPrBody({
+    issue_number: issue.number,
+    issue_title: issueTitle,
+    wave: issue.wave,
+    labels: ['aloop', `aloop/wave-${issue.wave}`, ...componentLabels],
+    child_session: childSession,
+    file_hints: issue.file_hints ?? [],
+    scope_summary: (issue.body ?? '').split('\n').slice(0, 3).join(' ').substring(0, 200),
+  });
 
   try {
     const result = await deps.execGh([

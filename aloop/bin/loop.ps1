@@ -851,6 +851,87 @@ function Check-AllTasksComplete {
     return $false
 }
 
+function Append-PlanTaskIfMissing {
+    param([string]$TaskText)
+    if ([string]::IsNullOrWhiteSpace($TaskText) -or -not (Test-Path $planFile)) { return }
+    $content = Get-Content -Path $planFile -Raw -ErrorAction SilentlyContinue
+    if ($content -and $content.Contains($TaskText)) { return }
+    Add-Content -Path $planFile -Value "`n- [ ] $TaskText" -Encoding utf8
+}
+
+function Check-FinalizerQaCoverageGate {
+    $script:finalizerQaGateReason = ""
+    $script:finalizerQaGateMessage = ""
+    $script:finalizerQaTotal = 0
+    $script:finalizerQaUntested = 0
+    $script:finalizerQaFail = 0
+
+    $coverageFile = Join-Path $WorkDir "QA_COVERAGE.md"
+    if (-not (Test-Path $coverageFile)) {
+        $script:finalizerQaGateReason = "qa_coverage_missing"
+        $script:finalizerQaGateMessage = "QA_COVERAGE.md is missing — skipping enforcement"
+        return $true
+    }
+
+    $lines = Get-Content -Path $coverageFile -ErrorAction SilentlyContinue
+    $total = 0
+    $untested = 0
+    $fail = 0
+    $failFeatures = @()
+
+    foreach ($line in $lines) {
+        if ($line -notmatch '^\|') { continue }
+        $cols = $line -split '\|'
+        if ($cols.Count -lt 6) { continue }
+        $feature = $cols[1].Trim()
+        $status = $cols[5].Trim().ToUpper()
+        if ([string]::IsNullOrWhiteSpace($feature) -or $feature -eq 'Feature') { continue }
+        if ($status -notin @('PASS', 'FAIL', 'UNTESTED')) { continue }
+        $total++
+        if ($status -eq 'UNTESTED') { $untested++ }
+        if ($status -eq 'FAIL') {
+            $fail++
+            $failFeatures += $feature
+        }
+    }
+
+    $script:finalizerQaTotal = $total
+    $script:finalizerQaUntested = $untested
+    $script:finalizerQaFail = $fail
+
+    if ($total -le 0) {
+        $script:finalizerQaGateReason = "qa_coverage_unparseable"
+        $script:finalizerQaGateMessage = "QA_COVERAGE.md did not contain parseable PASS/FAIL/UNTESTED rows"
+        Append-PlanTaskIfMissing "[qa/P1] [finalizer-qa-gate] Fix QA_COVERAGE.md table format so finalizer can enforce coverage"
+        return $false
+    }
+
+    $untestedPct = [int]($untested * 100 / $total)
+    $blocked = $false
+
+    if ($fail -gt 0) {
+        $blocked = $true
+        foreach ($f in $failFeatures) {
+            Append-PlanTaskIfMissing "[qa/P1] [finalizer-qa-gate] Resolve FAIL coverage item: $f"
+        }
+    }
+
+    if ($untestedPct -gt 30) {
+        $blocked = $true
+        Append-PlanTaskIfMissing "[qa/P1] [finalizer-qa-gate] Reduce UNTESTED QA coverage to <=30% (currently $untested/$total, $untestedPct%)"
+    }
+
+    if ($blocked) {
+        $script:finalizerQaGateReason = "qa_coverage_blocked"
+        $script:finalizerQaGateMessage = "QA coverage gate blocked exit (UNTESTED=$untested/$total, FAIL=$fail)"
+        return $false
+    }
+
+    $script:finalizerQaGateReason = "qa_coverage_pass"
+    $script:finalizerQaGateMessage = "QA coverage gate passed (UNTESTED=$untested/$total, FAIL=$fail)"
+    return $true
+}
+
 function Get-CurrentTask {
     $lines = Get-PlanLines
     $line = $lines | Where-Object { $_ -match '^\s*-\s+\[ \]' } | Select-Object -First 1
@@ -926,7 +1007,7 @@ function Register-IterationFailure {
         [string]$ErrorText
     )
     if (-not ($Mode -in @('plan-build', 'plan-build-review'))) { return }
-    if (-not ($IterationMode -in @('plan', 'build', 'qa', 'review'))) { return }
+    if (-not ($IterationMode -in @('plan', 'build', 'qa', 'review', 'spec-gap', 'docs'))) { return }
 
     # Use per-prompt max_retries (from frontmatter) when set, else global default
     $effectiveRetries = if ($script:effectiveMaxRetries) { $script:effectiveMaxRetries } else { $script:maxPhaseRetries }
@@ -1252,13 +1333,22 @@ function Get-ProviderHealthState {
 
     $state = New-ProviderHealthState
     if ($parsed.PSObject.Properties.Name -contains 'status') { $state.status = [string]$parsed.status }
-    if ($parsed.PSObject.Properties.Name -contains 'last_success') { $state.last_success = $parsed.last_success }
-    if ($parsed.PSObject.Properties.Name -contains 'last_failure') { $state.last_failure = $parsed.last_failure }
+    if ($parsed.PSObject.Properties.Name -contains 'last_success') {
+        $ls = $parsed.last_success
+        if ($ls -is [datetime]) {
+            $state.last_success = [DateTimeOffset]::new($ls.ToUniversalTime(), [TimeSpan]::Zero).ToString('o')
+        } else { $state.last_success = [string]$ls }
+    }
+    if ($parsed.PSObject.Properties.Name -contains 'last_failure') {
+        $lf = $parsed.last_failure
+        if ($lf -is [datetime]) {
+            $state.last_failure = [DateTimeOffset]::new($lf.ToUniversalTime(), [TimeSpan]::Zero).ToString('o')
+        } else { $state.last_failure = [string]$lf }
+    }
     if ($parsed.PSObject.Properties.Name -contains 'failure_reason') { $state.failure_reason = $parsed.failure_reason }
     if ($parsed.PSObject.Properties.Name -contains 'consecutive_failures') { $state.consecutive_failures = [int]$parsed.consecutive_failures }
     if ($parsed.PSObject.Properties.Name -contains 'cooldown_until') {
         $cu = $parsed.cooldown_until
-        # ConvertFrom-Json may auto-convert ISO 8601 strings to DateTime objects; normalise back to ISO string
         if ($cu -is [datetime]) {
             $state.cooldown_until = [DateTimeOffset]::new($cu.ToUniversalTime(), [TimeSpan]::Zero).ToString('o')
         } else {
@@ -2053,6 +2143,31 @@ try {
         # Finalizer mode: run finalizer prompts instead of normal cycle
         if ($script:finalizerMode) {
             if ($script:finalizerPosition -ge $script:finalizerLength) {
+                $qaCoveragePassed = Check-FinalizerQaCoverageGate
+                Write-LogEntry -Event "finalizer_qa_coverage_check" -Data @{
+                    iteration = $iteration
+                    passed = [bool]$qaCoveragePassed
+                    reason = [string]$script:finalizerQaGateReason
+                    message = [string]$script:finalizerQaGateMessage
+                    qa_total = [int]$script:finalizerQaTotal
+                    qa_untested = [int]$script:finalizerQaUntested
+                    qa_fail = [int]$script:finalizerQaFail
+                }
+                if (-not $qaCoveragePassed) {
+                    $script:finalizerMode = $false
+                    $script:finalizerPosition = 0
+                    $script:allTasksMarkedDone = $false
+                    Persist-LoopPlanState -Iteration $iteration
+                    Write-LogEntry -Event "finalizer_aborted" -Data @{
+                        iteration = $iteration
+                        reason = [string]$script:finalizerQaGateReason
+                        qa_total = [int]$script:finalizerQaTotal
+                        qa_untested = [int]$script:finalizerQaUntested
+                        qa_fail = [int]$script:finalizerQaFail
+                    }
+                    Write-Host "[Finalizer aborted — $($script:finalizerQaGateMessage)]" -ForegroundColor Yellow
+                    continue
+                }
                 Write-LogEntry -Event "finalizer_completed" -Data @{ iteration = $iteration }
                 Write-Host "[Finalizer sequence completed — all tasks done]" -ForegroundColor Green
                 Write-Status -Iteration $iteration -Phase "finalizer" -CurrentProvider $iterationProvider -StuckCount 0 -State 'completed'
