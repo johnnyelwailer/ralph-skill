@@ -3,5 +3,11 @@
 ## Tasks
 
 ### Completed
+- [x] Update `on.push.branches` to include `master`, `agent/*`, `aloop/*`
+- [x] Update `on.pull_request.branches` to include `master`, `agent/*`, `aloop/*`
+- [x] Ensure all four jobs present in workflow: `cli-tests`, `dashboard-tests`, `type-check`, `loop-script-tests`
+- [x] Verify no `needs` declared on any of the four required jobs (all independent)
+- [x] Verify README badge targets `https://github.com/johnnyelwailer/ralph-skill/actions/workflows/ci.yml/badge.svg`
+- [x] Confirm workflow `name: CI`
 
-- [x] Implement as described in the issue — `.github/workflows/ci.yml` updated with: `agent/*` and `aloop/*` branch triggers, concurrency group with cancel-in-progress, new `type-check` job (CLI + Dashboard), new `cli-tests` job with full build step, `dashboard-tests` enhanced with npm cache, `loop-script-tests` job with bats. All QA passes and review gates 1-9 passed.
+All acceptance criteria verified against `.github/workflows/ci.yml` and `README.md`. No further work required.
