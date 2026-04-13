@@ -3,4 +3,4 @@
 ## Tasks
 
 ### Completed
-- [x] Implement as described in the issue — `.github/workflows/ci.yml` implemented with all required jobs (cli-tests, cli-type-check, dashboard-tests, dashboard-type-check, loop-script-tests, loop-script-tests-windows, dashboard-e2e); README.md CI badge present; all acceptance criteria verified. [reviewed: gates 1-9 pass]
+- [x] Implement CI pipeline as described in the issue — all 8 acceptance criteria verified, second review returned PASS (2026-04-13)
