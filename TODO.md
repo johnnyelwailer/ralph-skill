@@ -2,10 +2,33 @@
 
 ## Tasks
 
-- [ ] Implement as described in the issue
+### In Progress
 
-## QA Bugs
+### Up Next
 
-- [x] [qa/P1] CLI type-check CI job will fail: `bun run type-check` (`tsc --noEmit`) exits code 2 with 2 pre-existing TypeScript errors in `src/commands/process-requests.ts` — TS2367 type overlap error on line 442 and TS2304 undefined name `sweepStaleRunningIssueStatuses` on line 818. The `cli-type-check` CI job will always fail until these are fixed. Tested at iter 2. (priority: high)
-- [x] [qa/P1] Dashboard type-check CI job will fail: `npm run type-check` in `aloop/cli/dashboard` exits code 2 with TypeScript errors — `beforeEach`, `afterEach`, `vi` not found in `App.coverage.test.ts` (missing Vitest type references in tsconfig), and `ArtifactEntry` shape mismatch in `App.test.tsx` (missing `description` property). The `dashboard-type-check` CI job will always fail until fixed. Tested at iter 2. (priority: high)
-- [ ] [qa/P1] CLI tests CI job will fail: `bun run test` (`tsx --test src/**/*.test.ts && node --test aloop.test.mjs`) exits code 1 with 27 pre-existing test failures. The `cli-tests` CI job will always fail until the underlying test failures are fixed. Tested at iter 2. (priority: high)
+### Deferred / Out of Scope
+- [~] Fix CLI type-check failures (TS2367, TS2304 in `process-requests.ts`) — OUT OF SCOPE.
+  File is not in `.github/workflows/` or `README.md`. Pre-existing on master.
+  File a separate issue to fix type errors in `process-requests.ts`.
+- [~] Fix 27 pre-existing CLI test failures (`bun run test`) — OUT OF SCOPE.
+  Pre-existing failures on master, not introduced by this branch.
+  A separate issue should address these.
+- [~] Fix 3 loop test scripts that print FAIL but exit 0 (`loop_path_hardening.tests.sh`,
+  `loop_provenance.tests.sh`, `loop_finalizer_qa_coverage.tests.sh`) — OUT OF SCOPE.
+  These are not in `.github/workflows/` or `README.md`. CI cannot detect their failures
+  because the scripts themselves return 0 on failure. File a separate issue.
+
+### Completed
+- [x] Create `.github/workflows/ci.yml` with push/PR triggers on `master`, `agent/*`, `aloop/*`
+- [x] Add CLI tests job (`bun run test` in `aloop/cli`)
+- [x] Add CLI type-check job (`bun run type-check` in `aloop/cli`)
+- [x] Add dashboard unit tests job (`npm test` in `aloop/cli/dashboard`)
+- [x] Add dashboard type-check job (`npm run type-check` in `aloop/cli/dashboard`)
+- [x] Add loop script tests job (Linux): bats + all `loop_*.tests.sh` scripts
+- [x] Add Windows PowerShell loop tests job (Pester)
+- [x] Add Dashboard E2E tests job (Playwright, with proof-artifacts on failure)
+- [x] Fix CI cli-tests job to use `bun run test` (not `bun test` which uses Bun's incompatible runner)
+- [x] Add `aloop/*` to push triggers for orchestrator branch support
+- [x] Update README.md CI badge to point at `johnnyelwailer/ralph-skill/actions/workflows/ci.yml/badge.svg`
+- [x] Fix dashboard type imports in split test files (explicit `import { vi, beforeEach, afterEach } from 'vitest'`)
+- [x] Verify dashboard type-check passes with split test files (`npm run type-check` exits 0)
