@@ -10,9 +10,6 @@
 - [~] Fix CLI type-check failures (TS2367, TS2304 in `process-requests.ts`) — OUT OF SCOPE.
   File is not in `.github/workflows/` or `README.md`. Pre-existing on master.
   File a separate issue to fix type errors in `process-requests.ts`.
-- [~] Fix 27 pre-existing CLI test failures (`bun run test`) — OUT OF SCOPE.
-  Pre-existing failures on master, not introduced by this branch.
-  A separate issue should address these.
 - [~] Fix 3 loop test scripts that print FAIL but exit 0 (`loop_path_hardening.tests.sh`,
   `loop_provenance.tests.sh`, `loop_finalizer_qa_coverage.tests.sh`) — OUT OF SCOPE.
   These are not in `.github/workflows/` or `README.md`. CI cannot detect their failures
@@ -31,4 +28,5 @@
 - [x] Add `aloop/*` to push triggers for orchestrator branch support
 - [x] Update README.md CI badge to point at `johnnyelwailer/ralph-skill/actions/workflows/ci.yml/badge.svg`
 - [x] Fix dashboard type imports in split test files (explicit `import { vi, beforeEach, afterEach } from 'vitest'`)
+- [x] Fix 27 pre-existing CLI test failures in `orchestrate.ts`/`orchestrate.test.ts` so `bun run test` exits 0 (346 CLI tests pass)
 - [x] Verify dashboard type-check passes with split test files (`npm run type-check` exits 0)
