@@ -44,3 +44,22 @@
 - Gate 6: No proof artifacts — pure CI config with no observable runtime output. Acceptable skip.
 
 ---
+
+## Review — 2026-04-13 13:30 — commit e1227d74 (no new code since last PASS)
+
+**Verdict: PASS** (no new findings)
+**Scope:** No new code since prior PASS review. TODO.md reformatted (task descriptions simplified); ci.yml unchanged.
+
+**Gate re-verification:**
+- Gate 1: ci.yml:5 `branches: ['master', 'agent/*', 'aloop/*']` on push; ci.yml:7 same on pull_request. Four jobs at lines 14/45/70/91. `name: CI` at line 1. All acceptance criteria met.
+- Gate 4: ci.yml clean — no dead steps, no TODO/FIXME comments.
+- Gate 6: Pure CI config — no observable runtime output. Acceptable skip.
+- Gate 7: N/A (no UI changes).
+- Gate 8: Node 22 in ci.yml matches VERSIONS.md Node 22.x; `actions/checkout@v4`, `actions/setup-node@v4` — correct.
+- Gate 9: README.md line 1 badge targets `https://github.com/johnnyelwailer/ralph-skill/actions/workflows/ci.yml/badge.svg` — correct.
+- Gates 2, 3: N/A (CI config, not code under test).
+- Gate 5: node_modules not installed locally; no code changed since last PASS that verified tests.
+
+**Prior findings:** All three FAIL findings from first review remain resolved. No regressions.
+
+---
