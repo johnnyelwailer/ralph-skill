@@ -24,7 +24,7 @@ jobs:
 
       - name: Run CLI tests
         working-directory: aloop/cli
-        run: bun test
+        run: bun run test
 
   cli-type-check:
     name: CLI Type Check
