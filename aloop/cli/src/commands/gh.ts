@@ -8,7 +8,6 @@ import { startCommandWithDeps, type StartCommandOptions, type StartCommandResult
 import { listActiveSessions, resolveHomeDir, stopSession, type SessionInfo } from './session.js';
 import { normalizeCiDetailForSignature } from '../lib/ci-utils.js';
 import { withErrorHandling } from '../lib/error-handling.js';
-import { buildPrBody } from '../lib/issue-metadata.js';
 
 const execFileAsync = promisify(execFile);
 const GH_PATH_HARDENING_BLOCK_MESSAGE = 'blocked by aloop PATH hardening';
@@ -157,7 +156,6 @@ export type GhWatchIssueStatus = 'running' | 'queued' | 'completed' | 'stopped';
 
 export interface GhWatchIssueEntry {
   issue_number: number;
-  title?: string | null;
   session_id: string | null;
   branch: string | null;
   repo: string | null;
@@ -298,7 +296,6 @@ function normalizeWatchIssueEntry(value: unknown): GhWatchIssueEntry | null {
 
   return {
     issue_number: issueNumber,
-    title: typeof candidate.title === 'string' && candidate.title.trim() ? candidate.title : null,
     session_id: typeof candidate.session_id === 'string' && candidate.session_id.trim() ? candidate.session_id : null,
     branch: typeof candidate.branch === 'string' && candidate.branch.trim() ? candidate.branch : null,
     repo: typeof candidate.repo === 'string' && candidate.repo.trim() ? candidate.repo : null,
@@ -402,7 +399,6 @@ function watchEntryFromStartResult(result: GhStartResult): GhWatchIssueEntry {
   const now = ghLoopRuntime.now();
   return {
     issue_number: result.issue.number,
-    title: result.issue.title || null,
     session_id: result.session.id,
     branch: result.session.branch,
     repo: result.issue.repo,
@@ -441,7 +437,6 @@ function enqueueIssue(state: GhWatchState, issue: GhWatchIssue): void {
   }
   state.issues[String(issue.number)] = {
     issue_number: issue.number,
-    title: issue.title || existing?.title || null,
     session_id: existing?.session_id ?? null,
     branch: existing?.branch ?? null,
     repo: existing?.repo ?? extractRepoFromIssueUrl(issue.url),
@@ -1029,7 +1024,6 @@ export {
   executeGhOperation,
   evaluatePolicy,
   formatGhStatusRows,
-  computeGhStats,
   ghStopCommand,
   buildCiFailureSignature,
   buildCiFailureSummary,
@@ -1083,12 +1077,8 @@ async function finalizeWatchEntry(
     }
   }
 
-  const prTitle = `#${entry.issue_number}: ${issueTitle}`;
-  const prBody = buildPrBody({
-    issue_number: entry.issue_number,
-    issue_title: issueTitle,
-    child_session: entry.session_id,
-  });
+  const prTitle = `[aloop] ${issueTitle}`;
+  const prBody = `Automated implementation for issue #${entry.issue_number}.\n\nCloses #${entry.issue_number}`;
 
   try {
     const prCreate = await ghExecutor.exec([
@@ -1271,34 +1261,14 @@ function failGhWatch(outputMode: GhOutputMode, error: unknown): never {
   return process.exit(1) as never;
 }
 
-const STATUS_COLORS: Record<string, string> = {
-  running: '\x1B[33m',
-  completed: '\x1B[32m',
-  stopped: '\x1B[31m',
-};
-const ANSI_RESET = '\x1B[0m';
-
-function colorizeStatus(status: string, useTTY: boolean, padLen?: number): string {
-  const padded = padLen ? status.padEnd(padLen) : status;
-  if (!useTTY) return padded;
-  const color = STATUS_COLORS[status];
-  return color ? `${color}${padded}${ANSI_RESET}` : padded;
-}
-
-function truncateTitle(title: string | null | undefined, maxLen: number): string {
-  if (!title) return '—';
-  return title.length > maxLen ? title.slice(0, maxLen - 1) + '…' : title;
-}
-
-function formatGhStatusRows(state: GhWatchState, sessionsById: Map<string, SessionInfo>, useTTY?: boolean): string {
+function formatGhStatusRows(state: GhWatchState, sessionsById: Map<string, SessionInfo>): string {
   const entries = Object.values(state.issues).sort((a, b) => a.issue_number - b.issue_number);
   if (entries.length === 0) {
     return 'No GH-linked sessions.';
   }
 
-  const isTTY = useTTY ?? (process.stdout.isTTY === true);
   const lines: string[] = [
-    'Issue  Title                          Branch                PR    Status      Iteration  Feedback',
+    'Issue  Branch                PR    Status      Iteration  Feedback',
   ];
   for (const entry of entries) {
     const branch = entry.status === 'queued' ? '(queued)' : (entry.branch ?? '—');
@@ -1306,24 +1276,12 @@ function formatGhStatusRows(state: GhWatchState, sessionsById: Map<string, Sessi
     const session = entry.session_id ? sessionsById.get(entry.session_id) : undefined;
     const iteration = session?.iteration !== null && session?.iteration !== undefined ? String(session.iteration) : '—';
     const issueCell = `#${entry.issue_number}`.padEnd(6);
-    const titleCell = truncateTitle(entry.title, 30).padEnd(30);
     const feedbackCell = entry.feedback_iteration > 0
       ? `${entry.feedback_iteration}/${entry.max_feedback_iterations}`
       : '—';
-    const statusDisplay = colorizeStatus(entry.status, isTTY, 11);
-    lines.push(`${issueCell} ${titleCell} ${branch.padEnd(20)} ${prRef.padEnd(5)} ${statusDisplay} ${iteration.padEnd(9)} ${feedbackCell}`);
+    lines.push(`${issueCell} ${branch.padEnd(20)} ${prRef.padEnd(5)} ${entry.status.padEnd(11)} ${iteration.padEnd(9)} ${feedbackCell}`);
   }
   return lines.join('\n');
-}
-
-function computeGhStats(state: GhWatchState): { total: number; active: number; completed: number; prsPending: number } {
-  const entries = Object.values(state.issues);
-  return {
-    total: entries.length,
-    active: entries.filter((e) => e.status === 'running').length,
-    completed: entries.filter((e) => e.status === 'completed').length,
-    prsPending: entries.filter((e) => e.pr_number !== null && e.status !== 'completed').length,
-  };
 }
 
 async function ghStatusCommand(options: GhStatusCommandOptions): Promise<void> {
@@ -1333,13 +1291,11 @@ async function ghStatusCommand(options: GhStatusCommandOptions): Promise<void> {
   saveWatchState(options.homeDir, state);
 
   const entries = Object.values(state.issues).sort((a, b) => a.issue_number - b.issue_number);
-  const stats = computeGhStats(state);
   if (outputMode === 'json') {
-    console.log(JSON.stringify({ issues: entries, stats }, null, 2));
+    console.log(JSON.stringify({ issues: entries }, null, 2));
     return;
   }
   console.log(formatGhStatusRows(state, sessionsById));
-  console.log(`\nTotal: ${stats.total}  Active: ${stats.active}  Completed: ${stats.completed}  PRs pending: ${stats.prsPending}`);
 }
 
 async function ghStopCommand(options: GhStopCommandOptions): Promise<void> {
@@ -1555,8 +1511,8 @@ function sanitizeBranchSlug(value: string): string {
   return slug.slice(0, 40).replace(/-+$/g, '');
 }
 
-export function extractRepoFromIssueUrl(url: string): string | null {
-  const match = url.match(/^https?:\/\/[^\/]+\/([^\/]+)\/([^\/]+)\/issues\/\d+/i);
+function extractRepoFromIssueUrl(url: string): string | null {
+  const match = url.match(/^https?:\/\/github\.com\/([^\/]+)\/([^\/]+)\/issues\/\d+/i);
   if (!match) {
     return null;
   }
@@ -1788,14 +1744,8 @@ export async function ghStartCommandWithDeps(options: GhStartCommandOptions, dep
   let pendingCompletion = true;
 
   if (isTerminalState(completionState) && issueRepo) {
-    const issueLabels = (issue.labels ?? []).map(l => l.name ?? '').filter(Boolean);
-    const prTitle = `#${issue.number}: ${issue.title}`;
-    const prBody = buildPrBody({
-      issue_number: issue.number,
-      issue_title: issue.title,
-      labels: issueLabels,
-      scope_summary: (issue.body ?? '').split('\n').slice(0, 3).join(' ').substring(0, 200),
-    });
+    const prTitle = `[aloop] ${issue.title}`;
+    const prBody = `Automated implementation for issue #${issue.number}.\n\nCloses #${issue.number}`;
     const prCreate = await deps.execGh([
       'pr', 'create',
       '--repo', issueRepo,
@@ -1968,8 +1918,7 @@ function buildGhArgs(operation: string, payload: any, enforced: any): string[] {
     }
     case 'pr-merge': {
       const prNum = payload.pr_number;
-      const method = enforced.merge_method ?? payload.strategy ?? 'squash';
-      return ['pr', 'merge', String(prNum), '--repo', repo, `--${method}`];
+      return ['pr', 'merge', String(prNum), '--repo', repo, '--squash'];
     }
     case 'issue-comments': {
       return ['api', `repos/${repo}/issues/comments`, '--method', 'GET', '-f', `since=${String(enforced.since)}`];

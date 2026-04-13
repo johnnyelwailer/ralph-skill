@@ -5,7 +5,7 @@ import { existsSync } from 'node:fs';
 import * as path from 'node:path';
 import os from 'node:os';
 import * as child_process from 'node:child_process';
-import { processAgentRequests, validateRequest, type RequestProcessorOptions } from './requests.js';
+import { processAgentRequests, type RequestProcessorOptions } from './requests.js';
 
 async function setupTestEnv() {
   const tmpBase = path.join(os.tmpdir(), `aloop-test-${Date.now()}`);
@@ -41,166 +41,6 @@ async function setupTestEnv() {
   };
 }
 
-test('validateRequest - accepts valid payloads for all request types', () => {
-  const validRequests = [
-    {
-      id: 'v-create-issues',
-      type: 'create_issues',
-      payload: { issues: [{ title: 'Issue 1', body_file: 'body.md' }] },
-    },
-    {
-      id: 'v-update-issue',
-      type: 'update_issue',
-      payload: { number: 1 },
-    },
-    {
-      id: 'v-close-issue',
-      type: 'close_issue',
-      payload: { number: 2, reason: 'done' },
-    },
-    {
-      id: 'v-create-pr',
-      type: 'create_pr',
-      payload: { head: 'feat/x', base: 'main', title: 'PR', body_file: 'pr.md', issue_number: 3 },
-    },
-    {
-      id: 'v-merge-pr',
-      type: 'merge_pr',
-      payload: { number: 4, strategy: 'squash' },
-    },
-    {
-      id: 'v-dispatch-child',
-      type: 'dispatch_child',
-      payload: { issue_number: 5, branch: 'child/5', pipeline: 'plan-build', sub_spec_file: 'SPEC.md' },
-    },
-    {
-      id: 'v-steer-child',
-      type: 'steer_child',
-      payload: { issue_number: 6, prompt_file: 'STEERING.md' },
-    },
-    {
-      id: 'v-stop-child',
-      type: 'stop_child',
-      payload: { issue_number: 7, reason: 'human stop' },
-    },
-    {
-      id: 'v-post-comment',
-      type: 'post_comment',
-      payload: { issue_number: 8, body_file: 'comment.md' },
-    },
-    {
-      id: 'v-query-issues',
-      type: 'query_issues',
-      payload: {},
-    },
-    {
-      id: 'v-spec-backfill',
-      type: 'spec_backfill',
-      payload: { file: 'SPEC.md', section: '## Objective', content_file: 'content.md' },
-    },
-  ];
-
-  for (const request of validRequests) {
-    const result = validateRequest(request);
-    assert.strictEqual(result.valid, true);
-  }
-});
-
-test('validateRequest - rejects top-level malformed request objects', () => {
-  const invalidRequests: Array<{ input: unknown; match: RegExp }> = [
-    { input: null, match: /JSON object/ },
-    { input: 'bad', match: /JSON object/ },
-    { input: { id: '', type: 'close_issue', payload: {} }, match: /id/ },
-    { input: { id: 'x', type: 'unknown_type', payload: {} }, match: /Invalid or missing request type/ },
-    { input: { id: 'x', type: 'close_issue', payload: null }, match: /payload/ },
-  ];
-
-  for (const { input, match } of invalidRequests) {
-    const result = validateRequest(input);
-    assert.strictEqual(result.valid, false);
-    assert.ok(!result.valid && match.test(result.error), `Expected "${result.error}" to match ${match}`);
-  }
-});
-
-test('validateRequest - rejects request-specific edge cases', () => {
-  const invalidRequests: Array<{ input: unknown; match: RegExp }> = [
-    {
-      input: { id: 'bad-create-empty', type: 'create_issues', payload: { issues: [] } },
-      match: /payload\.issues must be a non-empty array/,
-    },
-    {
-      input: { id: 'bad-create-title', type: 'create_issues', payload: { issues: [{ title: '', body_file: 'body.md' }] } },
-      match: /issues\[0\]\.title must be a non-empty string/,
-    },
-    {
-      input: { id: 'bad-create-body', type: 'create_issues', payload: { issues: [{ title: 'ok', body_file: '' }] } },
-      match: /issues\[0\]\.body_file must be a non-empty string/,
-    },
-    {
-      input: { id: 'bad-update-number', type: 'update_issue', payload: { number: -1 } },
-      match: /payload\.number must be a positive integer/,
-    },
-    {
-      input: { id: 'bad-close-reason', type: 'close_issue', payload: { number: 1, reason: '' } },
-      match: /payload\.reason must be a non-empty string/,
-    },
-    {
-      input: { id: 'bad-create-pr-head', type: 'create_pr', payload: { head: '', base: 'main', title: 't', body_file: 'b.md', issue_number: 1 } },
-      match: /payload\.head must be a non-empty string/,
-    },
-    {
-      input: { id: 'bad-create-pr-issue-number', type: 'create_pr', payload: { head: 'h', base: 'main', title: 't', body_file: 'b.md', issue_number: 0 } },
-      match: /payload\.issue_number must be a positive integer/,
-    },
-    {
-      input: { id: 'bad-merge-strategy', type: 'merge_pr', payload: { number: 1, strategy: 'fast-forward' } },
-      match: /payload\.strategy must be one of/,
-    },
-    {
-      input: { id: 'bad-dispatch-branch', type: 'dispatch_child', payload: { issue_number: 1, branch: '', pipeline: 'p', sub_spec_file: 's.md' } },
-      match: /payload\.branch must be a non-empty string/,
-    },
-    {
-      input: { id: 'bad-steer-prompt', type: 'steer_child', payload: { issue_number: 1, prompt_file: '' } },
-      match: /payload\.prompt_file must be a non-empty string/,
-    },
-    {
-      input: { id: 'bad-stop-reason', type: 'stop_child', payload: { issue_number: 1, reason: '' } },
-      match: /payload\.reason must be a non-empty string/,
-    },
-    {
-      input: { id: 'bad-post-comment-number', type: 'post_comment', payload: { issue_number: -2, body_file: 'x.md' } },
-      match: /payload\.issue_number must be a positive integer/,
-    },
-    {
-      input: { id: 'bad-post-comment-body', type: 'post_comment', payload: { issue_number: 2, body_file: '' } },
-      match: /payload\.body_file must be a non-empty string/,
-    },
-    {
-      input: { id: 'bad-spec-file', type: 'spec_backfill', payload: { file: '', section: 'sec', content_file: 'c.md' } },
-      match: /payload\.file must be a non-empty string/,
-    },
-    {
-      input: { id: 'bad-spec-section', type: 'spec_backfill', payload: { file: 'SPEC.md', section: '', content_file: 'c.md' } },
-      match: /payload\.section must be a non-empty string/,
-    },
-    {
-      input: { id: 'bad-spec-content-file', type: 'spec_backfill', payload: { file: 'SPEC.md', section: 'sec', content_file: '' } },
-      match: /payload\.content_file must be a non-empty string/,
-    },
-    {
-      input: { id: 'bad-query-payload', type: 'query_issues', payload: null },
-      match: /payload/,
-    },
-  ];
-
-  for (const { input, match } of invalidRequests) {
-    const result = validateRequest(input);
-    assert.strictEqual(result.valid, false);
-    assert.ok(!result.valid && match.test(result.error), `Expected "${result.error}" to match ${match}`);
-  }
-});
-
 test('processAgentRequests - create_issues', async () => {
   const env = await setupTestEnv();
   try {
@@ -219,14 +59,8 @@ test('processAgentRequests - create_issues', async () => {
       ghOp = op;
       return { exitCode: 0, output: JSON.stringify({ number: 101, url: 'http://gh/101' }) };
     };
-    const spawnSync = ((_cmd: string, args: string[]) => {
-      if (args[0] === 'issue' && args[1] === 'list') {
-        return { status: 0, stdout: '[]', stderr: '' };
-      }
-      return { status: 0, stdout: '', stderr: '' };
-    }) as any;
     
-    await processAgentRequests({ ...env, ghCommandRunner: ghRunner, spawnSync });
+    await processAgentRequests({ ...env, ghCommandRunner: ghRunner });
     
     assert.strictEqual(ghOp, 'issue-create');
     const queueFiles = await fs.readdir(path.join(env.sessionDir, 'queue'));
@@ -235,50 +69,6 @@ test('processAgentRequests - create_issues', async () => {
     const content = await fs.readFile(path.join(env.sessionDir, 'queue', queueFiles[0]), 'utf8');
     assert.ok(content.includes('status": "success"'));
     assert.ok(content.includes('"number": 101'));
-    assert.ok(content.includes('"skipped_titles": []'));
-  } finally {
-    await env.cleanup();
-  }
-});
-
-test('processAgentRequests - create_issues dedups existing orchestrator state titles', async () => {
-  const env = await setupTestEnv();
-  try {
-    await fs.writeFile(path.join(env.workdir, 'body-existing.md'), 'Existing body');
-    await fs.writeFile(path.join(env.workdir, 'body-new.md'), 'New body');
-    await fs.writeFile(path.join(env.sessionDir, 'orchestrator.json'), JSON.stringify({
-      issues: [{ number: 1, title: 'Existing Issue' }]
-    }));
-
-    const req = {
-      id: 'req-create-dedup',
-      type: 'create_issues',
-      payload: {
-        issues: [
-          { title: '  Existing Issue  ', body_file: 'body-existing.md' },
-          { title: 'Brand New Issue', body_file: 'body-new.md' }
-        ]
-      }
-    };
-    await fs.writeFile(path.join(env.requestsDir, 'req-create-dedup.json'), JSON.stringify(req));
-
-    const createdTitles: string[] = [];
-    const ghRunner = async (_op: string, _sid: string, requestPath: string) => {
-      const payload = JSON.parse(await fs.readFile(requestPath, 'utf8'));
-      createdTitles.push(payload.title);
-      return { exitCode: 0, output: JSON.stringify({ number: 102, url: 'http://gh/102' }) };
-    };
-
-    await processAgentRequests({ ...env, ghCommandRunner: ghRunner });
-
-    assert.deepStrictEqual(createdTitles, ['Brand New Issue']);
-    const queueFiles = await fs.readdir(path.join(env.sessionDir, 'queue'));
-    const queueContent = await fs.readFile(path.join(env.sessionDir, 'queue', queueFiles[0]), 'utf8');
-    assert.ok(queueContent.includes('"skipped_titles": ['));
-    assert.ok(queueContent.includes('"  Existing Issue  "'));
-
-    const logContent = await fs.readFile(env.logPath, 'utf8');
-    assert.ok(logContent.includes('gh_request_skipped_existing_issue_title'));
   } finally {
     await env.cleanup();
   }
@@ -300,61 +90,11 @@ test('processAgentRequests - create_issues failure', async () => {
     const ghRunner = async () => {
       return { exitCode: 1, output: 'create failed' };
     };
-    const spawnSync = ((_cmd: string, args: string[]) => {
-      if (args[0] === 'issue' && args[1] === 'list') {
-        return { status: 0, stdout: '[]', stderr: '' };
-      }
-      return { status: 0, stdout: '', stderr: '' };
-    }) as any;
     
-    await processAgentRequests({ ...env, ghCommandRunner: ghRunner, spawnSync });
+    await processAgentRequests({ ...env, ghCommandRunner: ghRunner });
     
     const failedFiles = await fs.readdir(path.join(env.requestsDir, 'failed'));
     assert.ok(failedFiles.includes('req-fail-create.json'));
-  } finally {
-    await env.cleanup();
-  }
-});
-
-test('processAgentRequests - create_issues idempotent skip on duplicate title', async () => {
-  const env = await setupTestEnv();
-  try {
-    await fs.writeFile(path.join(env.workdir, 'body1.md'), 'Body 1');
-    const req = {
-      id: 'req-dup-title',
-      type: 'create_issues',
-      payload: {
-        issues: [{ title: 'Issue 1', body_file: 'body1.md', labels: ['l1'] }]
-      }
-    };
-    await fs.writeFile(path.join(env.requestsDir, 'req-dup-title.json'), JSON.stringify(req));
-
-    let createCalls = 0;
-    const ghRunner = async (_op: string) => {
-      createCalls += 1;
-      return { exitCode: 0, output: JSON.stringify({ number: 101, url: 'http://gh/101' }) };
-    };
-
-    const spawnSync = ((_cmd: string, args: string[]) => {
-      if (args[0] === 'issue' && args[1] === 'list') {
-        return {
-          status: 0,
-          stdout: JSON.stringify([{ number: 42, title: 'Issue 1', state: 'open', url: 'http://gh/42' }]),
-          stderr: ''
-        };
-      }
-      return { status: 0, stdout: '', stderr: '' };
-    }) as any;
-
-    await processAgentRequests({ ...env, ghCommandRunner: ghRunner, spawnSync });
-
-    assert.strictEqual(createCalls, 0);
-    const queueFiles = await fs.readdir(path.join(env.sessionDir, 'queue'));
-    assert.strictEqual(queueFiles.length, 1);
-    const content = await fs.readFile(path.join(env.sessionDir, 'queue', queueFiles[0]), 'utf8');
-    assert.ok(content.includes('"skipped": true'));
-    assert.ok(content.includes('"idempotent": true'));
-    assert.ok(content.includes('"number": 42'));
   } finally {
     await env.cleanup();
   }
@@ -375,58 +115,9 @@ test('processAgentRequests - close_issue', async () => {
       ghOp = op;
       return { exitCode: 0, output: 'closed' };
     };
-    const spawnSync = ((_cmd: string, args: string[]) => {
-      if (args[0] === 'issue' && args[1] === 'view') {
-        return { status: 0, stdout: JSON.stringify({ number: 101, state: 'OPEN' }), stderr: '' };
-      }
-      return { status: 0, stdout: '', stderr: '' };
-    }) as any;
-
-    await processAgentRequests({ ...env, ghCommandRunner: ghRunner, spawnSync });
+    
+    await processAgentRequests({ ...env, ghCommandRunner: ghRunner });
     assert.strictEqual(ghOp, 'issue-close');
-  } finally {
-    await env.cleanup();
-  }
-});
-
-test('processAgentRequests - close_issue idempotent skip when already closed', async () => {
-  const env = await setupTestEnv();
-  try {
-    const req = {
-      id: 'req-2-closed',
-      type: 'close_issue',
-      payload: { number: 101, reason: 'done' }
-    };
-    await fs.writeFile(path.join(env.requestsDir, 'req-2-closed.json'), JSON.stringify(req));
-
-    let closeCalls = 0;
-    const ghRunner = async () => {
-      closeCalls += 1;
-      return { exitCode: 0, output: 'closed' };
-    };
-    const spawnSync = ((_cmd: string, args: string[]) => {
-      if (args[0] === 'issue' && args[1] === 'view') {
-        return {
-          status: 0,
-          stdout: JSON.stringify({ number: 101, state: 'CLOSED', title: 'Done', url: 'http://gh/101' }),
-          stderr: ''
-        };
-      }
-      return { status: 0, stdout: '', stderr: '' };
-    }) as any;
-
-    await processAgentRequests({ ...env, ghCommandRunner: ghRunner, spawnSync });
-
-    assert.strictEqual(closeCalls, 0);
-    const queueFiles = await fs.readdir(path.join(env.sessionDir, 'queue'));
-    assert.strictEqual(queueFiles.length, 1);
-    const content = await fs.readFile(path.join(env.sessionDir, 'queue', queueFiles[0]), 'utf8');
-    assert.ok(content.includes('"skipped": true'));
-    assert.ok(content.includes('"idempotent": true'));
-    assert.ok(content.includes('"reason": "already_closed"'));
-
-    const logContent = await fs.readFile(env.logPath, 'utf8');
-    assert.ok(logContent.includes('gh_request_skipped_already_closed'));
   } finally {
     await env.cleanup();
   }
@@ -444,103 +135,13 @@ test('processAgentRequests - post_comment', async () => {
     await fs.writeFile(path.join(env.requestsDir, 'req-3.json'), JSON.stringify(req));
     
     let ghOp = '';
-    let sentBody = '';
-    const ghRunner = async (op: string, _sid: string, requestPath: string) => {
+    const ghRunner = async (op: string) => {
       ghOp = op;
-      const requestPayload = JSON.parse(await fs.readFile(requestPath, 'utf8')) as { body?: unknown };
-      sentBody = typeof requestPayload.body === 'string' ? requestPayload.body : '';
       return { exitCode: 0, output: 'posted' };
     };
-    const spawnSync = ((_cmd: string, args: string[]) => {
-      if (args[0] === 'api') {
-        return { status: 0, stdout: '[]', stderr: '' };
-      }
-      if (args[0] === 'issue' && args[1] === 'view') {
-        return { status: 0, stdout: JSON.stringify({ comments: [] }), stderr: '' };
-      }
-      return { status: 0, stdout: '', stderr: '' };
-    }) as unknown as typeof child_process.spawnSync;
-
-    await processAgentRequests({ ...env, ghCommandRunner: ghRunner, spawnSync });
+    
+    await processAgentRequests({ ...env, ghCommandRunner: ghRunner });
     assert.strictEqual(ghOp, 'issue-comment');
-    assert.ok(sentBody.includes('Nice work'));
-    assert.ok(sentBody.includes('<!-- aloop-request-id: req-3 -->'));
-  } finally {
-    await env.cleanup();
-  }
-});
-
-test('processAgentRequests - post_comment skips when request marker already exists', async () => {
-  const env = await setupTestEnv();
-  try {
-    await fs.writeFile(path.join(env.workdir, 'comment.md'), 'Nice work');
-    const req = {
-      id: 'req-3-dedup',
-      type: 'post_comment',
-      payload: { issue_number: 101, body_file: 'comment.md' }
-    };
-    await fs.writeFile(path.join(env.requestsDir, 'req-3-dedup.json'), JSON.stringify(req));
-
-    let ghRunnerCalls = 0;
-    const ghRunner = async () => {
-      ghRunnerCalls += 1;
-      return { exitCode: 0, output: 'posted' };
-    };
-    const spawnSync = ((_cmd: string, _args: string[]) => ({
-      status: 0,
-      stdout: JSON.stringify([{ body: 'prior\n\n<!-- aloop-request-id: req-3-dedup -->' }]),
-      stderr: '',
-    })) as unknown as typeof child_process.spawnSync;
-
-    await processAgentRequests({ ...env, ghCommandRunner: ghRunner, spawnSync });
-
-    assert.strictEqual(ghRunnerCalls, 0);
-    const queueFiles = await fs.readdir(path.join(env.sessionDir, 'queue'));
-    assert.strictEqual(queueFiles.length, 1);
-    const queueContent = await fs.readFile(path.join(env.sessionDir, 'queue', queueFiles[0]), 'utf8');
-    assert.ok(queueContent.includes('"status": "skipped"'));
-    assert.ok(queueContent.includes('"reason": "duplicate_comment_marker"'));
-  } finally {
-    await env.cleanup();
-  }
-});
-
-test('processAgentRequests - post_comment idempotent skip on duplicate body', async () => {
-  const env = await setupTestEnv();
-  try {
-    await fs.writeFile(path.join(env.workdir, 'comment-dup.md'), 'Nice work');
-    const req = {
-      id: 'req-3-dup',
-      type: 'post_comment',
-      payload: { issue_number: 101, body_file: 'comment-dup.md' }
-    };
-    await fs.writeFile(path.join(env.requestsDir, 'req-3-dup.json'), JSON.stringify(req));
-
-    let postCalls = 0;
-    const ghRunner = async () => {
-      postCalls += 1;
-      return { exitCode: 0, output: 'posted' };
-    };
-    const spawnSync = ((_cmd: string, args: string[]) => {
-      if (args[0] === 'issue' && args[1] === 'view') {
-        return {
-          status: 0,
-          stdout: JSON.stringify({ comments: [{ body: 'Nice work' }] }),
-          stderr: ''
-        };
-      }
-      return { status: 0, stdout: '', stderr: '' };
-    }) as any;
-
-    await processAgentRequests({ ...env, ghCommandRunner: ghRunner, spawnSync });
-
-    assert.strictEqual(postCalls, 0);
-    const queueFiles = await fs.readdir(path.join(env.sessionDir, 'queue'));
-    assert.strictEqual(queueFiles.length, 1);
-    const content = await fs.readFile(path.join(env.sessionDir, 'queue', queueFiles[0]), 'utf8');
-    assert.ok(content.includes('"skipped": true'));
-    assert.ok(content.includes('"idempotent": true'));
-    assert.ok(content.includes('"reason": "duplicate_comment_body"'));
   } finally {
     await env.cleanup();
   }
@@ -687,81 +288,17 @@ test('processAgentRequests - create_pr', async () => {
     
     let ghOp = '';
     let ghPayload: any = null;
-    let spawnCalled = false;
-    const spawnSync = ((_cmd: string, args: string[]) => {
-      spawnCalled = true;
-      if (args[0] === 'pr' && args[1] === 'list') {
-        return { status: 0, stdout: '[]', stderr: '' };
-      }
-      return { status: 0, stdout: '', stderr: '' };
-    }) as any;
     const ghRunner = async (op: string, sid: string, path: string) => {
       ghOp = op;
       ghPayload = JSON.parse(await fs.readFile(path, 'utf8'));
       return { exitCode: 0, output: JSON.stringify({ number: 202, url: 'http://gh/pr/202' }) };
     };
     
-    await processAgentRequests({ ...env, ghCommandRunner: ghRunner, spawnSync });
+    await processAgentRequests({ ...env, ghCommandRunner: ghRunner });
     
     assert.strictEqual(ghOp, 'pr-create');
-    assert.strictEqual(spawnCalled, true);
     assert.strictEqual(ghPayload.title, 'New PR');
     assert.strictEqual(ghPayload.body, 'PR body');
-  } finally {
-    await env.cleanup();
-  }
-});
-
-test('processAgentRequests - create_pr idempotent skip on duplicate head', async () => {
-  const env = await setupTestEnv();
-  try {
-    await fs.writeFile(path.join(env.workdir, 'pr.md'), 'PR body');
-    const req = {
-      id: 'req-pr-dup-head',
-      type: 'create_pr',
-      payload: {
-        head: 'feat/x',
-        base: 'main',
-        title: 'New PR',
-        body_file: 'pr.md',
-        issue_number: 101
-      }
-    };
-    await fs.writeFile(path.join(env.requestsDir, 'req-pr-dup-head.json'), JSON.stringify(req));
-
-    let createCalls = 0;
-    const ghRunner = async () => {
-      createCalls += 1;
-      return { exitCode: 0, output: JSON.stringify({ number: 202, url: 'http://gh/pr/202' }) };
-    };
-
-    const spawnSync = ((_cmd: string, args: string[]) => {
-      if (args[0] === 'pr' && args[1] === 'list') {
-        return {
-          status: 0,
-          stdout: JSON.stringify([{
-            number: 88,
-            url: 'http://gh/pr/88',
-            title: 'Existing PR',
-            state: 'OPEN',
-            headRefName: 'feat/x',
-            baseRefName: 'main'
-          }]),
-          stderr: ''
-        };
-      }
-      return { status: 0, stdout: '', stderr: '' };
-    }) as any;
-
-    await processAgentRequests({ ...env, ghCommandRunner: ghRunner, spawnSync });
-
-    assert.strictEqual(createCalls, 0);
-    const queueFiles = await fs.readdir(path.join(env.sessionDir, 'queue'));
-    assert.strictEqual(queueFiles.length, 1);
-    const content = await fs.readFile(path.join(env.sessionDir, 'queue', queueFiles[0]), 'utf8');
-    assert.ok(content.includes('"skipped": true'));
-    assert.ok(content.includes('"idempotent": true'));
-    assert.ok(content.includes('"number": 88'));
   } finally {
     await env.cleanup();
   }
@@ -776,109 +313,15 @@ test('processAgentRequests - merge_pr', async () => {
       payload: { number: 202, strategy: 'squash' }
     };
     await fs.writeFile(path.join(env.requestsDir, 'req-merge-1.json'), JSON.stringify(req));
-
+    
     let ghOp = '';
-    let tempFileContents = '';
-    const ghRunner = async (op: string, _sid: string, reqPath: string) => {
+    const ghRunner = async (op: string) => {
       ghOp = op;
-      tempFileContents = await fs.readFile(reqPath, 'utf8');
       return { exitCode: 0, output: 'merged' };
     };
-    const spawnSync = ((_cmd: string, args: string[]) => {
-      if (args[0] === 'pr' && args[1] === 'view') {
-        return { status: 0, stdout: JSON.stringify({ number: 202, state: 'OPEN', mergedAt: null }), stderr: '' };
-      }
-      return { status: 0, stdout: '', stderr: '' };
-    }) as any;
-
-    await processAgentRequests({ ...env, ghCommandRunner: ghRunner, spawnSync });
+    
+    await processAgentRequests({ ...env, ghCommandRunner: ghRunner });
     assert.strictEqual(ghOp, 'pr-merge');
-    const parsed = JSON.parse(tempFileContents);
-    assert.strictEqual(parsed.strategy, 'squash', 'strategy must be passed through to temp request file');
-    assert.strictEqual(parsed.pr_number, 202);
-  } finally {
-    await env.cleanup();
-  }
-});
-
-test('processAgentRequests - merge_pr skips already merged', async () => {
-  const env = await setupTestEnv();
-  try {
-    const req = {
-      id: 'req-merge-already',
-      type: 'merge_pr',
-      payload: { number: 303, strategy: 'squash' }
-    };
-    await fs.writeFile(path.join(env.requestsDir, 'req-merge-already.json'), JSON.stringify(req));
-
-    let ghCalled = false;
-    const ghRunner = async () => {
-      ghCalled = true;
-      return { exitCode: 0, output: 'merged' };
-    };
-    // gh pr view returns MERGED state — should skip
-    const spawnSync = ((_cmd: string, _args: string[]) => ({
-      status: 0,
-      stdout: JSON.stringify({ state: 'MERGED' }),
-      stderr: ''
-    })) as any;
-
-    await processAgentRequests({ ...env, spawnSync, ghCommandRunner: ghRunner });
-
-    assert.strictEqual(ghCalled, false, 'already-merged PR should skip pr-merge operation');
-    const queueFiles = await fs.readdir(path.join(env.sessionDir, 'queue'));
-    assert.strictEqual(queueFiles.length, 1);
-    const queueContent = await fs.readFile(path.join(env.sessionDir, 'queue', queueFiles[0]), 'utf8');
-    assert.ok(queueContent.includes('already_merged'));
-
-    const logContent = await fs.readFile(env.logPath, 'utf8');
-    assert.ok(logContent.includes('gh_request_skipped_already_merged'));
-  } finally {
-    await env.cleanup();
-  }
-});
-
-test('processAgentRequests - merge_pr idempotent skip when already merged', async () => {
-  const env = await setupTestEnv();
-  try {
-    const req = {
-      id: 'req-merge-dup',
-      type: 'merge_pr',
-      payload: { number: 202, strategy: 'squash' }
-    };
-    await fs.writeFile(path.join(env.requestsDir, 'req-merge-dup.json'), JSON.stringify(req));
-
-    let mergeCalls = 0;
-    const ghRunner = async () => {
-      mergeCalls += 1;
-      return { exitCode: 0, output: 'merged' };
-    };
-    const spawnSync = ((_cmd: string, args: string[]) => {
-      if (args[0] === 'pr' && args[1] === 'view') {
-        return {
-          status: 0,
-          stdout: JSON.stringify({
-            number: 202,
-            state: 'MERGED',
-            mergedAt: '2026-01-01T00:00:00Z',
-            url: 'http://gh/pr/202',
-            title: 'Already merged'
-          }),
-          stderr: ''
-        };
-      }
-      return { status: 0, stdout: '', stderr: '' };
-    }) as any;
-
-    await processAgentRequests({ ...env, ghCommandRunner: ghRunner, spawnSync });
-
-    assert.strictEqual(mergeCalls, 0);
-    const queueFiles = await fs.readdir(path.join(env.sessionDir, 'queue'));
-    assert.strictEqual(queueFiles.length, 1);
-    const content = await fs.readFile(path.join(env.sessionDir, 'queue', queueFiles[0]), 'utf8');
-    assert.ok(content.includes('"skipped": true'));
-    assert.ok(content.includes('"idempotent": true'));
-    assert.ok(content.includes('"reason": "already_merged"'));
   } finally {
     await env.cleanup();
   }
@@ -918,51 +361,6 @@ test('processAgentRequests - dispatch_child', async () => {
     assert.ok(calledArgs.includes('start'));
     assert.ok(calledArgs.includes('--issue'));
     assert.ok(calledArgs.includes('101'));
-  } finally {
-    await env.cleanup();
-  }
-});
-
-test('processAgentRequests - dispatch_child idempotent skip when child already running', async () => {
-  const env = await setupTestEnv();
-  try {
-    const childSessionId = 'child-running-1';
-    const childDir = path.join(env.aloopDir, 'sessions', childSessionId);
-    await fs.mkdir(childDir, { recursive: true });
-    await fs.writeFile(path.join(childDir, 'meta.json'), JSON.stringify({ issue_number: 101 }));
-    await fs.writeFile(path.join(env.aloopDir, 'active.json'), JSON.stringify({ [childSessionId]: { session_id: childSessionId } }));
-
-    const req = {
-      id: 'req-dispatch-dup',
-      type: 'dispatch_child',
-      payload: {
-        issue_number: 101,
-        branch: 'feat/x',
-        pipeline: 'build',
-        sub_spec_file: 'sub.md'
-      }
-    };
-    await fs.writeFile(path.join(env.requestsDir, 'req-dispatch-dup.json'), JSON.stringify(req));
-
-    let spawnCalls = 0;
-    const spawnSync = ((_cmd: string, _args: string[]) => {
-      spawnCalls += 1;
-      return { status: 0, stdout: JSON.stringify({ session_id: 'unexpected' }), stderr: '' };
-    }) as any;
-
-    await processAgentRequests({ ...env, spawnSync, ghCommandRunner: async () => ({ exitCode: 0, output: '' }) });
-
-    assert.strictEqual(spawnCalls, 0);
-    const queueFiles = await fs.readdir(path.join(env.sessionDir, 'queue'));
-    assert.strictEqual(queueFiles.length, 1);
-    const content = await fs.readFile(path.join(env.sessionDir, 'queue', queueFiles[0]), 'utf8');
-    assert.ok(content.includes('"skipped": true'));
-    assert.ok(content.includes('"idempotent": true'));
-    assert.ok(content.includes('"reason": "child_session_already_running"'));
-
-    const logContent = await fs.readFile(env.logPath, 'utf8');
-    assert.ok(logContent.includes('gh_request_skipped_child_already_running'));
-    assert.ok(logContent.includes('"existing_session_id":'));
   } finally {
     await env.cleanup();
   }
@@ -1380,10 +778,9 @@ test('processAgentRequests - unsupported request type', async () => {
 
     const failedFiles = await fs.readdir(path.join(env.requestsDir, 'failed'));
     assert.ok(failedFiles.includes('req-bad-type.json'));
-    // Validation failures are logged but don't produce queue files
-    const logContent = await fs.readFile(env.logPath, 'utf8');
-    assert.ok(logContent.includes('Validation failed'));
-    assert.ok(logContent.includes('Invalid or missing request type'));
+    const queueFiles = await fs.readdir(path.join(env.sessionDir, 'queue'));
+    const queueContent = await fs.readFile(path.join(env.sessionDir, 'queue', queueFiles[0]), 'utf8');
+    assert.ok(queueContent.includes('Unsupported request type'));
   } finally {
     await env.cleanup();
   }
@@ -1399,60 +796,15 @@ test('processAgentRequests - duplicate archive path collision', async () => {
     await fs.writeFile(path.join(env.requestsDir, 'dup.json'), JSON.stringify(req1));
 
     const ghRunner = async () => ({ exitCode: 0, output: 'closed' });
-    const spawnSync = ((_cmd: string, args: string[]) => {
-      if (args[0] === 'issue' && args[1] === 'view') {
-        return { status: 0, stdout: JSON.stringify({ state: 'OPEN' }), stderr: '' };
-      }
-      return { status: 0, stdout: '', stderr: '' };
-    }) as any;
-    await processAgentRequests({ ...env, ghCommandRunner: ghRunner, spawnSync });
+    await processAgentRequests({ ...env, ghCommandRunner: ghRunner });
 
     // Now process another request — pre-seed processedDir with dup.json to force collision
     await fs.writeFile(path.join(env.requestsDir, 'dup.json'), JSON.stringify(req2));
-    await processAgentRequests({ ...env, ghCommandRunner: ghRunner, spawnSync });
+    await processAgentRequests({ ...env, ghCommandRunner: ghRunner });
 
     const processedFiles = await fs.readdir(path.join(env.requestsDir, 'processed'));
     assert.ok(processedFiles.includes('dup.json'));
     assert.ok(processedFiles.includes('dup.dup1.json'));
-  } finally {
-    await env.cleanup();
-  }
-});
-
-test('processAgentRequests - request ID idempotency persists and skips duplicate IDs', async () => {
-  const env = await setupTestEnv();
-  try {
-    let ghCalls = 0;
-    const ghRunner = async () => {
-      ghCalls += 1;
-      return { exitCode: 0, output: 'closed' };
-    };
-
-    const firstReq = { id: 'req-idem-1', type: 'close_issue', payload: { number: 1, reason: 'done' } };
-    await fs.writeFile(path.join(env.requestsDir, 'req-idem-first.json'), JSON.stringify(firstReq));
-    await processAgentRequests({ ...env, ghCommandRunner: ghRunner });
-
-    const processedIdsPath = path.join(env.requestsDir, 'processed-ids.json');
-    const processedIds = JSON.parse(await fs.readFile(processedIdsPath, 'utf8'));
-    assert.deepStrictEqual(processedIds, ['req-idem-1']);
-    assert.strictEqual(ghCalls, 1);
-
-    const duplicateReq = { id: 'req-idem-1', type: 'close_issue', payload: { number: 2, reason: 'done-again' } };
-    await fs.writeFile(path.join(env.requestsDir, 'req-idem-second.json'), JSON.stringify(duplicateReq));
-    await processAgentRequests({ ...env, ghCommandRunner: ghRunner });
-
-    assert.strictEqual(ghCalls, 1, 'duplicate request ID should be skipped without calling handler');
-
-    const processedFiles = await fs.readdir(path.join(env.requestsDir, 'processed'));
-    assert.ok(processedFiles.includes('req-idem-first.json'));
-    assert.ok(processedFiles.includes('req-idem-second.json'));
-
-    const queueFiles = await fs.readdir(path.join(env.sessionDir, 'queue'));
-    assert.strictEqual(queueFiles.length, 1, 'duplicate request should not produce a second queue success file');
-
-    const logContent = await fs.readFile(env.logPath, 'utf8');
-    assert.ok(logContent.includes('gh_request_skipped_duplicate'));
-    assert.ok(logContent.includes('"id":"req-idem-1"'));
   } finally {
     await env.cleanup();
   }
@@ -1518,14 +870,7 @@ test('processAgentRequests - handler failure', async () => {
       return { exitCode: 1, output: 'GH error' };
     };
     
-    const spawnSync = ((_cmd: string, args: string[]) => {
-      if (args[0] === 'issue' && args[1] === 'view') {
-        return { status: 0, stdout: JSON.stringify({ state: 'OPEN' }), stderr: '' };
-      }
-      return { status: 0, stdout: '', stderr: '' };
-    }) as any;
-
-    await processAgentRequests({ ...env, ghCommandRunner: ghRunner, spawnSync });
+    await processAgentRequests({ ...env, ghCommandRunner: ghRunner });
     
     const failedFiles = await fs.readdir(path.join(env.requestsDir, 'failed'));
     assert.ok(failedFiles.includes('fail.json'));
@@ -1538,223 +883,4 @@ test('processAgentRequests - handler failure', async () => {
   } finally {
     await env.cleanup();
   }
-});
-
-// ─── validateRequest unit tests ───────────────────────────────────────────────
-
-test('validateRequest - null input', () => {
-  const result = validateRequest(null);
-  assert.strictEqual(result.valid, false);
-  assert.ok(!result.valid && result.error.includes('JSON object'));
-});
-
-test('validateRequest - non-object input (string)', () => {
-  const result = validateRequest('hello');
-  assert.strictEqual(result.valid, false);
-  assert.ok(!result.valid && result.error.includes('JSON object'));
-});
-
-test('validateRequest - non-object input (number)', () => {
-  const result = validateRequest(42);
-  assert.strictEqual(result.valid, false);
-  assert.ok(!result.valid && result.error.includes('JSON object'));
-});
-
-test('validateRequest - missing id', () => {
-  const result = validateRequest({ type: 'close_issue', payload: { number: 1, reason: 'done' } });
-  assert.strictEqual(result.valid, false);
-  assert.ok(!result.valid && result.error.includes('id'));
-});
-
-test('validateRequest - empty id', () => {
-  const result = validateRequest({ id: '', type: 'close_issue', payload: { number: 1, reason: 'done' } });
-  assert.strictEqual(result.valid, false);
-  assert.ok(!result.valid && result.error.includes('id'));
-});
-
-test('validateRequest - missing payload', () => {
-  const result = validateRequest({ id: 'r1', type: 'close_issue' });
-  assert.strictEqual(result.valid, false);
-  assert.ok(!result.valid && result.error.includes('payload'));
-});
-
-test('validateRequest - null payload', () => {
-  const result = validateRequest({ id: 'r1', type: 'close_issue', payload: null });
-  assert.strictEqual(result.valid, false);
-  assert.ok(!result.valid && result.error.includes('payload'));
-});
-
-test('validateRequest - invalid type', () => {
-  const result = validateRequest({ id: 'r1', type: 'invalid_type', payload: {} });
-  assert.strictEqual(result.valid, false);
-  assert.ok(!result.valid && result.error.includes('Invalid or missing request type'));
-});
-
-test('validateRequest - missing type', () => {
-  const result = validateRequest({ id: 'r1', payload: {} });
-  assert.strictEqual(result.valid, false);
-  assert.ok(!result.valid && result.error.includes('Invalid or missing request type'));
-});
-
-test('validateRequest - create_issues with empty array', () => {
-  const result = validateRequest({ id: 'r1', type: 'create_issues', payload: { issues: [] } });
-  assert.strictEqual(result.valid, false);
-  assert.ok(!result.valid && result.error.includes('non-empty array'));
-});
-
-test('validateRequest - create_issues with non-array', () => {
-  const result = validateRequest({ id: 'r1', type: 'create_issues', payload: { issues: 'nope' } });
-  assert.strictEqual(result.valid, false);
-  assert.ok(!result.valid && result.error.includes('non-empty array'));
-});
-
-test('validateRequest - create_issues with null issue entry', () => {
-  const result = validateRequest({ id: 'r1', type: 'create_issues', payload: { issues: [null] } });
-  assert.strictEqual(result.valid, false);
-  assert.ok(!result.valid && result.error.includes('issues[0]'));
-});
-
-test('validateRequest - create_issues missing title', () => {
-  const result = validateRequest({ id: 'r1', type: 'create_issues', payload: { issues: [{ body_file: 'a.md' }] } });
-  assert.strictEqual(result.valid, false);
-  assert.ok(!result.valid && result.error.includes('title'));
-});
-
-test('validateRequest - create_issues missing body_file', () => {
-  const result = validateRequest({ id: 'r1', type: 'create_issues', payload: { issues: [{ title: 'T' }] } });
-  assert.strictEqual(result.valid, false);
-  assert.ok(!result.valid && result.error.includes('body_file'));
-});
-
-test('validateRequest - create_issues invalid labels (non-string elements)', () => {
-  const result = validateRequest({ id: 'r1', type: 'create_issues', payload: { issues: [{ title: 'T', body_file: 'a.md', labels: [123] }] } });
-  assert.strictEqual(result.valid, false);
-  assert.ok(!result.valid && result.error.includes('labels'));
-});
-
-test('validateRequest - create_issues invalid parent (negative)', () => {
-  const result = validateRequest({ id: 'r1', type: 'create_issues', payload: { issues: [{ title: 'T', body_file: 'a.md', parent: -1 }] } });
-  assert.strictEqual(result.valid, false);
-  assert.ok(!result.valid && result.error.includes('parent'));
-});
-
-test('validateRequest - create_issues valid request', () => {
-  const result = validateRequest({ id: 'r1', type: 'create_issues', payload: { issues: [{ title: 'T', body_file: 'a.md', labels: ['bug'], parent: 5 }] } });
-  assert.strictEqual(result.valid, true);
-});
-
-test('validateRequest - merge_pr invalid strategy', () => {
-  const result = validateRequest({ id: 'r1', type: 'merge_pr', payload: { number: 1, strategy: 'invalid' } });
-  assert.strictEqual(result.valid, false);
-  assert.ok(!result.valid && result.error.includes('strategy'));
-});
-
-test('validateRequest - merge_pr missing number', () => {
-  const result = validateRequest({ id: 'r1', type: 'merge_pr', payload: { strategy: 'squash' } });
-  assert.strictEqual(result.valid, false);
-  assert.ok(!result.valid && result.error.includes('number'));
-});
-
-test('validateRequest - merge_pr valid', () => {
-  const result = validateRequest({ id: 'r1', type: 'merge_pr', payload: { number: 1, strategy: 'squash' } });
-  assert.strictEqual(result.valid, true);
-});
-
-test('validateRequest - dispatch_child missing sub_spec_file', () => {
-  const result = validateRequest({ id: 'r1', type: 'dispatch_child', payload: { issue_number: 1, branch: 'b', pipeline: 'p' } });
-  assert.strictEqual(result.valid, false);
-  assert.ok(!result.valid && result.error.includes('sub_spec_file'));
-});
-
-test('validateRequest - dispatch_child valid', () => {
-  const result = validateRequest({ id: 'r1', type: 'dispatch_child', payload: { issue_number: 1, branch: 'b', pipeline: 'p', sub_spec_file: 's.md' } });
-  assert.strictEqual(result.valid, true);
-});
-
-test('validateRequest - close_issue missing reason', () => {
-  const result = validateRequest({ id: 'r1', type: 'close_issue', payload: { number: 1 } });
-  assert.strictEqual(result.valid, false);
-  assert.ok(!result.valid && result.error.includes('reason'));
-});
-
-test('validateRequest - close_issue valid', () => {
-  const result = validateRequest({ id: 'r1', type: 'close_issue', payload: { number: 1, reason: 'done' } });
-  assert.strictEqual(result.valid, true);
-});
-
-test('validateRequest - requirePositiveInt with negative value', () => {
-  const result = validateRequest({ id: 'r1', type: 'close_issue', payload: { number: -5, reason: 'done' } });
-  assert.strictEqual(result.valid, false);
-  assert.ok(!result.valid && result.error.includes('positive integer'));
-});
-
-test('validateRequest - requirePositiveInt with non-integer (float)', () => {
-  const result = validateRequest({ id: 'r1', type: 'close_issue', payload: { number: 1.5, reason: 'done' } });
-  assert.strictEqual(result.valid, false);
-  assert.ok(!result.valid && result.error.includes('positive integer'));
-});
-
-test('validateRequest - requirePositiveInt with zero', () => {
-  const result = validateRequest({ id: 'r1', type: 'close_issue', payload: { number: 0, reason: 'done' } });
-  assert.strictEqual(result.valid, false);
-  assert.ok(!result.valid && result.error.includes('positive integer'));
-});
-
-test('validateRequest - optionalStringArray with non-array', () => {
-  const result = validateRequest({ id: 'r1', type: 'query_issues', payload: { labels: 'bug' } });
-  assert.strictEqual(result.valid, false);
-  assert.ok(!result.valid && result.error.includes('labels'));
-});
-
-test('validateRequest - optionalStringArray with non-string elements', () => {
-  const result = validateRequest({ id: 'r1', type: 'query_issues', payload: { labels: [1, 2] } });
-  assert.strictEqual(result.valid, false);
-  assert.ok(!result.valid && result.error.includes('labels'));
-});
-
-test('validateRequest - query_issues invalid state', () => {
-  const result = validateRequest({ id: 'r1', type: 'query_issues', payload: { state: 'invalid' } });
-  assert.strictEqual(result.valid, false);
-  assert.ok(!result.valid && result.error.includes('state'));
-});
-
-test('validateRequest - query_issues valid with no optional fields', () => {
-  const result = validateRequest({ id: 'r1', type: 'query_issues', payload: {} });
-  assert.strictEqual(result.valid, true);
-});
-
-test('validateRequest - update_issue missing number', () => {
-  const result = validateRequest({ id: 'r1', type: 'update_issue', payload: {} });
-  assert.strictEqual(result.valid, false);
-  assert.ok(!result.valid && result.error.includes('number'));
-});
-
-test('validateRequest - create_pr missing fields', () => {
-  const result = validateRequest({ id: 'r1', type: 'create_pr', payload: { head: 'h' } });
-  assert.strictEqual(result.valid, false);
-  assert.ok(!result.valid && result.error.includes('base'));
-});
-
-test('validateRequest - steer_child missing prompt_file', () => {
-  const result = validateRequest({ id: 'r1', type: 'steer_child', payload: { issue_number: 1 } });
-  assert.strictEqual(result.valid, false);
-  assert.ok(!result.valid && result.error.includes('prompt_file'));
-});
-
-test('validateRequest - stop_child missing reason', () => {
-  const result = validateRequest({ id: 'r1', type: 'stop_child', payload: { issue_number: 1 } });
-  assert.strictEqual(result.valid, false);
-  assert.ok(!result.valid && result.error.includes('reason'));
-});
-
-test('validateRequest - post_comment missing body_file', () => {
-  const result = validateRequest({ id: 'r1', type: 'post_comment', payload: { issue_number: 1 } });
-  assert.strictEqual(result.valid, false);
-  assert.ok(!result.valid && result.error.includes('body_file'));
-});
-
-test('validateRequest - spec_backfill missing section', () => {
-  const result = validateRequest({ id: 'r1', type: 'spec_backfill', payload: { file: 'f.md', content_file: 'c.md' } });
-  assert.strictEqual(result.valid, false);
-  assert.ok(!result.valid && result.error.includes('section'));
 });

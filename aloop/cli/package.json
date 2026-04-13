@@ -11,13 +11,12 @@
     "dist"
   ],
   "scripts": {
-    "build": "npm run clean && npm run build:dashboard && npm run build:server && npm run build:shebang && npm run build:templates && npm run build:bin && npm run build:agents",
+    "build": "npm run clean && npm run build:dashboard && npm run build:server && npm run build:shebang && npm run build:templates && npm run build:bin",
     "build:dashboard": "npm --prefix dashboard run build -- --outDir ../dist/dashboard --emptyOutDir",
     "build:server": "esbuild src/index.ts --bundle --platform=node --format=esm \"--banner:js=import { createRequire } from 'module'; const require = createRequire(import.meta.url);\" --outfile=dist/index.js",
     "build:shebang": "node -e \"const f='dist/index.js',c=require('node:fs').readFileSync(f,'utf8');if(!c.startsWith('#!'))require('node:fs').writeFileSync(f,'#!/usr/bin/env node\\n'+c)\"",
     "build:templates": "node -e \"const fs=require('node:fs');const path=require('node:path');fs.cpSync(path.resolve('..','templates'),path.resolve('dist','templates'),{recursive:true,force:true});\"",
     "build:bin": "node -e \"const fs=require('node:fs');const path=require('node:path');const binSrc=path.resolve('..','bin');const binDest=path.resolve('dist','bin');fs.mkdirSync(binDest,{recursive:true});fs.copyFileSync(path.join(binSrc,'loop.sh'),path.join(binDest,'loop.sh'));fs.copyFileSync(path.join(binSrc,'loop.ps1'),path.join(binDest,'loop.ps1'));\"",
-    "build:agents": "node -e \"const fs=require('node:fs');const path=require('node:path');fs.cpSync(path.resolve('..','agents','opencode'),path.resolve('dist','agents','opencode'),{recursive:true,force:true});\"",
     "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\"",
     "dev": "tsx src/index.ts",
     "test": "tsx --test src/**/*.test.ts && node --test aloop.test.mjs",

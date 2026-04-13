@@ -723,7 +723,7 @@ function resolveProviderHints(provider, enabledProviders = []) {
     .join('\n');
 }
 
-const LOOP_PROMPT_TEMPLATES = ['PROMPT_plan.md', 'PROMPT_build.md', 'PROMPT_review.md', 'PROMPT_steer.md', 'PROMPT_proof.md', 'PROMPT_qa.md', 'PROMPT_spec-gap.md', 'PROMPT_docs.md', 'PROMPT_spec-review.md', 'PROMPT_final-review.md', 'PROMPT_final-qa.md'];
+const LOOP_PROMPT_TEMPLATES = ['PROMPT_plan.md', 'PROMPT_build.md', 'PROMPT_review.md', 'PROMPT_steer.md', 'PROMPT_proof.md', 'PROMPT_qa.md'];
 const SINGLE_PROMPT_TEMPLATES = ['PROMPT_single.md'];
 const ORCHESTRATOR_PROMPT_TEMPLATES = [
   'PROMPT_orch_scan.md',
@@ -938,11 +938,6 @@ export async function scaffoldWorkspace(options = {}) {
     "  gemini: 'gemini-3.1-pro-preview'",
     "  copilot: 'gpt-5.3-codex'",
     '',
-    'cost_routing:',
-    "  plan: 'prefer_capable'",
-    "  build: 'prefer_cheap'",
-    "  review: 'prefer_capable'",
-    '',
     'round_robin_order:',
     ...roundRobin.map((value) => `  - ${toYamlQuoted(value)}`),
     '',
@@ -955,40 +950,6 @@ export async function scaffoldWorkspace(options = {}) {
   ];
 
   await writeFile(discovery.setup.config_path, `${configLines.join('\n')}\n`, 'utf8');
-
-  // Generate default pipeline.yml at <projectRoot>/.aloop/pipeline.yml if it doesn't exist.
-  // Without this file, compile-loop-plan produces an empty finalizer array and the
-  // finalizer phase is skipped even when all tasks are done.
-  const pipelineYmlDir = path.join(discovery.project.root, '.aloop');
-  const pipelineYmlPath = path.join(pipelineYmlDir, 'pipeline.yml');
-  if (!existsSync(pipelineYmlPath)) {
-    await mkdir(pipelineYmlDir, { recursive: true });
-    const pipelineContent = [
-      '# Continuous cycle — repeats until all tasks done at cycle boundary',
-      'pipeline:',
-      '  - agent: plan',
-      '  - agent: build',
-      '    repeat: 5',
-      '    onFailure: retry',
-      '  - agent: qa',
-      '  - agent: review',
-      '    onFailure: goto build',
-      '',
-      '# Completion finalizer — runs once when all tasks done at cycle boundary.',
-      '# Processed sequentially. If any agent adds TODOs, finalizer aborts',
-      '# (resets to position 0) and the cycle resumes.',
-      '# Only the last agent completing with zero new TODOs ends the loop.',
-      'finalizer:',
-      '  - PROMPT_spec-gap.md',
-      '  - PROMPT_docs.md',
-      '  - PROMPT_spec-review.md',
-      '  - PROMPT_final-review.md',
-      '  - PROMPT_final-qa.md',
-      '  - PROMPT_proof.md',
-      '',
-    ].join('\n');
-    await writeFile(pipelineYmlPath, pipelineContent, 'utf8');
-  }
 
   const replacements = {
     '{{SPEC_FILES}}': resolvedSpecFiles.join(', '),

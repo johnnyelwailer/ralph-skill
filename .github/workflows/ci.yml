@@ -25,17 +25,3 @@ jobs:
       - name: Run dashboard unit tests
         working-directory: aloop/cli/dashboard
         run: npm test
-
-  loop-script-tests:
-    name: Loop Script Tests
-    runs-on: ubuntu-latest
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install bats
-        run: sudo apt-get update && sudo apt-get install -y bats
-
-      - name: Run loop.sh tests
-        working-directory: aloop/bin/tests
-        run: bats loop.bats

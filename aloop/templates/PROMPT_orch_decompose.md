@@ -28,17 +28,6 @@ When `ui_variant_exploration` is enabled in `meta.json`, and an epic involves us
 
 Skip this if: `ui_variant_exploration` is false/unset, or the feature is backend-only.
 
-## Issue Body Requirements
-
-Every epic body MUST include these sections:
-
-- **Scope** — what this vertical slice delivers end-to-end
-- **Acceptance Criteria** — machine-verifiable checks
-- **Architectural Context** — where this work fits in the system and which layers/components it touches
-- **Dependencies** — if this epic depends on other epics, include `Depends on #N, #M` at the end of the body (where N, M are the IDs of dependency epics in your decomposition plan)
-
-If a constitution rule is relevant to the epic, cite it explicitly in the body.
-
 ## Rules
 
 - Avoid horizontal layer-only decomposition.

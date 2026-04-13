@@ -38,9 +38,7 @@ import {
   executeGhOperation,
   evaluatePolicy,
   formatGhStatusRows,
-  computeGhStats,
   ghStopCommand,
-  extractRepoFromIssueUrl,
   type PrReviewComment,
   type PrCheckRun,
   type PrFeedback,
@@ -2925,10 +2923,8 @@ test('ghExecutor.exec rethrows when PATH hardening blocks gh and no fallback bin
   fs.chmodSync(blockedGhPath, 0o755);
 
   const origPath = process.env.PATH;
-  const origOriginalPath = process.env.ALOOP_ORIGINAL_PATH;
   try {
     process.env.PATH = blockedDir;
-    process.env.ALOOP_ORIGINAL_PATH = '';
     await assert.rejects(
       () => ghExecutor.exec(['version']),
       /blocked by aloop PATH hardening/i,
@@ -2936,8 +2932,6 @@ test('ghExecutor.exec rethrows when PATH hardening blocks gh and no fallback bin
   } finally {
     if (origPath !== undefined) process.env.PATH = origPath;
     else delete process.env.PATH;
-    if (origOriginalPath !== undefined) process.env.ALOOP_ORIGINAL_PATH = origOriginalPath;
-    else delete process.env.ALOOP_ORIGINAL_PATH;
     fs.rmSync(root, { recursive: true, force: true });
   }
 });
@@ -3300,134 +3294,4 @@ test('executeGhOperation covers missing request, gh execution errors, and parse 
 test('buildGhArgs supports pr-comments operation', () => {
   const args = buildGhArgs('pr-comments', {}, { repo: 'test/repo', since: '2026-03-14T00:00:00Z' });
   assert.deepEqual(args, ['api', 'repos/test/repo/pulls/comments', '--method', 'GET', '-f', 'since=2026-03-14T00:00:00Z']);
-});
-
-// --- extractRepoFromIssueUrl tests ---
-
-test('extractRepoFromIssueUrl extracts repo from github.com URL', () => {
-  assert.equal(extractRepoFromIssueUrl('https://github.com/org/repo/issues/42'), 'org/repo');
-});
-
-test('extractRepoFromIssueUrl extracts repo from GitHub Enterprise URL', () => {
-  assert.equal(extractRepoFromIssueUrl('https://ghe.corp.com/org/repo/issues/42'), 'org/repo');
-  assert.equal(extractRepoFromIssueUrl('https://github.example.com/org/repo/issues/1'), 'org/repo');
-  assert.equal(extractRepoFromIssueUrl('https://git.internal.company.io/team/project/issues/99'), 'team/project');
-});
-
-test('extractRepoFromIssueUrl handles http URLs', () => {
-  assert.equal(extractRepoFromIssueUrl('http://github.com/org/repo/issues/1'), 'org/repo');
-  assert.equal(extractRepoFromIssueUrl('http://ghe.corp.com/org/repo/issues/5'), 'org/repo');
-});
-
-test('extractRepoFromIssueUrl returns null for non-issue URLs', () => {
-  assert.equal(extractRepoFromIssueUrl('https://github.com/org/repo/pull/42'), null);
-  assert.equal(extractRepoFromIssueUrl('https://github.com/org/repo'), null);
-  assert.equal(extractRepoFromIssueUrl('not-a-url'), null);
-  assert.equal(extractRepoFromIssueUrl(''), null);
-});
-
-test('GhWatchIssueEntry.title stored by enqueueIssue and normalizeWatchIssueEntry', () => {
-  const state = normalizeWatchState({ issues: {}, queue: [] });
-  enqueueIssue(state, { number: 1, title: 'Fix the bug', url: 'https://github.com/test/repo/issues/1' });
-  assert.equal(state.issues['1'].title, 'Fix the bug');
-
-  // re-enqueue with same title preserves it
-  state.issues['1'].status = 'stopped';
-  enqueueIssue(state, { number: 1, title: 'Fix the bug', url: 'https://github.com/test/repo/issues/1' });
-  assert.equal(state.issues['1'].title, 'Fix the bug');
-
-  // normalizeWatchIssueEntry reads title from persisted entry
-  const entry = normalizeWatchIssueEntry({ issue_number: 5, status: 'queued', title: 'My issue title' });
-  assert.equal(entry?.title, 'My issue title');
-
-  // missing title defaults to null (backward compat)
-  const entryNoTitle = normalizeWatchIssueEntry({ issue_number: 6, status: 'queued' });
-  assert.equal(entryNoTitle?.title, null);
-});
-
-test('formatGhStatusRows includes Title column and dash fallback for missing title', () => {
-  const state = normalizeWatchState({
-    issues: {
-      '10': { issue_number: 10, status: 'queued', title: 'My feature title' },
-      '11': { issue_number: 11, status: 'running' },
-    },
-    queue: [10],
-  });
-  const rows = formatGhStatusRows(state, new Map(), false);
-  assert.match(rows, /Title/);
-  assert.match(rows, /My feature title/);
-  // entry without title shows em-dash
-  assert.match(rows, /—/);
-});
-
-test('formatGhStatusRows applies ANSI color codes only when useTTY=true', () => {
-  const state = normalizeWatchState({
-    issues: {
-      '1': { issue_number: 1, status: 'running' },
-      '2': { issue_number: 2, status: 'completed' },
-      '3': { issue_number: 3, status: 'stopped' },
-      '4': { issue_number: 4, status: 'queued' },
-    },
-    queue: [4],
-  });
-
-  const rowsNoTTY = formatGhStatusRows(state, new Map(), false);
-  assert.doesNotMatch(rowsNoTTY, /\x1B\[/);
-
-  const rowsTTY = formatGhStatusRows(state, new Map(), true);
-  // yellow for running
-  assert.match(rowsTTY, /\x1B\[33m/);
-  // green for completed
-  assert.match(rowsTTY, /\x1B\[32m/);
-  // red for stopped
-  assert.match(rowsTTY, /\x1B\[31m/);
-});
-
-test('computeGhStats counts entries correctly', () => {
-  const state = normalizeWatchState({
-    issues: {
-      '1': { issue_number: 1, status: 'running', pr_number: 5 },
-      '2': { issue_number: 2, status: 'running' },
-      '3': { issue_number: 3, status: 'completed', pr_number: 7 },
-      '4': { issue_number: 4, status: 'stopped', pr_number: 8 },
-      '5': { issue_number: 5, status: 'queued' },
-    },
-    queue: [5],
-  });
-  const stats = computeGhStats(state);
-  assert.equal(stats.total, 5);
-  assert.equal(stats.active, 2);
-  assert.equal(stats.completed, 1);
-  // pr_number set and status !== 'completed': issues 1, 4
-  assert.equal(stats.prsPending, 2);
-});
-
-test('ghStatusCommand includes stats in JSON output', async (t) => {
-  const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), 'aloop-gh-stats-'));
-  const output: string[] = [];
-  t.mock.method(console, 'log', (line?: unknown) => output.push(String(line ?? '')));
-  t.mock.method(ghLoopRuntime, 'listActiveSessions', async () => []);
-
-  writeWatchState(tmpHome, {
-    version: 1,
-    issues: {
-      '1': { issue_number: 1, status: 'running' },
-      '2': { issue_number: 2, status: 'completed' },
-    },
-    queue: [],
-  });
-
-  await ghStatusCommand({ homeDir: tmpHome, output: 'json' });
-
-  const jsonOutput = output.find((line) => line.startsWith('{'));
-  assert.ok(jsonOutput, 'expected JSON output');
-  const parsed = JSON.parse(jsonOutput) as { issues: unknown[]; stats: { total: number; active: number; completed: number; prsPending: number } };
-  assert.ok(Array.isArray(parsed.issues));
-  assert.ok(parsed.stats);
-  assert.equal(parsed.stats.total, 2);
-  assert.equal(parsed.stats.active, 1);
-  assert.equal(parsed.stats.completed, 1);
-  assert.equal(parsed.stats.prsPending, 0);
-
-  fs.rmSync(tmpHome, { recursive: true });
 });

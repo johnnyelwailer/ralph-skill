@@ -40,11 +40,6 @@ function fail(outputMode: string, msg: string): never {
 
 export async function steerCommand(instruction: string, options: SteerCommandOptions = {}) {
   const outputMode = options.output || 'text';
-  const trimmedInstruction = instruction.trim();
-  if (trimmedInstruction.length === 0) {
-    return fail(outputMode, 'Instruction must be a non-empty string.');
-  }
-
   const homeDir = resolveHomeDir(options.homeDir);
   const active = await readActiveSessions(homeDir);
   const sessionIds = Object.keys(active);
@@ -75,7 +70,7 @@ export async function steerCommand(instruction: string, options: SteerCommandOpt
   }
 
   const affectsCompletedWork = (options.affectsCompletedWork as 'yes' | 'no' | 'unknown') ?? 'unknown';
-  const steeringDoc = buildSteeringDocument(trimmedInstruction, affectsCompletedWork, 'cli');
+  const steeringDoc = buildSteeringDocument(instruction.trim(), affectsCompletedWork, 'cli');
 
   // Write STEERING.md to workdir
   await writeFile(steeringPath, steeringDoc, 'utf8');

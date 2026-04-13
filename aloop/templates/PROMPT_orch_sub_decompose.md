@@ -28,7 +28,6 @@ Every sub-issue body MUST include these sections:
 - **Inputs** — what the child loop needs to read/understand before starting
 - **Outputs** — what the child loop must produce (files, tests, exports)
 - **Acceptance Criteria** — machine-verifiable checks
-- **Dependencies** — if this sub-issue depends on other sub-issues within the same epic, include `Depends on #N, #M` at the end of the body
 
 ## Rules
 

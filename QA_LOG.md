@@ -1,5 +1,38 @@
 # QA Log
 
+## QA Session — 2026-04-13 (iteration 4)
+
+### Test Environment
+- Branch: aloop/issue-22
+- Binary under test: N/A — worktree deleted before binary install could complete
+- Features tested: 1 (via static analysis only); all runtime tests blocked
+- Note: Shell CWD was the worktree path that was deleted by the orchestrator between iterations. The bash tool failed on every invocation. All runtime verifications (CLI type-check, dashboard type-check, CLI tests, shell tests) were blocked.
+
+### Results
+- PASS (static): `bun run test` fix confirmed — ci.yml in aloop/issue-22 worktree uses `bun run test` (not `bun test`); previously filed [qa/P1] bug is resolved
+- BLOCKED: CLI type-check, dashboard type-check, CLI tests, shell tests — bash environment broken; cannot re-verify remaining P1 bugs from iteration 3
+
+### Bugs Filed
+(none new — existing bugs from iteration 3 still open but could not be re-tested)
+
+### Command Transcript
+
+#### Static CI workflow verification
+Read `.github/workflows/ci.yml` from worktree before deletion:
+- Line 28: `run: bun run test` → PASS (fix confirmed, was `bun test` in prior iteration)
+- 7 jobs present: cli-tests, cli-type-check, dashboard-tests, dashboard-type-check, loop-script-tests, dashboard-e2e, loop-script-tests-windows
+- All 8 referenced shell test files verified present
+EXIT: PASS (static analysis only)
+
+#### Runtime test attempts
+All blocked:
+```
+Working directory /home/pj/.aloop/sessions/orchestrator-20260321-172932-issue-22-20260413-194901/worktree no longer exists.
+```
+EXIT: BLOCKED
+
+---
+
 ## QA Session — 2026-04-13 (iteration 1)
 
 ### Test Environment
