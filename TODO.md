@@ -2,4 +2,5 @@
 
 ## Tasks
 
-- [x] Implement as described in the issue
+### Completed
+- [x] Implement as described in the issue — `.github/workflows/ci.yml` updated with `agent/*` and `aloop/*` branch triggers on both push and pull_request, four parallel jobs (type-check, cli-tests, dashboard-tests, loop-script-tests), no `needs:` dependencies. All acceptance criteria verified. Final review: PASS.
