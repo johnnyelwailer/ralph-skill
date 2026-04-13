@@ -18,6 +18,14 @@ jobs:
         with:
           node-version: '22'
 
+      - name: Cache CLI node_modules
+        uses: actions/cache@v3
+        with:
+          path: aloop/cli/node_modules
+          key: cli-node-modules-${{ hashFiles('aloop/cli/package-lock.json') }}
+          restore-keys: |
+            cli-node-modules-
+
       - name: Install CLI dependencies
         working-directory: aloop/cli
         run: npm ci
@@ -26,6 +34,14 @@ jobs:
         working-directory: aloop/cli
         run: npm run type-check
 
+      - name: Cache Dashboard node_modules
+        uses: actions/cache@v3
+        with:
+          path: aloop/cli/dashboard/node_modules
+          key: dashboard-node-modules-${{ hashFiles('aloop/cli/dashboard/package-lock.json') }}
+          restore-keys: |
+            dashboard-node-modules-
+
       - name: Install Dashboard dependencies
         working-directory: aloop/cli/dashboard
         run: npm ci
@@ -33,6 +49,33 @@ jobs:
       - name: Run Dashboard type check
         working-directory: aloop/cli/dashboard
         run: npm run type-check
+
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Cache CLI node_modules
+        uses: actions/cache@v3
+        with:
+          path: aloop/cli/node_modules
+          key: cli-node-modules-${{ hashFiles('aloop/cli/package-lock.json') }}
+          restore-keys: |
+            cli-node-modules-
+
+      - name: Install dependencies
+        working-directory: aloop/cli
+        run: npm ci
+
+      - name: Run build
+        working-directory: aloop/cli
+        run: npm run build
 
   cli-tests:
     name: CLI Tests
@@ -45,6 +88,13 @@ jobs:
         with:
           node-version: '22'
 
+      - name: Cache CLI node_modules
+        uses: actions/cache@v3
+        with:
+          path: aloop/cli/node_modules
+          key: cli-node-modules-${{ hashFiles('aloop/cli/package-lock.json') }}
+          restore-keys: |
+            cli-node-modules-
       - name: Install dependencies
         working-directory: aloop/cli
         run: npm ci
@@ -64,6 +114,13 @@ jobs:
         with:
           node-version: '22'
 
+      - name: Cache Dashboard node_modules
+        uses: actions/cache@v3
+        with:
+          path: aloop/cli/dashboard/node_modules
+          key: dashboard-node-modules-${{ hashFiles('aloop/cli/dashboard/package-lock.json') }}
+          restore-keys: |
+            dashboard-node-modules-
       - name: Install dashboard dependencies
         working-directory: aloop/cli/dashboard
         run: npm ci
