@@ -3924,3 +3924,206 @@ Describe 'loop.ps1 — provider-health primitives' {
         }
     }
 }
+
+# ============================================================================
+# loop.ps1 — Sync-Branch behavioral
+# ============================================================================
+Describe 'loop.ps1 — Sync-Branch behavioral' {
+
+    BeforeAll {
+        $loopScript = Join-Path $PSScriptRoot 'loop.ps1'
+        $scriptContent = Get-Content $loopScript -Raw
+        if ($scriptContent -match '(?ms)(^function Sync-Branch\s*\{.*?^})') {
+            $script:syncBranchFuncSource = $Matches[1]
+        } else {
+            throw "Could not extract Sync-Branch from loop.ps1"
+        }
+
+        $script:sbTempRoot = Join-Path ([System.IO.Path]::GetTempPath()) "aloop-syncbranch-$PID"
+        New-Item -ItemType Directory -Path $script:sbTempRoot -Force | Out-Null
+    }
+
+    AfterAll {
+        Remove-Item -Recurse -Force $script:sbTempRoot -ErrorAction SilentlyContinue
+    }
+
+    # Helper: create a bare remote + a local clone on a feature branch
+    # Returns a hashtable with RemoteDir, WorkDir, SessionDir, PromptsDir
+    function script:New-SyncEnv {
+        param([string]$TestName)
+        $envDir    = Join-Path $script:sbTempRoot $TestName
+        $remoteDir = Join-Path $envDir 'remote'
+        $workDir   = Join-Path $envDir 'work'
+        $sessDir   = Join-Path $envDir 'session'
+        $promptDir = Join-Path $envDir 'prompts'
+        foreach ($d in $remoteDir, $sessDir, $promptDir) {
+            New-Item -ItemType Directory -Path $d -Force | Out-Null
+        }
+
+        # Init bare remote with a seed commit on main
+        git init --bare -q $remoteDir
+        $initDir = Join-Path $envDir 'init'
+        New-Item -ItemType Directory -Path $initDir -Force | Out-Null
+        git clone -q $remoteDir $initDir
+        Push-Location $initDir
+        git config user.name "Test"
+        git config user.email "test@example.com"
+        "seed" | Set-Content seed.txt
+        git add seed.txt
+        git commit -m "seed" -q
+        git push origin HEAD:main -q
+        Pop-Location
+        Remove-Item -Recurse -Force $initDir
+
+        # Clone into workDir and create a feature branch
+        git clone -q $remoteDir $workDir
+        Push-Location $workDir
+        git config user.name "Test"
+        git config user.email "test@example.com"
+        git checkout -b feature -q
+        Pop-Location
+
+        # Minimal PROMPT_merge.md
+        Set-Content (Join-Path $promptDir 'PROMPT_merge.md') "# Merge Conflict Resolution`nResolve the conflict."
+
+        return [pscustomobject]@{
+            RemoteDir  = $remoteDir
+            WorkDir    = $workDir
+            SessionDir = $sessDir
+            PromptsDir = $promptDir
+        }
+    }
+
+    # Helper: run Sync-Branch in a controlled scope with event capture
+    function script:Invoke-SyncBranch {
+        param($e, [hashtable]$MetaOverride = $null)
+
+        if ($MetaOverride -ne $null) {
+            $MetaOverride | ConvertTo-Json -Compress | Set-Content (Join-Path $e.SessionDir 'meta.json')
+        }
+
+        $capturedEvents = [System.Collections.Generic.List[hashtable]]::new()
+        $WorkDir    = $e.WorkDir
+        $SessionDir = $e.SessionDir
+        $PromptsDir = $e.PromptsDir
+        $iteration  = 1
+
+        function Write-LogEntry {
+            param([string]$Event, [hashtable]$Data = @{})
+            $capturedEvents.Add(@{ event = $Event; data = $Data })
+        }
+
+        . ([scriptblock]::Create($script:syncBranchFuncSource))
+        $result = Sync-Branch
+
+        return [pscustomobject]@{ Result = $result; Events = $capturedEvents }
+    }
+
+    It 'logs branch_sync result=up_to_date when already current' {
+        $e = New-SyncEnv 'up-to-date'
+        @{ auto_merge = $true; base_branch = 'main' } | ConvertTo-Json -Compress |
+            Set-Content (Join-Path $e.SessionDir 'meta.json')
+
+        $r = Invoke-SyncBranch -e $e
+        $r.Result | Should -Be $true
+
+        $syncEvent = $r.Events | Where-Object { $_.event -eq 'branch_sync' } | Select-Object -First 1
+        $syncEvent | Should -Not -BeNullOrEmpty
+        $syncEvent.data.result | Should -Be 'up_to_date'
+        $syncEvent.data.merged_commit_count | Should -Be 0
+    }
+
+    It 'logs branch_sync result=merged with merged_commit_count=1 after upstream commit' {
+        $e = New-SyncEnv 'merged'
+        @{ auto_merge = $true; base_branch = 'main' } | ConvertTo-Json -Compress |
+            Set-Content (Join-Path $e.SessionDir 'meta.json')
+
+        # Push a new commit to remote main
+        $initDir = Join-Path $script:sbTempRoot 'merged-push'
+        git clone -q $e.RemoteDir $initDir
+        Push-Location $initDir
+        git config user.name "Test"
+        git config user.email "test@example.com"
+        "upstream change" | Set-Content upstream.txt
+        git add upstream.txt
+        git commit -m "upstream commit" -q
+        git push origin HEAD:main -q
+        Pop-Location
+        Remove-Item -Recurse -Force $initDir
+
+        $r = Invoke-SyncBranch -e $e
+        $r.Result | Should -Be $true
+
+        $syncEvent = $r.Events | Where-Object { $_.event -eq 'branch_sync' } | Select-Object -First 1
+        $syncEvent | Should -Not -BeNullOrEmpty
+        $syncEvent.data.result | Should -Be 'merged'
+        $syncEvent.data.merged_commit_count | Should -Be 1
+    }
+
+    It 'returns $true non-fatally when git fetch fails' {
+        $e = New-SyncEnv 'fetch-fail'
+        @{ auto_merge = $true; base_branch = 'main' } | ConvertTo-Json -Compress |
+            Set-Content (Join-Path $e.SessionDir 'meta.json')
+
+        # Break the remote URL
+        git -C $e.WorkDir remote set-url origin /nonexistent/path 2>$null
+
+        $r = Invoke-SyncBranch -e $e
+        $r.Result | Should -Be $true
+    }
+
+    It 'logs merge_conflict, writes queue file, aborts merge, returns $false on conflict' {
+        $e = New-SyncEnv 'conflict'
+        @{ auto_merge = $true; base_branch = 'main' } | ConvertTo-Json -Compress |
+            Set-Content (Join-Path $e.SessionDir 'meta.json')
+
+        # Conflicting commit on remote main
+        $initDir = Join-Path $script:sbTempRoot 'conflict-push'
+        git clone -q $e.RemoteDir $initDir
+        Push-Location $initDir
+        git config user.name "Test"
+        git config user.email "test@example.com"
+        "remote version" | Set-Content conflict.txt
+        git add conflict.txt
+        git commit -m "remote conflict commit" -q
+        git push origin HEAD:main -q
+        Pop-Location
+        Remove-Item -Recurse -Force $initDir
+
+        # Conflicting commit on local feature branch
+        Push-Location $e.WorkDir
+        "local version" | Set-Content conflict.txt
+        git add conflict.txt
+        git commit -m "local conflict commit" -q
+        Pop-Location
+
+        $queueDir = Join-Path $e.SessionDir 'queue'
+
+        $r = Invoke-SyncBranch -e $e
+        $r.Result | Should -Be $false
+
+        # merge_conflict event logged
+        $conflictEvent = $r.Events | Where-Object { $_.event -eq 'merge_conflict' } | Select-Object -First 1
+        $conflictEvent | Should -Not -BeNullOrEmpty
+        $conflictEvent.data.base_branch | Should -Be 'main'
+
+        # Queue file written
+        Test-Path (Join-Path $queueDir '000-merge-conflict.md') | Should -Be $true
+
+        # Merge aborted — no unmerged paths
+        $unmerged = git -C $e.WorkDir diff --name-only --diff-filter=U 2>$null
+        $unmerged | Should -BeNullOrEmpty
+    }
+
+    It 'skips sync and logs nothing when auto_merge is false' {
+        $e = New-SyncEnv 'disabled'
+        @{ auto_merge = $false; base_branch = 'main' } | ConvertTo-Json -Compress |
+            Set-Content (Join-Path $e.SessionDir 'meta.json')
+
+        $r = Invoke-SyncBranch -e $e
+        $r.Result | Should -Be $true
+
+        $syncEvent = $r.Events | Where-Object { $_.event -eq 'branch_sync' } | Select-Object -First 1
+        $syncEvent | Should -BeNullOrEmpty
+    }
+}

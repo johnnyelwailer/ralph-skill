@@ -12,15 +12,6 @@ _(none)_
 - [ ] Add CLI type-check job to `ci.yml`: `bun install` + `bun run type-check` in `aloop/cli` (TASK_SPEC acceptance criteria #5)
 - [ ] Add dashboard type-check job to `ci.yml`: `npm ci` + `npm run type-check` in `aloop/cli/dashboard` (TASK_SPEC acceptance criteria #5)
 - [ ] Add loop script tests (Linux) job to `ci.yml`: install bats, run `bats loop.bats` + at least one `loop_*.tests.sh` in `aloop/bin/tests` (TASK_SPEC acceptance criteria #6)
-- [x] Implement `sync_branch()` in `aloop/bin/loop.sh` — implemented with base branch resolution, auto_merge check, non-fatal fetch, merge with conflict detection, branch_sync/merge_conflict logging, queue file injection, merge abort on conflict.
-- [ ] Implement `Sync-Branch` in `aloop/bin/loop.ps1` with identical semantics
-  - Same base branch resolution precedence, same log field names (`branch_sync`, `merge_conflict`, `base_branch`, `result`, `merged_commit_count`)
-  - Use `Write-LogEntry` pattern consistent with existing PowerShell log calls
-  - Invoke at same iteration point (after `queue_override_complete`/`queue_override_error` around line 2112)
-  - `auto_merge` disable check from `meta.json`
-- [ ] Add `Sync-Branch` tests to `aloop/bin/loop.tests.ps1`
-  - Equivalent coverage to bash tests above
-  - Verify call-order: `Sync-Branch` runs after queue override handling and before mode resolution
 
 ### Deferred / Out of scope
 
@@ -43,5 +34,9 @@ Shell integration test failures — out of scope for CI setup (loop.sh behavior 
 - [x] `.github/workflows/ci.yml` file exists — verified by direct read of branch HEAD
 - [x] Dashboard tests job (`npm test` in `aloop/cli/dashboard`) — present in ci.yml, correct commands
 - [x] README.md CI badge URL contains `actions/workflows/ci.yml/badge.svg` — verified line 1 of README.md
-- [x] `sync_branch` tests to `aloop/bin/loop_branch_coverage.tests.sh` — 5 paths covered: merged, up_to_date, fetch_failure, conflict, disabled. All pass (57/57 branches, 100%).
-- [x] `aloop/templates/PROMPT_merge.md` — exists with correct frontmatter (`agent: merge`, `trigger: merge_conflict`, full conflict resolution instructions); no changes needed
+- [x] `sync_branch` function implemented in `loop.sh` (lines 2101–2193) with all required logic
+- [x] `sync_branch` called at correct iteration point in `loop.sh` (after queue override, before finalizer/mode resolution, line ~2219)
+- [x] `aloop/templates/PROMPT_merge.md` has correct frontmatter (`agent: merge`, `trigger: merge_conflict`) and resolution instructions — no changes needed
+- [x] `loop_branch_coverage.tests.sh` extended with 5 `sync_branch` test cases (merged, up_to_date, fetch_failure, conflict, disabled) — all passing (100% coverage)
+- [x] `Sync-Branch` function implemented in `loop.ps1` (lines 2043–2126) matching `sync_branch` semantics; called after `Run-QueueIfPresent` at line ~2232
+- [x] `Sync-Branch` tests added to `loop.tests.ps1` covering merged, up_to_date, fetch_failure, conflict, and sync-disabled paths
