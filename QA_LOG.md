@@ -1,5 +1,54 @@
 # QA Log
 
+## QA Session — 2026-04-13 (iteration 5)
+
+### Test Environment
+- Worktree: /home/pj/.aloop/sessions/orchestrator-20260321-172932-issue-200-20260413-162649/worktree
+- Branch: aloop/issue-200
+- Commit: 77e93807
+- Features tested: 7 (full re-verification at new commit — TODO.md and QA artifacts updated since iter 4)
+
+### Results
+- PASS: CI branch triggers (agent/*, aloop/*)
+- PASS: Concurrency control
+- PASS: Four parallel jobs with no needs: declarations
+- PASS: cli-tests explicit build scripts (no build:dashboard)
+- PASS: No dashboard-e2e job
+- PASS: Workflow name is CI
+- PASS: README badge URL points to ci.yml
+- PASS: README hallucinated gh commands absent
+
+### Bugs Filed
+None.
+
+### Command Transcript
+
+**Full acceptance criteria verification**
+```
+python3 multi-check at commit 77e93807:
+→ Push branches: ['master', 'agent/*', 'aloop/*']
+→ PR branches: ['master', 'agent/*', 'aloop/*']
+→ AC1 branch triggers: PASS
+→ Concurrency: {'group': '${{ github.workflow }}-${{ github.ref }}', 'cancel-in-progress': True}
+→ AC2 concurrency: PASS
+→ Jobs: ['type-check', 'cli-tests', 'dashboard-tests', 'loop-script-tests']
+→ Jobs with needs: []
+→ AC3 four parallel jobs no needs: PASS
+→ cli-tests build run: npm run clean && npm run build:server && npm run build:shebang && npm run build:templates && npm run build:bin && npm run build:agents
+→ AC4 cli-tests explicit builds: PASS
+→ AC5 no dashboard-e2e: PASS
+→ Workflow name: CI
+→ AC6 workflow name CI: PASS
+→ README line 1: ![CI](https://github.com/johnnyelwailer/ralph-skill/actions/workflows/ci.yml/badge.svg)
+→ AC6 README badge: PASS
+→ Hallucinated gh commands count: 0 ([])
+→ AC7 no hallucinated gh commands: PASS
+→ All CI acceptance criteria: PASS at commit 77e93807
+→ exit 0
+```
+
+---
+
 ## QA Session — 2026-04-13 (iteration 4)
 
 ### Test Environment
