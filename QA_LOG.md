@@ -1,5 +1,46 @@
 # QA Log
 
+## QA Session — 2026-04-13 (iteration 8)
+
+### Test Environment
+- Worktree: /home/pj/.aloop/sessions/orchestrator-20260321-172932-issue-200-20260413-182927/worktree
+- Branch: aloop/issue-200
+- Commit: 9374df67
+- Features tested: 7 (re-verification — only chore commits since iter 7)
+
+### Results
+- PASS: CI branch triggers (agent/*, aloop/*)
+- PASS: Concurrency control (cancel-in-progress: true)
+- PASS: Four parallel jobs (no needs:)
+- PASS: cli-tests explicit build scripts (no build:dashboard)
+- PASS: No dashboard-e2e job
+- PASS: README badge URL points to ci.yml
+- PASS: No hallucinated gh commands in README
+- PASS: Workflow name is "CI"
+- PASS: loop-script-tests uses bats
+
+### Bugs Filed
+None — all acceptance criteria verified PASS
+
+### Command Transcript
+```
+Verification method: direct YAML static analysis (workflow config = public interface for CI product)
+
+grep triggers → 'agent/*' and 'aloop/*' present in both push and pull_request branches lists → PASS
+job presence check → type-check, cli-tests, dashboard-tests, loop-script-tests all present → PASS
+needs: check → no needs: declarations found → PASS
+concurrency block → group + cancel-in-progress: true → PASS
+cli-tests build cmd → build:server build:shebang build:templates build:bin build:agents (no build:dashboard) → PASS
+README line 1 → badge points to ci.yml → PASS
+README hallucination check → gate1/gate2/gate3/pr-rebase absent → PASS
+workflow name → "name: CI" → PASS
+loop-script-tests → bats invocation present → PASS
+```
+
+Changes since iter 7 (641e0faf): only QA_COVERAGE.md, QA_LOG.md, TODO.md — no workflow changes.
+
+---
+
 ## QA Session — 2026-04-13 (iteration 7)
 
 ### Test Environment
