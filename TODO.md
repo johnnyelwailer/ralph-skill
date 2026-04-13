@@ -4,10 +4,15 @@
 
 ### In Progress
 
-- [ ] [review] Gate 1/Constitution Rule 18: Revert `aloop/cli/src/commands/orchestrate.ts` and `aloop/cli/src/commands/orchestrate.test.ts` — these files are explicitly Out of Scope per TASK_SPEC.md ("Runtime/orchestrator logic changes in `aloop/cli/src/**`") and Constitution Rules 12 + 18. All 5 behavior changes in orchestrate.ts are unrelated to CI setup (priority: high)
-- [ ] [review] Gate 1/Constitution Rule 12: The `reviewPrDiff` change (orchestrate.ts line ~3566) silently auto-approves PRs when no reviewer is configured — replacing the safe 'flag-for-human' default with 'approve'. This is a security regression bundled into a CI setup issue. Must be reverted. File a separate issue if the auto-approve behavior is genuinely desired (priority: high)
-- [ ] [review] Gate 1: The fix of 27 pre-existing test failures (commit aec9e571) belongs in a separate issue, not bundled here. If `bun run test` had pre-existing failures, CI should be set up first (showing the failures as a starting point), then a separate issue filed to fix them. Revert the orchestrate.ts/test.ts changes and file a follow-up issue for the test fixes (priority: high)
+### Up Next
+
+- [ ] [review] Revert out-of-scope production changes in `aloop/cli/src/commands/orchestrate.ts` — REVIEW_LOG identified 8 behavior changes bundled into this CI issue, all explicitly out of scope per TASK_SPEC.md. Most critical: `reviewPrDiff` changed `verdict: 'flag-for-human'` → `verdict: 'approve'` when no reviewer configured — a security regression that enables automated merges without review. Revert all 8 changes: `validateDoR` regex/criterion changes, `applyEstimateResults` status progression expansion, `getDispatchableIssues` dor_validated guard, `launchChildLoop` SPEC.md seeding, `checkPrGates` pending-vs-pass change, `reviewPrDiff` auto-approve, `monitorChildSessions` state/status tracking. Revert `aloop/cli/src/commands/orchestrate.test.ts` to match (remove test coverage for the reverted production changes only; retain any fixture additions that fix pre-existing failures unrelated to the reverted code).
+
+- [ ] [qa/P1] loop_provenance.tests.sh silent failures: `bash aloop/bin/loop_provenance.tests.sh` → "FAIL: loop.sh emitted top-level local warning" + "FAIL: Provenance trailers verification failed" → spec says tests must report failures; script exits 0 so CI shows PASS even when tests fail. Tested at iter 1. (priority: high)
+- [ ] [qa/P1] loop_finalizer_qa_coverage.tests.sh silent failures: `bash aloop/bin/loop_finalizer_qa_coverage.tests.sh` → 3 failures including `check_finalizer_qa_coverage_gate: command not found` at line 137 → function is missing or renamed; script exits 0 so CI cannot detect the breakage. Tested at iter 1. (priority: high)
 
 ### Completed
 
-- [x] Implement CI as described in the issue — `.github/workflows/ci.yml` with all jobs (CLI tests/type-check, dashboard tests/type-check/E2E, loop shell tests on Linux, PowerShell tests on Windows) and README badge
+- [x] Create `.github/workflows/ci.yml` with push/PR triggers for `master`, `agent/*`, `aloop/*` branches
+- [x] Add CI jobs: CLI tests (bun), CLI type-check, dashboard unit tests (npm), dashboard type-check, loop shell tests (Linux, 7 suites including bats), PowerShell loop tests (Windows), dashboard E2E tests with Playwright
+- [x] Add CI status badge to `README.md` line 1 pointing at `johnnyelwailer/ralph-skill/actions/workflows/ci.yml/badge.svg`
