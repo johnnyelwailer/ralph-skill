@@ -2,10 +2,6 @@
 
 ## Tasks
 
-### In Progress
-
-### Up Next
-
 ### Deferred / Out of Scope
 - [~] Fix silent failures in `loop_provenance.tests.sh` and `loop_finalizer_qa_coverage.tests.sh` (pre-existing test failures require changes to `loop.sh` — out of scope per TASK_SPEC.md scope: `.github/workflows/`, `README.md` only). Should be addressed in a separate issue.
 
