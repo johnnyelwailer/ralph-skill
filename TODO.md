@@ -3,9 +3,7 @@
 ## Tasks
 
 ### Completed
-- [x] Implement as described in the issue — all acceptance criteria verified:
-  - `on.push.branches` and `on.pull_request.branches` include `master`, `agent/*`, `aloop/*`
-  - All four jobs (`cli-tests`, `dashboard-tests`, `type-check`, `loop-script-tests`) are defined
-  - No inter-job `needs` declarations
-  - README badge targets `actions/workflows/ci.yml/badge.svg`
-  - Workflow `name: CI`
+- [x] Add `agent/*` and `aloop/*` branch triggers to CI workflow (`on.push.branches` and `on.pull_request.branches`)
+- [x] Ensure four parallel jobs exist with no `needs:` dependencies: `type-check`, `cli-tests`, `dashboard-tests`, `loop-script-tests`
+- [x] Remove out-of-scope jobs and steps (e.g. `dashboard-e2e`, extra shell/PowerShell steps)
+- [x] Fix `cli-tests` build script to exclude `build:dashboard` (dashboard deps not installed in that job)
