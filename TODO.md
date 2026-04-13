@@ -4,6 +4,8 @@
 
 ### Completed
 
-- [x] Add `agent/*` and `aloop/*` branch triggers to CI workflow push and pull_request events (ci.yml:5,7)
-- [x] Ensure four independent parallel jobs exist with no `needs:` dependencies: type-check (line 14), cli-tests (line 45), dashboard-tests (line 70), loop-script-tests (line 91)
-- [x] README badge targets correct workflow file (`actions/workflows/ci.yml/badge.svg`)
+- [x] Add `agent/*` and `aloop/*` to `on.push.branches` in `.github/workflows/ci.yml`
+- [x] Add `agent/*` and `aloop/*` to `on.pull_request.branches` in `.github/workflows/ci.yml`
+- [x] Ensure all four required jobs exist (`cli-tests`, `dashboard-tests`, `type-check`, `loop-script-tests`) with no `needs` dependencies
+- [x] Verify `README.md` badge targets `actions/workflows/ci.yml/badge.svg`
+- [x] Ensure workflow `name: CI` is set in `.github/workflows/ci.yml`
