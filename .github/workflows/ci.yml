@@ -112,6 +112,12 @@ jobs:
       - name: Run provider health tests
         run: bash aloop/bin/loop_provider_health.tests.sh
 
+      - name: Run branch coverage tests
+        run: bash aloop/bin/loop_branch_coverage.tests.sh
+
+      - name: Run finalizer QA coverage tests
+        run: bash aloop/bin/loop_finalizer_qa_coverage.tests.sh
+
   loop-script-tests-windows:
     name: Loop Script Tests (Windows)
     runs-on: windows-latest
