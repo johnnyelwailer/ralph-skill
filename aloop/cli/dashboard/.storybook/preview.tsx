@@ -1,6 +1,6 @@
 import type { Preview } from '@storybook/react';
 import { withThemeByClassName } from '@storybook/addon-themes';
-import { TooltipProvider } from '../src/components/ui/tooltip';
+import { TooltipProvider } from '@/components/ui/tooltip';
 import '../src/index.css';
 
 const preview: Preview = {
