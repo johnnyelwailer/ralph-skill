@@ -154,3 +154,25 @@
 **Prior findings:** All three FAIL findings from initial review remain resolved.
 
 ---
+
+## Review — 2026-04-13 15:00 — commit 7ad63da2..33331493
+
+**Verdict: PASS** (no new findings)
+**Scope:** QA_LOG.md, QA_COVERAGE.md (QA iter 3 results), TODO.md (review tasks removed, task marked complete)
+
+**Prior findings resolved:**
+- Gate 9 (HIGH) RESOLVED: README.md hallucinated commands (`aloop gh gate1`, `gate2`, `gate3`, `pr-rebase`) were never committed — they were unstaged changes that were discarded. `grep -c "gate1\|gate2\|gate3\|pr-rebase" README.md` → 0. Working tree clean confirmed by QA iter 3 step 7: `git status README.md → nothing to commit`.
+- Gate 9 (MEDIUM) RESOLVED: Same unstaged README changes (incorrect command name formatting) discarded along with hallucinated commands.
+
+**Gate re-verification:**
+- Gate 1: ci.yml unchanged since prior PASS (`git diff 9129ad88 HEAD -- .github/workflows/ci.yml` returns empty). All acceptance criteria met: push/PR triggers on master, agent/*, aloop/*; four jobs (type-check:14, cli-tests:45, dashboard-tests:70, loop-script-tests:91); no `needs:` declarations; `name: CI` at line 1.
+- Gate 4: QA_LOG.md and QA_COVERAGE.md are factual records — no dead code or stale comments. TODO.md clean.
+- Gate 6: Changes are QA logs and admin cleanup — no observable code output. Acceptable skip.
+- Gate 7: N/A (no UI changes).
+- Gate 8: No dependency changes since last verified PASS.
+- Gate 9: README.md clean — QA iter 3 step 6 confirms `grep -c "gate1\|gate2\|gate3\|pr rebase\|pr-rebase" README.md → 0`; step 7 confirms `git status README.md → nothing to commit`. Both prior Gate 9 findings resolved.
+- Gates 2, 3, 5: N/A — no code changes since last verified PASS.
+
+**Concrete observation:** Gate 9: QA_LOG.md:78-81 step 6 (`grep -c "gate1\|gate2\|gate3\|pr rebase\|pr-rebase" README.md → 0`) definitively confirms hallucinated commands absent. The resolution approach — discarding unstaged changes rather than patching them — is clean and correct: no committed README drift.
+
+---
