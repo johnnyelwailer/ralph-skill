@@ -3,7 +3,4 @@
 ## Tasks
 
 ### Completed
-
-- [x] Implement GitHub Actions CI workflow (`.github/workflows/ci.yml`) covering all 7 jobs:
-  cli-tests, cli-type-check, dashboard-tests, dashboard-type-check, loop-script-tests (Linux),
-  dashboard-e2e, loop-script-tests-windows — verified PASS through multiple QA iterations
+- [x] Implement GitHub Actions CI as described in the issue — `.github/workflows/ci.yml` exists with all 8 acceptance criteria satisfied: push/PR triggers on master + agent/* branches, CLI tests (bun), dashboard tests (npm), type checks for both packages, loop shell tests on Linux, PowerShell tests on Windows, dashboard E2E, and CI badge in README.md
