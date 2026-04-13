@@ -1313,6 +1313,7 @@ invoke_provider() {
     local invoke_rc=0
     local copilot_output_file=""
     local exit_code=0
+    LAST_PROVIDER_STDERR_TAIL=""
 
     # Provenance: export for prepare-commit-msg hook
     export ALOOP_AGENT="${iter_mode:-unknown}"
@@ -1496,6 +1497,10 @@ invoke_provider() {
     if [ -n "$copilot_output_file" ]; then
         rm -f "$copilot_output_file"
     fi
+    LAST_PROVIDER_STDERR_TAIL=$(tail -n "${ALOOP_STDERR_TAIL_LINES:-20}" "$tmp_stderr")
+    if [ "$invoke_rc" -eq 0 ]; then
+        LAST_PROVIDER_STDERR_TAIL=""
+    fi
     rm -f "$tmp_stderr"
     return "$invoke_rc"
 }
@@ -1547,6 +1552,7 @@ PHASE_RETRY_CONSECUTIVE=0
 PHASE_RETRY_FAILURE_REASONS=()
 MAX_PHASE_RETRIES=2
 LAST_PROVIDER_ERROR=""
+LAST_PROVIDER_STDERR_TAIL=""
 LAST_PROVIDER_MODEL=""
 LAST_ITER_MODE="$MODE"
 LAST_PROOF_ITERATION=0
@@ -2293,7 +2299,7 @@ while [ "$ITERATION" -lt "$MAX_ITERATIONS" ]; do
         register_iteration_failure "$iter_mode" "${LAST_PROVIDER_ERROR:-provider_failed}"
         persist_loop_plan_state
         echo "Warning: Iteration $ITERATION failed"
-        write_log_entry "iteration_error" "iteration" "$ITERATION" "mode" "$iter_mode" "provider" "$iter_provider" "model" "$LAST_PROVIDER_MODEL" "duration" "$_iter_duration" "error" "${LAST_PROVIDER_ERROR:-unknown}"
+        write_log_entry "iteration_error" "iteration" "$ITERATION" "mode" "$iter_mode" "provider" "$iter_provider" "model" "$LAST_PROVIDER_MODEL" "duration" "$_iter_duration" "error" "${LAST_PROVIDER_ERROR:-unknown}" "stderr_tail" "$LAST_PROVIDER_STDERR_TAIL"
     fi
 
     # Extract per-iteration output from LOG_FILE.raw for dashboard parsing
