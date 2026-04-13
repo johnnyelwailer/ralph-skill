@@ -260,3 +260,25 @@
 **Prior findings:** All three FAIL findings from initial review remain resolved. No regressions.
 
 ---
+
+## Review — 2026-04-13 18:45 — commit 697c28a1..0dac7313 (docs-only changes since last PASS)
+
+**Verdict: PASS** (no new findings)
+**Scope:** TODO.md (2 reformatting commits), QA_LOG.md / QA_COVERAGE.md (QA iters 7 and 8)
+
+**Changes reviewed:** No code or CI config changes. `641e0faf` consolidated TODO.md completed task to single entry; `9374df67` re-expanded for clarity. `604af7e0` added QA iter 7 transcript (PASS on all criteria at commit `641e0faf`); `0dac7313` added QA iter 8 (PASS on all criteria at commit `9374df67`). `git diff 697c28a1..HEAD -- .github/workflows/ci.yml` returns empty — ci.yml byte-for-byte identical to prior PASS.
+
+**Gate re-verification:**
+- Gate 1: ci.yml:5 `branches: ['master', 'agent/*', 'aloop/*']` on push; ci.yml:7 same on pull_request. Four jobs at lines 14/45/70/91. No `needs:` declarations. `name: CI` at line 1. All TASK_SPEC acceptance criteria met.
+- Gate 4: TODO.md clean — completed task entry with full meaning preserved. QA transcripts are factual records with concrete values.
+- Gate 6: QA logs and admin cleanup — no observable code output. Acceptable skip.
+- Gate 7: N/A (no UI changes).
+- Gate 8: No dependency changes since last verified PASS.
+- Gate 9: README.md unchanged. Badge at README.md:1 targets correct URL. No behavioral changes requiring doc updates.
+- Gates 2, 3, 5: N/A — no code changes since last verified PASS.
+
+**Concrete observation:** Gate 1: QA iter 8 transcript (`0dac7313`) confirms `grep -n "needs:" ci.yml → No needs: found` and four jobs present — corroborating ci.yml direct inspection. Nine prior PASS reviews hold; no regressions.
+
+**Prior findings:** All three FAIL findings from initial review remain resolved.
+
+---
