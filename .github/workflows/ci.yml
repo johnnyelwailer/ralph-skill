@@ -1,5 +1,6 @@
 name: CI
 
+# CI triggers on master, agent/*, and aloop/* branches
 on:
   push:
     branches: [master, agent/*, aloop/*]
