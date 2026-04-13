@@ -1,5 +1,57 @@
 # QA Log
 
+## QA Session — 2026-04-13 (iteration 7)
+
+### Test Environment
+- Worktree: /home/pj/.aloop/sessions/orchestrator-20260321-172932-issue-200-20260413-182927/worktree
+- Branch: aloop/issue-200
+- Commit: 641e0faf
+- Features tested: 7 (full re-verification — only chore commits since iter 6)
+
+### Results
+- PASS: CI branch triggers (agent/*, aloop/*)
+- PASS: Concurrency control
+- PASS: Four parallel jobs with no needs: declarations
+- PASS: cli-tests explicit build scripts (no build:dashboard)
+- PASS: No dashboard-e2e job
+- PASS: Workflow name is CI
+- PASS: README badge URL points to ci.yml
+- PASS: README hallucinated gh commands absent
+
+### Bugs Filed
+None.
+
+### Command Transcript
+
+**Full acceptance criteria verification (file read + manual inspection)**
+```
+ci.yml read at commit 641e0faf:
+→ name: CI
+→ Push branches: ['master', 'agent/*', 'aloop/*']
+→ PR branches: ['master', 'agent/*', 'aloop/*']
+→ AC1 branch triggers: PASS
+→ Concurrency: {group: '${{ github.workflow }}-${{ github.ref }}', cancel-in-progress: true}
+→ AC2 workflow name 'CI': PASS
+→ AC3 concurrency: PASS
+→ Jobs: [type-check, cli-tests, dashboard-tests, loop-script-tests]
+→ No needs: field on any job
+→ AC4 four parallel jobs no needs: PASS
+→ cli-tests build run: npm run clean && npm run build:server && npm run build:shebang && npm run build:templates && npm run build:bin && npm run build:agents
+→ No build:dashboard in ci.yml
+→ AC5 cli-tests explicit builds: PASS
+→ AC6 no dashboard-e2e: PASS (only 4 jobs, none named dashboard-e2e)
+→ README.md line 1: ![CI](https://github.com/johnnyelwailer/ralph-skill/actions/workflows/ci.yml/badge.svg)
+→ AC7 README badge: PASS
+→ grep gate1|gate2|gate3|pr-rebase README.md → 0 matches
+→ AC8 no hallucinated gh commands: PASS
+→ All CI acceptance criteria: ALL PASS at commit 641e0faf
+```
+
+Note: Original session worktree (20260413-181619) was deleted before bash commands could run.
+Verification performed by reading files directly in new worktree (20260413-182927) on same commit.
+
+---
+
 ## QA Session — 2026-04-13 (iteration 6)
 
 ### Test Environment
