@@ -10,6 +10,7 @@ dist/
 build/
 .next/
 out/
+storybook-static/
 
 # IDEs
 .vscode/
@@ -28,6 +29,9 @@ STEERING.md
 TASK_SPEC.md
 QA_LOG.md
 QA_COVERAGE.md
+.aloop/output/
+issues_summary.txt
+scan_candidates.json
 
 # Misc
 .env
