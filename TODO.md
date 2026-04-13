@@ -31,13 +31,16 @@ Shell integration test failures — out of scope for CI setup (loop.sh behavior 
 
 ### Completed
 
-- [x] Implement as described in the issue — `sync_branch` (Bash) and `Sync-Branch` (PowerShell) added to loop runners; all 5 test scenarios pass; 57/57 branch coverage; all acceptance criteria verified
+- [x] Implement `sync_branch()` in `loop.sh` — resolves base branch, fetches, merges, detects conflict, queues prompt, aborts on conflict, logs events
+- [x] Implement `Sync-Branch` in `loop.ps1` — equivalent semantics and event field names
+- [x] Invoke sync in both scripts after queue override handling and before iteration mode resolution
+- [x] Reuse/verify `aloop/templates/PROMPT_merge.md` has correct `agent: merge` and `trigger: merge_conflict` frontmatter
+- [x] Extend `loop_branch_coverage.tests.sh` with 5 sync branches (up_to_date, merged, fetch_failure, conflict, disabled) — all pass (57/57)
+- [x] Extend `loop.tests.ps1` with equivalent Sync-Branch behavioral tests (5 cases) — implemented; `pwsh` unavailable on this host to verify locally
 - [x] `.github/workflows/ci.yml` file exists — verified by direct read of branch HEAD
 - [x] Dashboard tests job (`npm test` in `aloop/cli/dashboard`) — present in ci.yml, correct commands
 - [x] README.md CI badge URL contains `actions/workflows/ci.yml/badge.svg` — verified line 1 of README.md
-- [x] `sync_branch` function implemented in `loop.sh` (lines 2101–2193) with all required logic
-- [x] `sync_branch` called at correct iteration point in `loop.sh` (after queue override, before finalizer/mode resolution, line ~2219)
-- [x] `aloop/templates/PROMPT_merge.md` has correct frontmatter (`agent: merge`, `trigger: merge_conflict`) and resolution instructions — no changes needed
-- [x] `loop_branch_coverage.tests.sh` extended with 5 `sync_branch` test cases (merged, up_to_date, fetch_failure, conflict, disabled) — all passing (100% coverage)
-- [x] `Sync-Branch` function implemented in `loop.ps1` (lines 2043–2126) matching `sync_branch` semantics; called after `Run-QueueIfPresent` at line ~2232
-- [x] `Sync-Branch` tests added to `loop.tests.ps1` covering merged, up_to_date, fetch_failure, conflict, and sync-disabled paths
+
+### Verification
+- [x] `bash aloop/bin/loop_branch_coverage.tests.sh` — PASSES (57/57 branch coverage)
+- [ ] `pwsh -File aloop/bin/loop.tests.ps1` — PowerShell not available on current host; implementation mirrors bash and passes code review
