@@ -3,4 +3,4 @@
 ## Tasks
 
 ### Completed
-- [x] Implement as described in the issue — all 6 acceptance criteria verified: push/PR triggers include master+agent/*+aloop/*, four independent jobs (no needs:), name: CI, README badge correct
+- [x] Implement as described in the issue — all six acceptance criteria verified: push/PR branch triggers include `master`, `agent/*`, `aloop/*`; all four independent jobs present (`type-check`, `cli-tests`, `dashboard-tests`, `loop-script-tests`); no `needs` declarations; README badge URL correct; workflow name is `CI`.
