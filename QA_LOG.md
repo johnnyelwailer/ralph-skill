@@ -1,5 +1,51 @@
 # QA Log
 
+## QA Session — 2026-04-13 (iteration 14)
+
+### Test Environment
+- Worktree: /home/pj/.aloop/sessions/orchestrator-20260321-172932-issue-200-20260413-203337/worktree
+- Branch: aloop/issue-200
+- Commit: 4f2dca4a
+- Features tested: 7 (re-verification — only doc/qa commits since iter 13)
+
+### Results
+- PASS: CI branch triggers (agent/*, aloop/*)
+- PASS: Concurrency control (cancel-in-progress: true)
+- PASS: Four parallel jobs (no needs:)
+- PASS: cli-tests explicit build scripts (no build:dashboard)
+- PASS: No dashboard-e2e job
+- PASS: README badge URL points to ci.yml
+- PASS: No hallucinated gh commands in README
+
+### Bugs Filed
+None — all acceptance criteria verified PASS
+
+### Command Transcript
+```
+Verification method: direct file read + git diff
+
+git diff ae0927d8 HEAD -- .github/workflows/ci.yml README.md → no diff (no workflow/README changes)
+git log ae0927d8..HEAD → 4f2dca4a (docs: simplify TODO.md), 889352f3 (qa: re-verify iter 13)
+
+ci.yml line 5: push branches: ['master', 'agent/*', 'aloop/*'] → AC1 push: PASS
+ci.yml line 7: PR branches: ['master', 'agent/*', 'aloop/*'] → AC1 PR: PASS
+ci.yml line 1: name: CI → AC name: PASS
+Jobs: type-check, cli-tests, dashboard-tests, loop-script-tests → PASS
+No needs: declarations in any job → AC no needs: PASS
+Concurrency cancel-in-progress: true → PASS
+cli-tests build: npm run clean && build:server && build:shebang && build:templates && build:bin && build:agents → PASS
+No build:dashboard in cli-tests → PASS
+No dashboard-e2e job → PASS
+README line 1: actions/workflows/ci.yml/badge.svg → PASS
+No gate1/gate2/gate3/pr-rebase in README → PASS
+
+All CI acceptance criteria: ALL PASS at commit 4f2dca4a
+```
+
+Changes since iter 13 (ae0927d8): 4f2dca4a (docs: simplify TODO.md), 889352f3 (qa: re-verify iter 13) — no workflow or README changes.
+
+---
+
 ## QA Session — 2026-04-13 (iteration 13)
 
 ### Test Environment
