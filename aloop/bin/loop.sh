@@ -1081,32 +1081,50 @@ update_provider_health_on_success() {
     fi
 }
 
+
+extract_explicit_cooldown_until() {
+    local text="$1"
+    local iso
+    iso=$(printf '%s' "$text" | grep -Eo '20[0-9]{2}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z' | head -n 1)
+    if [ -n "$iso" ]; then
+        echo "$iso"
+        return 0
+    fi
+    return 1
+}
+
 update_provider_health_on_failure() {
     local provider_name="$1"
     local error_text="$2"
     if ! get_provider_health_state "$provider_name"; then
         return
     fi
-    local reason failures now_epoch now cooldown_secs new_status cooldown_until
+    local reason failures now_epoch now cooldown_secs new_status cooldown_until explicit_cooldown
     reason=$(classify_provider_failure "$error_text")
     failures=$((HEALTH_CONSECUTIVE_FAILURES + 1))
     now_epoch=$(date -u +%s)
     now=$(date -u +%Y-%m-%dT%H:%M:%SZ)
     cooldown_until=""
+    explicit_cooldown=$(extract_explicit_cooldown_until "$error_text" || true)
 
     if [ "$reason" = "auth" ]; then
         new_status="degraded"
     else
-        if [ "$reason" = "concurrent_cap" ]; then
-            cooldown_secs=120
-        else
-            cooldown_secs=$(get_provider_cooldown_seconds "$failures")
-        fi
-        if [ "$cooldown_secs" -gt 0 ]; then
+        if [ -n "$explicit_cooldown" ]; then
             new_status="cooldown"
-            cooldown_until=$(date -u -d "@$((now_epoch + cooldown_secs))" +%Y-%m-%dT%H:%M:%SZ)
+            cooldown_until="$explicit_cooldown"
         else
-            new_status="$HEALTH_STATUS"
+            if [ "$reason" = "concurrent_cap" ]; then
+                cooldown_secs=120
+            else
+                cooldown_secs=$(get_provider_cooldown_seconds "$failures")
+            fi
+            if [ "$cooldown_secs" -gt 0 ]; then
+                new_status="cooldown"
+                cooldown_until=$(date -u -d "@$((now_epoch + cooldown_secs))" +%Y-%m-%dT%H:%M:%SZ)
+            else
+                new_status="$HEALTH_STATUS"
+            fi
         fi
     fi
 
