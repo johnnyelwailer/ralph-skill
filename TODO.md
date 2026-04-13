@@ -31,6 +31,7 @@ Shell integration test failures — out of scope for CI setup (loop.sh behavior 
 
 ### Completed
 
+- [x] Implement as described in the issue — `sync_branch` (Bash) and `Sync-Branch` (PowerShell) added to loop runners; all 5 test scenarios pass; 57/57 branch coverage; all acceptance criteria verified
 - [x] `.github/workflows/ci.yml` file exists — verified by direct read of branch HEAD
 - [x] Dashboard tests job (`npm test` in `aloop/cli/dashboard`) — present in ci.yml, correct commands
 - [x] README.md CI badge URL contains `actions/workflows/ci.yml/badge.svg` — verified line 1 of README.md
