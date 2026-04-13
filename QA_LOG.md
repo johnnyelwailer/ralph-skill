@@ -1,5 +1,47 @@
 # QA Log
 
+## QA Session — 2026-04-13 (iteration 12)
+
+### Test Environment
+- Worktree: /home/pj/.aloop/sessions/orchestrator-20260321-172932-issue-200-20260413-200955/worktree
+- Branch: aloop/issue-200
+- Commit: 52e9eb28
+- Features tested: 7 (re-verification — only TODO.md doc commits since iter 11)
+
+### Results
+- PASS: CI branch triggers (agent/*, aloop/*)
+- PASS: Concurrency control (cancel-in-progress: true)
+- PASS: Four parallel jobs (no needs:)
+- PASS: cli-tests explicit build scripts (no build:dashboard)
+- PASS: No dashboard-e2e job
+- PASS: README badge URL points to ci.yml
+- PASS: No hallucinated gh commands in README
+
+### Bugs Filed
+None — all acceptance criteria verified PASS
+
+### Command Transcript
+```
+Verification method: direct file read + grep checks
+
+ci.yml line 1: name: CI → workflow name PASS
+ci.yml lines 4-5: push branches: ['master', 'agent/*', 'aloop/*'] → PASS
+ci.yml lines 6-7: pull_request branches: ['master', 'agent/*', 'aloop/*'] → PASS
+ci.yml lines 9-11: concurrency group + cancel-in-progress: true → PASS
+ci.yml jobs: type-check (line 14), cli-tests (line 45), dashboard-tests (line 70), loop-script-tests (line 91) → PASS
+grep 'needs:' ci.yml → No needs: declarations → PASS
+ci.yml line 64: npm run clean && build:server && build:shebang && build:templates && build:bin && build:agents → PASS
+No dashboard-e2e job present → PASS
+README.md line 1: ![CI](...ci.yml/badge.svg) → PASS
+grep 'gate1|gate2|gate3|pr-rebase' README.md → 0 matches → PASS
+
+All CI acceptance criteria: ALL PASS at commit 52e9eb28
+```
+
+Changes since iter 11 (3ef5936f): e36f3c80 (chore: streamline TODO.md), 52e9eb28 (docs: simplify TODO.md) — no workflow or README changes.
+
+---
+
 ## QA Session — 2026-04-13 (iteration 11)
 
 ### Test Environment
