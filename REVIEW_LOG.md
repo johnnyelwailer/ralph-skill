@@ -196,3 +196,23 @@
 **Prior findings:** All three FAIL findings from initial review remain resolved. No regressions introduced.
 
 ---
+
+## Review — 2026-04-13 16:55 — commit 5b80cf86..84459dc3 (no new code since last PASS)
+
+**Verdict: PASS** (no new findings)
+**Scope:** TODO.md reformatting (`93ecfc39`), QA_LOG.md / QA_COVERAGE.md iter 6 (`84459dc3`)
+
+**Changes reviewed:** No code or CI config changes. TODO.md reformatted with acceptance criteria checkboxes. QA agent ran iter 6 — all 7 acceptance criteria recorded PASS at commit `93ecfc39`. `ci.yml` and `README.md` byte-for-byte identical to prior PASS (empty `git diff 5b80cf86..HEAD -- .github/workflows/ci.yml`).
+
+**Gate re-verification:**
+- Gate 1: ci.yml:5 `branches: ['master', 'agent/*', 'aloop/*']` on push; ci.yml:7 same on pull_request. Four jobs at lines 14/45/70/91 — `type-check`, `cli-tests`, `dashboard-tests`, `loop-script-tests`. No `needs:` declarations. `name: CI` at line 1. All TASK_SPEC acceptance criteria met.
+- Gate 4: ci.yml clean — no dead steps, no TODO/FIXME comments. No `dashboard-e2e` job. `loop-script-tests` remains bats-only. QA_LOG.md iter 6 is a factual transcript — no dead entries.
+- Gate 6: Pure CI config and QA logs — no observable code output. Acceptable skip.
+- Gate 7: N/A (no UI changes).
+- Gate 8: No dependency changes since last verified PASS. Node 22 (ci.yml:23,53,79) matches VERSIONS.md; `actions/checkout@v4`, `actions/setup-node@v4` correct.
+- Gate 9: README.md unchanged. Badge at README.md:1 targets correct URL. `grep -c "gate1\|gate2\|gate3\|pr-rebase" README.md → 0` — hallucinated commands still absent.
+- Gates 2, 3, 5: N/A — no code changes since last verified PASS.
+
+**Prior findings:** All three FAIL findings from initial review remain resolved. No regressions introduced.
+
+---
