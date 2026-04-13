@@ -118,6 +118,40 @@ jobs:
       - name: Run finalizer QA coverage tests
         run: bash aloop/bin/loop_finalizer_qa_coverage.tests.sh
 
+  dashboard-e2e:
+    name: Dashboard E2E Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install CLI dependencies
+        working-directory: aloop/cli
+        run: npm ci
+
+      - name: Install dashboard dependencies
+        working-directory: aloop/cli/dashboard
+        run: npm ci
+
+      - name: Install Playwright browsers
+        working-directory: aloop/cli/dashboard
+        run: npx playwright install --with-deps chromium
+
+      - name: Run E2E tests
+        working-directory: aloop/cli/dashboard
+        run: npm run test:e2e
+
+      - name: Upload proof artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: proof-artifacts
+          path: proof-artifacts/
+
   loop-script-tests-windows:
     name: Loop Script Tests (Windows)
     runs-on: windows-latest
