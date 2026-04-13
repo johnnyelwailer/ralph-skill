@@ -1,5 +1,51 @@
 # QA Log
 
+## QA Session — 2026-04-13 (iteration 11)
+
+### Test Environment
+- Worktree: /home/pj/.aloop/sessions/orchestrator-20260321-172932-issue-200-20260413-194554/worktree
+- Branch: aloop/issue-200
+- Commit: 3ef5936f
+- Features tested: 7 (re-verification — only TODO.md doc commits since iter 10)
+
+### Results
+- PASS: CI branch triggers (agent/*, aloop/*)
+- PASS: Concurrency control (cancel-in-progress: true)
+- PASS: Four parallel jobs (no needs:)
+- PASS: cli-tests explicit build scripts (no build:dashboard)
+- PASS: No dashboard-e2e job
+- PASS: README badge URL points to ci.yml
+- PASS: No hallucinated gh commands in README
+
+### Bugs Filed
+None — all acceptance criteria verified PASS
+
+### Command Transcript
+```
+Verification method: direct file read + grep checks
+
+git diff 7bfce83b HEAD -- .github/workflows/ci.yml README.md → no diff (no workflow/README changes)
+
+grep -n 'needs:' ci.yml → No needs: declarations (PASS)
+grep -n 'build:dashboard' ci.yml → No build:dashboard in workflow (PASS)
+grep -n 'gh pr-rebase|gh gate|gate1|gate2|gate3|pr-rebase' README.md → No hallucinated gh commands (PASS)
+
+ci.yml line 1: name: CI → AC2 PASS
+ci.yml lines 5-6: ['master', 'agent/*', 'aloop/*'] for both push and PR → AC1 PASS
+ci.yml lines 9-11: concurrency group + cancel-in-progress: true → AC3 PASS
+ci.yml jobs: type-check, cli-tests, dashboard-tests, loop-script-tests; no needs: → AC4 PASS
+ci.yml line 64: build:server && build:shebang && build:templates && build:bin && build:agents → AC5 PASS
+No dashboard-e2e job present → AC6 PASS
+README line 1: ![CI](...ci.yml/badge.svg) → AC7 PASS
+No hallucinated gh commands → AC8 PASS
+
+All CI acceptance criteria: ALL PASS at commit 3ef5936f
+```
+
+Changes since iter 10 (7bfce83b): 3ef5936f, de946f9d, 76bbc427, 25c92193 — all TODO.md documentation only, no workflow changes.
+
+---
+
 ## QA Session — 2026-04-13 (iteration 10)
 
 ### Test Environment
