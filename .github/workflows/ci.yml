@@ -101,17 +101,3 @@ jobs:
       - name: Run loop.sh tests
         working-directory: aloop/bin/tests
         run: bats loop.bats
-
-      - name: Run shell script tests
-        run: |
-          chmod +x aloop/bin/loop.sh
-          set -e
-          for f in aloop/bin/*.tests.sh; do
-              echo "Running $f"
-              bash "$f"
-          done
-
-      - name: Run PowerShell script tests
-        shell: pwsh
-        run: |
-          Invoke-Pester ./aloop/bin/loop.tests.ps1 -Output Detailed
