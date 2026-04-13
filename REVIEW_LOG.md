@@ -72,3 +72,29 @@ No proof manifests found. ci.yml is a config file — CI workflow proof would re
 All prior [review] tasks resolved.
 
 ---
+
+## Review — 2026-04-13 — commit 553d9449..f4315eca
+
+**Verdict: FAIL** (3 findings → written to TODO.md as [review] tasks)
+**Scope:** `aloop/bin/loop.sh`, `aloop/bin/loop.ps1`, `aloop/bin/loop_branch_coverage.tests.sh`, `aloop/bin/loop.tests.ps1`
+
+### Gate 1: Constitution Rule 1 — FAIL
+
+`loop.sh` grew +92 LOC (2329→2421) and `loop.ps1` grew +93 LOC (2388→2481). Constitution Rule 1 is unambiguous: "Nothing may be added to loop.sh or loop.ps1. Any PR that touches these files must reduce their line count." The SPEC (§ "Branch Sync & Auto-Merge") explicitly calls for pre-iteration sync in the loop scripts ("This is the one piece of git awareness the loop script has"), creating a direct SPEC↔CONSTITUTION conflict. The Constitution intro states: "If an issue's scope conflicts with a rule, flag it — do not implement the violation." The builder should have escalated to the orchestrator/human rather than implementing in the loop scripts.
+
+### Gate 1: Spec Logic Error (infinite conflict loop) — FAIL
+
+`sync_branch()` calls `git merge --abort` (loop.sh:2161) **before** returning on conflict, then queues `PROMPT_merge.md` in `queue/000-merge-conflict.md`. The merge agent's process step 1 is `git diff --name-only --diff-filter=U` to find conflicted files. After abort, there are zero conflicted files — the agent resolves nothing. `run_queue_if_present` consumes and removes the queue file. Next iteration: `sync_branch` hits the same conflict, aborts again, queues again → infinite loop. Fix: remove `git merge --abort`; leave conflict markers in the working tree for the agent.
+
+### Gate 2: sync.conflict test validates wrong behavior — FAIL
+
+`loop_branch_coverage.tests.sh` (around line 1190) asserts `! git diff --name-only --diff-filter=U | grep -q .` as a PASS — validating that the merge IS aborted and NO conflict markers remain. This tests the wrong behavior. Should assert unmerged paths ARE present. `loop.tests.ps1` has the equivalent error: `$unmerged | Should -BeNullOrEmpty` should be `Should -Not -BeNullOrEmpty`.
+
+### Gates passing
+
+- Gate 2 (other tests): `up_to_date`, `merged`, `fetch_failure`, `disabled` cases all use concrete value assertions (specific log event fields, exact counts). Thorough.
+- Gate 3: 57/57 branch coverage (100%).
+- Gate 4: No dead code. `write_log_entry_mixed` correctly used for `branch_sync` (numeric `merged_commit_count` field). Clean function structure.
+- Gate 5: Tests pass 57/57. No regressions.
+- Gate 6: N/A — internal loop behavior, no UI/API observable output. Proof skip acceptable.
+- Gates 7, 8, 9: N/A for shell script changes.
