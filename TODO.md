@@ -3,14 +3,16 @@
 ## Tasks
 
 ### Completed
-- [x] Implement CI workflow as described in the issue
-  - `.github/workflows/ci.yml` exists with all required jobs
-  - Triggers: `push` and `pull_request` on `master`, `agent/*`, `aloop/*`
-  - `cli-tests`: installs Bun, runs `bun run test` in `aloop/cli`
-  - `cli-type-check`: runs `bun run type-check` in `aloop/cli`
-  - `dashboard-tests`: installs Node 22, runs `npm test` in `aloop/cli/dashboard`
-  - `dashboard-type-check`: runs `npm run type-check` in `aloop/cli/dashboard`
-  - `loop-script-tests`: runs all `loop_*.tests.sh` bash suites + `loop.bats` on Linux
-  - `dashboard-e2e`: Playwright e2e tests with proof artifact upload on failure
-  - `loop-script-tests-windows`: Pester tests for `loop.tests.ps1` on Windows
-  - `README.md` CI badge points to `johnnyelwailer/ralph-skill` (confirmed correct repo via `git remote -v`)
+- [x] Implement GitHub Actions CI pipeline as described in the issue
+
+  Delivered in `.github/workflows/ci.yml`:
+  - push trigger: `master`, `agent/*`, `aloop/*`; pull_request trigger: `master`, `agent/*`
+  - `cli-tests` job: bun install + `bun run test` in `aloop/cli`
+  - `cli-type-check` job: bun install + `bun run type-check` in `aloop/cli`
+  - `dashboard-tests` job: npm ci + `npm test` in `aloop/cli/dashboard`
+  - `dashboard-type-check` job: npm ci + `npm run type-check` in `aloop/cli/dashboard`
+  - `loop-script-tests` job: bats (loop.bats) + 6 `loop_*.tests.sh` files on Ubuntu
+  - `loop-script-tests-windows` job: Pester `loop.tests.ps1` on Windows
+  - `dashboard-e2e` job: Playwright E2E tests on Ubuntu
+  - README.md CI badge pointing to this workflow
+  - 27 pre-existing CLI test failures fixed so `bun run test` passes clean
