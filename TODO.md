@@ -2,12 +2,18 @@
 
 ## Tasks
 
-### Deferred / Out of Scope
-- [~] Fix silent failures in `loop_provenance.tests.sh` and `loop_finalizer_qa_coverage.tests.sh` (pre-existing test failures require changes to `loop.sh` — out of scope per TASK_SPEC.md scope: `.github/workflows/`, `README.md` only). Should be addressed in a separate issue.
-
 ### Completed
+- [x] Create `.github/workflows/ci.yml` with 7 CI jobs: cli-tests, cli-type-check, dashboard-tests, dashboard-type-check, loop-script-tests (Linux), dashboard-e2e, loop-script-tests-windows
+- [x] Configure push/pull_request triggers for master, agent/*, and aloop/* branches
+- [x] CLI tests job: bun install + bun run test in aloop/cli
+- [x] CLI type-check job: bun install + bun run type-check in aloop/cli
+- [x] Dashboard tests job: npm ci + npm test in aloop/cli/dashboard
+- [x] Dashboard type-check job: npm ci + npm run type-check in aloop/cli/dashboard
+- [x] Loop script tests (Linux): bats loop.bats + 6 shell test scripts in aloop/bin
+- [x] Loop script tests (Windows): Invoke-Pester on loop.tests.ps1
+- [x] Dashboard E2E job with Playwright chromium install and proof-artifacts upload on failure
+- [x] README.md CI badge at line 1 pointing to johnnyelwailer/ralph-skill/actions/workflows/ci.yml
 
-- [x] Create `.github/workflows/ci.yml` with push/PR triggers for `master`, `agent/*`, `aloop/*` branches
-- [x] Add CI jobs: CLI tests (bun), CLI type-check, dashboard unit tests (npm), dashboard type-check, loop shell tests (Linux, 7 suites including bats), PowerShell loop tests (Windows), dashboard E2E tests with Playwright
-- [x] Add CI status badge to `README.md` line 1 pointing at `johnnyelwailer/ralph-skill/actions/workflows/ci.yml/badge.svg`
-- [x] [review] Revert out-of-scope changes in `orchestrate.ts` and `orchestrate.test.ts` back to master baseline
+### Deferred (out of scope — file separate issues)
+- [~] loop_provenance.tests.sh exits 0 when 2 assertions fail — CI cannot detect these failures (pre-existing bug in test script, not in ci.yml scope)
+- [~] loop_finalizer_qa_coverage.tests.sh exits 0 when 3 assertions fail + check_finalizer_qa_coverage_gate command not found — CI cannot detect (pre-existing bug in test script, not in ci.yml scope)
