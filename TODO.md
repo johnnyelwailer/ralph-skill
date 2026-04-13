@@ -7,4 +7,4 @@
 - [x] Add `agent/*` and `aloop/*` to `on.pull_request.branches` in `.github/workflows/ci.yml` — enables CI gating on PRs from agent branches
 - [x] Ensure four required jobs exist with no `needs:` dependencies: `type-check`, `cli-tests`, `dashboard-tests`, `loop-script-tests` — all run in parallel
 - [x] Verify `name: CI` is stable for README badge reference
-- [x] Verify README badge targets `actions/workflows/ci.yml/badge.svg`
+- [x] Verify README badge targets `actions/workflows/ci.yml/badge.svg` [reviewed: gates 1-9 pass]

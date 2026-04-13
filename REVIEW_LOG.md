@@ -304,3 +304,25 @@
 **Prior findings:** All three FAIL findings from initial review remain resolved. No regressions.
 
 ---
+
+## Review — 2026-04-13 22:05 — commit c93af43b..dc8cc6f0 (docs-only changes since last PASS)
+
+**Verdict: PASS** (no new findings)
+**Scope:** TODO.md (reformatting commits), QA_LOG.md / QA_COVERAGE.md (QA iters 13–17), REVIEW_LOG.md (prior review appended)
+
+**Changes reviewed:** No code or CI config changes. `git diff c93af43b..HEAD --name-only` → QA_COVERAGE.md, QA_LOG.md, REVIEW_LOG.md, TODO.md only. `git diff c93af43b..HEAD -- .github/workflows/ci.yml` returns empty — ci.yml byte-for-byte identical to prior PASS. TODO.md reformatted: consolidated completed entry expanded back to individual acceptance-criterion task lines. QA agent ran iters 13–17; all PASS. README.md unchanged.
+
+**Gate re-verification:**
+- Gate 1: ci.yml:5 `branches: ['master', 'agent/*', 'aloop/*']` on push; ci.yml:7 same on pull_request. Four jobs at lines 14/45/70/91 — `type-check`, `cli-tests`, `dashboard-tests`, `loop-script-tests`. No `needs:` declarations. `name: CI` at line 1. All TASK_SPEC acceptance criteria met.
+- Gate 4: TODO.md clean — five completed task lines with full meaning preserved. QA logs are factual transcripts. REVIEW_LOG.md append-only per spec.
+- Gate 6: QA logs and admin-only changes — no observable code output. Acceptable skip.
+- Gate 7: N/A (no UI changes).
+- Gate 8: No dependency changes since last verified PASS. Node 22 (ci.yml:23,53,79) matches VERSIONS.md; `actions/checkout@v4`, `actions/setup-node@v4` correct.
+- Gate 9: README.md unchanged. Badge at README.md:1 targets correct URL. `grep -n "gate1\|gate2\|gate3\|pr-rebase" README.md` → no matches.
+- Gates 2, 3, 5: N/A — no code changes since last verified PASS.
+
+**Concrete observation:** Gate 4: TODO.md `feab6034` restores five individual acceptance-criterion task lines — accurately reflecting ci.yml state. The expanded format is more readable and remains accurate.
+
+**Prior findings:** All three FAIL findings from initial review remain resolved. No regressions.
+
+---
