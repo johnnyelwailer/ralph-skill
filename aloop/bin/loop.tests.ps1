@@ -4110,9 +4110,9 @@ Describe 'loop.ps1 — Sync-Branch behavioral' {
         # Queue file written
         Test-Path (Join-Path $queueDir '000-merge-conflict.md') | Should -Be $true
 
-        # Merge aborted — no unmerged paths
+        # Conflict markers remain — agent resolves them
         $unmerged = git -C $e.WorkDir diff --name-only --diff-filter=U 2>$null
-        $unmerged | Should -BeNullOrEmpty
+        $unmerged | Should -Not -BeNullOrEmpty
     }
 
     It 'skips sync and logs nothing when auto_merge is false' {

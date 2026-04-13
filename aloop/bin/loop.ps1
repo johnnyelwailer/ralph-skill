@@ -2110,7 +2110,6 @@ function Sync-Branch {
             if (Test-Path $mergeSrc) {
                 Copy-Item $mergeSrc (Join-Path $queueDir "000-merge-conflict.md") -Force
             }
-            git -C "$WorkDir" merge --abort 2>$null | Out-Null
             return $false
         }
     }

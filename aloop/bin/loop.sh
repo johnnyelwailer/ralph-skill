@@ -2208,7 +2208,6 @@ except Exception:
             if [ -f "$merge_prompt_src" ]; then
                 cp "$merge_prompt_src" "$queue_dir/000-merge-conflict.md"
             fi
-            git -C "$WORK_DIR" merge --abort 2>/dev/null || true
             return 1
         fi
     fi

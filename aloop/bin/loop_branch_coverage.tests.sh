@@ -1165,12 +1165,12 @@ sync_rc=$?
 if [ "$sync_rc" -ne 0 ]; then
     if grep -q 'merge_conflict' "$COVERAGE_LOG_FILE" \
         && [ -f "$SYNC_SESSION_DIR/queue/000-merge-conflict.md" ]; then
-        # Verify git is clean (merge aborted)
-        if ! git -C "$SYNC_WORK_DIR" diff --name-only --diff-filter=U 2>/dev/null | grep -q .; then
+        # Verify conflict markers remain (agent resolves them)
+        if git -C "$SYNC_WORK_DIR" diff --name-only --diff-filter=U 2>/dev/null | grep -q .; then
             cover_branch "sync.conflict"
-            pass_case "sync_branch logs merge_conflict, writes queue file, aborts merge, returns non-zero"
+            pass_case "sync_branch logs merge_conflict, writes queue file, leaves markers for agent, returns non-zero"
         else
-            fail_case "sync_branch did not abort merge — conflict markers still present"
+            fail_case "sync_branch conflict path: merge was aborted instead of leaving markers for agent"
         fi
     else
         fail_case "sync_branch conflict path: missing merge_conflict log or queue file"
