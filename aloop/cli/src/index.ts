@@ -18,6 +18,12 @@ import { processRequestsCommand } from './commands/process-requests.js';
 
 import { withErrorHandling } from './lib/error-handling.js';
 
+// Defense-in-depth: explicitly remove CLAUDECODE at entry so sub-processes can
+// launch Claude Code providers even when aloop is invoked inside a Claude Code session.
+// The sanitize.js side-effect import above handles this too, but an explicit guard here
+// ensures the variable is gone before any Commander setup or command handlers run.
+delete process.env.CLAUDECODE;
+
 const program = new Command();
 
 program
