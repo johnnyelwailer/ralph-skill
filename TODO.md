@@ -3,7 +3,4 @@
 ## Tasks
 
 ### Completed
-- [x] Add `agent/*` and `aloop/*` branch triggers to CI workflow (`on.push.branches` and `on.pull_request.branches`)
-- [x] Ensure four parallel jobs exist with no `needs:` dependencies: `type-check`, `cli-tests`, `dashboard-tests`, `loop-script-tests`
-- [x] Remove out-of-scope jobs and steps (e.g. `dashboard-e2e`, extra shell/PowerShell steps)
-- [x] Fix `cli-tests` build script to exclude `build:dashboard` (dashboard deps not installed in that job)
+- [x] Implement as described in the issue — all 6 acceptance criteria verified: push/PR triggers include master+agent/*+aloop/*, four independent jobs (no needs:), name: CI, README badge correct
