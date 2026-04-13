@@ -1,5 +1,92 @@
 # QA Log
 
+## QA Session — 2026-04-13 (iteration 3)
+
+### Test Environment
+- Worktree: /home/pj/.aloop/sessions/orchestrator-20260321-172932-issue-200-20260413-145102/worktree
+- Branch: aloop/issue-200
+- Commit: 9b1b0b25
+- Features tested: 7 (all CI workflow features + new check for README hallucinated gh commands)
+- Note: Re-run QA after review FAIL (Gate 9: hallucinated gh commands in README). Verified changes were discarded per commit f0ab5f02.
+
+### Results
+- PASS: CI branch triggers (agent/*, aloop/*)
+- PASS: Concurrency control
+- PASS: Four parallel jobs with no needs: declarations
+- PASS: cli-tests explicit build scripts (no build:dashboard)
+- PASS: No dashboard-e2e job
+- PASS: README badge URL points to ci.yml
+- PASS: README hallucinated gh commands absent (gate1/gate2/gate3/pr-rebase not present)
+
+### Bugs Filed
+None.
+
+### Command Transcript
+
+**1. YAML syntax + structure validation**
+```
+python3 -c "import yaml; data = yaml.safe_load(open('.github/workflows/ci.yml')); ..."
+→ YAML valid
+→ Jobs: ['type-check', 'cli-tests', 'dashboard-tests', 'loop-script-tests']
+→ Push branches: ['master', 'agent/*', 'aloop/*']
+→ PR branches: ['master', 'agent/*', 'aloop/*']
+→ Concurrency: {'group': '${{ github.workflow }}-${{ github.ref }}', 'cancel-in-progress': True}
+→ Jobs with needs: None
+→ Build CLI run: npm run clean && npm run build:server && npm run build:shebang && npm run build:templates && npm run build:bin && npm run build:agents
+→ dashboard-e2e job: False
+→ exit 0
+```
+
+**2. Package.json scripts verification**
+```
+python3 checks on aloop/cli/package.json and aloop/cli/dashboard/package.json:
+  cli/clean: FOUND
+  cli/build:server: FOUND
+  cli/build:shebang: FOUND
+  cli/build:templates: FOUND
+  cli/build:bin: FOUND
+  cli/build:agents: FOUND
+  cli/type-check: FOUND
+  cli/test: FOUND
+  dashboard/type-check: FOUND
+  dashboard/test: FOUND
+→ exit 0 (all scripts present)
+```
+
+**3. loop.bats test file**
+```
+ls -la aloop/bin/tests/loop.bats
+→ -rw-r--r-- 1 pj pj 4626 Apr 13 14:51 aloop/bin/tests/loop.bats
+→ PASS: file exists
+```
+
+**4. README badge URL**
+```
+head -1 README.md
+→ ![CI](https://github.com/johnnyelwailer/ralph-skill/actions/workflows/ci.yml/badge.svg)
+→ PASS: references ci.yml
+```
+
+**5. No needs: declarations**
+```
+grep -n "needs:" .github/workflows/ci.yml
+→ No 'needs:' declarations found (correct)
+```
+
+**6. README hallucinated gh commands (new check — addresses prior review FAIL)**
+```
+grep -c "gate1\|gate2\|gate3\|pr rebase\|pr-rebase" README.md
+→ 0
+→ PASS: Hallucinated commands absent — prior review FAIL resolved
+```
+
+**7. git status (clean worktree)**
+```
+git status README.md
+→ nothing to commit, working tree clean
+→ PASS: No unstaged README changes
+```
+
 ## QA Session — 2026-04-13 (iteration 2)
 
 ### Test Environment
