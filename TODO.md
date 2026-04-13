@@ -3,7 +3,8 @@
 ## Tasks
 
 ### Completed
-- [x] Add `agent/*` and `aloop/*` to `on.push.branches` and `on.pull_request.branches` in `.github/workflows/ci.yml`
-- [x] Ensure all four independent jobs exist: `type-check`, `cli-tests`, `dashboard-tests`, `loop-script-tests` — no `needs` declarations
-- [x] Verify README badge targets `https://github.com/johnnyelwailer/ralph-skill/actions/workflows/ci.yml/badge.svg`
-- [x] Confirm workflow `name: CI` is stable
+- [x] Implement as described in the issue — all acceptance criteria verified:
+  - `on.push.branches` and `on.pull_request.branches` include `master`, `agent/*`, `aloop/*`
+  - All four jobs defined (`cli-tests`, `dashboard-tests`, `type-check`, `loop-script-tests`) with no `needs` dependencies
+  - README badge targets `actions/workflows/ci.yml/badge.svg`
+  - Workflow `name: CI` is stable
