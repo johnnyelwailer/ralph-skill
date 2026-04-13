@@ -9,3 +9,7 @@
 - [x] Confirm no inter-job `needs` dependencies among the four required jobs
 - [x] Verify `README.md` CI badge targets `actions/workflows/ci.yml/badge.svg`
 - [x] Confirm workflow `name: CI` is set [reviewed: gates 1-9 pass]
+
+---
+
+## spec-gap analysis: no discrepancies found — spec fully fulfilled
