@@ -1323,7 +1323,9 @@ invoke_provider() {
     local prompt_content=$2
     local model_override="${3:-}"
     local tmp_stderr
+    local tmp_stdout
     tmp_stderr=$(mktemp)
+    tmp_stdout=$(mktemp)
 
     # PATH hardening: prepend gh-blocking shim directory so gh resolves to a
     # non-functional wrapper while provider binaries in the same directories
@@ -1348,7 +1350,7 @@ invoke_provider() {
             local claude_model="${model_override:-$CLAUDE_MODEL}"
             LAST_PROVIDER_MODEL="$claude_model"
             {
-                echo "$prompt_content" | env -u CLAUDECODE "${DC_EXEC[@]}" claude --model "$claude_model" --dangerously-skip-permissions --print 2> >(tee "$tmp_stderr" -a "$LOG_FILE.raw" >&2) | tee -a "$LOG_FILE.raw"
+                echo "$prompt_content" | env -u CLAUDECODE "${DC_EXEC[@]}" claude --model "$claude_model" --dangerously-skip-permissions --print 2> >(tee "$tmp_stderr" -a "$LOG_FILE.raw" >&2) | tee "$tmp_stdout" -a "$LOG_FILE.raw"
                 exit ${PIPESTATUS[1]}
             } &
             ACTIVE_PROVIDER_PID=$!
@@ -1359,7 +1361,7 @@ invoke_provider() {
                 echo "claude timed out after ${EFFECTIVE_TIMEOUT:-$PROVIDER_TIMEOUT} seconds" >&2
                 invoke_rc=1
             elif [ "$exit_code" -ne 0 ]; then
-                LAST_PROVIDER_ERROR="claude exited with code $exit_code. Stderr: $(cat "$tmp_stderr")"
+                LAST_PROVIDER_ERROR="claude exited with code $exit_code. Stderr: $(cat "$tmp_stderr") Stdout: $(cat "$tmp_stdout")"
                 echo "claude exited with code $exit_code" >&2
                 invoke_rc=$exit_code
             else
@@ -1520,7 +1522,7 @@ invoke_provider() {
     if [ -n "$copilot_output_file" ]; then
         rm -f "$copilot_output_file"
     fi
-    rm -f "$tmp_stderr"
+    rm -f "$tmp_stderr" "$tmp_stdout"
     return "$invoke_rc"
 }
 
