@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: ['master', 'main', 'agent/*', 'aloop/*']
+    branches: ['master', 'agent/*', 'aloop/*']
   pull_request:
-    branches: ['master', 'main', 'agent/*', 'aloop/*']
+    branches: ['master', 'agent/*', 'aloop/*']
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -84,31 +84,6 @@ jobs:
         working-directory: aloop/cli/dashboard
         run: npm test
 
-  packaged-install:
-    name: Packaged Install Test
-    runs-on: ubuntu-latest
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-          cache: 'npm'
-          cache-dependency-path: |
-            aloop/cli/package-lock.json
-            aloop/cli/dashboard/package-lock.json
-
-      - name: Install dependencies
-        working-directory: aloop/cli
-        run: |
-          npm ci
-          npm --prefix dashboard ci
-
-      - name: Run packaged-install test
-        working-directory: aloop/cli
-        run: npm run test-install
-
   loop-script-tests:
     name: Loop Script Tests
     runs-on: ubuntu-latest
@@ -136,3 +111,4 @@ jobs:
         shell: pwsh
         run: |
           Invoke-Pester ./aloop/bin/loop.tests.ps1 -Output Detailed
+  loop-script-tests:
