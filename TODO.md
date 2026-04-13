@@ -4,11 +4,10 @@
 
 ### Completed
 
-- [x] Add `agent/*` and `aloop/*` to `on.push.branches` and `on.pull_request.branches` triggers
-- [x] Workflow `name` is `CI`
-- [x] Add concurrency group (`${{ github.workflow }}-${{ github.ref }}`) with `cancel-in-progress: true`
-- [x] Define four required jobs with no `needs` declarations: `type-check`, `cli-tests`, `dashboard-tests`, `loop-script-tests`
-- [x] Verify README badge targets `actions/workflows/ci.yml/badge.svg`
-- [x] Remove the `dashboard-e2e` job — spec specifies exactly 4 jobs; this was out-of-scope (Constitution #19, #12)
-- [x] Fix the `cli-tests` build step — use CLI-only build steps instead of `npm run build` (which includes `build:dashboard`)
-- [x] Remove out-of-scope steps from `loop-script-tests` — only `bats loop.bats` is required (Constitution #12, #19)
+- [x] Add `agent/*` and `aloop/*` to `on.push.branches` and `on.pull_request.branches` in `.github/workflows/ci.yml`
+- [x] Ensure all four required jobs exist (`type-check`, `cli-tests`, `dashboard-tests`, `loop-script-tests`) with no `needs` declarations
+- [x] Add concurrency group to cancel duplicate runs on the same ref
+- [x] [review] Remove out-of-scope `dashboard-e2e` job (violated TASK_SPEC and Constitution #19)
+- [x] [review] Fix `cli-tests` build step — replaced `npm run build` (includes `build:dashboard`, requires dashboard deps not installed) with individual build scripts that skip `build:dashboard`
+- [x] [review] Remove extra out-of-scope steps from `loop-script-tests` job (Constitution #12)
+- [x] Verify README badge still targets `actions/workflows/ci.yml/badge.svg`
