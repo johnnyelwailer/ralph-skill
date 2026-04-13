@@ -1,13 +1,16 @@
 # Issue #200: CI: Add agent/* branch triggers and workflow polish
 
-## Tasks
+## Acceptance Criteria Status
 
-### Completed
-- [x] Update `on.push.branches` to include `master`, `agent/*`, `aloop/*`
-- [x] Update `on.pull_request.branches` to include `master`, `agent/*`, `aloop/*`
-- [x] Ensure all four jobs present in workflow: `cli-tests`, `dashboard-tests`, `type-check`, `loop-script-tests`
-- [x] Verify no `needs` declared on any of the four required jobs (all independent)
-- [x] Verify README badge targets `https://github.com/johnnyelwailer/ralph-skill/actions/workflows/ci.yml/badge.svg`
-- [x] Confirm workflow `name: CI`
+All acceptance criteria verified as complete:
 
-All acceptance criteria verified against `.github/workflows/ci.yml` and `README.md`. No further work required. [reviewed: gates 1-9 pass]
+- [x] `.github/workflows/ci.yml` contains `on.push.branches` with `master`, `agent/*`, and `aloop/*`
+- [x] `.github/workflows/ci.yml` contains `on.pull_request.branches` with `master`, `agent/*`, and `aloop/*`
+- [x] `.github/workflows/ci.yml` defines all four jobs: `cli-tests`, `dashboard-tests`, `type-check`, `loop-script-tests`
+- [x] None of the four required jobs declares `needs` (jobs are independently runnable)
+- [x] `README.md` contains the CI badge URL `https://github.com/johnnyelwailer/ralph-skill/actions/workflows/ci.yml/badge.svg`
+- [x] Workflow file `.github/workflows/ci.yml` has `name: CI`
+
+## Completed
+
+- [x] Implement as described in the issue — all deliverables already present in `.github/workflows/ci.yml` and `README.md`
