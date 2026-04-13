@@ -3,4 +3,5 @@
 ## Tasks
 
 ### Completed
-- [x] Implement GitHub Actions CI as described in the issue — `.github/workflows/ci.yml` exists with all 8 acceptance criteria satisfied: push/PR triggers on master + agent/* branches, CLI tests (bun), dashboard tests (npm), type checks for both packages, loop shell tests on Linux, PowerShell tests on Windows, dashboard E2E, and CI badge in README.md
+
+- [x] Implement as described in the issue — All acceptance criteria verified: `.github/workflows/ci.yml` exists with correct push/PR triggers on `master`/`agent/*`, CLI tests (`bun run test`), dashboard tests (`npm test`), type-checks for both packages, loop shell tests on Linux, optional Windows PowerShell tests, and README CI badge pointing to `johnnyelwailer/ralph-skill/actions/workflows/ci.yml/badge.svg`.
