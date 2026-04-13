@@ -676,6 +676,7 @@ function Invoke-Provider {
                     -StdinContent $PromptContent
                 if ($result.ExitCode -ne 0) {
                     $script:lastProviderOutputText = $result.Output
+                    $script:lastProviderStderrTail = ($result.Error -split "`n" | Select-Object -Last ([int]($env:ALOOP_STDERR_TAIL_LINES ?? 20))) -join "`n"
                     throw "claude exited with code $($result.ExitCode)`nStderr: $($result.Error)"
                 }
             }
@@ -689,6 +690,7 @@ function Invoke-Provider {
                     -StdinContent $PromptContent
                 if ($result.ExitCode -ne 0) {
                     $script:lastProviderOutputText = $result.Output
+                    $script:lastProviderStderrTail = ($result.Error -split "`n" | Select-Object -Last ([int]($env:ALOOP_STDERR_TAIL_LINES ?? 20))) -join "`n"
                     throw "opencode exited with code $($result.ExitCode)`nStderr: $($result.Error)"
                 }
             }
@@ -699,6 +701,7 @@ function Invoke-Provider {
                     -StdinContent $PromptContent
                 if ($result.ExitCode -ne 0) {
                     $script:lastProviderOutputText = $result.Output
+                    $script:lastProviderStderrTail = ($result.Error -split "`n" | Select-Object -Last ([int]($env:ALOOP_STDERR_TAIL_LINES ?? 20))) -join "`n"
                     throw "codex exited with code $($result.ExitCode)`nStderr: $($result.Error)"
                 }
             }
@@ -714,6 +717,7 @@ function Invoke-Provider {
                         -StdinContent $PromptContent
                     if ($result.ExitCode -ne 0) {
                         $script:lastProviderOutputText = $result.Output
+                        $script:lastProviderStderrTail = ($result.Error -split "`n" | Select-Object -Last ([int]($env:ALOOP_STDERR_TAIL_LINES ?? 20))) -join "`n"
                         throw "gemini exited with code $($result.ExitCode)`nStderr: $($result.Error)"
                     }
                 }
@@ -739,6 +743,7 @@ function Invoke-Provider {
                     }
                     if ($result.ExitCode -ne 0) {
                         $script:lastProviderOutputText = $outputText
+                        $script:lastProviderStderrTail = ($result.Error -split "`n" | Select-Object -Last ([int]($env:ALOOP_STDERR_TAIL_LINES ?? 20))) -join "`n"
                         throw "copilot exited with code $($result.ExitCode)`nStderr: $($result.Error)"
                     }
                 }
@@ -750,6 +755,7 @@ function Invoke-Provider {
         }
 
         $script:lastProviderOutputText = $null
+        $script:lastProviderStderrTail = $null
         # Return output as array of lines for Show-AgentSummary compatibility
         return ($result.Output -split "`n")
 
@@ -963,6 +969,7 @@ $stuckState = @{ LastTask = ""; StuckCount = 0 }
 $script:allTasksMarkedDone = $false
 $script:lastProofIteration = 0
 $script:lastProviderOutputText = $null
+$script:lastProviderStderrTail = $null
 $script:cyclePosition = 0
 $script:cycleLength = 0
 $script:resolvedPromptName = $null
@@ -2358,6 +2365,7 @@ try {
                 mode = $iterationMode
                 provider = $iterationProvider
                 error = "$_"
+                stderr_tail = [string]$script:lastProviderStderrTail
             }
         }
 

@@ -4,14 +4,26 @@
 
 ### Up Next
 
-- [x] Add `stderr_tail` capture to Bash `invoke_provider` in `loop.sh` — before `rm -f "$tmp_stderr"` (line 1499), capture `tail -n "${ALOOP_STDERR_TAIL_LINES:-20}" "$tmp_stderr"` into a global `LAST_PROVIDER_STDERR_TAIL`. Then add `"stderr_tail" "$LAST_PROVIDER_STDERR_TAIL"` to the `iteration_error` log entry at line 2296. Initialize `LAST_PROVIDER_STDERR_TAIL=""` at the top of `invoke_provider` and clear it on the success path.
+- [x] Add `stderr_tail` field to PowerShell `iteration_error` log entries
+  - `Invoke-ProviderProcess` returns `$result.Error` (full stderr string) but it's discarded after the `throw`
+  - Before each provider `throw`, capture `$script:lastProviderStderrTail = ($result.Error -split "\`n" | Select-Object -Last ($env:ALOOP_STDERR_TAIL_LINES ?? 20)) -join "\`n"`
+  - Initialize `$script:lastProviderStderrTail = $null` alongside `$script:lastProviderOutputText` (line ~965)
+  - Clear it on success (alongside `$script:lastProviderOutputText` clear)
+  - Add `stderr_tail = [string]$script:lastProviderStderrTail` to the `iteration_error` Write-LogEntry at line 2356–2361
+  - Use `$env:ALOOP_STDERR_TAIL_LINES` (default 20) to bound captured lines — no magic constants (Constitution Rule 15)
 
-- [ ] Add `stderr_tail` capture to PowerShell `Invoke-Provider` in `loop.ps1` — when a provider returns non-zero exit code (lines ~677-752), extract `($result.Error -split '\n' | Select-Object -Last ([int]($env:ALOOP_STDERR_TAIL_LINES ?? 20))) -join '\n'` into `$script:lastProviderStderrTail`. Initialize `$script:lastProviderStderrTail = $null` near line 965. Add `stderr_tail = $script:lastProviderStderrTail` to the `iteration_error` log entry at line 2356.
+- [ ] Add test coverage for `stderr_tail` in `iteration_error` entries
+  - Extend Bash retry test suite in `loop.tests.ps1` (`Describe 'loop.sh — retry-same-phase behavioral'`): assert that `iteration_error` entries for provider failures include a non-empty `stderr_tail` field
+  - Extend PowerShell retry test suite (`Describe 'loop.ps1 — retry-same-phase behavioral'`): same assertion
+  - Update the fake provider scripts to write a short stderr line on forced failures (e.g. `echo "forced plan failure" >&2` in Bash; write to stderr in PS fake provider) so the tail is non-empty and testable
 
-- [ ] Add `stderr_tail` tests to `loop.tests.ps1` — extend the `'loop.sh — retry-same-phase behavioral'` Describe block (and/or the PS1 behavioral tests) with an It block that verifies: when a provider emits stderr before failing, the `iteration_error` log entry includes a non-empty `stderr_tail` field. The fake provider script should write to stderr (`echo "test error output" >&2`) before exiting non-zero.
+### Verified (no changes needed)
 
-- [ ] Add a dedicated Bash shell integration script `aloop/bin/loop_phase_control.tests.sh` covering the three core retry/advance scenarios end-to-end against `loop.sh`: (1) success→advance: one successful plan iteration advances CYCLE_POSITION; (2) failure→retry-same: one failed iteration does NOT advance CYCLE_POSITION; (3) exhaustion→advance: N+1 consecutive failures trigger `phase_retry_exhausted` log event and advance CYCLE_POSITION. Use the same fake-provider pattern as `loop_branch_coverage.tests.sh` (source functions, stub providers). Must run non-interactively and exit 0 on pass.
-
-### Completed
-
-- [x] Prior review (5a4f553): all gates 1-9 pass — retry-without-advance, provider-rotation, MAX_PHASE_RETRIES formula, prerequisite-miss schema, queue-precedence, exhaustion-behavior all verified correct in existing code.
+- [x] Failed iterations do NOT advance cycle position except on retry exhaustion — confirmed in `register_iteration_failure` (loop.sh:691–750) and `Register-IterationFailure` (loop.ps1:1004–1055): `advance_cycle_position`/`Advance-CyclePosition` only called after exhaustion threshold
+- [x] Retry-same-phase uses next round-robin provider — iteration counter increments on every pass (including retries), so `RR_NEXT_INDEX` (Bash) and `($IterationNumber - 1) % count` (PS) naturally rotate providers; test assertions at loop.tests.ps1:572 and 1352 confirm
+- [x] Default `MAX_PHASE_RETRIES` = `len(providers) × 2` in round-robin mode — confirmed at loop.sh:1926–1940 and loop.ps1:978 with `[Math]::Max(2, count * 2)`
+- [x] `phase_prerequisite_miss` events include `requested`, `actual`, `reason` — confirmed at loop.sh:399,405,414 and loop.ps1:286–308
+- [x] Bash `iteration_error` includes `stderr_tail` — confirmed at loop.sh:1500 (capture via `tail -n "${ALOOP_STDERR_TAIL_LINES:-20}"`) and loop.sh:2302 (log field)
+- [x] Queue overrides remain higher priority than cycle position — `run_queue_if_present`/`Run-QueueIfPresent` called before mode resolution in both runners; no cycle advance on queue execution
+- [x] After `MAX_PHASE_RETRIES`, cycle advances with `phase_retry_exhausted` log — confirmed in both exhaustion paths; `failure_reasons` array included
+- [x] Integration tests for success→advance, failure→retry-same, exhaustion→advance — covered in `loop.tests.ps1` sections 3 (Bash, lines 387–588) and 4 (PS, lines 1163–1371)
