@@ -1,6 +1,6 @@
 {
-  "scan_at": "2026-04-14T20:58:04Z",
-  "iteration": 123,
+  "scan_at": "2026-04-14T21:02:14Z",
+  "iteration": 124,
   "active_child": {
     "session": "orchestrator-20260321-172932-issue-157-20260414-184129",
     "issue": 157,
@@ -28,13 +28,13 @@
     "available": 0
   },
   "provider_status": {
-    "claude": "cooldown (resumes ~4m)",
-    "opencode": "cooldown (resumes ~4m)",
+    "claude": "ok",
+    "opencode": "cooldown",
     "gemini": "cooldown",
     "codex": "degraded_auth",
     "minimax": "ok",
-    "anonymous": "cooldown (resumes ~58m)"
+    "anonymous": "cooldown"
   },
   "action": "monitor_only",
-  "notes": "Child ALIVE at iter=71/plan (~2h20m elapsed). No new commits since last scan — still executing plan phase for Gate 3 fix (QACoverageBadge !response.ok and sessionId=null paths). Gate 7 E2E infra blocker (libatk) persists. No new dispatch possible (cap=1, slot full)."
+  "notes": "Child ALIVE at iter=71/plan (~2h30m elapsed). No new commits since last scan (4m gap) — child in plan phase for 11m fixing Gate 3 (QACoverageBadge !response.ok and sessionId=null paths). Gate 7 E2E infra blocker (libatk) persists. Queue empty. Cap=1 slot full, no new dispatch possible."
 }
