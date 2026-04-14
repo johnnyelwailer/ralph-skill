@@ -1,5 +1,14 @@
 # Issue #34: Pre-iteration branch sync with conflict detection
 
+## Implementation Status
+
+Core feature is implemented:
+- `aloop/bin/lib/sync_branch.sh` — bash implementation (87 LOC)
+- `aloop/bin/loop.ps1` — PowerShell `Sync-Branch()` function (inline, ~80 LOC)
+- Both loop scripts source/call sync before each iteration
+- `aloop/templates/PROMPT_merge.md` — merge agent prompt exists
+- PowerShell: 5 behavioral tests in `loop.tests.ps1` (lines 3815–4016)
+
 ## Tasks
 
 ### In Progress
@@ -31,18 +40,22 @@ Shell integration test failures — out of scope for CI setup (loop.sh behavior 
 
 ### Completed
 
-- [x] Implement pre-iteration branch sync with conflict detection as described in the issue
-  - `aloop/bin/lib/sync_branch.sh`: sync_branch() extracted to lib; reads auto_merge/base_branch from meta.json, fetches non-fatally, merges, logs branch_sync (result=merged|up_to_date) or merge_conflict event, queues PROMPT_merge.md on conflict, leaves conflict markers for agent resolution
-  - `aloop/bin/loop.sh`: sources lib/sync_branch.sh and calls sync_branch after queue handling, before mode resolution; net LOC reduction satisfies Constitution Rule 1 (2236 < 2329 baseline)
-  - `aloop/bin/loop.ps1`: equivalent Sync-Branch implementation with same semantics; net LOC reduction satisfies Constitution Rule 1 (2374 < 2388 baseline)
-  - `aloop/templates/PROMPT_merge.md`: merge conflict resolution prompt with correct frontmatter (agent: merge, trigger: merge_conflict)
-  - `aloop/bin/loop_branch_coverage.tests.sh`: 57/57 branch coverage (100%) across 5 paths: merged, up_to_date, fetch_failure, conflict, disabled
-  - `aloop/bin/loop.tests.ps1`: equivalent PowerShell Sync-Branch tests (pwsh unavailable in this environment)
+- [x] Implement `sync_branch()` in bash (`aloop/bin/lib/sync_branch.sh`)
+  - Reads `auto_merge` and `base_branch` from `meta.json` via python3
+  - Falls back: `git config init.defaultBranch` → `main` → `master`
+  - `git fetch origin <base_branch>` non-fatally, then `git merge --no-edit`
+  - Conflict: emits `merge_conflict` event, copies `PROMPT_merge.md` → `queue/000-merge-conflict.md`, returns 1
+  - Success: emits `branch_sync` event with `result` (`up_to_date`/`merged`) and `merged_commit_count`
+- [x] Integrate `sync_branch()` call into `loop.sh` iteration loop (sources lib, calls before each iteration, `continue` on non-zero)
+- [x] Implement `Sync-Branch()` in `loop.ps1` with identical behavior
+- [x] Integrate `Sync-Branch()` call into `loop.ps1` iteration loop
+- [x] Create `aloop/templates/PROMPT_merge.md` with merge agent instructions
+- [x] Extract `sync_branch()` into `aloop/bin/lib/sync_branch.sh` (satisfies Constitution Rule 1 — loop.sh shrank)
+- [x] Add PowerShell behavioral tests for `Sync-Branch()` (5 tests: up-to-date, merged, fetch-fail, conflict, auto_merge=false)
+- [x] Add bash integration tests for `sync_branch()` in `aloop/bin/tests/loop.bats` (5 tests: up-to-date, merged, fetch-fail, conflict, auto_merge=false; tests 16-20; uses `_setup_sync_git_env` BATS helper + `write_log_entry`/`write_log_entry_mixed` stubs)
 - [x] Fix infinite-conflict-loop bug: removed `git merge --abort` so conflict markers remain in the working tree for the merge agent to process.
 - [x] Fix sync.conflict test assertion in `loop_branch_coverage.tests.sh` (assert unmerged paths ARE present after conflict, not absent).
 - [x] Fix sync.conflict test assertion in `loop.tests.ps1` (`Should -Not -BeNullOrEmpty` instead of `Should -BeNullOrEmpty`).
-- [x] Extract `sync_branch()` from loop.sh into `aloop/bin/lib/sync_branch.sh` and source it from loop.sh (1 line). Net change to loop.sh: −81 LOC — resolves Constitution Rule 1 violation.
-- [x] Extract `Sync-Branch` from loop.ps1 into `aloop/bin/lib/SyncBranch.ps1` and dot-source it from loop.ps1 (1 line). Net change to loop.ps1: −83 LOC — resolves Constitution Rule 1 violation.
 - [x] `.github/workflows/ci.yml` file exists — verified by direct read of branch HEAD
 - [x] Dashboard tests job (`npm test` in `aloop/cli/dashboard`) — present in ci.yml, correct commands
 - [x] README.md CI badge URL contains `actions/workflows/ci.yml/badge.svg` — verified line 1 of README.md
