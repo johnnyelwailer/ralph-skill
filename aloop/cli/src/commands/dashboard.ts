@@ -55,6 +55,7 @@ interface DashboardRuntimeOptions {
   heartbeatIntervalMs?: number;
   requestPollIntervalMs?: number;
   ghCommandRunner?: GhCommandRunner;
+  requestSpawnSync?: typeof spawnSync;
 }
 
 const DOC_FILES = ['TODO.md', 'SPEC.md', 'RESEARCH.md', 'REVIEW_LOG.md', 'STEERING.md'];
@@ -375,6 +376,7 @@ async function processGhConventionRequests(
   sessionId: string,
   logPath: string,
   ghCommandRunner: GhCommandRunner,
+  requestSpawnSync?: typeof spawnSync,
 ): Promise<void> {
   const aloopDir = path.join(workdir, '.aloop');
   const sessionDir = path.dirname(logPath);
@@ -385,7 +387,8 @@ async function processGhConventionRequests(
     aloopDir,
     sessionDir,
     logPath,
-    ghCommandRunner
+    ghCommandRunner,
+    spawnSync: requestSpawnSync,
   });
 }
 
@@ -394,6 +397,9 @@ async function resolveDefaultAssetsDir(): Promise<string> {
   const moduleFilePath = fileURLToPath(import.meta.url);
   const moduleDir = path.dirname(moduleFilePath);
   const runtimeScriptPath = process.argv[1] ? path.resolve(process.argv[1]) : null;
+  const npmPackageJson = typeof process.env.npm_package_json === 'string'
+    ? path.resolve(process.env.npm_package_json)
+    : null;
   const candidates = new Set<string>();
 
   if (runtimeScriptPath) {
@@ -403,6 +409,13 @@ async function resolveDefaultAssetsDir(): Promise<string> {
   candidates.add(path.join(moduleDir, 'dashboard'));
   candidates.add(path.resolve(moduleDir, '..', 'dashboard'));
   candidates.add(path.resolve(moduleDir, '..', '..', 'dashboard', 'dist'));
+  candidates.add(path.resolve(moduleDir, '..', '..', '..', 'dist', 'dashboard'));
+  candidates.add(path.resolve(moduleDir, '..', '..', '..', 'dashboard', 'dist'));
+  if (npmPackageJson) {
+    const packageDir = path.dirname(npmPackageJson);
+    candidates.add(path.join(packageDir, 'dist', 'dashboard'));
+    candidates.add(path.join(packageDir, 'dashboard', 'dist'));
+  }
   candidates.add(devAssetsDir);
 
   for (const candidateDir of candidates) {
@@ -465,6 +478,53 @@ function writeJson(response: ServerResponse, statusCode: number, payload: unknow
   response.end(JSON.stringify(payload));
 }
 
+/** Parse a pipe-delimited QA_COVERAGE.md table into structured coverage data. */
+export function parseQaCoverageTable(raw: string): {
+  coverage_percent: number;
+  total_features: number;
+  tested_features: number;
+  passed: number;
+  failed: number;
+  untested: number;
+  features: Array<{ feature: string; component: string; last_tested: string; commit: string; status: string; criteria_met: string; notes: string }>;
+} {
+  const lines = raw.split('\n');
+  const features: Array<{ feature: string; component: string; last_tested: string; commit: string; status: string; criteria_met: string; notes: string }> = [];
+
+  // Find table rows: lines starting with | that are not separator lines (|---|...)
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed.startsWith('|')) continue;
+    // Skip separator lines like |---|---|...|
+    if (/^\|[\s-]+\|/.test(trimmed) && !trimmed.match(/[a-zA-Z0-9]/)) continue;
+    // Skip header line (contains "Feature" column header)
+    if (/\bFeature\b/i.test(trimmed) && /\bStatus\b/i.test(trimmed)) continue;
+
+    const cells = trimmed.split('|').map((c) => c.trim()).filter((_, i, arr) => i > 0 && i < arr.length - 1);
+    if (cells.length < 5) continue;
+
+    const status = (cells[4] || '').toUpperCase();
+    features.push({
+      feature: cells[0] || '',
+      component: cells[1] || '',
+      last_tested: cells[2] || '',
+      commit: cells[3] || '',
+      status: status === 'PASS' || status === 'FAIL' ? status : 'UNTESTED',
+      criteria_met: cells[5] || '',
+      notes: cells[6] || '',
+    });
+  }
+
+  const total_features = features.length;
+  const passed = features.filter((f) => f.status === 'PASS').length;
+  const failed = features.filter((f) => f.status === 'FAIL').length;
+  const untested = features.filter((f) => f.status === 'UNTESTED').length;
+  const tested_features = passed + failed;
+  const coverage_percent = total_features > 0 ? Math.round((tested_features / total_features) * 100) : 0;
+
+  return { coverage_percent, total_features, tested_features, passed, failed, untested, features };
+}
+
 function extractPid(meta: unknown): number | null {
   if (!isRecord(meta)) {
     return null;
@@ -512,6 +572,40 @@ async function readJsonBody(request: IncomingMessage): Promise<unknown> {
   return JSON.parse(raw);
 }
 
+interface CostAggregateCache {
+  data: { total_usd: number; by_model: { model: string; cost_usd: number }[] };
+  expiresAt: number;
+}
+
+const DEFAULT_COST_POLL_INTERVAL_MINUTES = 5;
+
+function isOpencodeCli(): boolean {
+  const result = spawnSync('opencode', ['--version'], { encoding: 'utf8', timeout: 5000 });
+  return result.status === 0;
+}
+
+function runOpencodeDb(query: string): { ok: true; output: string } | { ok: false; error: string } {
+  const result = spawnSync('opencode', ['db', '--query', query], {
+    encoding: 'utf8',
+    timeout: 15000,
+  });
+  if (result.error || result.status !== 0) {
+    return { ok: false, error: result.error?.message ?? result.stderr?.trim() ?? 'opencode db failed' };
+  }
+  return { ok: true, output: result.stdout };
+}
+
+function runOpencodeExport(sessionId: string): { ok: true; output: string } | { ok: false; error: string } {
+  const result = spawnSync('opencode', ['export', '--session', sessionId, '--format', 'json'], {
+    encoding: 'utf8',
+    timeout: 15000,
+  });
+  if (result.error || result.status !== 0) {
+    return { ok: false, error: result.error?.message ?? result.stderr?.trim() ?? 'opencode export failed' };
+  }
+  return { ok: true, output: result.stdout };
+}
+
 function buildSteeringDocument(instruction: string, affectsCompletedWork: 'yes' | 'no' | 'unknown', commit: string): string {
   const timestamp = new Date().toISOString();
   return [
@@ -541,6 +635,7 @@ export async function startDashboardServer(
   const assetsDir = path.resolve(options.assetsDir ?? (await resolveDefaultAssetsDir()));
   const runtimeDir = path.resolve(options.runtimeDir ?? path.join(os.homedir(), '.aloop'));
   const ghCommandRunner = runtimeOptions.ghCommandRunner ?? defaultGhCommandRunner;
+  const requestSpawnSync = runtimeOptions.requestSpawnSync;
   const sessionId = path.basename(sessionDir);
 
   const statusPath = path.join(sessionDir, 'status.json');
@@ -561,6 +656,7 @@ export async function startDashboardServer(
   const defaultContext: SessionContext = { sessionDir, workdir };
   const clients = new Map<ServerResponse, SessionContext>();
   const watchers = new Map<string, FSWatcher>();
+  let costAggregateCache: CostAggregateCache | null = null;
 
   const loadState = async (): Promise<DashboardState> => {
     return loadStateForContext(defaultContext, runtimeDir);
@@ -637,7 +733,7 @@ export async function startDashboardServer(
     const promptsDir = path.join(sessionDir, 'prompts');
 
     Promise.all([
-      processGhConventionRequests(workdir, sessionId, logPath, ghCommandRunner),
+      processGhConventionRequests(workdir, sessionId, logPath, ghCommandRunner, requestSpawnSync),
       monitorSessionState({ sessionDir, workdir, promptsDir }).catch(error => {
         console.warn(`dashboard: session monitor failed: ${(error as Error).message}`);
       })
@@ -981,6 +1077,25 @@ export async function startDashboardServer(
         return;
       }
 
+      // ── QA Coverage endpoint ──
+      if (requestUrl.pathname === '/api/qa-coverage' && request.method === 'GET') {
+        const targetSessionId = requestUrl.searchParams.get('session');
+        let coverageWorkdir = workdir;
+        if (targetSessionId) {
+          const ctx = await resolveSessionContext(runtimeDir, targetSessionId);
+          if (ctx) coverageWorkdir = ctx.workdir;
+        }
+        const coveragePath = path.join(coverageWorkdir, 'QA_COVERAGE.md');
+        const raw = await readTextFile(coveragePath);
+        if (!raw) {
+          writeJson(response, 200, { coverage_percent: 0, total_features: 0, tested_features: 0, passed: 0, failed: 0, untested: 0, features: [], available: false, error: 'not_found' });
+          return;
+        }
+        const parsed = parseQaCoverageTable(raw);
+        writeJson(response, 200, { ...parsed, available: true });
+        return;
+      }
+
       const artifactMatch = requestUrl.pathname.match(/^\/api\/artifacts\/(\d+)\/(.+)$/);
       if (artifactMatch && request.method === 'GET') {
         const iteration = artifactMatch[1];
@@ -1007,6 +1122,83 @@ export async function startDashboardServer(
           'Cache-Control': 'no-cache',
         });
         response.end(content);
+        return;
+      }
+
+      // ── Cost aggregate endpoint ──
+      if (requestUrl.pathname === '/api/cost/aggregate' && request.method === 'GET') {
+        if (!isOpencodeCli()) {
+          writeJson(response, 200, { error: 'opencode_unavailable' });
+          return;
+        }
+
+        // Read poll interval from meta
+        const meta = await readJsonFile(path.join(sessionDir, 'meta.json'));
+        const pollMinutes = isRecord(meta) && typeof meta.cost_poll_interval_minutes === 'number'
+          ? meta.cost_poll_interval_minutes
+          : DEFAULT_COST_POLL_INTERVAL_MINUTES;
+
+        // Return cached if still valid
+        if (costAggregateCache && Date.now() < costAggregateCache.expiresAt) {
+          writeJson(response, 200, costAggregateCache.data);
+          return;
+        }
+
+        const result = runOpencodeDb("SELECT json_extract(data,'$.modelID') as model, SUM(CAST(json_extract(data,'$.cost') AS REAL)) as cost_usd FROM message WHERE json_extract(data,'$.role')='assistant' GROUP BY model");
+        if (!result.ok) {
+          writeJson(response, 200, { error: 'opencode_unavailable' });
+          return;
+        }
+
+        try {
+          const rows: { model: string; cost_usd: number }[] = JSON.parse(result.output);
+          const totalUsd = rows.reduce((sum, row) => sum + (row.cost_usd ?? 0), 0);
+          const data = { total_usd: totalUsd, by_model: rows };
+          costAggregateCache = {
+            data,
+            expiresAt: Date.now() + pollMinutes * 60 * 1000,
+          };
+          writeJson(response, 200, data);
+        } catch {
+          writeJson(response, 200, { error: 'opencode_unavailable' });
+        }
+        return;
+      }
+
+      // ── Cost per-session endpoint ──
+      const costSessionMatch = requestUrl.pathname.match(/^\/api\/cost\/session\/(.+)$/);
+      if (costSessionMatch && request.method === 'GET') {
+        const targetSessionId = costSessionMatch[1];
+        if (!isOpencodeCli()) {
+          writeJson(response, 200, { error: 'opencode_unavailable' });
+          return;
+        }
+
+        const result = runOpencodeExport(targetSessionId);
+        if (!result.ok) {
+          writeJson(response, 200, { error: 'opencode_unavailable' });
+          return;
+        }
+
+        try {
+          const exported = JSON.parse(result.output);
+          const entries = Array.isArray(exported) ? exported : (Array.isArray(exported.entries) ? exported.entries : []);
+          let totalUsd = 0;
+          const byModel: Record<string, number> = {};
+          for (const entry of entries) {
+            if (isRecord(entry) && typeof entry.cost_usd === 'number') {
+              totalUsd += entry.cost_usd;
+              const model = typeof entry.model === 'string' ? entry.model : 'unknown';
+              byModel[model] = (byModel[model] ?? 0) + entry.cost_usd;
+            }
+          }
+          writeJson(response, 200, {
+            total_usd: totalUsd,
+            by_model: Object.entries(byModel).map(([model, cost_usd]) => ({ model, cost_usd })),
+          });
+        } catch {
+          writeJson(response, 200, { error: 'opencode_unavailable' });
+        }
         return;
       }
 

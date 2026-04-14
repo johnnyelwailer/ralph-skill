@@ -2,11 +2,49 @@ name: CI
 
 on:
   push:
-    branches: [master, agent/trunk]
+    branches: [master, agent/*, aloop/*]
   pull_request:
-    branches: [master, agent/trunk]
+    branches: [master, agent/*]
 
 jobs:
+  cli-tests:
+    name: CLI Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install CLI dependencies
+        working-directory: aloop/cli
+        run: bun install
+
+      - name: Run CLI tests
+        working-directory: aloop/cli
+        run: bun run test
+
+  cli-type-check:
+    name: CLI Type Check
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install CLI dependencies
+        working-directory: aloop/cli
+        run: bun install
+
+      - name: Run CLI type check
+        working-directory: aloop/cli
+        run: bun run type-check
+
   dashboard-tests:
     name: Dashboard Unit Tests
     runs-on: ubuntu-latest
@@ -25,3 +63,104 @@ jobs:
       - name: Run dashboard unit tests
         working-directory: aloop/cli/dashboard
         run: npm test
+
+  dashboard-type-check:
+    name: Dashboard Type Check
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install dashboard dependencies
+        working-directory: aloop/cli/dashboard
+        run: npm ci
+
+      - name: Run dashboard type check
+        working-directory: aloop/cli/dashboard
+        run: npm run type-check
+
+  loop-script-tests:
+    name: Loop Script Tests (Linux)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install bats
+        run: sudo apt-get update && sudo apt-get install -y bats
+
+      - name: Run loop.sh tests
+        working-directory: aloop/bin/tests
+        run: bats loop.bats
+
+      - name: Run JSON escape tests
+        run: bash aloop/bin/loop_json_escape.tests.sh
+
+      - name: Run path hardening tests
+        run: bash aloop/bin/loop_path_hardening.tests.sh
+
+      - name: Run provenance tests
+        run: bash aloop/bin/loop_provenance.tests.sh
+
+      - name: Run provider health primitives tests
+        run: bash aloop/bin/loop_provider_health_primitives.tests.sh
+
+      - name: Run provider health tests
+        run: bash aloop/bin/loop_provider_health.tests.sh
+
+      - name: Run branch coverage tests
+        run: bash aloop/bin/loop_branch_coverage.tests.sh
+
+      - name: Run finalizer QA coverage tests
+        run: bash aloop/bin/loop_finalizer_qa_coverage.tests.sh
+
+  dashboard-e2e:
+    name: Dashboard E2E Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install CLI dependencies
+        working-directory: aloop/cli
+        run: npm ci
+
+      - name: Install dashboard dependencies
+        working-directory: aloop/cli/dashboard
+        run: npm ci
+
+      - name: Install Playwright browsers
+        working-directory: aloop/cli/dashboard
+        run: npx playwright install --with-deps chromium
+
+      - name: Run E2E tests
+        working-directory: aloop/cli/dashboard
+        run: npm run test:e2e
+
+      - name: Upload proof artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: proof-artifacts
+          path: proof-artifacts/
+
+  loop-script-tests-windows:
+    name: Loop Script Tests (Windows)
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run PowerShell loop tests
+        shell: pwsh
+        run: |
+          Invoke-Pester -Path aloop/bin/loop.tests.ps1 -Output Detailed
+

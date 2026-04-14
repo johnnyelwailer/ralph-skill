@@ -28,7 +28,7 @@ SESSION_DIR=""
 WORK_DIR=""
 MODE="plan-build-review"
 PROVIDER="claude"
-ROUND_ROBIN_PROVIDERS="claude,gemini,opencode"
+ROUND_ROBIN_PROVIDERS="claude,opencode,codex,gemini,copilot"
 # Model defaults — keep in sync with ~/.aloop/config.yml (source of truth)
 CLAUDE_MODEL="${ALOOP_CLAUDE_MODEL:-sonnet}"
 CODEX_MODEL="${ALOOP_CODEX_MODEL:-gpt-5.3-codex}"
@@ -63,7 +63,7 @@ usage() {
     echo "Options:"
     echo "  --mode <mode>           plan|build|review|plan-build|plan-build-review|single (default: plan-build-review)"
     echo "  --provider <provider>   claude|codex|gemini|copilot|round-robin (default: claude)"
-    echo "  --round-robin <list>    Comma-separated provider list (default: claude,codex,gemini,copilot)"
+    echo "  --round-robin <list>    Comma-separated provider list (default: claude,opencode,codex,gemini,copilot)"
     echo "  --max-iterations <n>    Maximum iterations (default: 50)"
     echo "  --max-stuck <n>         Skip task after N failures (default: 3)"
     echo "  --launch-mode <mode>    start|restart|resume (default: start)"
@@ -696,7 +696,7 @@ register_iteration_failure() {
     if ! { [ "$MODE" = "plan-build" ] || [ "$MODE" = "plan-build-review" ]; }; then
         return
     fi
-    if ! { [ "$iteration_mode" = "plan" ] || [ "$iteration_mode" = "build" ] || [ "$iteration_mode" = "qa" ] || [ "$iteration_mode" = "review" ]; }; then
+    if ! { [ "$iteration_mode" = "plan" ] || [ "$iteration_mode" = "build" ] || [ "$iteration_mode" = "qa" ] || [ "$iteration_mode" = "review" ] || [ "$iteration_mode" = "spec-gap" ] || [ "$iteration_mode" = "docs" ]; }; then
         return
     fi
 

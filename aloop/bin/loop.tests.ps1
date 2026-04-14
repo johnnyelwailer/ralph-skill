@@ -252,6 +252,41 @@ exit 0
         $status.state | Should -Be 'stopped'
     }
 
+    It 'enters finalizer at cycle boundary when allTasksMarkedDone is true at session start' {
+        if (-not $script:bashExe) { Set-ItResult -Skipped -Because 'bash not available' }
+        $e = New-ShLoopEnv -Scenario 'approve'
+
+        Set-Content (Join-Path $e.WorkDir 'TODO.md') "- [x] Task 1`n"
+        Set-Content (Join-Path $e.PromptsDir 'PROMPT_spec-gap.md') "# Spec Gap Mode`nAnalyze uncovered gaps.`n"
+
+        [pscustomobject]@{
+            cycle = @(
+                'PROMPT_plan.md',
+                'PROMPT_build.md',
+                'PROMPT_build.md',
+                'PROMPT_build.md',
+                'PROMPT_build.md',
+                'PROMPT_build.md',
+                'PROMPT_qa.md',
+                'PROMPT_review.md'
+            )
+            cyclePosition = 7
+            finalizer = @('PROMPT_spec-gap.md')
+            finalizerPosition = 0
+            allTasksMarkedDone = $true
+            iteration = 0
+        } | ConvertTo-Json -Depth 6 | Set-Content (Join-Path $e.SessionDir 'loop-plan.json')
+
+        $result = Invoke-ShLoopScript -LoopEnv $e -MaxIter 1
+        $events = Get-ShLogEvents -LogFile $e.LogFile
+        $status = Get-Content (Join-Path $e.SessionDir 'status.json') -Raw | ConvertFrom-Json
+
+        $result.ExitCode | Should -Be 0
+        $events | Should -Contain 'finalizer_entered'
+        $events | Should -Not -Contain 'finalizer_completed'
+        $status.state | Should -Be 'stopped'
+    }
+
     It 'loop.sh source maps success and stop states to exited/stopped' {
         $loopSource = Get-Content (Join-Path $PSScriptRoot 'loop.sh') -Raw
         ($loopSource | Select-String -Pattern 'write_status "\$ITERATION" "\$iter_mode" "\$iter_provider" 0 "exited"' -AllMatches).Matches.Count | Should -Be 2
@@ -866,6 +901,40 @@ exit 0
         $status.state | Should -Be 'stopped'
     }
 
+    It 'enters finalizer at cycle boundary when allTasksMarkedDone is true at session start' {
+        $e = New-LoopEnv -Scenario 'approve'
+
+        Set-Content (Join-Path $e.WorkDir 'TODO.md') "- [x] Task 1`n"
+        Set-Content (Join-Path $e.PromptsDir 'PROMPT_spec-gap.md') "# Spec Gap Mode`nAnalyze uncovered gaps.`n"
+
+        [pscustomobject]@{
+            cycle = @(
+                'PROMPT_plan.md',
+                'PROMPT_build.md',
+                'PROMPT_build.md',
+                'PROMPT_build.md',
+                'PROMPT_build.md',
+                'PROMPT_build.md',
+                'PROMPT_qa.md',
+                'PROMPT_review.md'
+            )
+            cyclePosition = 7
+            finalizer = @('PROMPT_spec-gap.md')
+            finalizerPosition = 0
+            allTasksMarkedDone = $true
+            iteration = 0
+        } | ConvertTo-Json -Depth 6 | Set-Content (Join-Path $e.SessionDir 'loop-plan.json')
+
+        $result = Invoke-LoopScript -LoopEnv $e -MaxIter 1
+        $events = Get-LogEvents -LogFile $e.LogFile
+        $status = Get-Content (Join-Path $e.SessionDir 'status.json') -Raw | ConvertFrom-Json
+
+        $result.ExitCode | Should -Be 0
+        $events | Should -Contain 'finalizer_entered'
+        $events | Should -Not -Contain 'finalizer_completed'
+        $status.state | Should -Be 'stopped'
+    }
+
     It 'resume from qa phase restores qa cycle position and executes qa first' {
         $e = New-LoopEnv -Scenario 'approve'
         [pscustomobject]@{
@@ -892,6 +961,19 @@ exit 0
         ($loopSource | Select-String -Pattern "-State 'stopped'" -AllMatches).Matches.Count | Should -Be 2
         $loopSource | Should -Not -Match "-State 'interrupted'"
         $loopSource | Should -Not -Match "-State 'limit_reached'"
+    }
+
+    It 'loop.ps1 source enforces finalizer QA gate before completion' {
+        $loopSource = Get-Content (Join-Path $PSScriptRoot 'loop.ps1') -Raw
+        $loopSource | Should -Match '\$qaCoveragePassed = Check-FinalizerQaCoverageGate'
+        $loopSource | Should -Match 'Write-LogEntry -Event "finalizer_qa_coverage_check"'
+        $loopSource | Should -Match 'Write-LogEntry -Event "finalizer_aborted"'
+
+        $gateIndex = $loopSource.IndexOf('$qaCoveragePassed = Check-FinalizerQaCoverageGate')
+        $completeIndex = $loopSource.IndexOf('Write-LogEntry -Event "finalizer_completed"')
+        $gateIndex | Should -BeGreaterThan -1
+        $completeIndex | Should -BeGreaterThan -1
+        $gateIndex | Should -BeLessThan $completeIndex
     }
 
     It 'review rejection emits final_review_rejected, re-plans, then final_review_approved' {
@@ -973,6 +1055,107 @@ exit 0
 
         $result.ExitCode | Should -Be 0
         $percent | Should -BeGreaterOrEqual 80
+    }
+}
+
+# ============================================================================
+# loop.ps1 — finalizer QA coverage gate behavioral
+# ============================================================================
+Describe 'loop.ps1 — finalizer QA coverage gate behavioral' {
+
+    BeforeAll {
+        $loopScript = Join-Path $PSScriptRoot 'loop.ps1'
+        $scriptContent = Get-Content $loopScript -Raw
+
+        if ($scriptContent -match '(?ms)(^function Append-PlanTaskIfMissing\s*\{.*?^})') {
+            $appendTaskFunction = $Matches[1]
+        } else {
+            throw "Could not extract Append-PlanTaskIfMissing from loop.ps1"
+        }
+
+        if ($scriptContent -match '(?ms)(^function Check-FinalizerQaCoverageGate\s*\{.*?^})') {
+            $gateFunction = $Matches[1]
+        } else {
+            throw "Could not extract Check-FinalizerQaCoverageGate from loop.ps1"
+        }
+
+        Invoke-Expression "$appendTaskFunction`n$gateFunction"
+    }
+
+    BeforeEach {
+        $script:qaGateTempRoot = Join-Path ([IO.Path]::GetTempPath()) ("aloop-qa-gate-tests-" + [guid]::NewGuid().ToString('N'))
+        New-Item -ItemType Directory -Force $script:qaGateTempRoot | Out-Null
+        $script:WorkDir = $script:qaGateTempRoot
+        $script:planFile = Join-Path $script:qaGateTempRoot 'TODO.md'
+        Set-Content -Path $script:planFile -Value "- [x] existing completed task"
+    }
+
+    AfterEach {
+        if ($script:qaGateTempRoot -and (Test-Path $script:qaGateTempRoot)) {
+            Remove-Item -Recurse -Force $script:qaGateTempRoot
+        }
+    }
+
+    It 'passes when untested coverage is <=30% and there are no FAIL rows' {
+        @'
+| Feature | Component | Last Tested | Commit | Status | Criteria Met | Notes |
+| --- | --- | --- | --- | --- | --- | --- |
+| A | c | 2026-03-22 | abc | PASS | 1/1 | ok |
+| B | c | 2026-03-22 | abc | UNTESTED | 0/1 | pending |
+| C | c | 2026-03-22 | abc | PASS | 1/1 | ok |
+| D | c | 2026-03-22 | abc | PASS | 1/1 | ok |
+'@ | Set-Content -Path (Join-Path $script:WorkDir 'QA_COVERAGE.md')
+
+        $result = Check-FinalizerQaCoverageGate
+
+        $result | Should -Be $true
+        $script:finalizerQaGateReason | Should -Be 'qa_coverage_pass'
+        $script:finalizerQaGateMessage | Should -Match 'UNTESTED=1/4, FAIL=0'
+        (Get-Content -Path $script:planFile -Raw) | Should -Not -Match '\[finalizer-qa-gate\]'
+    }
+
+    It 'blocks when UNTESTED rows exceed 30 percent' {
+        @'
+| Feature | Component | Last Tested | Commit | Status | Criteria Met | Notes |
+| --- | --- | --- | --- | --- | --- | --- |
+| A | c | 2026-03-22 | abc | UNTESTED | 0/1 | pending |
+| B | c | 2026-03-22 | abc | UNTESTED | 0/1 | pending |
+| C | c | 2026-03-22 | abc | PASS | 1/1 | ok |
+'@ | Set-Content -Path (Join-Path $script:WorkDir 'QA_COVERAGE.md')
+
+        $result = Check-FinalizerQaCoverageGate
+        $todoContent = Get-Content -Path $script:planFile -Raw
+
+        $result | Should -Be $false
+        $script:finalizerQaGateReason | Should -Be 'qa_coverage_blocked'
+        $script:finalizerQaGateMessage | Should -Match 'UNTESTED=2/3, FAIL=0'
+        $todoContent | Should -Match 'Reduce UNTESTED QA coverage to <=30%'
+    }
+
+    It 'blocks when FAIL rows exist and appends a remediation task per failing feature' {
+        @'
+| Feature | Component | Last Tested | Commit | Status | Criteria Met | Notes |
+| --- | --- | --- | --- | --- | --- | --- |
+| Login flow | c | 2026-03-22 | abc | FAIL | 0/2 | broken |
+| Other | c | 2026-03-22 | abc | PASS | 1/1 | ok |
+'@ | Set-Content -Path (Join-Path $script:WorkDir 'QA_COVERAGE.md')
+
+        $result = Check-FinalizerQaCoverageGate
+        $todoContent = Get-Content -Path $script:planFile -Raw
+
+        $result | Should -Be $false
+        $script:finalizerQaGateReason | Should -Be 'qa_coverage_blocked'
+        $script:finalizerQaGateMessage | Should -Match 'UNTESTED=0/2, FAIL=1'
+        $todoContent | Should -Match 'Resolve FAIL coverage item: Login flow'
+    }
+
+    It 'skips enforcement when QA_COVERAGE.md is missing' {
+        $result = Check-FinalizerQaCoverageGate
+
+        $result | Should -Be $true
+        $script:finalizerQaGateReason | Should -Be 'qa_coverage_missing'
+        $script:finalizerQaGateMessage | Should -Match 'skipping enforcement'
+        (Get-Content -Path $script:planFile -Raw) | Should -Not -Match '\[finalizer-qa-gate\]'
     }
 }
 
@@ -3592,5 +3775,152 @@ Describe 'loop.ps1 — phase prerequisite guards' {
         . ([scriptblock]::Create($script:checkPhasePrerequisitesFuncSource))
         $result = Check-PhasePrerequisites -Phase 'plan'
         $result | Should -Be 'plan'
+    }
+}
+
+# ============================================================================
+# loop.ps1 — provider-health primitives
+# ============================================================================
+Describe 'loop.ps1 — provider-health primitives' {
+
+    BeforeAll {
+        $loopScript = Join-Path $PSScriptRoot 'loop.ps1'
+        $scriptContent = Get-Content $loopScript -Raw
+
+        # Extract health primitive functions from loop.ps1
+        $funcNames = @(
+            'Ensure-ProviderHealthDir',
+            'Get-ProviderHealthPath',
+            'New-ProviderHealthState',
+            'Open-ProviderHealthStreamWithRetry',
+            'Get-ProviderHealthState',
+            'Set-ProviderHealthState'
+        )
+        foreach ($fn in $funcNames) {
+            if ($scriptContent -match "(?ms)(^function $fn\s*\{.*?^})") {
+                Invoke-Expression $Matches[1]
+            } else {
+                throw "Could not extract $fn from loop.ps1"
+            }
+        }
+
+        # Stub Write-LogEntry so Open-ProviderHealthStreamWithRetry can log
+        function Write-LogEntry {
+            param([string]$Event, [hashtable]$Data)
+            $script:loggedEvents += [pscustomobject]@{ event = $Event; data = $Data }
+        }
+    }
+
+    BeforeEach {
+        $script:healthTestDir = Join-Path ([IO.Path]::GetTempPath()) ("aloop-health-prims-" + [guid]::NewGuid().ToString('N'))
+        New-Item -ItemType Directory -Force $script:healthTestDir | Out-Null
+        # Override the module-scoped $providerHealthDir to point at our temp dir
+        $script:providerHealthDir = $script:healthTestDir
+        $script:healthLockRetryDelaysMs = @(50, 100, 150, 200, 250)
+        $script:loggedEvents = @()
+    }
+
+    AfterEach {
+        if ($script:healthTestDir -and (Test-Path $script:healthTestDir)) {
+            Remove-Item -Recurse -Force $script:healthTestDir
+        }
+    }
+
+    It 'Get-ProviderHealthPath normalizes uppercase to lowercase' {
+        $path = Get-ProviderHealthPath -ProviderName 'ClAuDe'
+        $expected = Join-Path $script:healthTestDir 'claude.json'
+        $path | Should -BeExactly $expected
+    }
+
+    It 'New-ProviderHealthState returns expected defaults' {
+        $state = New-ProviderHealthState
+        $state.status               | Should -BeExactly 'healthy'
+        $state.last_success         | Should -BeNullOrEmpty
+        $state.last_failure         | Should -BeNullOrEmpty
+        $state.failure_reason       | Should -BeNullOrEmpty
+        $state.consecutive_failures | Should -Be 0
+        $state.cooldown_until       | Should -BeNullOrEmpty
+    }
+
+    It 'Get-ProviderHealthState returns defaults when file absent' {
+        $state = Get-ProviderHealthState -ProviderName 'nonexistent'
+        $state.status               | Should -BeExactly 'healthy'
+        $state.consecutive_failures | Should -Be 0
+        $state.last_success         | Should -BeNullOrEmpty
+    }
+
+    It 'round-trip: Set-ProviderHealthState then Get-ProviderHealthState returns same values' {
+        $state = New-ProviderHealthState
+        $state.status               = 'degraded'
+        $state.last_success         = '2025-06-01T12:00:00Z'
+        $state.last_failure         = '2025-06-02T08:00:00Z'
+        $state.failure_reason       = 'timeout'
+        $state.consecutive_failures = 7
+        $state.cooldown_until       = '2025-06-02T09:00:00Z'
+
+        $written = Set-ProviderHealthState -ProviderName 'roundtrip' -HealthState $state
+        $written | Should -BeTrue
+
+        $readBack = Get-ProviderHealthState -ProviderName 'roundtrip'
+        $readBack.status               | Should -BeExactly 'degraded'
+        # DateTime fields may be normalised by ConvertFrom-Json round-trip (fractional seconds, offset)
+        $readBack.last_success         | Should -Match '^2025-06-01T12:00:00'
+        $readBack.last_failure         | Should -Match '^2025-06-02T08:00:00'
+        $readBack.failure_reason       | Should -BeExactly 'timeout'
+        $readBack.consecutive_failures | Should -Be 7
+        $readBack.cooldown_until       | Should -Match '^2025-06-02T09:00:00'
+    }
+
+    It 'cooldown_until DateTime auto-conversion normalizes to ISO string' {
+        # Write a JSON file with a DateTime-like value that ConvertFrom-Json may parse as DateTime
+        $isoDate = '2025-06-02T09:00:00.0000000Z'
+        $json = @{
+            status               = 'cooldown'
+            last_success         = $null
+            last_failure         = '2025-06-02T08:00:00Z'
+            failure_reason       = 'rate_limit'
+            consecutive_failures = 2
+            cooldown_until       = $isoDate
+        } | ConvertTo-Json -Compress
+        $path = Join-Path $script:healthTestDir 'datetime-test.json'
+        Set-Content -Path $path -Value $json -NoNewline
+
+        $state = Get-ProviderHealthState -ProviderName 'datetime-test'
+        # After parsing, cooldown_until should be a string (ISO 8601), not a DateTime object
+        $state.cooldown_until | Should -BeOfType [string]
+        $state.cooldown_until | Should -Not -BeNullOrEmpty
+        # Should contain ISO 8601 pattern
+        $state.cooldown_until | Should -Match '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}'
+    }
+
+    It 'Open-ProviderHealthStreamWithRetry logs health_lock_failed when it cannot acquire' {
+        # Create a file and lock it by holding an exclusive stream
+        $path = Join-Path $script:healthTestDir 'contended.json'
+        Set-Content -Path $path -Value '{}' -NoNewline
+
+        $holder = [System.IO.File]::Open($path, [System.IO.FileMode]::Open,
+            [System.IO.FileAccess]::ReadWrite, [System.IO.FileShare]::None)
+        try {
+            # Use a small retry delay array for faster tests
+            $script:healthLockRetryDelaysMs = @(10, 20, 30)
+
+            $stream = Open-ProviderHealthStreamWithRetry `
+                -Path $path `
+                -FileMode ([System.IO.FileMode]::Open) `
+                -FileAccess ([System.IO.FileAccess]::ReadWrite) `
+                -FileShare ([System.IO.FileShare]::None) `
+                -ProviderName 'contended' `
+                -OperationName 'write'
+
+            $stream | Should -BeNullOrEmpty
+            $lockFailed = $script:loggedEvents | Where-Object { $_.event -eq 'health_lock_failed' }
+            $lockFailed | Should -Not -BeNullOrEmpty
+            $lockFailed[0].data.provider   | Should -BeExactly 'contended'
+            $lockFailed[0].data.operation  | Should -BeExactly 'write'
+            $lockFailed[0].data.retries    | Should -Be 3
+        }
+        finally {
+            $holder.Dispose()
+        }
     }
 }
