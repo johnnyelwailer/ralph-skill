@@ -12,7 +12,6 @@ _(none)_
 - [ ] Add CLI type-check job to `ci.yml`: `bun install` + `bun run type-check` in `aloop/cli` (TASK_SPEC acceptance criteria #5)
 - [ ] Add dashboard type-check job to `ci.yml`: `npm ci` + `npm run type-check` in `aloop/cli/dashboard` (TASK_SPEC acceptance criteria #5)
 - [ ] Add loop script tests (Linux) job to `ci.yml`: install bats, run `bats loop.bats` + at least one `loop_*.tests.sh` in `aloop/bin/tests` (TASK_SPEC acceptance criteria #6)
-- [ ] Update `TASK_SPEC.md` to align with final design: acceptance criteria #5 and constraints section still require `git merge --abort` and a clean tree, but the final implementation intentionally leaves conflict markers for the merge agent — update both the constraints section and acceptance criteria to reflect that abort is NOT called and markers remain
 
 ### Deferred / Out of scope
 
