@@ -102,3 +102,13 @@
 - [x] #108: still `blocked_on_human` (In review) — human must manually rebase PR #132 onto agent/trunk.
 - [x] #39: `Ready` (priority=0), PR #289. Queued for dispatch when #157 slot frees. PR needs review-fix (3 missing bash test scripts, branch 34 commits behind trunk).
 - [x] 97 other `Ready` issues waiting. 5 `Ready` with needs_redispatch=True (#70, #71, #73, #85, #198).
+
+# orchestrator scan (2026-04-14 ~fifth pass)
+
+## State transitions
+
+- [x] #157: child PID 139176 ALIVE. Session `orchestrator-20260321-172932-issue-157-20260414-164637`, iteration=2, phase=planning (loop-plan.json tasks=[]), PR #310 open. Concurrency slot occupied (cap=1) — no new dispatches.
+- [x] #108: In review, blocked_on_human=True — PR #132 has 9 failed rebase attempts against agent/trunk. Human must manually rebase. No automated action possible.
+- [x] Queue empty — no override prompts to process.
+- [x] active.json=[] but orchestrator.json correctly tracks #157 as in_progress with child_pid=139176. No correction needed (active.json managed by runtime).
+- [x] 105 Ready issues waiting (top priority -10: #188, #187, #186, #185, #184, #182, #158, #156). Next dispatch after #157 completes.
