@@ -22,6 +22,12 @@ to loop.sh or loop.ps1 are needed or permitted.**
 
 ## Tasks
 
+### QA Bugs
+
+- [ ] [qa/P1] providerHealth includes non-provider files: `readProviderHealth` reads ALL JSON files in `~/.aloop/health/` including `claude-throttle-state.json`, `heal-counter.json`, `hourly-stats-state.json`, `opencode-go-usage.json`, `opencode-throttle-state.json`, `provider-status.json`, `resource-guard-state.json`. These appear in `aloop status` with `unknown` status and pollute the dashboard SSE `providerHealth` field. The function should only include files whose content has the expected provider health schema (`status`, `last_success`, `last_failure`, `failure_reason`, `consecutive_failures`, `cooldown_until`), or filter by a known provider allowlist. Tested at iter 1. (priority: high)
+
+- [ ] [qa/P1] providerHealth has empty-string provider key: A hidden file `~/.aloop/health/.json` (174 bytes, created 2026-04-14) contains a provider health record with 135 consecutive_failures and an empty provider name. This renders as a blank entry at the top of `aloop status` Provider Health table and appears as key `""` in the dashboard SSE payload. Root cause: a loop run wrote a health file with an empty provider name. `readProviderHealth` should skip hidden files (names starting with `.`) and `loop.sh`/`loop.ps1` should guard against empty provider names. Tested at iter 1. (priority: high)
+
 ### Up Next
 
 - [x] Add `providerHealth: Record<string, unknown>` to `DashboardState` interface in

@@ -1,5 +1,115 @@
 # QA Log
 
+## QA Session — 2026-04-14 (iteration 1, issue-2)
+
+### Test Environment
+- Branch: aloop/issue-2
+- Binary under test: /tmp/aloop-test-install-fygl9g/bin/aloop (v1.0.0)
+- Features tested: 4 (2 PASS, 2 FAIL)
+- Temp dir: /tmp/qa-test-issue2-918414 (cleaned up after session)
+
+### Results
+- PASS: Dashboard `/api/state` includes `providerHealth` key — correct schema for known providers
+- PASS: Dashboard SSE initial `state` event includes `providerHealth` field
+- PASS: Provider health files at `~/.aloop/health/<provider>.json` — all 5 providers exist with correct schema
+- FAIL: `aloop status` provider health table includes non-provider files — bug filed [qa/P1]
+- FAIL: `providerHealth` polluted with non-provider file entries — same root bug, filed [qa/P1]
+
+### Bugs Filed
+- [qa/P1] providerHealth includes non-provider files (readProviderHealth reads entire health dir)
+- [qa/P1] providerHealth has empty-string provider key (hidden `.json` file, 135 failures, blank entry in status)
+
+### Command Transcript
+
+#### Install CLI from source
+```
+$ npm --prefix aloop/cli/dashboard ci --silent
+(dashboard deps installed)
+$ npm --prefix aloop/cli run test-install -- --keep 2>&1 | tail -3
+✓ test-install passed (prefix kept at /tmp/aloop-test-install-fygl9g)
+/tmp/aloop-test-install-fygl9g/bin/aloop
+$ /tmp/aloop-test-install-fygl9g/bin/aloop --version
+1.0.0
+EXIT: 0 → PASS
+```
+
+#### Set up test environment
+```
+mkdir /tmp/qa-test-issue2-918414
+git init && git commit --allow-empty -m "init"
+aloop scaffold
+mkdir -p /tmp/qa-test-issue2-918414/session
+echo '{"status":"running","iteration":1,"max_iterations":10}' > .../session/status.json
+echo '{"timestamp":"...","event":"session_start","session_id":"qa-test"}' > .../session/log.jsonl
+```
+Wrote test health files: `~/.aloop/health/claude.json` (healthy), `~/.aloop/health/openai.json` (cooldown)
+Note: live health files were already present from actual provider usage.
+
+#### Test: /api/state providerHealth
+```
+$ aloop dashboard --port 14040 --session-dir ... --workdir ... --assets-dir ... &
+$ curl -s http://localhost:14040/api/state | python3 -c "import json,sys; d=json.load(sys.stdin); print(list(d.keys()))"
+['sessionDir', 'workdir', ..., 'providerHealth']
+EXIT: 0 → providerHealth key PRESENT
+```
+Provider entries correct: claude, openai, gemini, codex, opencode — all have `status`, `last_success`, `last_failure`, `failure_reason`, `consecutive_failures`, `cooldown_until`.
+
+BUG FOUND: 9 non-provider keys also present in providerHealth:
+`''`, `claude-throttle-state`, `heal-counter`, `hourly-stats-state`, `minimax-quota`, `opencode-go-usage`, `opencode-throttle-state`, `provider-status`, `resource-guard-state`
+
+#### Test: SSE state event providerHealth
+```
+$ timeout 5 curl -s -N http://localhost:14040/events > /tmp/sse-output.txt
+$ python3 [parse event: data: {...}]
+SSE state event providerHealth PRESENT
+Keys: ['', 'claude-throttle-state', 'claude', 'codex', 'gemini', 'heal-counter', ...]
+```
+EXIT: PASS (providerHealth in SSE) but same non-provider pollution bug.
+
+#### Test: aloop status provider health table
+```
+$ aloop status
+Active Sessions:
+  orchestrator-20260321-172932  pid=4091043  running  iter 125...
+  ...
+
+Provider Health:
+             cooldown     (135 failures, resumes in 55m)   ← BLANK ENTRY [BUG]
+  claude-throttle-state unknown                             ← NON-PROVIDER [BUG]
+  claude     cooldown     (0 failures, resumes in 3m)
+  codex      degraded     (auth error — run `gh auth login`)
+  gemini     cooldown
+  heal-counter unknown                                      ← NON-PROVIDER [BUG]
+  hourly-stats-state unknown                                ← NON-PROVIDER [BUG]
+  minimax-quota ok                                          ← ambiguous
+  openai     cooldown
+  opencode-go-usage unknown                                 ← NON-PROVIDER [BUG]
+  opencode-throttle-state unknown                           ← NON-PROVIDER [BUG]
+  opencode   cooldown     (0 failures, resumes in 4m)
+  provider-status unknown                                   ← NON-PROVIDER [BUG]
+  resource-guard-state unknown                              ← NON-PROVIDER [BUG]
+EXIT: 0 → table renders but polluted with non-provider entries
+```
+
+Root cause: `readProviderHealth` uses `glob('*.json')` or equivalent on the health dir, reading ALL JSON files regardless of whether they are provider health files. The implementation needs to either:
+1. Filter by known provider list, or
+2. Filter by schema validation (only include files that have the 6 expected fields with valid `status` values)
+
+Additionally, `~/.aloop/health/.json` is a hidden file with an empty provider name (likely created by a loop run with `PROVIDER=""`) causing the blank entry in `aloop status`.
+
+#### Test: Provider health files at ~/.aloop/health/<provider>.json
+All 5 known providers (claude, openai, gemini, codex, opencode) have valid health files with all 6 required fields. Files are in `~/.aloop/` (global), not in session dirs.
+EXIT: 0 → PASS
+
+#### Cleanup
+```
+kill 922012  # dashboard server
+rm -rf /tmp/qa-test-issue2-918414
+rm -rf "$(dirname "$(dirname "/tmp/aloop-test-install-fygl9g/bin/aloop")")"
+```
+
+---
+
 ## QA Session — 2026-04-13 (iteration 4)
 
 ### Test Environment

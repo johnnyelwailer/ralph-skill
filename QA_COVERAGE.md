@@ -18,3 +18,8 @@
 | Dashboard type-check (`npm run type-check`) | 2026-04-13 | 0e6ea585 | FAIL | tsc exits code 2: missing Vitest globals in App.coverage.test.ts, ArtifactEntry shape mismatch in App.test.tsx. Bug filed [qa/P1] |
 | CLI tests (`bun run test`) | 2026-04-13 | 0e6ea585 | FAIL | 27 failures out of 922 tests via tsx --test; pre-existing test failures in codebase |
 | Loop script tests (Windows/Pester) | 2026-04-13 | — | never | Requires Windows; skipped this session |
+| Dashboard /api/state providerHealth key | 2026-04-14 | aloop/issue-2 | PASS | providerHealth present in response; provider entries (claude, openai, gemini, codex, opencode) have correct schema |
+| Dashboard SSE state event providerHealth | 2026-04-14 | aloop/issue-2 | PASS | Initial SSE state event includes providerHealth with real health file data |
+| aloop status provider health table | 2026-04-14 | aloop/issue-2 | FAIL | Table rendered but includes non-provider files (claude-throttle-state, heal-counter, etc.) with `unknown` status; blank entry for hidden .json file. Bug filed [qa/P1] |
+| Provider health files at ~/.aloop/health/ | 2026-04-14 | aloop/issue-2 | PASS | Files exist for claude, openai, gemini, codex, opencode; correct schema with all 6 required fields; global (not session-specific) |
+| providerHealth no non-provider file pollution | 2026-04-14 | aloop/issue-2 | FAIL | readProviderHealth reads ALL JSON files in health dir, including throttle-state, counters, usage files. Bug filed [qa/P1] |
