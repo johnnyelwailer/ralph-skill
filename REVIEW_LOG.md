@@ -238,3 +238,32 @@
 - **Gate 7 — FAIL (persists / deferred):** No Playwright/browser verification across any iteration. `[review]` task deferred in TODO.md pending Playwright deps or manual verification plan.
 
 ---
+
+## Review — 2026-04-14 — commit 5cce7a83..b1d59bb0
+
+**Verdict: FAIL** (0 new findings; 1 prior finding resolved; 1 prior finding persists)
+**Scope:** `src/components/layout/QACoverageBadge.test.tsx` (2 new tests), `QA_COVERAGE.md`, `QA_LOG.md`, `TODO.md`
+
+**Build summary:** Commit `7e1ec74e` added 2 branch coverage tests to `QACoverageBadge.test.tsx` addressing both branches flagged in the prior review: (1) `!response.ok` early return (line 69), (2) `sessionId={null}` → no `?session=` param (line 67). Commit `b1d59bb0` is a QA re-test pass confirming 282/282 dashboard tests pass.
+
+**Gate 1 — PASS:** Test-only changes directly targeting the prior `[review]` task. No spec deviations.
+
+**Gate 2 — PASS:** Both new tests use discriminating, concrete assertions.
+- Test `renders null (no button) when response.ok is false`: uses `setTimeout(50)` (appropriate — `waitFor` would pass immediately because the assertion is true from initial render; the delay ensures the mocked fetch has resolved before asserting). If the `if (!response.ok) return;` guard at line 69 were removed, `setCoverage` would be called with the parsed 85% data and a button would appear, causing this test to fail. The assertion is discriminating, not tautological.
+- Test `fetches without ?session= query param when sessionId is null`: uses `waitFor(() => expect(fetchSpy).toHaveBeenCalled())` then inspects `fetchSpy.mock.calls[0][0]` for absence of `?session=`. Concrete URL inspection — not a shape or existence check.
+
+**Gate 3 — PASS (resolved):** Both branches flagged in the prior review are now covered: (1) `!response.ok` path (line 69) — `mockFetch({...}, false)` triggers the early return, component stays rendering `null`, `container.querySelector('button')` is null after 50ms; (2) `sessionId={null}` → `sp=''` path (line 67) — spy on `global.fetch`, assert `calledUrl` does not contain `?session=`. Together with the 11 tests from prior iterations (5 display-logic + 6 expansion-panel), `QACoverageBadge.tsx` (142 LOC) has all significant branches covered. Prior `[review]` task marked `[x]` in TODO.md.
+
+**Gate 4 — PASS:** No source code changes. New tests are stylistically consistent with the existing file. `afterEach(() => vi.restoreAllMocks())` cleans up the manual `vi.spyOn` in test 2. No dead code, unused imports, or TODO comments in new tests.
+
+**Gate 5 — PASS:** Dashboard vitest → 282/282 tests pass (iter 54). Pre-existing 33 non-dashboard failures and 16 type errors unchanged; tracked as `[qa/P1]`.
+
+**Gate 6 — PASS:** Test-only commit and QA re-test pass; no observable UI output. Empty proof-manifest is the correct expected outcome.
+
+**Gate 8 — PASS:** No dependency changes.
+
+**Gate 9 — PASS:** No user-facing docs changed.
+
+- **Gate 7 — FAIL (persists / deferred):** No Playwright/browser verification across any iteration. Container missing `libatk-1.0.so.0`. `[review]` task remains deferred in TODO.md.
+
+---
