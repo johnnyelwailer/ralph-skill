@@ -23,6 +23,14 @@ Already extracted (with issues): `Header.tsx` (385 LOC — exceeds 200 LOC limit
 
 ### In Progress
 
+- [ ] [review] Gate 3: `DocsPanel.tsx` new module has <90% branch coverage — add tests for: (1) `DocContent` with `wide=true` and a SPEC-named file (exercises lines 126–137, the sticky-sidebar layout path), (2) `HealthPanel` with `status='cooldown'` including a `cooldownUntil` future timestamp to cover the time-remaining display, (3) `HealthPanel` with `status='failed'` and `status='unknown'`. New modules require ≥90% branch coverage (priority: high)
+
+- [ ] [review] Gate 4: `lib/log.ts` is 381 LOC — created in commit 8df30426 as part of utility extraction, exceeds the ≤200 LOC spec limit (acceptance criterion #2) and Constitution Rule 7. Split into `log-types.ts` (types/interfaces), `log-parse.ts` (parsing functions), and `log-session.ts` (session derivation). Not yet filed as a QA bug. (priority: high)
+
+- [ ] [review] Gate 4: Duplicate cooldown IIFE in `DocsPanel.tsx` — the expression `Math.max(0, Math.floor((new Date(p.cooldownUntil).getTime() - Date.now()) / 1000))` appears twice inside `HealthPanel`: once at line ~179 for the visible label, once at line ~195 inside the tooltip. Extract to a local variable `remainingSecs` before the JSX return. (priority: medium)
+
+- [ ] [review] Gate 7: No Playwright/browser verification performed after extracting Header, Footer, DocsPanel layout components. Spec acceptance criterion: "Dashboard renders identically before and after refactor." Run a Playwright screenshot of the dashboard and confirm panels render correctly (Header at top, Footer at bottom, DocsPanel tabs visible). Gate 7 is a mandatory fail without browser verification for layout changes. (priority: high)
+
 ### Up Next
 
 - [ ] **Extract `Sidebar.tsx`** — Move `Sidebar` component (~305 LOC) to `src/components/layout/Sidebar.tsx`. Split out `SessionCard` inner component to a separate file to keep each file ≤200 LOC. Re-export from AppView.tsx for backward compatibility. Add a render test.
