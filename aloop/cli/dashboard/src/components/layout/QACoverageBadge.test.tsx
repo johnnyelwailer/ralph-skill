@@ -141,6 +141,25 @@ describe('QACoverageBadge', () => {
     });
   });
 
+  it('renders null (no button) when response.ok is false', async () => {
+    mockFetch({ coverage_percent: 85, available: true, features: [] }, false);
+    const { container } = render(<QACoverageBadge sessionId="s1" refreshKey="k1" />);
+    // Give fetch time to resolve and confirm no button appears
+    await new Promise((r) => setTimeout(r, 50));
+    expect(container.querySelector('button')).toBeNull();
+  });
+
+  it('fetches without ?session= query param when sessionId is null', async () => {
+    const fetchSpy = vi.spyOn(global, 'fetch').mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ coverage_percent: 80, available: true, features: [] }),
+    } as Response);
+    render(<QACoverageBadge sessionId={null} refreshKey="k1" />);
+    await waitFor(() => expect(fetchSpy).toHaveBeenCalled());
+    const calledUrl = fetchSpy.mock.calls[0][0] as string;
+    expect(calledUrl).not.toContain('?session=');
+  });
+
   it('omits component <p> when feature.component is empty string', async () => {
     const features = [{ feature: 'Dashboard', component: '', last_tested: '', commit: '', status: 'PASS', criteria_met: '', notes: '' }];
     mockFetch({ coverage_percent: 90, available: true, features });
