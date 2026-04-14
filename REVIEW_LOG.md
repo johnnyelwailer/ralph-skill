@@ -99,3 +99,24 @@
 - **Gate 7 — FAIL (persists):** No Playwright/browser verification across any iteration. `[review]` task remains open in TODO.md.
 
 ---
+
+## Review — 2026-04-14 18:30 — commit d979be11..6cc26a60
+
+**Verdict: FAIL** (2 prior findings persist; 1 prior finding resolved)
+**Scope:** `SPEC.md` (restored), `TODO.md` (Gate 4 task closed), `QA_COVERAGE.md`, `QA_LOG.md`
+
+**Build summary:** Commit `6a72a5f9` restored SPEC.md from 64 lines back to the full 4086-line project spec and marked the Gate 4 [review] task done in TODO.md. Commit `6cc26a60` is a QA re-test pass — updates QA_COVERAGE.md and QA_LOG.md only; no source changes. No new code, no new tests.
+
+**Gate 1 — PASS:** SPEC.md confirmed 4086 lines; Gate 4 TODO.md task correctly marked [x].
+**Gate 2 — N/A:** No new test code in either commit.
+**Gate 4 (SPEC.md restore) — PASS (resolved):** QA agent truncation of SPEC.md (9ce0a643) is now undone. Prior [review] task closed.
+**Gate 5 — PASS:** `vitest run` → 23 test files, 250 tests, all pass. `tsc --noEmit` → clean.
+**Gate 6 — PASS:** Both commits are pure documentation/log updates with no observable output. Empty proof is the correct expected outcome.
+**Gate 8 — PASS:** No dependency changes.
+**Gate 9 — PASS:** No user-facing docs changed.
+
+- **Gate 3 — FAIL (persists):** `log-session.ts` coverage gaps unchanged since prior review. `latestQaCoverageRefreshSignal` has no unit test covering: (1) `!log` early-return branch, (2) non-JSON line skip (the `catch` branch), (3) `iteration_complete` where `phase !== 'qa'` (non-QA phase does not return early but must not match). `toSession` `project_root` IIFE (lines 8–12) is never exercised by any test — no test passes `{ project_root: '/home/user/my-project' }` and asserts `projectName === 'my-project'`. Confirmed: `grep -r "project_root" src/**/*.test.*` returns no matches. [review] task remains open in TODO.md.
+
+- **Gate 7 — FAIL (persists):** No Playwright/browser verification performed. QA reported `libatk-1.0.so.0` missing in container — Playwright cannot launch. curl-based checks confirm HTML, JS, CSS, SSE all functional, but visual rendering (panel layout, Header/Footer/DocsPanel positions) is unverified. Gate 7 is a mandatory fail without browser evidence for layout component changes. [review] task remains open in TODO.md.
+
+---
