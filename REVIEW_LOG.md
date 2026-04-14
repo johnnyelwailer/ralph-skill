@@ -165,3 +165,26 @@
 - **Gate 7 — FAIL (persists):** No browser/Playwright verification performed. `[review]` task deferred in TODO.md.
 
 ---
+
+## Review — 2026-04-14 20:10 — commit 4555d233..70109c26
+
+**Verdict: FAIL** (0 new findings; 1 prior finding resolved; 2 prior findings persist)
+**Scope:** `src/components/layout/StatusIndicators.test.tsx` (modified — 6 new tests), `TODO.md`, `QA_COVERAGE.md`, `QA_LOG.md`
+
+**Build summary:** Commit `ee910c72` added 6 tests to `StatusIndicators.test.tsx` covering all branches of `StatusDot` (running/stopped/unknown-fallback) and `ConnectionIndicator` (connected/connecting/disconnected). Commit `70109c26` is a QA re-test pass confirming 269/269 dashboard tests pass and QACoverageBadge tests still absent.
+
+**Gate 1 — PASS:** Work directly addresses the prior `[review]` task. No spec deviations.
+**Gate 2 — PASS:** All 6 new tests use concrete value assertions — `children.length === 2`, `className.toContain('animate-pulse-dot')`, `className.toContain('bg-muted-foreground/50')`, `className.toContain('bg-muted-foreground/30')`, `textContent === 'Live'`, `textContent === 'Connecting...'`, `textContent === 'Disconnected'`, `className.baseVal.toContain('text-green-500')`, `className.baseVal.toContain('animate-spin')`, `className.baseVal.toContain('text-red-500')`. No existence-only or truthy-only checks.
+**Gate 4 — PASS:** No dead code, unused imports, or TODO comments in test file. TODO.md correctly marks the StatusDot/ConnectionIndicator `[review]` task `[x]`.
+**Gate 5 — PASS:** Dashboard vitest → 25 test files, 269 tests, all pass. Dashboard `tsc --noEmit` → 0 errors. Pre-existing 33 failures and 16 type errors in non-dashboard suite are unchanged; tracked as `[qa/P1]`.
+**Gate 6 — PASS:** Test-only commit with no observable output; empty proof is the correct expected outcome.
+**Gate 8 — PASS:** No dependency changes.
+**Gate 9 — PASS:** No user-facing docs changed.
+
+- **Gate 3 (StatusIndicators) — PASS (resolved):** All flagged branches now covered: `StatusDot` running (2-child animated-pulse-dot structure asserted, line 76-80), stopped (bg-muted-foreground/50 asserted, zero children confirmed, line 90-91), unknown-fallback via `status='idle'` (bg-muted-foreground/30 asserted, line 100); `ConnectionIndicator` connected/connecting/disconnected (text labels and icon class names asserted). Prior `[review]` task closed.
+
+- **Gate 3 (QACoverageBadge) — FAIL (persists):** No `QACoverageBadge.test.tsx` exists. Five untested branches remain (green tone ≥80%, red tone <50%, null/N/A state, `!isRecord` guard, `payload.percentage` fallback). Open `[review]` task in TODO.md "Up Next".
+
+- **Gate 7 — FAIL (persists):** No browser/Playwright verification. Container missing `libatk-1.0.so.0`; `sudo apt-get` blocked by container security flags. `[review]` task deferred in TODO.md.
+
+---
