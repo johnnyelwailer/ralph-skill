@@ -58,7 +58,6 @@ except Exception:
     if [ "$merge_rc" -ne 0 ]; then
         # Check if it's a real conflict (unmerged paths present)
         if git -C "$WORK_DIR" diff --name-only --diff-filter=U 2>/dev/null | grep -q .; then
-            git -C "$WORK_DIR" merge --abort 2>/dev/null || true
             write_log_entry "merge_conflict" \
                 "base_branch" "$base_branch" \
                 "iteration" "$ITERATION"

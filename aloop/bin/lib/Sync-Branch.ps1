@@ -65,8 +65,6 @@ function Sync-Branch {
                 base_branch = $baseBranch
                 iteration   = $iteration
             }
-            # Preserve conflict markers for merge agent, then abort the merge state
-            git -C "$WorkDir" merge --abort 2>$null | Out-Null
             # Copy merge conflict prompt into queue
             $queueDir = Join-Path $SessionDir "queue"
             if (-not (Test-Path $queueDir)) { New-Item -ItemType Directory -Path $queueDir -Force | Out-Null }

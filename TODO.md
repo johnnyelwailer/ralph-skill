@@ -31,6 +31,15 @@ Shell integration test failures — out of scope for CI setup (loop.sh behavior 
 
 ### Completed
 
+- [x] Remove `git merge --abort` from conflict path in both `aloop/bin/lib/sync_branch.sh` (line 61) and `aloop/bin/lib/Sync-Branch.ps1` (line 69)
+  - Both scripts call `git merge --abort` on conflict, which wipes the conflict markers from the working tree before the merge agent can resolve them.
+  - `PROMPT_merge.md` explicitly expects markers to be present: "left conflict markers in the working tree" and step 1 is `git diff --name-only --diff-filter=U`.
+  - Both test suites confirm markers must remain:
+    - Bash (`loop_branch_coverage.tests.sh` ~line 1170): checks `git diff --name-only --diff-filter=U | grep -q .`
+    - PowerShell (`loop.tests.ps1` ~line 3999): checks `$unmerged | Should -Not -BeNullOrEmpty`
+  - Fix: remove the `git merge --abort` lines from both lib files. Leave the working tree with conflict markers so the queued merge agent can resolve them.
+  - Verify: `bash aloop/bin/loop_branch_coverage.tests.sh` must show 57/57 branches covered.
+
 - [x] **[review] Extract `Sync-Branch` from loop.ps1 to `lib/Sync-Branch.ps1`, revert out-of-scope changes, achieve net LOC reduction vs master**
   - `Sync-Branch` function extracted from `loop.ps1` (inline, ~83 lines) to `aloop/bin/lib/Sync-Branch.ps1` (89 LOC); `loop.ps1` now dot-sources it with a single line, achieving net-negative LOC change on `loop.ps1`.
   - Out-of-scope additions (extra helper functions and test scaffolding added directly to loop scripts) were reverted to comply with Constitution Rule 1.
