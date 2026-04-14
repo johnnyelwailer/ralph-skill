@@ -1,5 +1,65 @@
 # QA Log
 
+## QA Session — 2026-04-14 (iteration 52)
+
+### Test Environment
+- Binary under test: /tmp/aloop-test-install-VON4zC/bin/aloop (version 1.0.0)
+- Worktree: /home/pj/.aloop/sessions/orchestrator-20260321-172932-issue-157-20260414-184129/worktree
+- Branch: aloop/issue-157
+- Commit: f0692311
+- Features tested: 4
+
+### Results
+- PASS: QACoverageBadge.tsx branch coverage tests — 5/5 tests pass (green tone, red tone, N/A/available:false, parseQACoveragePayload non-record, percentage fallback) — FAIL → PASS
+- PASS: Dashboard vitest suite (all tests) — 274/274 pass across 26 test files (up from 269; 5 new QACoverageBadge tests added)
+- FAIL: npm run type-check — still 16 TS errors in orchestrate.ts/process-requests.ts (pre-existing; unchanged from iter 48; bugs already filed)
+- FAIL: AppView.tsx LOC — still 1393 LOC (refactoring Up Next tasks not started; unchanged)
+
+### Bugs Filed
+None — no new bugs. Pre-existing [qa/P1] bugs remain open and unresolved.
+
+### Re-tested
+- QACoverageBadge.tsx branch coverage: FAIL → PASS (QACoverageBadge.test.tsx added at f0692311, 5 tests)
+- Dashboard vitest suite: PASS (269) → PASS (274, +5 QACoverageBadge tests)
+- npm run type-check: FAIL (16 errors) → FAIL (16 errors, unchanged)
+- AppView.tsx LOC: FAIL (1393) → FAIL (1393, unchanged — expected, Up Next tasks pending)
+
+### Command Transcript
+
+```
+# Binary installed from source
+$ ALOOP_BIN=/tmp/aloop-test-install-VON4zC/bin/aloop
+$ $ALOOP_BIN --version
+1.0.0
+
+# QACoverageBadge tests specifically
+$ npx vitest run --reporter=verbose src/components/layout/QACoverageBadge.test.tsx
+✓ QACoverageBadge > renders green tone when coverage_percent >= 80
+✓ QACoverageBadge > renders red tone when coverage_percent < 50
+✓ QACoverageBadge > renders N/A with muted tone when available is false
+✓ QACoverageBadge > renders N/A when parseQACoveragePayload receives non-record input (null)
+✓ QACoverageBadge > uses payload.percentage as fallback when coverage_percent is absent
+Test Files: 1 passed (1)
+Tests: 5 passed (5)
+Exit code: 0
+
+# Full dashboard vitest suite
+$ npx vitest run --reporter=verbose [from aloop/cli/dashboard]
+Test Files: 26 passed (26)
+Tests: 274 passed (274)
+Exit code: 0
+
+# TypeScript type-check
+$ npm --prefix aloop/cli run type-check
+src/commands/orchestrate.ts(3166,7): error TS2304: Cannot find name 'state'.
+... (16 errors total, same as iter 48)
+Exit code: 2
+
+# AppView.tsx LOC
+$ wc -l aloop/cli/dashboard/src/AppView.tsx
+1393 (unchanged)
+```
+
 ## QA Session — 2026-04-14 (iteration 46)
 
 ### Test Environment
