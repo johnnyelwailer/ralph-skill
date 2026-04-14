@@ -107,6 +107,15 @@
 
 ## State transitions
 
+- [x] #157: child PID 139176 ALIVE (started 16:46:37, iteration=30, cyclePosition=1 = build phase). Concurrency slot occupied — no new dispatches.
+- [x] #173: still `blocked_on_human` — no action.
+- [x] #108: still `blocked_on_human` — no action.
+- [x] No queue overrides found. Awaiting #157 completion before next dispatch.
+
+# orchestrator scan (2026-04-14 ~fifth pass)
+
+## State transitions
+
 - [x] #157: child PID 139176 ALIVE. Session `orchestrator-20260321-172932-issue-157-20260414-164637`, iteration=2, phase=planning (loop-plan.json tasks=[]), PR #310 open. Concurrency slot occupied (cap=1) — no new dispatches.
 - [x] #108: In review, blocked_on_human=True — PR #132 has 9 failed rebase attempts against agent/trunk. Human must manually rebase. No automated action possible.
 - [x] Queue empty — no override prompts to process.
