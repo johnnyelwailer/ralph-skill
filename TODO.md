@@ -36,7 +36,7 @@
 - [x] #160: PR #252 and PR #309 both closed without merge. Reset `needs_redispatch=True` in orchestrator.json.
 - [x] #172: PR #211 and PR #308 both closed without merge. Reset `needs_redispatch=True` in orchestrator.json.
 - [x] #144: GH issue is CLOSED. Updated orchestrator.json status → `Closed on GitHub - paused`.
-- [ ] #39, #124 still needs_redispatch=True — awaiting free slot (blocked by #157 in-progress).
+- [x] #39, #124, and 15 other issues reset to `Ready` (see scan pass below).
 
 # runtime bug fix (2026-04-14)
 
@@ -67,3 +67,18 @@
   - **What's mismatched**: SPEC.md lines 413, 477-497 describe `pipeline.yml` as the configuration file that compiles into `loop-plan.json`. The acceptance criteria at line 840 references "pipeline.yml / loop-plan.json". However, no `pipeline.yml` file exists anywhere in the worktree. The loop-plan.json appears to be compiled by runtime code, not read from a pipeline.yml file.
   - **Files involved**: `SPEC.md:413`, `SPEC.md:477-497`, `SPEC.md:840`
   - **Suggested fix**: Either implement `pipeline.yml` support in the runtime (compile to loop-plan.json), or update SPEC.md to remove references to `pipeline.yml` and clarify that `loop-plan.json` is the direct configuration input to the loop scripts.
+# orchestrator scan (2026-04-14 ~second pass)
+
+## State transitions
+
+- [x] #157: child PID 116572 alive and running (started 16:31, state=running). Concurrency slot occupied (cap=1).
+- [x] #173: still `blocked_on_human` — no action. Human must remove false "Implementation Status" section from GH issue #173 body.
+- [x] #108: still `blocked_on_human` — 9 failed rebases. Human must manually rebase PR #132 onto agent/trunk.
+- [x] 17 issues reset from `In review` (needs_redispatch=true or stuck with no PR) → `Ready`:
+  - #39 (changes_requested on PR #289, review feedback ready)
+  - #101, #111, #114, #124 (PR closed or merge conflict)
+  - #143, #145, #147 (no PR, pending)
+  - #151, #152, #153, #154, #155, #156 (no PR, pending)
+  - #158 (stuck pending/no PR)
+  - #160, #172 (PRs closed without merge, already reset in prior scan)
+- [ ] Awaiting #157 completion before next dispatch (concurrency_cap=1).
