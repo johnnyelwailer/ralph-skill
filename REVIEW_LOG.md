@@ -127,3 +127,37 @@ Branch coverage tests: 57/57 PASS. All 5 sync paths (up_to_date, merged, fetch_f
 - Gate 3: 100% branch coverage confirmed. ✓
 - Gate 4: Dead/wrong code removed (the `git merge --abort` lines). No new code. ✓
 - Gates 6, 7, 8, 9: N/A.
+
+---
+
+## Review — 2026-04-14 — commit 31f40abf..a0c9af4c
+
+**Verdict: FAIL** (2 findings → written to TODO.md as [review] tasks)
+**Scope:** `aloop/bin/lib/sync_branch.sh`, `aloop/bin/lib/Sync-Branch.ps1`, `aloop/bin/loop.sh`, `aloop/bin/loop.ps1`, `aloop/bin/loop_branch_coverage.tests.sh`, `aloop/bin/loop.tests.ps1`, `aloop/bin/tests/loop.bats`, `aloop/cli/src/commands/orchestrate.ts`, `aloop/cli/src/commands/orchestrate.test.ts`
+
+### Prior finding status
+
+**Finding 1 (Constitution Rule 1 — loop.sh/loop.ps1 growth): RESOLVED ✓**
+`loop.sh` is now 2239 LOC (master baseline 2373 = −134 net). `loop.ps1` is now 2179 LOC (master baseline 2273 = −94 net). `sync_branch()` / `Sync-Branch` extracted to `aloop/bin/lib/` (91 and 90 LOC respectively). Constitution Rule 1 satisfied.
+
+### New findings
+
+**Gate 1 / Constitution Rules 12 & 18: orchestrate.ts out-of-scope changes — FAIL**
+
+`aloop/cli/src/commands/orchestrate.ts` has multiple behavior changes vs master, all explicitly Out of Scope per TASK_SPEC: (a) `validateDoR` acceptance-criteria detection widened + Criterion 5 `dor_validated` added; (b) `applyEstimateResults` status progression narrowed from 3 statuses to only `Needs refinement`; (c) `getDispatchableIssues` `dor_validated` guard removed; (d) `launchChildLoop` gained `baseBranch?` parameter seeding `base_branch`/`auto_merge` into meta.json; (e) `state.trunk_branch` passed at 3 dispatch call sites.
+
+The sync feature does NOT require these orchestrate.ts changes — `sync_branch.sh` has its own fallback chain (meta.json → git config → main → master) and 58/58 shell tests pass without them.
+
+**Gate 5 / Gate 1: orchestrate.test.ts changes introduce 6 new test regressions — FAIL**
+
+`aloop/cli/src/commands/orchestrate.test.ts` was modified out of scope: checkPrGates test renamed from "returns pending when diff fetch fails" → "flags for human when diff fetch fails" with `pending` expectation changed to `flag-for-human`. Branch's orchestrate.ts still returns `pending` for that path → mismatch. Additionally, prior orchestrate.ts behavior changes cascade into failures in reviewPrDiff, processPrLifecycle, monitorChildSessions suites.
+
+Confirmed: running branch test file against master's orchestrate.ts gives 29 failures (master had 25 pre-existing); running branch source gives 10 failures — 6 of which are NEW vs master (absent from master's failure list): `"returns pending when…"` (checkPrGates), `"auto-approves when no agent reviewer configured"` (reviewPrDiff), `"merges PR when all gates pass and review approves"`, `"handles merge failure after approval"`, `"closes issue after successful merge"` (processPrLifecycle), `"marks stopped child as failed"` (monitorChildSessions).
+
+### Gates passing
+
+- Gate 2: `loop_branch_coverage.tests.sh` sync tests (lines 1058–1221): all 6 paths assert concrete event field values — `"result":"merged"`, `"merged_commit_count":1`, `"result":"up_to_date"`, `fetch_failed` event presence, unmerged-path diff filter for conflict markers, no `branch_sync` event on disabled paths. Thorough.
+- Gate 3: 58/58 branch coverage (100%) — all sync paths including `sync.disabled_by_flag`. ✓
+- Gate 4: `sync_branch.sh` and `Sync-Branch.ps1` clean — no dead code, no hardcoded paths, correct use of `write_log_entry`/`write_log_entry_mixed`. ✓
+- Gate 5 (shell): `bash aloop/bin/loop_branch_coverage.tests.sh` → 58/58 PASS. ✓
+- Gates 6, 7, 8, 9: N/A for shell/lib changes.

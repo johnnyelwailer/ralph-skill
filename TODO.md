@@ -7,6 +7,8 @@ _(none)_
 
 ### Up Next
 
+- [ ] [review] Revert `aloop/cli/src/commands/orchestrate.ts` to master state — the branch made multiple out-of-scope changes: (a) `validateDoR` acceptance criteria widened + dor_validated Criterion 5 added; (b) `applyEstimateResults` status progression narrowed; (c) `getDispatchableIssues` dor_validated guard removed; (d) `launchChildLoop` gained `baseBranch?` param + seeds `base_branch`/`auto_merge` into meta.json. TASK_SPEC explicitly lists `aloop/cli/src/**` as Out of Scope. (priority: high)
+- [ ] [review] Revert `aloop/cli/src/commands/orchestrate.test.ts` to master state — test file changes introduced 6 new failures vs master (checkPrGates, reviewPrDiff, processPrLifecycle, monitorChildSessions). All 6 are absent from master's failure list. (priority: high)
 - [ ] Fix branch triggers in `ci.yml`: replace `agent/trunk` with `agent/*` wildcard; add `aloop/*` to push triggers (TASK_SPEC: "Workflow supports `agent/*` branch pattern")
 - [ ] Add CLI tests job to `ci.yml`: `bun install` + `bun run test` in `aloop/cli` (TASK_SPEC acceptance criteria #3)
 - [ ] Add CLI type-check job to `ci.yml`: `bun install` + `bun run type-check` in `aloop/cli` (TASK_SPEC acceptance criteria #5)
