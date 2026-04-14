@@ -28,6 +28,8 @@ to loop.sh or loop.ps1 are needed or permitted.**
 
 ### Up Next
 
+- [ ] [review] Gate 3: `status.test.ts` — the four `readProviderHealth` filtering tests only exercise files with **zero** overlapping canonical fields (`count`, `updated_at`, `hour`, `requests`). There is no test for a file that has exactly one canonical field coincidentally present (e.g. `{ "consecutive_failures": 0 }` or `{ "status": "ok" }`). Such a file passes `isProviderHealthRecord` today, exposing the known false-positive bug. Add a test like `readProviderHealth excludes files with a single coincidental canonical field (no valid status)` that writes `{ "consecutive_failures": 0 }` to a non-provider JSON file and asserts `health` is empty. That test will fail with the current `some()` check, forcing the fix alongside it. (priority: high)
+
 - [x] [qa/P1] Fix `readProviderHealth` in `cli/lib/session.mjs`: skip hidden files (names starting
   with `.`) and validate the provider health schema before including a file's data. A file is a
   valid provider health record if its content is an object with at least one of the canonical fields:
