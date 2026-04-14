@@ -31,22 +31,19 @@ Shell integration test failures — out of scope for CI setup (loop.sh behavior 
 
 ### Completed
 
-- [x] Implement `sync_branch()` in bash (`aloop/bin/lib/sync_branch.sh`)
-  - Reads `auto_merge` and `base_branch` from `meta.json` via python3
-  - Falls back: `git config init.defaultBranch` → `main` → `master`
-  - `git fetch origin <base_branch>` non-fatally, then `git merge --no-edit`
-  - Conflict: emits `merge_conflict` event, copies `PROMPT_merge.md` → `queue/000-merge-conflict.md`, returns 1
-  - Success: emits `branch_sync` event with `result` (`up_to_date`/`merged`) and `merged_commit_count`
-- [x] Integrate `sync_branch()` call into `loop.sh` iteration loop (sources lib, calls before each iteration, `continue` on non-zero)
-- [x] Implement `Sync-Branch()` in `loop.ps1` with identical behavior
-- [x] Integrate `Sync-Branch()` call into `loop.ps1` iteration loop
-- [x] Create `aloop/templates/PROMPT_merge.md` with merge agent instructions
-- [x] Extract `sync_branch()` into `aloop/bin/lib/sync_branch.sh` (satisfies Constitution Rule 1 — loop.sh shrank)
-- [x] Add PowerShell behavioral tests for `Sync-Branch()` (5 tests: up-to-date, merged, fetch-fail, conflict, auto_merge=false)
-- [x] Add bash integration tests for `sync_branch()` in `aloop/bin/tests/loop.bats` (5 tests: up-to-date, merged, fetch-fail, conflict, auto_merge=false; tests 16-20; uses `_setup_sync_git_env` BATS helper + `write_log_entry`/`write_log_entry_mixed` stubs)
-- [x] Fix infinite-conflict-loop bug: removed `git merge --abort` so conflict markers remain in the working tree for the merge agent to process.
-- [x] Fix sync.conflict test assertion in `loop_branch_coverage.tests.sh` (assert unmerged paths ARE present after conflict, not absent).
-- [x] Fix sync.conflict test assertion in `loop.tests.ps1` (`Should -Not -BeNullOrEmpty` instead of `Should -BeNullOrEmpty`).
+- [x] **[review] Extract `Sync-Branch` from loop.ps1 to `lib/Sync-Branch.ps1`, revert out-of-scope changes, achieve net LOC reduction vs master**
+  - `Sync-Branch` function extracted from `loop.ps1` (inline, ~83 lines) to `aloop/bin/lib/Sync-Branch.ps1` (89 LOC); `loop.ps1` now dot-sources it with a single line, achieving net-negative LOC change on `loop.ps1`.
+  - Out-of-scope additions (extra helper functions and test scaffolding added directly to loop scripts) were reverted to comply with Constitution Rule 1.
+  - Total project LOC remains below the 2273-line master baseline.
+
+- [x] Implement `sync_branch()` in bash (`aloop/bin/lib/sync_branch.sh`, 87 LOC)
+- [x] Integrate `sync_branch()` into `loop.sh` (source at line 1997–1998, conditional call at line 2034)
+- [x] Extract `Sync-Branch` into `aloop/bin/lib/Sync-Branch.ps1` (89 LOC) and dot-source from `loop.ps1` line 1848
+- [x] Integrate `Sync-Branch` call into `loop.ps1` iteration cycle (line 1954)
+- [x] `aloop/templates/PROMPT_merge.md` has correct frontmatter (`agent: merge`, `trigger: merge_conflict`) and merge resolution instructions
+- [x] Add bash branch coverage tests for all 5 sync paths in `loop_branch_coverage.tests.sh` (sync.merged, sync.up_to_date, sync.fetch_failure, sync.conflict, sync.disabled)
+- [x] Add PowerShell behavioral tests for `Sync-Branch` in `loop.tests.ps1` (lines 3815–4015)
+- [x] Add bats integration tests for `sync_branch()` in `aloop/bin/tests/loop.bats`
 - [x] `.github/workflows/ci.yml` file exists — verified by direct read of branch HEAD
 - [x] Dashboard tests job (`npm test` in `aloop/cli/dashboard`) — present in ci.yml, correct commands
 - [x] README.md CI badge URL contains `actions/workflows/ci.yml/badge.svg` — verified line 1 of README.md
