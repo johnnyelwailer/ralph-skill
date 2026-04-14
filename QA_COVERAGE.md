@@ -18,3 +18,12 @@
 | Dashboard type-check (`npm run type-check`) | 2026-04-13 | 0e6ea585 | FAIL | tsc exits code 2: missing Vitest globals in App.coverage.test.ts, ArtifactEntry shape mismatch in App.test.tsx. Bug filed [qa/P1] |
 | CLI tests (`bun run test`) | 2026-04-13 | 0e6ea585 | FAIL | 27 failures out of 922 tests via tsx --test; pre-existing test failures in codebase |
 | Loop script tests (Windows/Pester) | 2026-04-13 | — | never | Requires Windows; skipped this session |
+| Storybook 8 infrastructure (`npm run build-storybook`) | 2026-04-14 | 2a0f9bf2 | PASS | Builds successfully; .storybook/main.ts + preview.tsx exist; Tailwind+dark mode decorator in place; 0 stories (stories are Up Next) |
+| lib/ansi.ts extraction + ansi.test.ts | 2026-04-14 | 2a0f9bf2 | PASS | All 23 tests pass; exact RGB assertion at line 105 confirmed ('255,0,0' for index 196); 118 LOC |
+| lib/format.ts extraction + format.test.ts | 2026-04-14 | 2a0f9bf2 | PARTIAL | 59 tests pass; format.ts is 347 LOC (>200 LOC limit, tracked review item); 5 exported functions untested (tracked review item) |
+| lib/types.ts extraction | 2026-04-14 | 2a0f9bf2 | PASS | 123 LOC, types exported; ansi.ts and format.ts import from it correctly |
+| CostDisplay.tsx extracted component | 2026-04-14 | 2a0f9bf2 | PASS | 95 LOC, tests pass in isolation |
+| ResponsiveLayout.tsx extracted component | 2026-04-14 | 2a0f9bf2 | PASS | 100 LOC, tests pass in isolation |
+| ArtifactViewer.tsx extracted component | 2026-04-14 | 2a0f9bf2 | FAIL | Tests pass but `npm run type-check` fails: ArtifactViewer.tsx imports ArtifactEntry/ManifestPayload from AppView (not exported); should import from lib/types. 5 TS errors. Bug filed [qa/P1] |
+| Dashboard unit tests (`npm test`) — full suite | 2026-04-14 | 2a0f9bf2 | PARTIAL | 309/317 pass; 8 fail in 3 App.coverage test files due to test isolation timeouts (pre-existing: master has 15 failures in 8 files) |
+| Dashboard type-check (`npm run type-check`) | 2026-04-14 | 2a0f9bf2 | FAIL | 8 TS errors: 5 new in ArtifactViewer.tsx/.test.tsx (bug filed [qa/P1]); 3 pre-existing TS2769 in App.coverage tests |

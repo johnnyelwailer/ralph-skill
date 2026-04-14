@@ -1,5 +1,84 @@
 # QA Log
 
+## QA Session — 2026-04-14 (iteration 27, issue-6)
+
+### Test Environment
+- Branch: aloop/issue-6 @ 2a0f9bf2
+- Dashboard: aloop/cli/dashboard/
+- Features tested: 5
+
+### Results
+- PASS: Storybook 8 infrastructure (`npm run build-storybook` exits 0; .storybook/main.ts + preview.tsx present; decorator applies Tailwind + dark mode)
+- PASS: lib/ansi.ts extraction (118 LOC; all 23 tests pass; exact RGB assertion confirmed at line 105)
+- PARTIAL: lib/format.ts extraction (347 LOC — exceeds 200 LOC limit, tracked review item; 59 tests pass but 5 exported functions untested)
+- PASS: lib/types.ts extraction (123 LOC; types exported correctly; imported by lib/ansi.ts and lib/format.ts)
+- PASS: CostDisplay.tsx (95 LOC, tests pass), ResponsiveLayout.tsx (100 LOC, tests pass)
+- FAIL: ArtifactViewer.tsx — type-check fails with 5 TS2459/TS7006 errors; imports from AppView instead of lib/types
+- PARTIAL: Full test suite — 309/317 pass; 8 failures in App.coverage tests from test isolation timeouts (pre-existing on master: 15 failures)
+
+### Bugs Filed
+- [qa/P1] ArtifactViewer.tsx type errors: imports non-exported types from AppView instead of lib/types
+
+### Command Transcript
+
+#### Storybook build
+```
+npm run build-storybook
+# Exit 0; WARN: No story files found (expected — stories are "Up Next")
+# storybook-static built successfully with 0 stories
+```
+
+#### lib/ansi.ts tests
+```
+npm test -- src/lib/ansi.test.ts
+# 23 passed; line 105 asserts segs[0].style.fg === '255,0,0' (exact RGB for index 196)
+```
+
+#### lib/format.ts tests
+```
+npm test -- src/lib/format.test.ts
+# 59 passed; format.ts is 347 LOC (tracked review item)
+```
+
+#### Extracted components (isolation)
+```
+npm test -- src/components/artifacts/ArtifactViewer.test.tsx
+npm test -- src/components/layout/ResponsiveLayout.test.tsx
+npm test -- src/components/progress/CostDisplay.test.tsx
+# All pass in isolation
+```
+
+#### Full test suite
+```
+npm test
+# 317 tests (309 pass, 8 fail)
+# Failures: App.coverage.test.ts (5), App.coverage.integration-app.test.ts (2),
+#           App.coverage.integration-sidebar.test.ts (1)
+# All failures are timeout-based test isolation issues
+# Confirmed pre-existing: master branch has 15 failures in 8 files
+```
+
+#### Type check
+```
+npm run type-check
+# Exit 2; 8 TS errors:
+# NEW (5): ArtifactViewer.tsx(8,9): TS2459 ArtifactEntry/ManifestPayload not exported from AppView
+#          ArtifactViewer.test.tsx(5): TS2459 LogEntryRow/ManifestPayload/LogEntry not exported from AppView
+#          ArtifactViewer.tsx(52): TS7006 parameter 'a' implicit any
+# PRE-EXISTING (3): App.coverage.test.ts TS2769 (overload mismatch, unchanged from master)
+```
+
+#### File size check
+```
+wc -l aloop/cli/dashboard/src/lib/ansi.ts       # 118 ✓
+wc -l aloop/cli/dashboard/src/lib/format.ts      # 347 ✗ (>200 LOC, tracked)
+wc -l aloop/cli/dashboard/src/lib/types.ts       # 123 ✓
+wc -l .../components/artifacts/ArtifactViewer.tsx # 109 ✓
+wc -l .../components/layout/ResponsiveLayout.tsx  # 100 ✓
+wc -l .../components/progress/CostDisplay.tsx     # 95 ✓
+wc -l aloop/cli/dashboard/src/AppView.tsx         # 1992 (not yet reduced — "Up Next")
+```
+
 ## QA Session — 2026-04-13 (iteration 4)
 
 ### Test Environment

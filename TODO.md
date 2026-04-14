@@ -4,6 +4,8 @@
 
 ### In Progress
 
+- [ ] [qa/P1] `ArtifactViewer.tsx` imports types from `../../AppView` that are not exported: `ArtifactEntry`, `ManifestPayload` (TS2459 x2). `ArtifactViewer.test.tsx` also imports `LogEntryRow`, `ManifestPayload`, `LogEntry` from AppView (TS2459 x3). Also `Parameter 'a' implicitly has an 'any' type` (TS7006). All three files should import from `../../lib/types` instead. `npm run type-check` exits code 2 with 5 TS errors on these files. Tested at iter 27. (priority: high)
+
 - [x] [review] Gate 2: `ansi.test.ts:105` — `expect(segs[0].style.fg).toBeDefined()` is a shallow existence check; rewrite to assert the exact RGB value (e.g. `'215,0,0'` for palette index 196) so a broken colour lookup would actually fail the test. (priority: high)
 - [ ] [review] Gate 3: `format.ts` exports `formatTime`, `formatTimeShort`, `extractIterationUsage`, `parseManifest`, and `parseQACoveragePayload` — none of these have any tests in `format.test.ts`. Add dedicated `describe` blocks for each, covering at minimum: happy path with concrete value assertions, empty/null input, and the key error branches (e.g. `extractIterationUsage` with `NaN` cost, zero cost, null input; `parseManifest` with null manifest; `parseQACoveragePayload` with each status value). (priority: high)
 - [ ] [review] Gate 3: `format.test.ts` — `parseLogLine` tests cover only the happy path (JSON event) and plain text; add tests for: error event (isError=true, resultDetail from `reason`/`error`/`exit_code`), verdict event (resultDetail from `verdict`), iteration with `commitHash` (resultDetail truncated to 7 chars), and `filesChanged` array parsing. (priority: high)
