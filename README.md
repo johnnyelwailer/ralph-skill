@@ -102,29 +102,6 @@ Five AI coding agents supported — use one, or round-robin across multiple:
 
 **Round-robin mode** cycles providers each iteration — e.g., Claude plans, Codex builds, Gemini reviews, OpenCode builds.
 
-### Shipped Agents (OpenCode)
-
-When OpenCode is enabled, `aloop setup` installs three specialist agents to `.opencode/agents/`. Invoke them directly with `opencode run --agent <name>`:
-
-| Agent | Description | Model |
-|-------|-------------|-------|
-| `code-critic` | Deep code review for subtle bugs and security issues | `claude-sonnet-4` (reasoning: xhigh) |
-| `error-analyst` | Parses error logs and stack traces to suggest fixes | `gemini-3.1-flash-lite` (reasoning: medium) |
-| `vision-reviewer` | Analyzes screenshots for layout and visual issues | `gemini-3.1-flash-lite` (reasoning: medium) |
-
-```bash
-# Run the code critic on your working directory
-opencode run --agent code-critic
-
-# Analyze error output
-opencode run --agent error-analyst
-
-# Review a screenshot for layout issues
-opencode run --agent vision-reviewer
-```
-
-These agents run as read-only subagents (no write/edit access) via OpenRouter. Customize them by editing the markdown files in `.opencode/agents/`.
-
 Provider health is tracked automatically. Failed providers enter cooldown with exponential backoff and are skipped until recovery. Auth failures use longer cooldowns (10min → 30min → 1hr) but still auto-retry.
 
 ## Prerequisites
