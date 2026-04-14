@@ -143,3 +143,14 @@
 - [x] #173: remains blocked_on_human — human must fix GH issue body
 - [x] #108: remains blocked_on_human — 9 failed rebases, human must resolve
 - [x] Concurrency cap=1, slot occupied by #157 — no new dispatches this pass
+
+# orchestrator scan (2026-04-14 ~eighth pass)
+
+## State transitions
+
+- [x] #157: child PID 139176 ALIVE. Iteration=14, phase=**review** (frontmatter_applied 16:57:17Z, timeout=3600s, ~32 min elapsed — within limits). loop-plan.json: cyclePosition=4 (review), allTasksMarkedDone=false. PR #310 open. Concurrency slot occupied (cap=1) — no new dispatches.
+  - Note: previous scan reported "iteration 28 / phase orch" — this was a misread. Authoritative state: iteration=14, review phase, progressing normally.
+- [x] #173: still blocked_on_human — human must remove false "Implementation Status" section from GH issue #173 body.
+- [x] #108: still blocked_on_human (In review) — human must manually rebase PR #132 onto agent/trunk.
+- [x] Queue directory absent — no override prompts.
+- [x] 105 Ready issues waiting. Top priority (-10): #188, #187, #186, #185, #184. Next dispatch after #157 completes.
