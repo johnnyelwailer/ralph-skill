@@ -15,17 +15,17 @@ Already extracted (with issues): `Header.tsx` (385 LOC — exceeds 200 LOC limit
 
 ### QA Bugs
 
-- [x] [qa/P1] **Fix type-check errors** — `npm run type-check` exits 2 with 5 errors: (1) `Sidebar` gained required `sessionCost` prop but `App.coverage.test.ts:636` passes no `sessionCost`, (2) `TooltipProvider` missing `children` at lines 636/674/695, (3) `DocsPanel.test.tsx:85` passes `null` where `string` is required. Fix the type errors in the test files and/or fix prop definitions to use optional types where appropriate. (priority: high)
+- [x] [qa/P1] **Fix type-check errors** — `npm run type-check` exits 2 with 5 errors. Fixed prop definitions and test files. `tsc --noEmit` is now clean. (priority: high)
 
-- [x] [qa/P1] **Fix 3 failing tests in App.coverage.test.ts** — (1) "covers panel toggles" finds multiple buttons matching /activity/i, (2) "covers older-session grouping" — `container.querySelector('aside .mt-3 button')` returns null after sidebar toggle, (3) "covers ActivityPanel and LogEntryRow exhaustive" — `findByText('a.png')` fails. Investigate and fix selectors/assertions. (priority: high)
+- [x] [qa/P1] **Fix 3 failing tests in App.coverage.test.ts** — Fixed selectors/assertions for panel toggles, older-session grouping, and ActivityPanel exhaustive tests. All 243 tests now pass. (priority: high)
 
-- [ ] [qa/P1] **Trim DocsPanel.tsx to ≤200 LOC** — extracted `src/components/layout/DocsPanel.tsx` is 204 LOC (4 lines over limit). Extract a sub-component (e.g. `HealthPanel`) into a separate file, or remove redundant code to get under 200 LOC. (priority: high)
+- [ ] [qa/P1] **Trim DocsPanel.tsx to ≤200 LOC** — `src/components/layout/DocsPanel.tsx` is 204 LOC (4 lines over limit). Extract a sub-component (e.g. `HealthPanel`) into a separate file, or remove redundant code to get under 200 LOC. (priority: high)
 
 ### In Progress
 
-- [ ] [review] Gate 3: `DocsPanel.tsx` new module has <90% branch coverage — add tests for: (1) `DocContent` with `wide=true` and a SPEC-named file (exercises lines 126–137, the sticky-sidebar layout path), (2) `HealthPanel` with `status='cooldown'` including a `cooldownUntil` future timestamp to cover the time-remaining display, (3) `HealthPanel` with `status='failed'` and `status='unknown'`. New modules require ≥90% branch coverage (priority: high)
+- [x] [review] Gate 3: `DocsPanel.tsx` new module has <90% branch coverage — add tests for: (1) `DocContent` with `wide=true` and a SPEC-named file (exercises lines 126–137, the sticky-sidebar layout path), (2) `HealthPanel` with `status='cooldown'` including a `cooldownUntil` future timestamp to cover the time-remaining display, (3) `HealthPanel` with `status='failed'` and `status='unknown'`. New modules require ≥90% branch coverage. (priority: high)
 
-- [ ] [review] Gate 4: `lib/log.ts` is 381 LOC — created in commit 8df30426 as part of utility extraction, exceeds the ≤200 LOC spec limit (acceptance criterion #2) and Constitution Rule 7. Split into `log-types.ts` (types/interfaces), `log-parse.ts` (parsing functions), and `log-session.ts` (session derivation). Not yet filed as a QA bug. (priority: high)
+- [ ] [review] Gate 4: `lib/log.ts` is 381 LOC — created in commit 8df30426 as part of utility extraction, exceeds the ≤200 LOC spec limit (acceptance criterion #2) and Constitution Rule 7. Split into `log-types.ts` (types/interfaces), `log-parse.ts` (parsing functions), and `log-session.ts` (session derivation). (priority: high)
 
 - [ ] [review] Gate 4: Duplicate cooldown IIFE in `DocsPanel.tsx` — the expression `Math.max(0, Math.floor((new Date(p.cooldownUntil).getTime() - Date.now()) / 1000))` appears twice inside `HealthPanel`: once at line ~179 for the visible label, once at line ~195 inside the tooltip. Extract to a local variable `remainingSecs` before the JSX return. (priority: medium)
 
@@ -64,3 +64,7 @@ Already extracted (with issues): `Header.tsx` (385 LOC — exceeds 200 LOC limit
 - [x] **Extract `Header.tsx`** — Moved `Header` and related components to `src/components/layout/Header.tsx`. Re-exported from AppView.tsx. (Note: still 385 LOC — split task added to Up Next.)
 
 - [x] **Extract `DocsPanel.tsx`** — Moved `DocsPanel`, `DocContent`, `HealthPanel` to `src/components/layout/DocsPanel.tsx`. Re-exported from AppView.tsx. (Note: 204 LOC — trim task added to QA Bugs.)
+
+- [x] **Fix type-check errors** — All 5 type errors resolved; `tsc --noEmit` exits clean.
+
+- [x] **Fix 3 failing tests in App.coverage.test.ts** — All 243 tests pass.
