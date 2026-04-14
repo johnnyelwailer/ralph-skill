@@ -23,7 +23,7 @@ Implement pre-iteration branch sync so each loop iteration attempts to merge the
 
 ## Constraints
 - This issue explicitly authorizes adding `sync_branch` / `Sync-Branch` in loop runners (Constitution #1 exception clause).
-- Keep runner behavior mechanical only: resolve base branch, fetch, merge, detect conflict, emit event, queue prompt, abort merge. Do not implement conflict resolution in loop scripts (Constitution #1, #8).
+- Keep runner behavior mechanical only: resolve base branch, fetch, merge, detect conflict, emit event, queue prompt, leave markers for resolution. Do not implement conflict resolution in loop scripts (Constitution #1, #8).
 - Avoid hardcoded prompt filename routing in loop code; dispatch by prompt frontmatter trigger `merge_conflict` so prompt selection remains data-driven (Constitution #6).
 - Base branch resolution must be explicit and identical across Bash/PowerShell: `meta.json.base_branch` -> git-config/remote default branch -> `main` -> `master`.
 - Sync must be disableable via config/flag, default enabled (Constitution #15, #19).
@@ -53,7 +53,7 @@ Implement pre-iteration branch sync so each loop iteration attempts to merge the
 - Extend `aloop/bin/loop_branch_coverage.tests.sh` for:
   - successful merge / up-to-date path
   - fetch failure non-fatal path
-  - conflict path (event + queued prompt + merge abort)
+  - conflict path (event + queued prompt + markers remain)
   - sync-disabled path
 - Extend `aloop/bin/loop.tests.ps1` for equivalent `Sync-Branch` behavior and call-order coverage.
 
