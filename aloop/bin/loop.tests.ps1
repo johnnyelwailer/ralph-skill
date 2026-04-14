@@ -3953,7 +3953,7 @@ Describe 'loop.ps1 — Sync-Branch behavioral' {
         $r.Result | Should -Be $true
     }
 
-    It 'logs merge_conflict, writes queue file, aborts merge, returns $false on conflict' {
+    It 'logs merge_conflict, writes queue file, leaves markers for agent, returns $false on conflict' {
         $e = New-SyncEnv 'conflict'
         @{ auto_merge = $true; base_branch = 'main' } | ConvertTo-Json -Compress |
             Set-Content (Join-Path $e.SessionDir 'meta.json')
