@@ -1,3 +1,4 @@
+delete process.env.CLAUDECODE;
 import './sanitize.js';
 import { Command } from 'commander';
 import { resolveCommand } from './commands/resolve.js';
