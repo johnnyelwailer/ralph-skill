@@ -144,6 +144,16 @@
 - [x] #108: remains blocked_on_human — 9 failed rebases, human must resolve
 - [x] Concurrency cap=1, slot occupied by #157 — no new dispatches this pass
 
+# orchestrator scan (2026-04-14 iteration 33)
+
+## State transitions
+
+- [x] #157: child PID 139176 ALIVE (subprocess PID 172371 active). Session `orchestrator-20260321-172932-issue-157-20260414-164637`, iteration=16, phase=**build**, state=running (last updated 17:00:30 UTC). PR #310 open. Concurrency slot occupied (cap=1) — no new dispatches.
+- [x] #173: still `blocked_on_human` — human must remove false "Implementation Status" section from GH issue #173 body.
+- [x] #108: still `blocked_on_human` — human must manually rebase PR #132 onto agent/trunk.
+- [x] Queue empty — no override prompts to process.
+- [x] No state transitions required this pass — child progressing normally in build phase.
+
 # orchestrator scan (2026-04-14 ~eighth pass)
 
 ## State transitions
@@ -164,3 +174,13 @@
 - [x] #108: still blocked_on_human (In review) — human must manually rebase PR #132 onto agent/trunk.
 - [x] Queue: fixture files only (e2e test data, not real overrides) — nothing to process.
 - [x] 105 Ready issues waiting. No state transitions required — child active and progressing.
+
+# orchestrator scan (2026-04-14 ~tenth pass)
+
+## State transitions
+
+- [x] #157: child PID 139176 ALIVE. status.json: iteration=17, phase=**build**, state=running, updated_at=17:08:29Z. loop-plan.json: cyclePosition=2, allTasksMarkedDone=false. Concurrency slot occupied (cap=1) — no new dispatches.
+- [x] #173: still blocked_on_human — human must remove false "Implementation Status" section from GH issue #173 body.
+- [x] #108: still blocked_on_human (In review) — human must manually rebase PR #132 onto agent/trunk.
+- [x] Queue: absent — no override prompts to process.
+- [x] 105 Ready issues waiting (top priority -10: #188, #187, #186, #185, #184). No state transitions required — child active and progressing in build phase.
