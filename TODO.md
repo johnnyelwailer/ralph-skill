@@ -33,10 +33,11 @@ Shell integration test failures — out of scope for CI setup (loop.sh behavior 
 
 - [x] Implement pre-iteration branch sync with conflict detection as described in the issue
   - `aloop/bin/lib/sync_branch.sh`: sync_branch() extracted to lib; reads auto_merge/base_branch from meta.json, fetches non-fatally, merges, logs branch_sync (result=merged|up_to_date) or merge_conflict event, queues PROMPT_merge.md on conflict, leaves conflict markers for agent resolution
-  - `aloop/bin/loop.sh`: sources lib/sync_branch.sh and calls sync_branch after queue handling, before mode resolution; net LOC reduction satisfies Constitution Rule 1
-  - `aloop/bin/loop.ps1`: equivalent Sync-Branch implementation with same semantics; net LOC reduction satisfies Constitution Rule 1
+  - `aloop/bin/loop.sh`: sources lib/sync_branch.sh and calls sync_branch after queue handling, before mode resolution; net LOC reduction satisfies Constitution Rule 1 (2236 < 2329 baseline)
+  - `aloop/bin/loop.ps1`: equivalent Sync-Branch implementation with same semantics; net LOC reduction satisfies Constitution Rule 1 (2374 < 2388 baseline)
   - `aloop/templates/PROMPT_merge.md`: merge conflict resolution prompt with correct frontmatter (agent: merge, trigger: merge_conflict)
   - `aloop/bin/loop_branch_coverage.tests.sh`: 57/57 branch coverage (100%) across 5 paths: merged, up_to_date, fetch_failure, conflict, disabled
+  - `aloop/bin/loop.tests.ps1`: equivalent PowerShell Sync-Branch tests (pwsh unavailable in this environment)
 - [x] Fix infinite-conflict-loop bug: removed `git merge --abort` so conflict markers remain in the working tree for the merge agent to process.
 - [x] Fix sync.conflict test assertion in `loop_branch_coverage.tests.sh` (assert unmerged paths ARE present after conflict, not absent).
 - [x] Fix sync.conflict test assertion in `loop.tests.ps1` (`Should -Not -BeNullOrEmpty` instead of `Should -BeNullOrEmpty`).
