@@ -293,3 +293,13 @@
 - [x] #108: still blocked_on_human (In review) — human must manually rebase PR #132 onto agent/trunk.
 - [x] Queue: absent — no override prompts to process.
 - [x] No state transitions required — child #157 approaching max iterations (99/100), plan phase, provider stable on claude.
+
+# orchestrator scan (2026-04-14 ~twenty-first pass)
+
+## State transitions
+
+- [x] #157: child PID 422016 ALIVE (new child, started 18:41 after PID 139176 reaped at iter 100). status.json: iteration=13, phase=**qa**, state=running, updated_at=18:50:01Z (~10 min ago — slightly stale but qa phase expected to take several minutes). loop-plan.json: cyclePosition=3 (PROMPT_qa.md), allTasksMarkedDone=false, stuck_count=0. Sub-process PID 435177 also alive (loop.sh child). Concurrency slot occupied (cap=1) — no new dispatches.
+- [x] #173: still blocked_on_human — human must remove false "Implementation Status" section from GH issue #173 body.
+- [x] #108: still blocked_on_human (In review) — human must manually rebase PR #132 onto agent/trunk.
+- [x] Queue: absent — no override prompts to process.
+- [x] No state transitions required — child #157 progressing in qa phase, iteration 13, stuck_count=0.
