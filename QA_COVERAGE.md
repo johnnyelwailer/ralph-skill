@@ -2,8 +2,11 @@
 
 | Feature | Last Tested | Commit | Result | Notes |
 |---------|-------------|--------|--------|-------|
-| DocsPanel.tsx extraction (LOC ≤200) | 2026-04-14 | 90c20275 | FAIL | 204 LOC — exceeds 200 LOC limit by 4 lines; bug filed |
-| Header.tsx extraction (LOC ≤200) | 2026-04-14 | 90c20275 | FAIL | 385 LOC — known issue, split task tracked in TODO Up Next |
-| Footer.tsx extraction | 2026-04-14 | 90c20275 | PASS | 66 LOC, within limit |
-| npm run type-check | 2026-04-14 | 90c20275 | FAIL | 5 TypeScript errors across App.coverage.test.ts and DocsPanel.test.tsx; bug filed |
-| npm test | 2026-04-14 | 90c20275 | FAIL | 3/243 tests failing (App.coverage.test.ts); bug filed |
+| DocsPanel.tsx extraction (LOC ≤200) | 2026-04-14 | 3d911e69 | FAIL | 204 LOC — still exceeds 200 LOC limit by 4 lines; open bug still unresolved |
+| Header.tsx extraction (LOC ≤200) | 2026-04-14 | 3d911e69 | FAIL | 385 LOC — tracked in TODO Up Next as split task |
+| Footer.tsx extraction | 2026-04-14 | 3d911e69 | PASS | 66 LOC, within limit |
+| npm run type-check | 2026-04-14 | 3d911e69 | PASS | 0 errors — fixed in iter 41 (was 5 errors at iter 1) |
+| npm test | 2026-04-14 | 3d911e69 | PASS | 243/243 passing — fixed in iter 41 (was 3 failures at iter 1) |
+| AppView.tsx LOC (<100) | 2026-04-14 | 3d911e69 | FAIL | 1393 LOC — main refactoring not yet started; all Up Next tasks pending |
+| Dashboard HTML served | 2026-04-14 | 3d911e69 | PASS | Serves correct HTML at port 37055 |
+| SSE /events endpoint | 2026-04-14 | 3d911e69 | PASS | Returns live session state and log stream |

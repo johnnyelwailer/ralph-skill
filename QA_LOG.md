@@ -1,5 +1,61 @@
 # QA Log
 
+## QA Session — 2026-04-14 (iteration 41)
+
+### Test Environment
+- Worktree: /home/pj/.aloop/sessions/orchestrator-20260321-172932-issue-157-20260414-164637/worktree
+- Branch: aloop/issue-157
+- Commit: 3d911e69
+- Features tested: 6
+
+### Results
+- PASS: npm run type-check — 0 errors (re-test of previously failing; fix confirmed)
+- PASS: npm test — 243/243 passing (re-test of previously failing; fix confirmed)
+- PASS: Footer.tsx extraction — 66 LOC, within limit
+- PASS: Dashboard HTML served at http://localhost:37055
+- PASS: SSE /events endpoint returns live session data
+- FAIL: DocsPanel.tsx — still 204 LOC, open bug `[qa/P1] Trim DocsPanel.tsx to ≤200 LOC` unresolved
+- FAIL: Header.tsx — 385 LOC, tracked in TODO Up Next
+- FAIL: AppView.tsx — 1393 LOC (main refactoring Up Next tasks not started)
+
+### Bugs Filed
+- None new — all known issues already tracked in TODO.md
+
+### Re-tested
+- type-check: FAIL → PASS (fixed in 3d911e69)
+- npm test: FAIL → PASS (fixed in 3d911e69)
+- DocsPanel.tsx LOC: still FAIL (open bug unchanged)
+
+### Command Transcript
+
+```
+# Type check
+$ cd aloop/cli/dashboard && npm run type-check
+# Exit 0, 0 errors — PASS
+
+# Test suite
+$ npm test -- --run
+# 23 test files, 243 tests — all passed — PASS
+
+# LOC audit
+$ wc -l src/components/layout/*.tsx src/AppView.tsx
+   66 Footer.tsx           PASS
+  100 ResponsiveLayout.tsx PASS
+  204 DocsPanel.tsx        FAIL (open bug)
+  385 Header.tsx           FAIL (Up Next task)
+ 1393 AppView.tsx          FAIL (main refactoring not started)
+
+# Dashboard endpoint
+$ curl -s http://localhost:37055
+# Returns valid HTML with React root — PASS
+
+# SSE endpoint
+$ curl -s --max-time 3 http://localhost:37055/events?sessionId=...
+# Returns: event: state, data: {sessionDir, status, log, ...} — PASS
+```
+
+---
+
 ## QA Session — 2026-04-14 (iteration 1)
 
 ### Test Environment
