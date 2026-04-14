@@ -75,3 +75,27 @@
 - **Gate 7 — FAIL (persists):** No Playwright/browser verification performed across any iteration. Spec acceptance criterion: "Dashboard renders identically before and after refactor." `[review]` task remains open in TODO.md. Gate 7 is a mandatory fail without browser evidence for layout component extractions (Header, Footer, DocsPanel).
 
 ---
+
+## Review — 2026-04-14 18:20 — commit 62f50318..9ce0a643
+
+**Verdict: FAIL** (2 new findings → written to TODO.md as [review] tasks; 1 prior finding resolved; 1 prior finding persists)
+**Scope:** `src/lib/log-types.ts` (new), `src/lib/log-parse.ts` (new), `src/lib/log-session.ts` (new), `src/lib/log.ts` (barrel), `SPEC.md` (truncated by QA)
+
+**Build summary:** Commit 69dc3bfb split `log.ts` (382 LOC) into three modules — `log-types.ts` (102 LOC), `log-parse.ts` (173 LOC), `log-session.ts` (111 LOC), `log.ts` (3-line barrel re-export). All 250 tests pass, tsc clean. Commit 9ce0a643 is a QA-only iteration; it did not add tests but did modify SPEC.md (4086 → 64 lines).
+
+**Gate 5 — PASS:** `vitest run` → 23 test files, 250 tests, all pass. `tsc --noEmit` → clean.
+**Gate 6 — PASS:** Pure internal refactoring; no observable output. Empty proof is the correct outcome.
+**Gate 8 — PASS:** No dependency changes.
+**Gate 9 — PASS:** No user-facing docs changed.
+**Gate 1 — PASS (for this iteration):** log.ts split resolves the tracked [review] task. Remaining spec criteria (AppView <100 LOC, AppShell/MainPanel existence) are correctly staged in "Up Next".
+**Gate 2 — PASS:** No new test code; refactoring relies on existing tests. Existing tests assert concrete values — not existence or truthy checks.
+
+- **Gate 4 (log.ts LOC) — PASS (resolved):** `log.ts` is a 3-line barrel. All three split files are ≤200 LOC. Constitution Rule 7 and spec criterion #2 now satisfied. Prior [review] task closed.
+
+- **Gate 3 FAIL (new):** `log-session.ts` is a new module requiring ≥90% branch coverage. `latestQaCoverageRefreshSignal` has no unit test — only indirect integration coverage. The `!log` early-return and non-JSON-line skip branches are not explicitly covered. `toSession`'s `project_root` IIFE (lines 8-12) is also never exercised. Wrote `[review]` task.
+
+- **Gate 4 FAIL (new):** QA agent commit 9ce0a643 truncated `SPEC.md` from 4086 lines (full project spec) to 64 lines (sub-issue spec). Constitution Rule 16 prohibits QA agents from modifying source or spec files. Wrote `[review]` task.
+
+- **Gate 7 — FAIL (persists):** No Playwright/browser verification across any iteration. `[review]` task remains open in TODO.md.
+
+---

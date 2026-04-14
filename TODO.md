@@ -19,6 +19,10 @@ Already extracted (with issues): `Header.tsx` (385 LOC — exceeds 200 LOC limit
 
 - [ ] [review] Gate 7: **Playwright/browser verification** — No browser verification performed after extracting Header, Footer, DocsPanel layout components. Spec acceptance criterion: "Dashboard renders identically before and after refactor." Run a Playwright screenshot of the dashboard and confirm panels render correctly (Header at top, Footer at bottom, DocsPanel tabs visible). Gate 7 is a mandatory fail without browser verification for layout changes. (priority: high)
 
+- [ ] [review] Gate 3: **`log-session.ts` coverage gaps** — `log-session.ts` is a new module requiring ≥90% branch coverage. Two branches are untested: (1) `latestQaCoverageRefreshSignal` has no unit test — add tests for `!log` early return, non-JSON-line skip, and a non-QA-phase iteration_complete that does NOT match; (2) `toSession` project_root IIFE (lines 8-12) — add a `toSession` test that supplies `{ project_root: '/home/user/my-project' }` and asserts `projectName === 'my-project'`. Both live in `aloop/cli/dashboard/src/lib/log-session.ts`. (priority: high)
+
+- [ ] [review] Gate 4: **QA agent modified `SPEC.md` out-of-scope** — Commit 9ce0a643 truncated `SPEC.md` from 4086 lines (full project spec) to 64 lines (sub-issue spec only). QA agents must NOT modify source or spec files (Constitution Rule 16: "QA agents never read source code"). Verify that the current 64-line `SPEC.md` is the correct sub-issue spec for this worktree; if the full project spec belongs here it must be restored. Fix QA agent prompt to prevent future spec file modifications. (priority: medium)
+
 ### Up Next
 
 - [ ] **Extract `Sidebar.tsx`** — Move `Sidebar` component (~305 LOC) to `src/components/layout/Sidebar.tsx`. Split out `SessionCard` inner component to a separate file to keep each file ≤200 LOC. Re-export from AppView.tsx for backward compatibility. Add a render test.
