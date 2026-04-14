@@ -303,3 +303,13 @@
 - [x] #108: still blocked_on_human (In review) — human must manually rebase PR #132 onto agent/trunk.
 - [x] Queue: absent — no override prompts to process.
 - [x] No state transitions required — child #157 progressing in qa phase, iteration 13, stuck_count=0.
+
+# orchestrator scan (2026-04-14 ~twenty-second pass)
+
+## State transitions
+
+- [x] #157: child PID 422016 ALIVE (~27 min running). status.json: iteration=13, phase=**qa**, state=running, updated_at=18:50:01Z (18 min stale, but qa test suite actively running). Confirmed: 4 tsx/node test processes alive in #157 worktree (started 19:04-19:05Z) — 23 test files executing (all commands + libs). Sub-process PID 435177 alive. Concurrency slot occupied (cap=1) — no new dispatches.
+- [x] #173: still blocked_on_human — human must remove false "Implementation Status" section from GH issue #173 body. Blockers #173/#108 persist unchanged.
+- [x] #108: still blocked_on_human (In review) — human must manually rebase PR #132 onto agent/trunk.
+- [x] Queue: empty — no override prompts to process.
+- [x] No state transitions required — child #157 actively running qa tests (19:04Z), progressing normally.
