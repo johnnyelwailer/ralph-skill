@@ -1,0 +1,10 @@
+{
+  "issue_number": 2,
+  "dor_passed": true,
+  "complexity_tier": "L",
+  "iteration_estimate": 7,
+  "confidence": "high",
+  "priority": "P1",
+  "gaps": [],
+  "notes": "Well-defined epic with detailed ACs, file scope, and architectural context. Provider health subsystem with exponential backoff, file locking, round-robin integration, and dashboard display. No upstream dependencies."
+}

@@ -1,0 +1,10 @@
+{
+  "issue_number": 1,
+  "dor_passed": true,
+  "complexity_tier": "XL",
+  "iteration_estimate": 10,
+  "confidence": "high",
+  "priority": "P0",
+  "gaps": [],
+  "notes": "Well-defined epic with detailed ACs, arch context, and file scope. Four tightly-coupled loop reliability features: finalizer, retry-same-phase, phase prerequisites, CLAUDECODE sanitization. XL due to cross-runtime (bash + powershell) parity requirement."
+}
