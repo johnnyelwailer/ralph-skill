@@ -209,3 +209,32 @@
 - **Gate 7 — FAIL (persists / deferred):** No Playwright/browser verification. Container missing `libatk-1.0.so.0`. `[review]` task deferred in TODO.md. Unchanged since prior review.
 
 ---
+
+## Review — 2026-04-14 20:50 — commit 6dd024d8..8e1bca39
+
+**Verdict: FAIL** (1 new finding → written to TODO.md; 1 prior finding persists/deferred)
+**Scope:** `src/components/layout/QACoverageBadge.test.tsx` (6 new tests), `QA_COVERAGE.md`, `QA_LOG.md`, `TODO.md`
+
+**Build summary:** Commit `5378ad46` added 6 expansion panel tests to `QACoverageBadge.test.tsx` covering all 6 branches the prior `[review]` task specified. Commit `8e1bca39` is a QA re-test pass confirming 280/280 dashboard tests pass.
+
+**Gate 1 — PASS:** All 6 branches from the prior `[review]` task implemented. No spec deviations.
+
+**Gate 2 — PASS:** Tests 2–6 use concrete value assertions (`textContent.toContain('No feature rows found')`, `[class*="text-green-700"]`, `textContent.toContain('PASS'/'FAIL'/'UNTESTED')`, `querySelectorAll(...).length === 0`). Test 1 checks for `[class*="absolute"]` (expanded panel appearance) rather than directly asserting ChevronDown SVG — functionally equivalent because the panel is only rendered in the `expanded=true` branch (line 106). Acceptable.
+
+**Gate 4 — PASS:** `fireEvent` import used and needed. No dead code, unused imports, or leftover TODO comments. `afterEach(() => vi.restoreAllMocks())` correctly cleans up all spies.
+
+**Gate 5 — PASS:** `vitest run` (dashboard) → 26 test files, 280 tests, all pass.
+
+**Gate 6 — PASS:** Test-only commit and QA re-test pass; no observable output. Empty proof-manifest is the correct expected outcome.
+
+**Gate 8 — PASS:** No dependency changes.
+
+**Gate 9 — PASS:** No user-facing docs changed.
+
+- **Gate 3 (expansion panel) — PASS (resolved):** All 6 specified expansion-panel branches now covered: toggle expand → `[class*="absolute"]` panel appears (line 106); empty features → "No feature rows found" (line 111); PASS statusTone green (lines 115, 127); FAIL statusTone red (lines 116–117, 123); UNTESTED statusTone muted (line 118); `feature.component && <p>` omitted when empty string (line 125). Prior `[review]` task marked `[x]` in TODO.md.
+
+- **Gate 3 — FAIL (new):** Two branches in `QACoverageBadge.tsx` remain untested, keeping the module below the ≥90% new-module threshold: (1) `!response.ok` early return (line 69) — every test uses `mockFetch(data, ok=true)` via the default `ok=true` parameter; no test mocks `{ ok: false }` and verifies the component stays rendering `null` or previous state; (2) `sessionId={null}` → `sp=''` path (line 67) — every test passes `sessionId="s1"`, so the no-session URL (no `?session=` param) is never exercised. Both are testable: pass `mockFetch({...}, false)` to verify the component does not update on failed response, and render `<QACoverageBadge sessionId={null} refreshKey="k1" />` with a spy to verify the fetch URL contains no `?session=` param. Wrote `[review]` task.
+
+- **Gate 7 — FAIL (persists / deferred):** No Playwright/browser verification across any iteration. `[review]` task deferred in TODO.md pending Playwright deps or manual verification plan.
+
+---
