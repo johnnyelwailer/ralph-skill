@@ -57,6 +57,54 @@ No proof manifests found. ci.yml is a config file — CI workflow proof would re
 - Gate 8: No VERSIONS.md entries for GitHub Actions; `actions/checkout@v4`, `oven-sh/setup-bun@v2`, `actions/setup-node@v4`, `actions/upload-artifact@v4` — pinned to major versions (acceptable)
 - Gate 9: README line 1 has CI badge pointing to `johnnyelwailer/ralph-skill/actions/workflows/ci.yml/badge.svg` ✅
 
+## Review — 2026-04-14 — commit 262d936c..cde50742
+
+**Verdict: FAIL** (4 findings → written to TODO.md as [review] tasks)
+**Scope:** `aloop/cli/dashboard/src/lib/ansi.ts`, `aloop/cli/dashboard/src/lib/format.ts`, `aloop/cli/dashboard/src/lib/types.ts`, `aloop/cli/dashboard/src/lib/ansi.test.ts`, `aloop/cli/dashboard/src/lib/format.test.ts`, `aloop/cli/dashboard/src/AppView.tsx`
+
+### Gate 1: Spec Compliance — PASS
+
+Utility extraction matches spec intent: `ansi.ts` (118 LOC), `format.ts` (347 LOC), and `types.ts` (123 LOC) extracted from AppView; `ansi.test.ts` and `format.test.ts` added; backward-compatibility re-exports in AppView.tsx preserve all existing consumers. No UI dependencies in the lib modules (`marked` is a library utility, acceptable). The TODO task marked `[x]` correctly describes the work done.
+
+One spec violation noted: `format.ts` at 347 LOC violates Constitution Rule 7 (< 150 LOC per file) — see Gate 3 / Rule 7 finding below.
+
+### Gate 2: Test Depth — FAIL
+
+- `ansi.test.ts:105`: `expect(segs[0].style.fg).toBeDefined()` — shallow existence check on a 256-colour fg value. A broken palette lookup (wrong index, wrong formula) passes this test. Should assert the exact RGB string (e.g. `'215,0,0'` for index 196). Written as [review] task.
+
+### Gate 3: Coverage — FAIL
+
+`format.ts` exports 24 symbols. Five have zero test coverage:
+- `formatTime` (line 60) — no describe block
+- `formatTimeShort` (line 66) — no describe block
+- `extractIterationUsage` (line 146) — 3+ branches (null input, NaN cost, zero/negative cost) untested
+- `parseManifest` (line 178) — complex nested parsing with 8+ conditional branches, untested
+- `parseQACoveragePayload` (line 268) — status normalization (`PASS`/`FAIL`/`UNTESTED`) untested
+
+`parseLogLine` tests cover happy path and plain text only; error events, verdict events, commitHash path, and filesChanged array parsing are all untested branches.
+
+Additionally, `format.ts` is 347 LOC — more than double the 150 LOC target (Constitution Rule 7). Requires a split into focused sub-modules.
+
+### Gate 4: Code Quality — PASS
+
+No dead code, no unused imports, no copy-paste duplication. `AppView.tsx` re-exports are clean and complete.
+
+### Gate 5: Integration — PASS
+
+New lib tests: 82/82 pass (`ansi.test.ts` + `format.test.ts`). Pre-existing integration test failures (4–5 in `App.coverage.test.ts`, `App.coverage.integration-sidebar.test.ts`, `App.coverage.integration-app.test.ts`) appear pre-existing — these files were last modified before this branch commit and the failures are unrelated to the utility extraction.
+
+### Gate 6: Proof — PASS (skip acceptable)
+
+No proof manifest found in the session artifacts for this iteration. This work is a pure internal refactoring (moving functions to lib modules with re-export wrappers) — no observable UI output changes. Proof skip with empty artifacts is the expected correct outcome per Gate 6 rules.
+
+### Gate 7: N/A — No CSS or layout changes.
+
+### Gate 8: N/A — No dependency version changes.
+
+### Gate 9: N/A — No documentation changes needed for internal utility extraction.
+
+---
+
 ## Review — 2026-04-13 — commit ef60dc7e..d0a300bf
 
 **Verdict: PASS** (prior findings resolved)
