@@ -341,3 +341,79 @@ $ npm test
 #   - "covers ActivityPanel and LogEntryRow exhaustive"
 #     TestingLibraryElementError: Unable to find element with text "a.png"
 ```
+
+## QA Session — 2026-04-14 (iteration 48)
+
+### Test Environment
+- Binary under test: /tmp/aloop-test-install-wXOZPC/bin/aloop
+- Version: 1.0.0
+- Commit: 009a6123
+- Features tested: 5
+
+### Results
+- PASS: StatusIndicators.tsx branch coverage tests (via `cd dashboard && npx vitest run` — 263/263 pass)
+- PASS: Dashboard HTML serving (HTTP 200, JS 463KB, CSS 34KB, SSE endpoint live)
+- PASS: Dashboard vitest suite (25 test files, 263 tests all pass)
+- FAIL: npm run type-check — 16 TypeScript errors (pre-existing; prior PASS recording was incorrect)
+- FAIL: npm test — 1077/1111 pass, 33 fail (same as iter 46; no regression)
+
+### Bugs Filed
+- [qa/P1] npm run type-check fails with 16 TS errors — pre-existing errors in orchestrate.ts/process-requests.ts, incorrectly recorded as PASS in QA_COVERAGE.md
+
+### Command Transcript
+
+```
+$ /tmp/aloop-test-install-wXOZPC/bin/aloop --version
+1.0.0
+
+$ ls -la aloop/cli/dashboard/src/components/layout/StatusIndicators.test.tsx
+-rw-r--r-- 1 pj pj 2200 Apr 14 19:33 aloop/cli/dashboard/src/components/layout/StatusIndicators.test.tsx
+(60 lines)
+
+$ cd aloop/cli/dashboard && npx vitest run
+ RUN  v4.1.0
+ Test Files  25 passed (25)
+      Tests  263 passed (263)
+   Duration  49.28s
+EXIT 0
+
+$ npm run type-check  (from aloop/cli)
+> tsc --noEmit
+src/commands/orchestrate.ts(3166,7): error TS2304: Cannot find name 'state'.
+src/commands/orchestrate.ts(3167,30): error TS2304: Cannot find name 'state'.
+src/commands/orchestrate.ts(3195,32): error TS2304: Cannot find name 'state'.
+src/commands/orchestrate.ts(3195,60): error TS2552: Cannot find name 'roundRobinOrder'. Did you mean 'stateRoundRobinOrder'?
+src/commands/orchestrate.ts(3485,33): error TS2339: Property 'round_robin_order' does not exist on type 'OrchestratorState'.
+src/commands/orchestrate.ts(3516,33): error TS2339: Property 'round_robin_order' does not exist on type 'OrchestratorState'.
+src/commands/orchestrate.ts(5168,24): error TS2304: Cannot find name 'provider'.
+src/commands/orchestrate.ts(5180,25): error TS2304: Cannot find name 'provider'.
+src/commands/process-requests.test.ts(7,10): error TS2305: Module '"./process-requests.js"' has no exported member 'formatReviewCommentHistory'.
+src/commands/process-requests.test.ts(7,38): error TS2305: Module '"./process-requests.js"' has no exported member 'getDirectorySizeBytes'.
+src/commands/process-requests.test.ts(7,61): error TS2305: Module '"./process-requests.js"' has no exported member 'pruneLargeV8CacheDir'.
+src/commands/process-requests.test.ts(7,83): error TS2305: Module '"./process-requests.js"' has no exported member 'syncMasterToTrunk'.
+src/commands/process-requests.test.ts(7,102): error TS2305: Module '"./process-requests.js"' has no exported member 'syncChildBranches'.
+src/commands/process-requests.test.ts(7,126): error TS2305: Module '"./process-requests.js"' has no exported member 'ChildBranchSyncDeps'.
+src/commands/process-requests.ts(442,71): error TS2367: This comparison appears to be unintentional.
+src/commands/process-requests.ts(818,25): error TS2304: Cannot find name 'sweepStaleRunningIssueStatuses'.
+# 16 errors, EXIT 2
+NOTE: orchestrate.ts and process-requests.ts unchanged since before commit 9899c43a;
+      prior PASS entry in QA_COVERAGE.md was incorrect.
+
+$ npm test  (from aloop/cli)
+# tests 1111
+# suites 89
+# pass 1077
+# fail 33
+# EXIT 1  (same as iter 46, no regression)
+
+$ curl -s -o /dev/null -w "%{http_code} %{size_download}" http://localhost:46375
+200 719
+
+$ curl -s -o /dev/null -w "%{http_code} %{size_download}" http://localhost:46375/assets/index-Bze4vxLR.js
+200 463630
+
+$ curl -s -o /dev/null -w "%{http_code} %{size_download}" http://localhost:46375/assets/index-BkRyKnPI.css
+200 33992
+
+$ curl -s --max-time 3 http://localhost:46375/events → live SSE state stream, EXIT 0
+```
