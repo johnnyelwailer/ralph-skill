@@ -1,5 +1,61 @@
 # QA Log
 
+## QA Session — 2026-04-14 (iteration 42)
+
+### Test Environment
+- Worktree: /home/pj/.aloop/sessions/orchestrator-20260321-172932-issue-157-20260414-164637/worktree
+- Branch: aloop/issue-157
+- Commit: 70094e0f
+- Features tested: 5
+
+### Results
+- PASS: npm run type-check — exit 0, 0 errors (still clean after new test additions)
+- PASS: npm test — 250/250 passing (up from 243 at iter 41; 7 new DocsPanel branch-coverage tests added)
+- FAIL: DocsPanel.tsx — still 204 LOC (open bug `[qa/P1] Trim DocsPanel.tsx to ≤200 LOC` unresolved)
+- FAIL: Header.tsx — still 385 LOC (tracked in TODO Up Next)
+- FAIL: lib/log.ts — still 381 LOC (tracked as Gate 4 review item in TODO)
+- FAIL: AppView.tsx — still 1393 LOC (main refactoring Up Next tasks not started)
+- FAIL: Duplicate cooldown IIFE in DocsPanel.tsx — still present at lines 179 and 195 (tracked as Gate 4 review item)
+
+### Bugs Filed
+- None new — all known issues already tracked in TODO.md
+
+### Re-tested
+- npm test: PASS → PASS (7 additional tests added for DocsPanel branch coverage)
+- type-check: PASS → PASS (still clean)
+- DocsPanel.tsx LOC: still FAIL (open `[qa/P1]` bug unchanged)
+- Duplicate cooldown IIFE: still FAIL (Gate 4 open)
+- lib/log.ts LOC: still FAIL (Gate 4 open)
+
+### Command Transcript
+
+```
+# Type check
+$ cd aloop/cli/dashboard && ./node_modules/.bin/tsc --noEmit; echo "EXIT: $?"
+EXIT: 0  — PASS
+
+# Test suite
+$ npm test -- --reporter=verbose
+Test Files: 23 passed (23)
+Tests:      250 passed (250)  — PASS (+7 vs iter 41)
+
+# LOC audit
+$ wc -l src/components/layout/DocsPanel.tsx src/components/layout/Header.tsx src/components/layout/Footer.tsx src/AppView.tsx src/lib/log.ts
+  204 DocsPanel.tsx       FAIL (open bug)
+  385 Header.tsx          FAIL (Up Next task)
+   66 Footer.tsx          PASS
+ 1393 AppView.tsx         FAIL (main refactoring not started)
+  381 lib/log.ts          FAIL (Gate 4 open)
+
+# Duplicate IIFE check
+$ grep -n "Math.max.*cooldownUntil" src/components/layout/DocsPanel.tsx
+179: const remaining = Math.max(0, Math.floor((new Date(p.cooldownUntil).getTime() - Date.now()) / 1000));
+195: {p.cooldownUntil && <p>... ({(() => { const r = Math.max(0, Math.floor(...)); ...})()})
+→ Duplicate expression confirmed at lines 179 and 195 — FAIL (Gate 4 open)
+```
+
+---
+
 ## QA Session — 2026-04-14 (iteration 41)
 
 ### Test Environment
