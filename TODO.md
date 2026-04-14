@@ -313,3 +313,23 @@
 - [x] #108: still blocked_on_human (In review) — human must manually rebase PR #132 onto agent/trunk.
 - [x] Queue: empty — no override prompts to process.
 - [x] No state transitions required — child #157 actively running qa tests (19:04Z), progressing normally.
+
+# orchestrator scan (2026-04-14 ~twenty-fourth pass)
+
+## State transitions
+
+- [x] #157: child PID 422016 ALIVE (~39 min running). Sub-process PID 435177 ALIVE. status.json: iteration=13, phase=**qa**, state=running, updated_at=18:50:01Z (30 min stale). Fresh tsx test process (PID 540920) started 19:20Z actively running dashboard.test.ts at 75% CPU — new test batch after prior runner (PID 525072) completed. Worktree modified 19:19Z. QA tests actively progressing. Concurrency slot occupied (cap=1) — no new dispatches.
+- [x] #173: still blocked_on_human — human must remove false "Implementation Status" section from GH issue #173 body.
+- [x] #108: still blocked_on_human (In review) — human must manually rebase PR #132 onto agent/trunk.
+- [x] Queue: absent — no override prompts to process.
+- [x] No state transitions required — child #157 running qa test suite (new batch 19:20Z), progressing normally.
+
+# orchestrator scan (2026-04-14 ~twenty-third pass)
+
+## State transitions
+
+- [x] #157: child PID 422016 ALIVE (~37 min running). status.json: iteration=13, phase=**qa**, state=running, updated_at=18:50:01Z (28 min stale). Root cause of stale status confirmed: build phase exhausted all retries (`phase_retry_exhausted` at 18:49:57Z — 10x `unsupported provider:` / opencode broken). QA phase launched at 18:50:01Z. Test runner (PID 525072) started at 19:14Z running 23 test files (all commands + libs) — 4 min ago. Sub-process PID 435177 alive. Tests actively progressing. Concurrency slot occupied (cap=1) — no new dispatches.
+- [x] #173: still blocked_on_human — human must remove false "Implementation Status" section from GH issue #173 body.
+- [x] #108: still blocked_on_human (In review) — human must manually rebase PR #132 onto agent/trunk.
+- [x] Queue: empty — no override prompts.
+- [x] No state transitions required — child #157 running qa test suite (~28 min into qa phase), progressing normally.
