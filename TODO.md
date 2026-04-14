@@ -81,4 +81,14 @@
   - #151, #152, #153, #154, #155, #156 (no PR, pending)
   - #158 (stuck pending/no PR)
   - #160, #172 (PRs closed without merge, already reset in prior scan)
-- [ ] Awaiting #157 completion before next dispatch (concurrency_cap=1).
+- [x] Awaiting #157 completion before next dispatch (concurrency_cap=1).
+
+# orchestrator scan (2026-04-14 ~third pass)
+
+## State transitions
+
+- [x] #157: child PID 116572 dead. Session completed plan-only — worktree had wrong TODO.md (issue #22 content, all tasks checked), causing allTasksMarkedDone=true in loop-plan.json. Branch `aloop/issue-157` has 2 partial commits (Header components + utility functions) but no PR. Transitioned `In progress` → `Ready` (needs_redispatch=True).
+- [x] #173: still `blocked_on_human` — no action.
+- [x] #108: still `blocked_on_human` — no action.
+- [x] active.json = [] — concurrency slot free.
+- [x] Dispatch written for #39 (review-fix): PR #289 FAIL — 3 of 10 bash test scripts missing from CI (loop_retry_same_phase, loop_task_management, loop_health_and_usage). Branch is 34 commits behind trunk — rebase required.
