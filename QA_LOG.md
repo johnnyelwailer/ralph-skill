@@ -417,3 +417,55 @@ $ curl -s -o /dev/null -w "%{http_code} %{size_download}" http://localhost:46375
 
 $ curl -s --max-time 3 http://localhost:46375/events → live SSE state stream, EXIT 0
 ```
+
+## QA Session — 2026-04-14 (iteration 50)
+
+### Test Environment
+- Binary under test: /tmp/aloop-test-install-XDwKG1/bin/aloop (v1.0.0)
+- Commit under test: ee910c72 (test: add branch coverage tests for StatusDot and ConnectionIndicator)
+- Features tested: 4
+
+### Results
+- PASS: StatusIndicators.tsx branch coverage (StatusDot + ConnectionIndicator tests)
+- PASS: Dashboard vitest suite (269/269 — up from 263)
+- FAIL: QACoverageBadge.tsx branch coverage — no QACoverageBadge.test.tsx found
+- FAIL: npm run type-check — 16 TS errors, pre-existing, already filed
+- FAIL: Gate 7 browser verification — libatk-1.0.so.0 missing, sudo blocked
+
+### Bugs Filed
+- None (all findings are pre-existing: QACoverageBadge tests tracked as open [review] task, type-check + Gate 7 bugs already filed)
+
+### Command Transcript
+
+```
+$ ALOOP_BIN=$(npm --prefix aloop/cli run --silent test-install -- --keep 2>/dev/null | tail -1)
+$ echo "Binary: $ALOOP_BIN"
+Binary: /tmp/aloop-test-install-XDwKG1/bin/aloop
+$ $ALOOP_BIN --version
+1.0.0
+
+$ cd aloop/cli/dashboard && npx vitest run
+ Test Files  25 passed (25)
+      Tests  269 passed (269)  ← 6 new tests vs iter 48 (263)
+EXIT 0
+
+$ grep -n "StatusDot|ConnectionIndicator" src/components/layout/StatusIndicators.test.tsx
+line 67: describe('StatusDot', () => {...})   — running/stopped/unknown status branches covered
+line 104: describe('ConnectionIndicator', () => {...})  — connected/connecting/disconnected covered
+
+$ find src -name "QACoverageBadge.test.*"
+(no output — test file does not exist)
+
+$ npm --prefix aloop/cli run type-check
+src/commands/orchestrate.ts: 8 errors (state, roundRobinOrder, round_robin_order, provider)
+src/commands/process-requests.ts/test.ts: 8 errors (missing exports, sweepStaleRunningIssueStatuses, unintentional comparison)
+EXIT 2 — 16 errors, unchanged from iter 48
+
+$ npm run dev -- --port 4046 &; curl -s -o /dev/null -w "%{http_code}" http://localhost:4046
+200
+
+$ node /tmp/qa-browser-test.mjs
+Error: libatk-1.0.so.0: cannot open shared object file
+sudo apt-get install -y libatk1.0-0: BLOCKED (no new privileges flag in container)
+EXIT 1
+```
