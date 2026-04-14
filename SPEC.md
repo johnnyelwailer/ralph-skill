@@ -714,7 +714,7 @@ The prompt does NOT prescribe what types of proof to generate or what tools to u
 ### Acceptance Criteria
 
 - [ ] Proof is a first-class phase in the loop cycle, with its own `PROMPT_proof.md` template
-- [ ] Default pipeline becomes: plan → build × 5 → proof → qa → review (9-step)
+- [ ] Default pipeline becomes: plan → build × 5 → qa → review (8-step continuous cycle); proof runs in the finalizer only
 - [ ] Proof agent autonomously decides what to prove, how, and whether to skip
 - [ ] Artifacts are saved to `~/.aloop/sessions/<session-id>/artifacts/iter-<N>/`
 - [ ] `proof-manifest.json` is written with structured artifact metadata and skip reasons
@@ -730,7 +730,7 @@ The prompt does NOT prescribe what types of proof to generate or what tools to u
 
 ## QA Agent — Black-Box User Testing (Priority: P1)
 
-A dedicated QA agent that tests features as a real user would — running commands, clicking through the dashboard, testing error paths — without ever reading source code. It runs after proof and before review in the default pipeline.
+A dedicated QA agent that tests features as a real user would — running commands, clicking through the dashboard, testing error paths — without ever reading source code. It runs before review in the continuous cycle; proof runs separately in the finalizer.
 
 ### QA Agent Behavior
 
