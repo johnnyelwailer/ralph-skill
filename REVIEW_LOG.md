@@ -188,3 +188,24 @@
 - **Gate 7 — FAIL (persists):** No browser/Playwright verification. Container missing `libatk-1.0.so.0`; `sudo apt-get` blocked by container security flags. `[review]` task deferred in TODO.md.
 
 ---
+
+## Review — 2026-04-14 20:24 — commit 1531b3f5..b560857d
+
+**Verdict: FAIL** (1 new finding → written to TODO.md as [review] task; 1 prior finding persists / deferred)
+**Scope:** `src/components/layout/QACoverageBadge.test.tsx` (new), `QA_COVERAGE.md`, `QA_LOG.md`, `TODO.md`
+
+**Build summary:** Commit `f0692311` added `QACoverageBadge.test.tsx` with 5 tests covering the 5 branches requested by the prior `[review]` task (green tone ≥80%, red tone <50%, N/A/available:false, `!isRecord` null input, `payload.percentage` fallback). Commit `b560857d` is a QA re-test pass confirming 274/274 dashboard tests pass.
+
+**Gate 1 — PASS:** All 5 branches specified in the `[review]` task are implemented and tested exactly as requested. No spec deviations.
+**Gate 2 — PASS:** All 5 tests use concrete value assertions — `className.toContain('text-green-700')`, `className.toContain('text-red-700')`, `className.toContain('bg-muted/40')`, `textContent.toContain('N/A')`, `textContent.toContain('75%')`, `className.toContain('text-yellow-700')`. No existence-only or truthy checks.
+**Gate 4 — PASS:** No dead code, unused imports, or TODO comments. `mockFetch` helper DRY and correctly cleaned up via `vi.restoreAllMocks()`.
+**Gate 5 — PASS:** Dashboard vitest → 26 test files, 274 tests, all pass. Pre-existing 33 non-dashboard failures and 16 type errors unchanged; tracked as `[qa/P1]`.
+**Gate 6 — PASS:** Test-only commit with no observable output; empty proof-manifest is the correct expected outcome.
+**Gate 8 — PASS:** No dependency changes.
+**Gate 9 — PASS:** No user-facing docs changed.
+
+- **Gate 3 — FAIL (new):** The prior `[review]` task enumerated 5 specific badge-display branches — all now covered. However, the new-module ≥90% branch coverage rule applies to the entire `QACoverageBadge.tsx` (142 LOC). The expanded dropdown section (lines 106–137) has zero test coverage: `expanded=true` state (never triggered by a click), `ChevronDown` render branch (line 104), `features.length === 0` empty message (line 110), `feature.status === 'PASS'/'FAIL'/'UNTESTED'` statusTone ternary (lines 114–118), `StatusIcon` selection (line 119), and `feature.component &&` guard (line 125) are all untested. Estimated ≥9 uncovered branch points out of ~15 total. Coverage well below 90%. Note: fault lies with the prior review's underspecified task, not the builder. Wrote `[review]` task with 6 specific expansion-panel cases.
+
+- **Gate 7 — FAIL (persists / deferred):** No Playwright/browser verification. Container missing `libatk-1.0.so.0`. `[review]` task deferred in TODO.md. Unchanged since prior review.
+
+---
