@@ -92,3 +92,13 @@
 - [x] #108: still `blocked_on_human` — no action.
 - [x] active.json = [] — concurrency slot free.
 - [x] Dispatch written for #39 (review-fix): PR #289 FAIL — 3 of 10 bash test scripts missing from CI (loop_retry_same_phase, loop_task_management, loop_health_and_usage). Branch is 34 commits behind trunk — rebase required.
+
+# orchestrator scan (2026-04-14 ~fourth pass)
+
+## State transitions
+
+- [x] #157: child PID 139176 ALIVE (started 16:46:37, running ~2 min). Phase=plan, iteration=1. Correct TODO.md in worktree. PR #310 open. Concurrency slot occupied — no new dispatches.
+- [x] #173: still `blocked_on_human` — human must remove false "Implementation Status" section from GH issue #173 body before redispatching.
+- [x] #108: still `blocked_on_human` (In review) — human must manually rebase PR #132 onto agent/trunk.
+- [x] #39: `Ready` (priority=0), PR #289. Queued for dispatch when #157 slot frees. PR needs review-fix (3 missing bash test scripts, branch 34 commits behind trunk).
+- [x] 97 other `Ready` issues waiting. 5 `Ready` with needs_redispatch=True (#70, #71, #73, #85, #198).
