@@ -1,16 +1,18 @@
 {
-  "scan_at": "2026-04-14T20:16:13Z",
-  "iteration": 108,
+  "scan_at": "2026-04-14T20:25:00Z",
+  "iteration": 110,
   "active_child": {
     "session": "orchestrator-20260321-172932-issue-157-20260414-184129",
     "issue": 157,
     "pid": 422016,
     "alive": true,
-    "phase": "qa",
-    "iteration": 55,
+    "phase": "review",
+    "iteration": 56,
     "branch": "aloop/issue-157",
-    "latest_commit": "f0692311 test: add branch coverage tests for QACoverageBadge",
-    "review_failures": ["QACoverageBadge branch coverage missing", "Gate 7: libatk missing in container (E2E infra blocker)"]
+    "latest_commit": "b560857d qa: re-test QACoverageBadge coverage — PASS (274/274 dashboard tests) — iter 52",
+    "status_updated_at": "2026-04-14T20:22:48Z",
+    "review_failures": ["Gate 7: libatk missing in container (E2E infra blocker)"],
+    "resolved_since_last_scan": ["QACoverageBadge branch coverage — now PASS"]
   },
   "parallel_scans": ["orchestrator-20260414-190413", "orchestrator-20260414-195732"],
   "capacity": {
@@ -25,5 +27,5 @@
     "minimax": "ok"
   },
   "action": "monitor_only",
-  "notes": "Child alive and making progress. Gate 7 E2E infra blocker (libatk missing in container) requires human intervention. No new dispatch possible."
+  "notes": "Child ALIVE at iter=56/review. QACoverageBadge coverage resolved (274/274 PASS). Gate 7 E2E infra blocker (libatk missing in container) requires human intervention — Playwright E2E cannot run until libatk-1.0.so.0 is installed in container. TS errors in orchestrate.ts/process-requests.ts filed as bugs. No new dispatch possible (cap=1, slot full)."
 }
