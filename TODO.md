@@ -12,8 +12,6 @@ _(none)_
 - [ ] Add CLI type-check job to `ci.yml`: `bun install` + `bun run type-check` in `aloop/cli` (TASK_SPEC acceptance criteria #5)
 - [ ] Add dashboard type-check job to `ci.yml`: `npm ci` + `npm run type-check` in `aloop/cli/dashboard` (TASK_SPEC acceptance criteria #5)
 - [ ] Add loop script tests (Linux) job to `ci.yml`: install bats, run `bats loop.bats` + at least one `loop_*.tests.sh` in `aloop/bin/tests` (TASK_SPEC acceptance criteria #6)
-- [ ] Add fetch-failure logging to `sync_branch.sh` and `Sync-Branch.ps1` — log `fetch_failed` event when `git fetch` fails
-- [ ] Fix `sync.conflict` branch description in `loop_branch_coverage.tests.sh` (line 146) — currently reads "aborts merge, returns non-zero" but the implementation intentionally leaves conflict markers for the merge agent. Update to "leaves conflict markers for merge agent, returns non-zero" to match actual behavior.
 - [ ] Update `TASK_SPEC.md` acceptance criteria to reflect the deliberately chosen "leave markers for agent" behavior
 
 ### Deferred / Out of scope
@@ -65,6 +63,8 @@ Shell integration test failures — out of scope for CI setup (loop.sh behavior 
 - [x] Run verification commands and confirm Bash passes (PowerShell requires Windows/pwsh): `bash aloop/bin/loop_branch_coverage.tests.sh` (passed) and `pwsh -File aloop/bin/loop.tests.ps1` (skipped)
 - [x] Conflict-marker assertion added to BATS test 19 (verifies markers remain, NOT aborted)
 - [x] PowerShell Pester test title corrected to match actual assertion (markers remain)
+- [x] Add fetch-failure logging to `sync_branch.sh` and `Sync-Branch.ps1` — log `fetch_failed` event when `git fetch` fails
+- [x] Fix `sync.conflict` branch description in `loop_branch_coverage.tests.sh` (line 146) — currently reads "aborts merge, returns non-zero" but the implementation intentionally leaves conflict markers for the merge agent. Updated to "leaves conflict markers for merge agent, returns non-zero" to match actual behavior.
 
 ### Notes
 
