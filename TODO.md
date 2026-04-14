@@ -53,3 +53,6 @@ Current state:
 
 ### Completed
 
+### QA Bugs
+
+- [ ] [qa/P1] npm test exits with code 1 — 33 pre-existing failures: `dashboard.test.ts` (GH path hardening: "gh: blocked by aloop PATH hardening"), `orchestrate.test.ts` (ReferenceError: state is not defined in launchChildLoop/dispatchChildLoops/runOrchestratorScanPass/processQueuedPrompts), `process-requests.test.ts`, `github-monitor.test.ts` (EtagCache). Test files unchanged since commit 6a72a5f9 but previous QA reported "250/250 passing" — prior QA may have only counted aloop.test.mjs (250 tests) while tsx tests were silently excluded. Full suite now: 1077 pass, 33 fail out of 1111 total. Tested at iter 46. (priority: high)

@@ -1,5 +1,87 @@
 # QA Log
 
+## QA Session — 2026-04-14 (iteration 46)
+
+### Test Environment
+- Binary under test: /tmp/aloop-test-install-H31dpr/bin/aloop (version 1.0.0)
+- Worktree: /home/pj/.aloop/sessions/orchestrator-20260321-172932-issue-157-20260414-184129/worktree
+- Branch: aloop/issue-157
+- Commit: 9899c43a
+- Features tested: 5
+
+### Results
+- PASS: Header.tsx LOC — 168 lines (≤200 limit met; previously FAIL at 385 LOC)
+- PASS: StatusIndicators.tsx extracted — 98 LOC, new file
+- PASS: QACoverageBadge.tsx extracted — 142 LOC, new file
+- PASS: npm run type-check — 0 errors (dashboard TypeScript clean after refactor)
+- PASS: Dashboard HTML served — HTTP 200, JS bundle 463KB, CSS 34KB load correctly
+- FAIL: npm test — 1077/1111 pass, 33 fail, exit code 1 (pre-existing failures in dashboard/orchestrate/process-requests/github-monitor tests — unrelated to Header refactor; bug filed)
+- FAIL: Gate 7 browser (Playwright) — same pre-existing container issue: libatk-1.0.so.0 missing; curl fallback confirms server works
+
+### Bugs Filed
+- [qa/P1] npm test exits with code 1 — 33 pre-existing failures in dashboard.test.ts (GH path hardening), orchestrate.test.ts (ReferenceError: state is not defined), process-requests.test.ts, github-monitor.test.ts; these test files unchanged since commit 6a72a5f9 but were not counted in previous QA "250/250 passing" report (prior QA may have only counted aloop.test.mjs)
+
+### Re-tested
+- Header.tsx LOC: FAIL → PASS (168 LOC after split to StatusIndicators + QACoverageBadge)
+- type-check: PASS → PASS (still clean)
+- npm test: PASS (250) → FAIL (33 failures, 1077/1111) — pre-existing failures now exposed
+
+### Command Transcript
+
+```
+# Binary installed from source
+$ ALOOP_BIN=/tmp/aloop-test-install-H31dpr/bin/aloop
+$ $ALOOP_BIN --version
+1.0.0
+
+# LOC checks
+$ wc -l aloop/cli/dashboard/src/components/layout/Header.tsx
+168
+
+$ wc -l aloop/cli/dashboard/src/components/layout/StatusIndicators.tsx
+98
+
+$ wc -l aloop/cli/dashboard/src/components/layout/QACoverageBadge.tsx
+142
+
+# Type check
+$ npm run --prefix aloop/cli/dashboard type-check
+> tsc --noEmit
+# (no output = 0 errors)
+Exit code: 0
+
+# Full test suite
+$ npm --prefix aloop/cli test
+# tests 1111
+# pass 1077
+# fail 33
+# skipped 1
+Exit code: 1
+
+Failing tests:
+- dashboard.test.ts:40 — "GH request processor writes error response when aloop gh returns non-zero exit code"
+  Error: gh: blocked by aloop PATH hardening
+- orchestrate.test.ts — launchChildLoop, dispatchChildLoops, runOrchestratorScanPass, processQueuedPrompts
+  Error: ReferenceError: state is not defined
+- process-requests.test.ts — "GH request processor writes error response for unsupported request type"
+- github-monitor.test.ts — EtagCache suite
+
+# Dashboard served
+$ npm run --prefix aloop/cli/dashboard build
+✓ built in 4.85s
+
+$ curl -s -w "%{http_code}" http://localhost:4042/
+200 (HTML with correct JS/CSS bundle refs)
+
+$ curl -s http://localhost:4042/assets/index-DglOSKGU.js | grep -o "qa-coverage\|elapsed\|connection"
+qa-coverage, elapsed, connection (all present — StatusIndicators/QACoverageBadge compiled in)
+
+# Gate 7 browser
+$ ./node_modules/.bin/playwright screenshot --browser chromium http://localhost:4042 /tmp/qa-dashboard-1920.png
+Error: libatk-1.0.so.0: cannot open shared object file
+# Same container dependency issue as previous iterations
+```
+
 ## QA Session — 2026-04-14 (iteration 42)
 
 ### Test Environment
