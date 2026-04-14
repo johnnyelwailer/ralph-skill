@@ -9,23 +9,13 @@
 - `CommandPalette` (~40 LOC)
 - `AppInner` state/SSE logic (~380 LOC)
 
-Already extracted (with issues): `Header.tsx` (385 LOC — exceeds 200 LOC limit), `DocsPanel.tsx` (204 LOC — exceeds 200 LOC limit), `Footer.tsx` (66 LOC — OK).
+Already extracted (with issues): `Header.tsx` (385 LOC — exceeds 200 LOC limit), `DocsPanel.tsx` (199 LOC — OK), `Footer.tsx` (66 LOC — OK).
 
 ## Tasks
 
-### QA Bugs
-
-- [x] [qa/P1] **Fix type-check errors** — `npm run type-check` exits 2 with 5 errors. Fixed prop definitions and test files. `tsc --noEmit` is now clean. (priority: high)
-
-- [x] [qa/P1] **Fix 3 failing tests in App.coverage.test.ts** — Fixed selectors/assertions for panel toggles, older-session grouping, and ActivityPanel exhaustive tests. All 243 tests now pass. (priority: high)
-
-- [x] [qa/P1] **Trim DocsPanel.tsx to ≤200 LOC** — `src/components/layout/DocsPanel.tsx` is 204 LOC (4 lines over limit). Fix duplicate cooldown IIFE first (see below), then remove any remaining redundant code to get under 200 LOC. (priority: high)
-
 ### In Progress
 
-- [x] [review] Gate 4 (minor): **Fix duplicate cooldown IIFE in `DocsPanel.tsx`** — `Math.max(0, Math.floor((new Date(p.cooldownUntil).getTime() - Date.now()) / 1000))` appears twice inside `HealthPanel`: once at line ~179 for the visible label, once at line ~195 inside the tooltip. Extract to a local variable `remainingSecs` before the JSX return. This will also reduce LOC toward the ≤200 target. (priority: high)
-
-- [ ] [review] Gate 4: **Split `lib/log.ts` to ≤200 LOC** — `lib/log.ts` is 381 LOC. Created in commit 8df30426, violates spec acceptance criterion #2 and Constitution Rule 7. Split into `log-types.ts` (types/interfaces), `log-parse.ts` (parsing functions), and `log-session.ts` (session derivation). (priority: high)
+- [x] [review] Gate 4: **Split `lib/log.ts` to ≤200 LOC** — `lib/log.ts` is 381 LOC. Created in commit 8df30426, violates spec acceptance criterion #2 and Constitution Rule 7. Split into `log-types.ts` (types/interfaces), `log-parse.ts` (parsing functions), and `log-session.ts` (session derivation). (priority: high)
 
 - [ ] [review] Gate 7: **Playwright/browser verification** — No browser verification performed after extracting Header, Footer, DocsPanel layout components. Spec acceptance criterion: "Dashboard renders identically before and after refactor." Run a Playwright screenshot of the dashboard and confirm panels render correctly (Header at top, Footer at bottom, DocsPanel tabs visible). Gate 7 is a mandatory fail without browser verification for layout changes. (priority: high)
 
@@ -61,10 +51,14 @@ Already extracted (with issues): `Header.tsx` (385 LOC — exceeds 200 LOC limit
 
 - [x] **Extract `Header.tsx`** — Moved `Header` and related components to `src/components/layout/Header.tsx`. Re-exported from AppView.tsx. (Note: still 385 LOC — split task added to Up Next.)
 
-- [x] **Extract `DocsPanel.tsx`** — Moved `DocsPanel`, `DocContent`, `HealthPanel` to `src/components/layout/DocsPanel.tsx`. Re-exported from AppView.tsx. (Note: 204 LOC — trim task added to QA Bugs.)
+- [x] **Extract `DocsPanel.tsx`** — Moved `DocsPanel`, `DocContent`, `HealthPanel` to `src/components/layout/DocsPanel.tsx`. Re-exported from AppView.tsx. (Note: 204 LOC at extraction — trimmed to 199 LOC in subsequent commits.)
 
 - [x] **Fix type-check errors** — All 5 type errors resolved; `tsc --noEmit` exits clean.
 
 - [x] **Fix 3 failing tests in App.coverage.test.ts** — All 243 tests pass.
 
 - [x] [review] Gate 3: **DocsPanel.tsx branch coverage** — Added 8 tests covering `DocContent` wide mode (SPEC and non-SPEC files), `HealthPanel` cooldown (future/past timestamp), failed, and unknown status. All 15 DocsPanel tests pass; ≥90% branch coverage achieved.
+
+- [x] [qa/P1] **Fix duplicate cooldown IIFE in `DocsPanel.tsx`** — Extracted `remainingSecs` variable before JSX return. IIFE no longer appears twice.
+
+- [x] [qa/P1] **Trim DocsPanel.tsx to ≤200 LOC** — `DocsPanel.tsx` is now 199 LOC (previously 204 LOC).
