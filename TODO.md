@@ -1,14 +1,5 @@
 # Issue #34: Pre-iteration branch sync with conflict detection
 
-## Implementation Status
-
-Core feature is implemented:
-- `aloop/bin/lib/sync_branch.sh` — bash implementation (87 LOC)
-- `aloop/bin/loop.ps1` — PowerShell `Sync-Branch()` function (inline, ~80 LOC)
-- Both loop scripts source/call sync before each iteration
-- `aloop/templates/PROMPT_merge.md` — merge agent prompt exists
-- PowerShell: 5 behavioral tests in `loop.tests.ps1` (lines 3815–4016)
-
 ## Tasks
 
 ### In Progress
