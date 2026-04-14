@@ -143,6 +143,7 @@ register_branch "phase_prereq.review.has_builds" "check_phase_prerequisites allo
 register_branch "sync.merged" "sync_branch merges upstream commits and logs branch_sync result=merged"
 register_branch "sync.up_to_date" "sync_branch logs branch_sync result=up_to_date when already current"
 register_branch "sync.fetch_failure" "sync_branch continues non-fatally when git fetch fails"
+<<<<<<< HEAD
 register_branch "sync.conflict" "sync_branch logs merge_conflict, writes queue file, leaves conflict markers for merge agent, returns non-zero"
 register_branch "sync.disabled" "sync_branch skips when auto_merge is false"
 register_branch "sync.disabled_by_flag" "sync_branch skips when NO_SYNC is true"
