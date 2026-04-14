@@ -100,9 +100,9 @@ describe('parseAnsiSegments', () => {
   });
 
   it('applies 256-color fg via 38;5;N', () => {
-    // Index 196 is a bright red in the 6x6x6 cube
+    // Index 196: first entry in r=255 group (16 + 5*36 + 0 = 196) → [255, 0, 0]
     const segs = parseAnsiSegments('\x1b[38;5;196mcolor\x1b[0m');
-    expect(segs[0].style.fg).toBeDefined();
+    expect(segs[0].style.fg).toBe('255,0,0');
   });
 
   it('applies truecolor fg via 38;2;R;G;B', () => {
