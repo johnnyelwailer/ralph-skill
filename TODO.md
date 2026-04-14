@@ -1,3 +1,13 @@
+# orchestrator scan (2026-04-14 ~fifth pass)
+
+## State transitions
+
+- [x] #157: child PID 422016 ALIVE — iteration 41, QA phase (claude), started at 18:41. active.json corrected (was empty). Concurrency slot occupied (cap=1). No action needed.
+- [x] #108: still `blocked_on_human` — 9 failed rebases. Human must manually rebase PR #132 onto agent/trunk.
+- [x] #173: still `blocked_on_human` — human must remove false "Implementation Status" section from GH issue body.
+- [x] cap=1, active=1 — no new dispatches this pass.
+- [x] New orchestrator session 20260414-195732 initialized (via `aloop orchestrate`) but its epic decomposition queue item deferred — scan mode does not perform large decomposition.
+
 # Issue #200: CI: Add agent/* branch triggers and workflow polish
 
 ## Tasks
@@ -363,3 +373,39 @@
 - [x] Queue: absent — no override prompts to process.
 - [x] No state transitions required — child #157 actively running qa tests (19:41Z batch, 90.9% CPU), progressing normally.
 - [x] No state transitions required — child #157 running qa test suite (~28 min into qa phase), progressing normally.
+
+## Orchestrator scan — 2026-04-14T19:55:13Z (iter 96)
+
+**Child #157** (PID 422016) ALIVE — iteration 30, build phase (PROMPT_build_claude.md)
+- Review (iter 28) completed → cycled back: plan (iter 29, done) → build (iter 30, running)
+- Review found remaining work; pipeline cycling for fixes
+- PR #310 OPEN/MERGEABLE, CI still failing: CLI Tests, CLI TypeCheck, Dashboard E2E, Loop Script Tests
+
+**Capacity:** 1/1 slots occupied — no dispatches this pass
+
+**Blocked on human:**
+- #108: PR #132 needs manual rebase (In review)
+- #173: Issue body contains false "Implementation Status" text (Blocked on human)
+
+**Ready queue:** 105 issues waiting (next candidate: #70)
+
+**Parallel orchestrator session** orchestrator-20260414-190413 running at iter 40 (orch_scan phase)
+
+**Actions taken:** none (monitoring only)
+
+## Orchestrator scan — 2026-04-14T19:56:45Z
+
+**Child #157** (PID 422016) ALIVE — iteration 30, build phase, updated_at=19:55:13Z (1.5 min ago — fresh)
+- cyclePosition=1 (PROMPT_build_claude.md), allTasksMarkedDone=false
+- PR #310 OPEN/MERGEABLE, CI failing: CLI Tests, CLI TypeCheck, Loop Script Tests (Linux), Dashboard E2E; Loop Script Tests (Windows) IN_PROGRESS
+- Child progressing normally in build phase
+
+**Capacity:** 1/1 slots occupied — no new dispatches
+
+**Blocked on human (unchanged):**
+- #108: In review — PR #132 needs manual rebase onto agent/trunk
+- #173: Blocked on human — false "Implementation Status" section must be removed from GH issue body
+
+**Ready queue:** 105 issues waiting (top: #188, #187, #186, #185, #184 at priority -10)
+
+**Actions taken:** none — monitoring only
