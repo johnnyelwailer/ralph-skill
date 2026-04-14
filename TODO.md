@@ -132,3 +132,14 @@
 - [x] #108: still `blocked_on_human` (In review) — human must manually rebase PR #132 onto agent/trunk.
 - [x] Queue empty — no override prompts.
 - [x] No state transitions required this pass — child progressing normally (build → qa).
+
+# orchestrator scan (2026-04-14 iteration 14+)
+
+## State transitions
+
+- [x] #157: child PID 139176 alive, iteration 28, phase "orch" — slot occupied, no action
+- [x] #148: cleared stale dead child_pid 817718 (process dead, status already Ready)
+- [x] #127: cleared stale dead child_pid 2323224 (process dead, status already Ready)
+- [x] #173: remains blocked_on_human — human must fix GH issue body
+- [x] #108: remains blocked_on_human — 9 failed rebases, human must resolve
+- [x] Concurrency cap=1, slot occupied by #157 — no new dispatches this pass
