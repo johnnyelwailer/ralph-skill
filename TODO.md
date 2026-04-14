@@ -53,6 +53,14 @@ Current state:
 
 ### Completed
 
+### Review Findings
+
+- [ ] [review] Gate 3: `StatusIndicators.tsx` missing branch coverage — add unit tests for: (1) `PhaseBadge` with empty phase (null return), (2) `PhaseBadge` with unknown phase (fallback color), (3) `formatSecs` with `m > 0, s === 0` (formats as `"Nm"`). Import and test components directly in `StatusIndicators.test.tsx`.
+
+- [ ] [review] Gate 3: `QACoverageBadge.tsx` missing branch coverage — add tests for: (1) green tone (`coverage_percent >= 80`), (2) red tone (`coverage_percent < 50`), (3) null/N/A state (`available: false`), (4) `parseQACoveragePayload` with non-record input, (5) `percentValue` from `payload.percentage` fallback. Extend `App.coverage.integration-qa.test.ts` or add `QACoverageBadge.test.tsx`.
+
+- [ ] [review] Gate 7: Browser verification required — `Dashboard renders identically before and after refactor`. Playwright blocked by missing `libatk-1.0.so.0` in container. Need alternative: install libatk (`apt-get install -y libatk1.0-0 libatk-bridge2.0-0`), or use `--browser=chromium` with system Chrome, or document a reproducible manual verification step with a screenshot.
+
 ### QA Bugs
 
 - [ ] [qa/P1] npm test exits with code 1 — 33 pre-existing failures: `dashboard.test.ts` (GH path hardening: "gh: blocked by aloop PATH hardening"), `orchestrate.test.ts` (ReferenceError: state is not defined in launchChildLoop/dispatchChildLoops/runOrchestratorScanPass/processQueuedPrompts), `process-requests.test.ts`, `github-monitor.test.ts` (EtagCache). Test files unchanged since commit 6a72a5f9 but previous QA reported "250/250 passing" — prior QA may have only counted aloop.test.mjs (250 tests) while tsx tests were silently excluded. Full suite now: 1077 pass, 33 fail out of 1111 total. Tested at iter 46. (priority: high)

@@ -120,3 +120,25 @@
 - **Gate 7 — FAIL (persists):** No Playwright/browser verification performed. QA reported `libatk-1.0.so.0` missing in container — Playwright cannot launch. curl-based checks confirm HTML, JS, CSS, SSE all functional, but visual rendering (panel layout, Header/Footer/DocsPanel positions) is unverified. Gate 7 is a mandatory fail without browser evidence for layout component changes. [review] task remains open in TODO.md.
 
 ---
+
+## Review — 2026-04-14 19:29 — commit 6cc26a60..cd3b32ed
+
+**Verdict: FAIL** (2 new findings; 1 prior finding resolved; 1 prior finding persists)
+**Scope:** `src/lib/log-session.test.ts` (new), `src/components/layout/Header.tsx` (reduced), `src/components/layout/StatusIndicators.tsx` (new), `src/components/layout/QACoverageBadge.tsx` (new), `QA_COVERAGE.md`, `QA_LOG.md`, `TODO.md`
+
+**Build summary:** Commit `b7ee3e9c` added 7 unit tests for `log-session.ts` covering all flagged branches. Commit `9899c43a` split `Header.tsx` (385 LOC) into `Header.tsx` (168 LOC), `StatusIndicators.tsx` (98 LOC), and `QACoverageBadge.tsx` (142 LOC); Header.tsx re-exports sub-components for backward compat. Commit `cd3b32ed` is a QA re-test pass confirming 257/257 dashboard tests pass and exposing 33 pre-existing failures in non-dashboard tests.
+
+**Gate 5 — PASS:** `vitest run` (from `aloop/cli/dashboard/`) → 24 test files, 257 tests, all pass. `tsc --noEmit` → 0 errors. Note: 33 failures in broader test suite (`dashboard.test.ts`, `orchestrate.test.ts`, `process-requests.test.ts`, `github-monitor.test.ts`) are pre-existing — QA confirms test files unchanged since commit `6a72a5f9`; tracked as `[qa/P1]` in TODO.md.
+**Gate 8 — PASS:** No dependency changes.
+**Gate 9 — PASS:** No user-facing docs changed.
+**Gate 2 — PASS:** `log-session.test.ts` uses `.toBe()`, `.toBeNull()`, `.toContain()` — concrete value assertions, not mere truthy checks.
+**Gate 4 (Header.tsx LOC) — PASS (resolved):** `Header.tsx` = 168 LOC, `StatusIndicators.tsx` = 98 LOC, `QACoverageBadge.tsx` = 142 LOC. All within ≤200 LOC limit. Constitution Rule 7 satisfied. Prior `[review]` task closed.
+**Gate 3 (log-session.ts) — PASS (resolved):** All flagged branches now covered: `latestQaCoverageRefreshSignal('')` → null (early-return ✓); malformed JSON lines → null (catch branch ✓); `phase !== 'qa'` → null (phase filter ✓); QA `iteration_complete` → signal string ✓. `toSession({ project_root: '/home/user/my-project' }, ...)` → `projectName === 'my-project'` (IIFE ✓). Prior `[review]` task closed.
+
+- **Gate 3 — FAIL (new):** `StatusIndicators.tsx` is a new module with no dedicated unit tests. Untested branches confirmed: (1) `PhaseBadge({ phase: '' })` early return — integration tests always render with a non-empty phase; (2) `phaseColors[phase.toLowerCase()] ?? 'bg-muted-foreground border-border'` fallback — no test passes an unknown phase string; (3) `formatSecs` in `ElapsedTimer` for `m > 0, s === 0` path (formats as `"Nm"` not `"Nm 0s"`) — integration tests do not control elapsed time precisely. Wrote `[review]` task.
+
+- **Gate 3 — FAIL (new):** `QACoverageBadge.tsx` is a new module. `App.coverage.integration-qa.test.ts` covers the 50-79% yellow range (55%, 67%) and PASS/FAIL/UNTESTED feature statuses, but the following branches are untested: (1) green tone (`percentage >= 80`) — no test with `coverage_percent ≥ 80`; (2) red tone (`percentage < 50`) — no test with low coverage; (3) N/A/null state (`coverage === null` before fetch resolves, or `available: false`) — not exercised by any mock; (4) `parseQACoveragePayload` receiving a non-record primitive — the `!isRecord(payload)` guard is never triggered; (5) `percentValue` sourced from `payload.percentage` fallback (vs `coverage_percent`) — all mocks use `coverage_percent`. Wrote `[review]` task.
+
+- **Gate 7 — FAIL (persists):** No browser/Playwright verification across any iteration. Container missing `libatk-1.0.so.0`. Spec acceptance criterion "Dashboard renders identically before and after refactor" remains unverified. `[review]` task remains open in TODO.md.
+
+---
