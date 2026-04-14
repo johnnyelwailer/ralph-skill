@@ -112,3 +112,23 @@
 - [x] Queue empty — no override prompts to process.
 - [x] active.json=[] but orchestrator.json correctly tracks #157 as in_progress with child_pid=139176. No correction needed (active.json managed by runtime).
 - [x] 105 Ready issues waiting (top priority -10: #188, #187, #186, #185, #184, #182, #158, #156). Next dispatch after #157 completes.
+
+# orchestrator scan (2026-04-14 ~sixth pass)
+
+## State transitions
+
+- [x] #157: child PID 139176 ALIVE. Session `orchestrator-20260321-172932-issue-157-20260414-164637`, iteration=2, phase=**build** (status.json confirmed), state=running. PR #310 open. Concurrency slot occupied (cap=1) — no new dispatches.
+- [x] #173: still `blocked_on_human` — human must remove false "Implementation Status" section from GH issue #173 body.
+- [x] #108: still `blocked_on_human` — human must manually rebase PR #132 onto agent/trunk.
+- [x] Queue empty — no override prompts.
+- [x] No state transitions required this pass — child active and progressing normally.
+
+# orchestrator scan (2026-04-14 ~seventh pass)
+
+## State transitions
+
+- [x] #157: child PID 139176 ALIVE. Session `orchestrator-20260321-172932-issue-157-20260414-164637`, iteration=13, phase=**qa**, state=running. PR #310 open. Concurrency slot occupied (cap=1) — no new dispatches.
+- [x] #173: still `blocked_on_human` — human must remove false "Implementation Status" section from GH issue #173 body.
+- [x] #108: still `blocked_on_human` (In review) — human must manually rebase PR #132 onto agent/trunk.
+- [x] Queue empty — no override prompts.
+- [x] No state transitions required this pass — child progressing normally (build → qa).
