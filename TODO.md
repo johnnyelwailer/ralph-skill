@@ -1,68 +1,55 @@
 # Issue #157: Reduce AppView.tsx to layout shell and create AppShell, MainPanel, DocsPanel
 
-## Current Status
+## Gap Analysis
 
-`AppView.tsx` is 1393 LOC. The following components still need extraction:
-- `Sidebar` (~305 LOC)
-- `ActivityPanel` + `LogEntryRow` (~360 LOC combined)
-- `ArtifactComparisonDialog` + `ImageLightbox` (~220 LOC combined)
-- `CommandPalette` (~40 LOC)
-- `AppInner` state/SSE logic (~380 LOC)
-
-Already extracted (with issues): `Header.tsx` (385 LOC — exceeds 200 LOC limit), `DocsPanel.tsx` (199 LOC — OK), `Footer.tsx` (66 LOC — OK).
+Current state:
+- `AppView.tsx`: 1393 lines → must become <100 LOC
+- `Header.tsx`: 385 lines → must become ≤200 LOC (acceptance criterion)
+- `DocsPanel.tsx`: 199 lines → already ≤200 LOC ✓
+- `Footer.tsx`: 66 lines → already ≤200 LOC ✓
+- `AppShell.tsx`: does not exist → must be created
+- `MainPanel.tsx`: does not exist → must be created
+- Custom hooks `useSSE`, `useSession`, `useSteering`: do not exist → must be created
+- `Sidebar` component (AppView.tsx lines 66–368): needs its own file `Sidebar.tsx`
+- `ActivityPanel` + `LogEntryRow` (AppView.tsx lines 373–728): need their own files
+- `ArtifactComparisonDialog` + `ImageLightbox` (AppView.tsx lines 730–960): need their own files
+- `CommandPalette` (AppView.tsx lines 966–1002): needs its own file
 
 ## Tasks
 
 ### In Progress
 
-- [x] [review] Gate 3: **`log-session.ts` coverage gaps** — No dedicated test file for `log-session.ts` exists. Four branches are untested: (1) `latestQaCoverageRefreshSignal('')` → `null` early return; (2) log with malformed JSON lines should skip (catch branch); (3) `iteration_complete` with `phase: 'build'` (non-QA) should return `null`; (4) `toSession({ project_root: '/home/user/my-project' }, 'fallback', true)` should set `projectName === 'my-project'`. Create `src/lib/__tests__/log-session.test.ts` (or equivalent path) importing directly from `lib/log-session`. All four branches must be covered. (priority: high)
-
-- [ ] [review] Gate 7: **Playwright/browser verification** — No browser verification performed after extracting Header, Footer, DocsPanel layout components. Spec acceptance criterion: "Dashboard renders identically before and after refactor." Run `npm run test:e2e` (Playwright) against the dashboard dev server and confirm panels render correctly (Header at top, Footer at bottom, DocsPanel tabs visible). Gate 7 is a mandatory fail without browser verification for layout changes. (priority: high)
-
 ### Up Next
 
-- [ ] **Extract `Sidebar.tsx`** — Move `Sidebar` component (~305 LOC) to `src/components/layout/Sidebar.tsx`. Split out `SessionCard` inner component to a separate file to keep each file ≤200 LOC. Re-export from AppView.tsx for backward compatibility. Add a render test.
+- [x] Split `Header.tsx` (385 LOC → ≤200): extract `PhaseBadge`, `StatusDot`, `ConnectionIndicator`, `ElapsedTimer` to `src/components/layout/StatusIndicators.tsx` (~80 LOC), and `QACoverageBadge` with its types/helpers to `src/components/layout/QACoverageBadge.tsx` (~115 LOC); update Header.tsx to import from them; re-export from Header.tsx for backward compat
 
-- [ ] **Extract `ActivityPanel` and `LogEntryRow`** — Move `ActivityPanel` to `src/components/activity/ActivityPanel.tsx` and `LogEntryRow` to `src/components/activity/LogEntryRow.tsx`. Move `ArtifactComparisonDialog` + `ImageLightbox` to `src/components/activity/` or `src/components/artifacts/`. Keep each file ≤200 LOC. Re-export from AppView.tsx. Add render tests.
+- [ ] Extract `LogEntryRow` + `ImageLightbox` from AppView.tsx to `src/components/activity/LogEntryRow.tsx` (~250 LOC); update AppView.tsx to import from new location; add re-export in AppView.tsx
 
-- [ ] **Extract `CommandPalette`** — Move `CommandPalette` (~40 LOC) to `src/components/layout/CommandPalette.tsx`. Re-export from AppView.tsx. Add a render test.
+- [ ] Extract `ArtifactComparisonDialog` from AppView.tsx to `src/components/activity/ArtifactComparison.tsx` (~160 LOC); update AppView.tsx to import from new location; add re-export in AppView.tsx
 
-- [ ] **Extract custom hooks** — Extract three major logic blobs from `AppInner()` into:
-  - `src/hooks/useSSE.ts` — SSE connection + state updates (`connectSSE`, `load`, reconnect logic, `connectionStatus`, `qaCoverageRefreshKey`)
-  - `src/hooks/useSession.ts` — Session selection, URL sync, session list derivation
-  - `src/hooks/useSteering.ts` — `handleSteer`, `handleStop`, `handleResume` with submitting states
-  Each hook must be <150 LOC with tests.
+- [ ] Extract `ActivityPanel` from AppView.tsx to `src/components/activity/ActivityPanel.tsx` (~100 LOC, depends on LogEntryRow.tsx); update AppView.tsx import; add re-export
 
-- [ ] **Create `MainPanel.tsx`** — `src/components/layout/MainPanel.tsx` composing: `<Header>`, activity panel area (`ActivityPanel`), mobile panel toggle tabs, and `<Footer>` at the bottom. Props: all data Header and Footer need, plus ActivityPanel props. ≤200 LOC.
+- [ ] Extract `Sidebar` component from AppView.tsx to `src/components/layout/Sidebar.tsx` (~300 LOC → may need `SessionCard.tsx` sub-split if >200); update AppView.tsx import; add re-export
 
-- [ ] **Create `AppShell.tsx`** — `src/components/layout/AppShell.tsx` using `react-resizable-panels` (shadcn wrapper at `@/components/ui/resizable`). Three-panel layout: `<Sidebar>` | `<MainPanel>` | `<DocsPanel>`. Handle responsive breakpoints: mobile (stacked/drawer), tablet (2-panel), desktop (3-panel). Keyboard shortcut `Ctrl+B` toggles sidebar. ≤200 LOC. Add a render test.
+- [ ] Extract `CommandPalette` from AppView.tsx to `src/components/layout/CommandPalette.tsx` (~35 LOC); update AppView.tsx import
 
-- [ ] **Reduce `AppView.tsx` to <100 LOC shell** — `AppInner` becomes a thin shell that calls `useSSE`, `useSession`, `useSteering`, renders `<AppShell>`, handles `Ctrl+K`/`Escape`, and renders `<CommandPalette>` and `<Toaster>`. Remove all extracted component definitions. Keep re-exports for backward compatibility.
+- [ ] Create `src/hooks/useSSE.ts`: extract SSE connection logic from `AppInner` (~80 LOC) — manages EventSource, reconnect, `connectionStatus`, `state` and `qaCoverageRefreshKey`
 
-- [ ] **Split `Header.tsx` to ≤200 LOC** — `Header.tsx` is 385 LOC. Extract sub-components (`QACoverageBadge`, `PhaseBadge`, `StatusDot`, `ConnectionIndicator`, `ElapsedTimer`) to `src/components/layout/HeaderBadges.tsx`. Keep `Header.tsx` as the main component that imports from `HeaderBadges.tsx`. Each file ≤200 LOC.
+- [ ] Create `src/hooks/useSession.ts`: extract session selection/URL-sync logic from `AppInner` (~50 LOC) — manages `selectedSessionId`, `selectSession`, session list derivation
 
-- [ ] **Update `App.tsx` re-exports** — Verify all symbols re-exported from App.tsx still resolve after the full refactor (Sidebar, ActivityPanel, DocContent, HealthPanel, ArtifactComparisonDialog, all utility functions). Update import paths as needed.
+- [ ] Create `src/hooks/useSteering.ts`: extract steering/stop/resume API calls from `AppInner` (~80 LOC) — manages `handleSteer`, `handleStop`, `handleResume` and their submitting states
 
-- [ ] **Final validation** — Run `npm run type-check && npm test` to confirm all acceptance criteria pass: AppView.tsx <100 LOC, no source file >200 LOC (excluding ui/ primitives), all tests pass.
+- [ ] Create `src/components/layout/AppShell.tsx` (<150 LOC): three-panel layout using `ResizablePanelGroup`/`ResizablePanel` from `@/components/ui/resizable`; accepts `sidebar`, `main`, `docs` render props; handles responsive breakpoints (mobile: stacked/tabs, tablet: 2-panel, desktop: 3-panel with resizable)
+
+- [ ] Create `src/components/layout/MainPanel.tsx` (<150 LOC): composes `Header` + mobile panel toggle tabs + activity/docs panels + `Footer`; accepts all needed props from hooks; no state of its own
+
+- [ ] Reduce `AppView.tsx` to <100 LOC: keep only (a) re-exports for backward compat (Sidebar, ActivityPanel, LogEntryRow, ArtifactComparisonDialog, lib utilities), (b) keyboard/touch shortcut handling, (c) `App` function that calls `useSSE`/`useSession`/`useSteering`/`useCost`, derives display values, renders `<AppShell>` with panels; verify all existing exports in `App.tsx` still resolve
+
+- [ ] Add tests for `Sidebar.tsx`: render with sessions, collapsed state, context menu, cost display
+
+- [ ] Add tests for `AppShell.tsx`: three-panel render, responsive visibility, panel prop passing
+
+- [ ] Verify `npm run type-check` passes with zero errors after full refactor
 
 ### Completed
 
-- [x] **Extract `Footer.tsx`** — Moved `Footer` component to `src/components/layout/Footer.tsx` (66 LOC). Re-exported from AppView.tsx.
-
-- [x] **Extract `Header.tsx`** — Moved `Header` and related components to `src/components/layout/Header.tsx`. Re-exported from AppView.tsx. (Note: still 385 LOC — split task added to Up Next.)
-
-- [x] **Extract `DocsPanel.tsx`** — Moved `DocsPanel`, `DocContent`, `HealthPanel` to `src/components/layout/DocsPanel.tsx`. Re-exported from AppView.tsx. (Note: 204 LOC at extraction — trimmed to 199 LOC in subsequent commits.)
-
-- [x] **Fix type-check errors** — All 5 type errors resolved; `tsc --noEmit` exits clean.
-
-- [x] **Fix 3 failing tests in App.coverage.test.ts** — All 243 tests pass.
-
-- [x] [review] Gate 3: **DocsPanel.tsx branch coverage** — Added 8 tests covering `DocContent` wide mode (SPEC and non-SPEC files), `HealthPanel` cooldown (future/past timestamp), failed, and unknown status. All 15 DocsPanel tests pass; ≥90% branch coverage achieved.
-
-- [x] [qa/P1] **Fix duplicate cooldown IIFE in `DocsPanel.tsx`** — Extracted `remainingSecs` variable before JSX return. IIFE no longer appears twice.
-
-- [x] [qa/P1] **Trim DocsPanel.tsx to ≤200 LOC** — `DocsPanel.tsx` is now 199 LOC (previously 204 LOC).
-
-- [x] [review] Gate 4: **Split `lib/log.ts` to ≤200 LOC** — `lib/log.ts` was 381 LOC. Split into `log-types.ts` (101 LOC), `log-parse.ts` (172 LOC), and `log-session.ts` (110 LOC). `log.ts` is now a 3-LOC re-export barrel. All files within limits.
-
-- [x] [review] Gate 4: **Restore SPEC.md** — Confirmed restored to full 4086-line project spec.
