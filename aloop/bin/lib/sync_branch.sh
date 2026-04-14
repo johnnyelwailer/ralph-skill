@@ -45,7 +45,12 @@ except Exception:
     fi
 
     # Fetch origin non-fatally
-    git -C "$WORK_DIR" fetch origin "$base_branch" 2>/dev/null || true
+    local fetch_rc=0
+    git -C "$WORK_DIR" fetch origin "$base_branch" 2>/dev/null || fetch_rc=$?
+    if [ "$fetch_rc" -ne 0 ]; then
+        write_log_entry "fetch_failed" \
+            "base_branch" "$base_branch"
+    fi
 
     # Count commits ahead before merge attempt
     local before_count

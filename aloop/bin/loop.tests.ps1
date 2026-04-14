@@ -3951,6 +3951,10 @@ Describe 'loop.ps1 — Sync-Branch behavioral' {
 
         $r = Invoke-SyncBranch -e $e
         $r.Result | Should -Be $true
+
+        $fetchFailEvent = $r.Events | Where-Object { $_.event -eq 'fetch_failed' } | Select-Object -First 1
+        $fetchFailEvent | Should -Not -BeNullOrEmpty
+        $fetchFailEvent.data.base_branch | Should -Be 'main'
     }
 
     It 'logs merge_conflict, writes queue file, leaves markers for agent, returns $false on conflict' {

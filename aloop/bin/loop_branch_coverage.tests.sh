@@ -1137,8 +1137,12 @@ fi
 git -C "$SYNC_WORK_DIR" remote set-url origin /nonexistent/path >/dev/null 2>&1
 > "$COVERAGE_LOG_FILE"
 if sync_branch; then
-    cover_branch "sync.fetch_failure"
-    pass_case "sync_branch continues non-fatally when git fetch fails"
+    if grep -q 'fetch_failed' "$COVERAGE_LOG_FILE"; then
+        cover_branch "sync.fetch_failure"
+        pass_case "sync_branch continues non-fatally when git fetch fails and logs fetch_failed"
+    else
+        fail_case "sync_branch did not log fetch_failed event on fetch-failure path"
+    fi
 else
     fail_case "sync_branch returned non-zero on fetch-failure path (should be non-fatal)"
 fi

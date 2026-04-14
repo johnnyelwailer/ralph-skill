@@ -45,6 +45,9 @@ function Sync-Branch {
 
     # Fetch origin non-fatally
     git -C "$WorkDir" fetch origin "$baseBranch" 2>$null | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        Write-LogEntry -Event "fetch_failed" -Data @{ base_branch = $baseBranch }
+    }
 
     # Count commits ahead before merge attempt
     $beforeCount = 0
