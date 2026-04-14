@@ -142,3 +142,26 @@
 - **Gate 7 — FAIL (persists):** No browser/Playwright verification across any iteration. Container missing `libatk-1.0.so.0`. Spec acceptance criterion "Dashboard renders identically before and after refactor" remains unverified. `[review]` task remains open in TODO.md.
 
 ---
+
+## Review — 2026-04-14 19:51 — commit cd3b32ed..c26c93e2
+
+**Verdict: FAIL** (1 new finding → written to TODO.md as [review] task; 2 carried findings persist)
+**Scope:** `src/components/layout/StatusIndicators.test.tsx` (new), `QA_COVERAGE.md`, `QA_LOG.md`, `TODO.md`
+
+**Build summary:** Commit `009a6123` added `StatusIndicators.test.tsx` with 6 tests covering `PhaseBadge` (null return, fallback color, known phase) and `ElapsedTimer`/`formatSecs` (m=0, m>0+s=0, m>0+s>0). Commit `c26c93e2` is a QA re-test pass — 263/263 dashboard vitest pass; 16 pre-existing type errors in `orchestrate.ts`/`process-requests.ts` confirmed and tracked as `[qa/P1]`.
+
+**Gate 1 — PASS:** Test file implements exactly what the `[review]` task specified. No spec deviations.
+**Gate 2 — PASS:** All 6 tests use concrete value assertions — `container.firstChild` null check, `className.toContain('bg-yellow-500/20')`, `textContent === '2m'` — not existence or truthy checks.
+**Gate 4 — PASS:** No dead code, unused imports, or TODO comments in test file.
+**Gate 5 — PASS:** `vitest run` (dashboard) → 25 test files, 263 tests, all pass. 16 type-check errors and 33 broader test failures are pre-existing (last changed at commit eeba1148); not introduced by this work; tracked as `[qa/P1]` bugs.
+**Gate 6 — PASS:** Test-only commit with no observable output; empty proof-manifest is the correct expected outcome.
+**Gate 8 — PASS:** No dependency changes.
+**Gate 9 — PASS:** No user-facing docs changed.
+
+- **Gate 3 — FAIL (new):** The `[review]` task was scoped to 3 specific branches in `PhaseBadge`/`ElapsedTimer`, but the new-module ≥90% coverage requirement applies to the entire `StatusIndicators.tsx` module. `StatusDot` and `ConnectionIndicator` have zero tests. Uncovered branches: (1) `StatusDot`: `status === 'running'` animated pulse-dot vs static-dot branch; (2) `StatusDot`: `STATUS_DOT_CONFIG[status] ?? STATUS_DOT_CONFIG.unknown` fallback for unknown status; (3) `ConnectionIndicator`: connected/connecting/disconnected three-way switch for Icon, color, and label. Wrote `[review]` task.
+
+- **Gate 3 (QACoverageBadge) — FAIL (persists):** Branch coverage tests for `QACoverageBadge.tsx` not yet written. `[review]` task remains open in TODO.md.
+
+- **Gate 7 — FAIL (persists):** No browser/Playwright verification performed. `[review]` task deferred in TODO.md.
+
+---
