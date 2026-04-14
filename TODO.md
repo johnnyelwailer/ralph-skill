@@ -58,6 +58,7 @@ Shell integration test failures — out of scope for CI setup (loop.sh behavior 
 - [x] README.md CI badge URL contains `actions/workflows/ci.yml/badge.svg` — verified line 1 of README.md
 - [x] Fix PowerShell Pester test title inconsistency: `loop.tests.ps1` line 3956 says "aborts merge" but the test body asserts conflict markers remain. Renamed to reflect actual behavior.
 - [x] Fix spec discrepancy in `TASK_SPEC.md` acceptance criterion: criterion #5 says "then runs `git merge --abort`; afterward `git diff --name-only --diff-filter=U` returns no entries" — but `PROMPT_merge.md` explicitly says "The merge was attempted automatically before this iteration and **left conflict markers in the working tree**" (the merge agent needs conflict markers to resolve them). The implementation correctly omits `git merge --abort`. Acceptance criterion #5 updated to match the actual correct behavior.
+- [x] Run verification commands to confirm all tests pass: `bash aloop/bin/loop_branch_coverage.tests.sh` and `pwsh -File aloop/bin/loop.tests.ps1`
 
 ### Notes
 
