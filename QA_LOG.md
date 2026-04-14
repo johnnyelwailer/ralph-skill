@@ -56,6 +56,98 @@ $ grep -n "Math.max.*cooldownUntil" src/components/layout/DocsPanel.tsx
 
 ---
 
+## QA Session — 2026-04-14 (iteration 45)
+
+### Test Environment
+- Binary under test: /tmp/aloop-test-install-GqpIPs/bin/aloop (version 1.0.0)
+- Worktree: /home/pj/.aloop/sessions/orchestrator-20260321-172932-issue-157-20260414-164637/worktree
+- Branch: aloop/issue-157
+- Commit: 6a72a5f9
+- Features tested: 5
+
+### Results
+- PASS: DocsPanel.tsx LOC — 199 LOC (was FAIL at 204 LOC; fixed in d9498aa3)
+- PASS: DocsPanel duplicate cooldown IIFE — only 1 Math.max occurrence (was FAIL; fixed in d9498aa3)
+- PASS: lib/log.ts split — log-types.ts (101), log-parse.ts (172), log-session.ts (110), log.ts (3) — all ≤200 LOC (was FAIL at 381 LOC; fixed in 69dc3bfb)
+- PASS: npm run type-check — exit 0, 0 errors
+- PASS: npm test — 250/250 passing
+- PASS: SPEC.md — 4086 lines confirmed (restored in 6a72a5f9)
+- PASS: Dashboard HTML served at port 4173 — correct HTML, JS/CSS bundles return 200
+- PASS: SSE /events endpoint — returns structured state with session data
+- FAIL: Header.tsx LOC — still 385 LOC (tracked in TODO Up Next)
+- FAIL: AppView.tsx LOC — still 1393 LOC (main refactoring not started)
+- FAIL: Gate 7 browser verification — Playwright can't launch (libatk-1.0.so.0 missing in container); curl fallback confirms server/API function; visual rendering unverified
+
+### Bugs Filed
+- None new — all known issues already tracked in TODO.md
+
+### Re-tested (FAIL → PASS)
+- DocsPanel.tsx LOC: FAIL (204) → PASS (199)
+- DocsPanel duplicate cooldown IIFE: FAIL → PASS (1 occurrence)
+- lib/log.ts LOC: FAIL (381) → PASS (split into 4 files all ≤200 LOC)
+
+### Command Transcript
+
+```
+# CLI install
+$ ALOOP_BIN=$(npm --prefix aloop/cli run test-install -- --keep 2>&1 | grep "^/tmp" | tail -1)
+$ $ALOOP_BIN --version
+1.0.0
+
+# LOC audit
+$ wc -l src/components/layout/DocsPanel.tsx src/components/layout/Header.tsx src/components/layout/Footer.tsx src/AppView.tsx
+  199 DocsPanel.tsx   PASS (was 204)
+  385 Header.tsx      FAIL (Up Next task)
+   66 Footer.tsx      PASS
+ 1393 AppView.tsx     FAIL (main refactoring not started)
+
+$ wc -l src/lib/log-types.ts src/lib/log-parse.ts src/lib/log-session.ts src/lib/log.ts
+  101 log-types.ts    PASS
+  172 log-parse.ts    PASS
+  110 log-session.ts  PASS
+    3 log.ts          PASS (re-export barrel)
+
+# Duplicate IIFE check
+$ grep -n "Math.max" src/components/layout/DocsPanel.tsx | wc -l
+1  — PASS (was 2)
+
+# Type check
+$ ./node_modules/.bin/tsc --noEmit; echo "EXIT: $?"
+EXIT: 0  — PASS
+
+# Test suite
+$ npm test -- --reporter=verbose
+Test Files: 23 passed (23)
+Tests:      250 passed (250)  — PASS
+
+# SPEC.md line count
+$ wc -l SPEC.md
+4086  — PASS
+
+# Dashboard server (started with fixture session)
+$ node dist/index.js dashboard --port 4173 --session-dir dashboard/e2e/fixtures/session ...
+Launching real-time progress dashboard on port 4173...
+
+$ curl -s http://127.0.0.1:4173 | head -5
+<!DOCTYPE html><html lang="en">...  EXIT: 0  — PASS (HTML served)
+
+$ curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:4173/assets/index-C01l8Uhs.js
+200  — PASS (JS bundle accessible)
+
+$ curl -s -N --max-time 3 http://127.0.0.1:4173/events | head -3
+: connected
+event: state
+data: {"sessionDir":...,"status":{"state":"running",...},...}  — PASS (SSE works)
+
+# Gate 7 Playwright attempt
+$ npm run test:e2e
+ERROR: chrome-headless-shell: error while loading shared libraries: libatk-1.0.so.0: cannot open shared object file
+→ 11 tests FAIL (missing system lib; cannot install without sudo; container restriction)
+→ Fallback: curl-based checks confirm HTML, JS, CSS, and SSE all functional
+```
+
+---
+
 ## QA Session — 2026-04-14 (iteration 41)
 
 ### Test Environment
