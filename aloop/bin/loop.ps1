@@ -45,7 +45,6 @@ param(
     [ValidateSet('start', 'restart', 'resume')]
     [string]$LaunchMode = 'start',
 
-    [switch]$BackupEnabled,
     [switch]$DryRun,
     [switch]$DangerouslySkipContainer
 )
@@ -926,7 +925,7 @@ function Register-IterationFailure {
         [string]$ErrorText
     )
     if (-not ($Mode -in @('plan-build', 'plan-build-review'))) { return }
-    if (-not ($IterationMode -in @('plan', 'build', 'qa', 'review', 'spec-gap', 'docs'))) { return }
+    if (-not ($IterationMode -in @('plan', 'build', 'qa', 'review'))) { return }
 
     # Use per-prompt max_retries (from frontmatter) when set, else global default
     $effectiveRetries = if ($script:effectiveMaxRetries) { $script:effectiveMaxRetries } else { $script:maxPhaseRetries }
@@ -1252,22 +1251,13 @@ function Get-ProviderHealthState {
 
     $state = New-ProviderHealthState
     if ($parsed.PSObject.Properties.Name -contains 'status') { $state.status = [string]$parsed.status }
-    if ($parsed.PSObject.Properties.Name -contains 'last_success') {
-        $ls = $parsed.last_success
-        if ($ls -is [datetime]) {
-            $state.last_success = [DateTimeOffset]::new($ls.ToUniversalTime(), [TimeSpan]::Zero).ToString('o')
-        } else { $state.last_success = [string]$ls }
-    }
-    if ($parsed.PSObject.Properties.Name -contains 'last_failure') {
-        $lf = $parsed.last_failure
-        if ($lf -is [datetime]) {
-            $state.last_failure = [DateTimeOffset]::new($lf.ToUniversalTime(), [TimeSpan]::Zero).ToString('o')
-        } else { $state.last_failure = [string]$lf }
-    }
+    if ($parsed.PSObject.Properties.Name -contains 'last_success') { $state.last_success = $parsed.last_success }
+    if ($parsed.PSObject.Properties.Name -contains 'last_failure') { $state.last_failure = $parsed.last_failure }
     if ($parsed.PSObject.Properties.Name -contains 'failure_reason') { $state.failure_reason = $parsed.failure_reason }
     if ($parsed.PSObject.Properties.Name -contains 'consecutive_failures') { $state.consecutive_failures = [int]$parsed.consecutive_failures }
     if ($parsed.PSObject.Properties.Name -contains 'cooldown_until') {
         $cu = $parsed.cooldown_until
+        # ConvertFrom-Json may auto-convert ISO 8601 strings to DateTime objects; normalise back to ISO string
         if ($cu -is [datetime]) {
             $state.cooldown_until = [DateTimeOffset]::new($cu.ToUniversalTime(), [TimeSpan]::Zero).ToString('o')
         } else {
@@ -1506,103 +1496,6 @@ fi
 }
 
 # ============================================================================
-# REMOTE BACKUP
-# ============================================================================
-
-function Setup-RemoteBackup {
-    if (-not $BackupEnabled) {
-        Write-Host "Remote backup: disabled"
-        return $false
-    }
-
-    Push-Location $WorkDir
-    try {
-        if (-not (Test-Path ".git")) {
-            Write-Host "Initializing git repository..."
-            git init | Out-Null
-            git add -A | Out-Null
-            $trailerSession = if ([string]::IsNullOrWhiteSpace($sessionId)) { (Split-Path -Leaf $SessionDir) } else { $sessionId }
-            try {
-                git commit -m "Initial commit" `
-                    -m "Aloop-Agent: harness" `
-                    -m "Aloop-Iteration: 0" `
-                    -m "Aloop-Session: $trailerSession" | Out-Null
-            } catch { }
-        }
-
-        try {
-            git remote get-url origin | Out-Null
-            $existingRemoteUrl = (git remote get-url origin | Out-String).Trim()
-            Write-Host ("Remote backup: " + (Convert-RemoteToWebUrl -RemoteUrl $existingRemoteUrl))
-            return $true
-        } catch { }
-
-        if (-not (Get-Command gh -ErrorAction SilentlyContinue)) {
-            Write-Warning "gh CLI not found. Remote backup disabled."
-            return $false
-        }
-
-        try { gh auth status | Out-Null } catch {
-            Write-Warning "gh CLI not authenticated. Remote backup disabled."
-            return $false
-        }
-
-        $projectName = Split-Path -Leaf $WorkDir
-        $repoName = "$projectName-aloop-backup"
-        Write-Host "Creating private backup repo: $repoName"
-
-        try {
-            gh repo create $repoName --private --source=. --push | Out-Null
-            $createdRemoteUrl = $null
-            try {
-                $createdRemoteUrl = (git remote get-url origin | Out-String).Trim()
-            } catch { }
-            if (-not [string]::IsNullOrWhiteSpace($createdRemoteUrl)) {
-                Write-Host ("Remote backup: " + (Convert-RemoteToWebUrl -RemoteUrl $createdRemoteUrl))
-            } else {
-                $createdRepoWebUrl = $null
-                try {
-                    $createdRepoWebUrl = (gh repo view $repoName --json url -q .url | Out-String).Trim()
-                } catch { }
-                if (-not [string]::IsNullOrWhiteSpace($createdRepoWebUrl)) {
-                    Write-Host "Remote backup: $createdRepoWebUrl"
-                } else {
-                    Write-Host "Remote backup: $repoName"
-                }
-            }
-            return $true
-        } catch {
-            Write-Warning "Could not create backup repo. Remote backup disabled."
-            return $false
-        }
-    }
-    finally {
-        Pop-Location
-    }
-}
-
-function Convert-RemoteToWebUrl {
-    param(
-        [string]$RemoteUrl
-    )
-    if ([string]::IsNullOrWhiteSpace($RemoteUrl)) { return $RemoteUrl }
-
-    $trimmed = $RemoteUrl.Trim()
-    if ($trimmed -match '^git@([^:]+):(.+)$') {
-        $path = ($Matches[2] -replace '\.git$', '')
-        return "https://$($Matches[1])/$path"
-    }
-    if ($trimmed -match '^ssh://git@([^/]+)/(.+)$') {
-        $path = ($Matches[2] -replace '\.git$', '')
-        return "https://$($Matches[1])/$path"
-    }
-    if ($trimmed -match '^https?://') {
-        return ($trimmed -replace '\.git$', '')
-    }
-    return $trimmed
-}
-
-# ============================================================================
 # ITERATION SUMMARY
 # ============================================================================
 
@@ -1816,9 +1709,6 @@ if (-not $DryRun) {
     }
 }
 
-# Setup remote backup
-$backupResult = Setup-RemoteBackup
-if (-not $backupResult) { $BackupEnabled = $false }
 Start-DashboardProcess
 Setup-ProvenanceHook
 
@@ -1955,93 +1845,7 @@ function Wait-ForRequests {
     }
 }
 
-# Sync the working branch with the upstream base branch before each iteration.
-# Reads auto_merge and base_branch from meta.json; falls back to git config
-# init.defaultBranch, then main, then master.
-# Returns $true on success (merged or up-to-date), $false on conflict.
-function Sync-Branch {
-    $metaFile  = Join-Path $SessionDir "meta.json"
-    $autoMerge = $true
-    $baseBranch = ''
-
-    # Read auto_merge and base_branch from meta.json
-    if (Test-Path $metaFile) {
-        try {
-            $meta = Get-Content $metaFile -Raw | ConvertFrom-Json
-            if ($null -ne $meta.auto_merge) {
-                $autoMerge = [bool]$meta.auto_merge
-            }
-            if ($meta.base_branch) {
-                $baseBranch = [string]$meta.base_branch
-            }
-        } catch { }
-    }
-
-    if (-not $autoMerge) {
-        return $true
-    }
-
-    # Resolve base branch: meta.json → git config → main → master
-    if ([string]::IsNullOrWhiteSpace($baseBranch)) {
-        try {
-            $baseBranch = (git -C "$WorkDir" config init.defaultBranch 2>$null | Out-String).Trim()
-        } catch { $baseBranch = '' }
-    }
-    if ([string]::IsNullOrWhiteSpace($baseBranch)) {
-        git -C "$WorkDir" rev-parse --verify main 2>$null | Out-Null
-        if ($LASTEXITCODE -eq 0) {
-            $baseBranch = 'main'
-        } else {
-            git -C "$WorkDir" rev-parse --verify master 2>$null | Out-Null
-            if ($LASTEXITCODE -eq 0) { $baseBranch = 'master' }
-        }
-    }
-    if ([string]::IsNullOrWhiteSpace($baseBranch)) {
-        return $true
-    }
-
-    # Fetch origin non-fatally
-    git -C "$WorkDir" fetch origin "$baseBranch" 2>$null | Out-Null
-
-    # Count commits ahead before merge attempt
-    $beforeCount = 0
-    try {
-        $countStr = (git -C "$WorkDir" rev-list --count "HEAD..origin/$baseBranch" 2>$null | Out-String).Trim()
-        if ($countStr -match '^\d+$') { $beforeCount = [int]$countStr }
-    } catch { }
-
-    # Attempt merge
-    $mergeOutput = git -C "$WorkDir" merge "origin/$baseBranch" --no-edit 2>&1
-    $mergeRc = $LASTEXITCODE
-
-    if ($mergeRc -ne 0) {
-        # Check if it's a real conflict (unmerged paths present)
-        $conflictFiles = git -C "$WorkDir" diff --name-only --diff-filter=U 2>$null
-        if ($conflictFiles) {
-            Write-LogEntry -Event "merge_conflict" -Data @{
-                base_branch = $baseBranch
-                iteration   = $iteration
-            }
-            # Copy merge conflict prompt into queue
-            $queueDir = Join-Path $SessionDir "queue"
-            if (-not (Test-Path $queueDir)) { New-Item -ItemType Directory -Path $queueDir -Force | Out-Null }
-            $mergeSrc = Join-Path $PromptsDir "PROMPT_merge.md"
-            if (Test-Path $mergeSrc) {
-                Copy-Item $mergeSrc (Join-Path $queueDir "000-merge-conflict.md") -Force
-            }
-            return $false
-        }
-    }
-
-    # Determine result
-    $result = if ($beforeCount -gt 0 -and $mergeRc -eq 0) { 'merged' } else { 'up_to_date' }
-    Write-LogEntry -Event "branch_sync" -Data @{
-        base_branch          = $baseBranch
-        result               = $result
-        merged_commit_count  = $beforeCount
-    }
-    return $true
-}
+. "$PSScriptRoot/lib/Sync-Branch.ps1"
 
 function Run-QueueIfPresent {
     param([string]$IterationProvider)

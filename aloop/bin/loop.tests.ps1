@@ -3817,13 +3817,8 @@ Describe 'loop.ps1 — provider-health primitives' {
 Describe 'loop.ps1 — Sync-Branch behavioral' {
 
     BeforeAll {
-        $loopScript = Join-Path $PSScriptRoot 'loop.ps1'
-        $scriptContent = Get-Content $loopScript -Raw
-        if ($scriptContent -match '(?ms)(^function Sync-Branch\s*\{.*?^})') {
-            $script:syncBranchFuncSource = $Matches[1]
-        } else {
-            throw "Could not extract Sync-Branch from loop.ps1"
-        }
+        $libScript = Join-Path $PSScriptRoot 'lib' 'Sync-Branch.ps1'
+        $script:syncBranchFuncSource = Get-Content $libScript -Raw
 
         $script:sbTempRoot = Join-Path ([System.IO.Path]::GetTempPath()) "aloop-syncbranch-$PID"
         New-Item -ItemType Directory -Path $script:sbTempRoot -Force | Out-Null
