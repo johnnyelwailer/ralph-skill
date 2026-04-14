@@ -1,3 +1,31 @@
+## Orchestrator scan — 2026-04-14T21:28:38Z (iter 129)
+
+**Child #157** (PID 422016) ALIVE — iteration 83, phase=**qa**
+- Progressed: plan (iter 71) → qa (iter 83); Gate 3 fix committed: `7e1ec74e test: add branch coverage tests for QACoverageBadge !response.ok and sessionId=null paths`
+- status.json updated_at=21:17:19Z (~11 min ago); QA running to verify coverage fix
+- Gate 7 libatk E2E infra blocker persists (deferred)
+
+**Parallel orchestrators (all fresh):**
+- `orchestrator-20260414-190413`: PID 488488 ALIVE — iter=102, updated 21:26:27Z
+- `orchestrator-20260414-195732`: PID 663470 ALIVE — iter=53, updated 21:25:46Z
+- `orchestrator-20260414-211029`: iter=5, updated 21:26:13Z (fresh)
+- `orchestrator-20260414-211359`: iter=2, updated 21:26:43Z (fresh)
+
+**Child issue sessions (orchestrator-195732):**
+- issue-2 (PID 854360): iter=28, review, updated 21:27:27Z (fresh)
+- issue-11 (PID 854415): iter=13, qa, updated 21:23:32Z (fresh)
+- issue-6 (PID 854303): iter=14, review, updated 21:14:10Z (~14 min, mid-iteration, ALIVE)
+
+**Capacity:** 1/1 slots occupied — no new dispatches
+
+**Blocked on human (unchanged):**
+- #108: PR #132 needs manual rebase onto agent/trunk
+- #173: Issue body contains false "Implementation Status" text
+
+**Actions taken:** none — child progressing (plan→qa, Gate 3 tests committed), monitoring only
+
+---
+
 ## Orchestrator scan — 2026-04-14T21:13:05Z (iter 128)
 
 **Child #157** (PID 422016) ALIVE — iteration 71, phase=**plan**
