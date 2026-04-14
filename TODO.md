@@ -352,4 +352,14 @@
 - [x] #173: still blocked_on_human — human must remove false "Implementation Status" section from GH issue #173 body.
 - [x] #108: still blocked_on_human (In review) — human must manually rebase PR #132 onto agent/trunk.
 - [x] Queue: empty — no override prompts.
+
+# orchestrator scan (2026-04-14 ~twenty-ninth pass)
+
+## State transitions
+
+- [x] #157: child PID 422016 ALIVE (64 min running). Sub-process PID 588056 ALIVE (11 min, spawned 19:34). status.json: iteration=27, phase=**qa**, updated_at=19:34:42Z (11 min stale). Fresh tsx test batch started 19:41 (5 min ago), 23 test files, adapter.test.ts at 90.9% CPU — actively running. Concurrency slot occupied (cap=1) — no new dispatches. PR #310 MERGEABLE but CI failing (CLI/TypeCheck/E2E).
+- [x] #173: still blocked_on_human — human must remove false "Implementation Status" section from GH issue #173 body.
+- [x] #108: still blocked_on_human (In review) — human must manually rebase PR #132 onto agent/trunk.
+- [x] Queue: absent — no override prompts to process.
+- [x] No state transitions required — child #157 actively running qa tests (19:41Z batch, 90.9% CPU), progressing normally.
 - [x] No state transitions required — child #157 running qa test suite (~28 min into qa phase), progressing normally.
