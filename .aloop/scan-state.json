@@ -1,6 +1,6 @@
 {
-  "scan_at": "2026-04-14T21:06:26Z",
-  "iteration": 125,
+  "scan_at": "2026-04-14T21:09:37Z",
+  "iteration": 126,
   "active_child": {
     "session": "orchestrator-20260321-172932-issue-157-20260414-184129",
     "issue": 157,
@@ -11,7 +11,7 @@
     "branch": "aloop/issue-157",
     "latest_commit": "5cce7a83 chore(review): FAIL — 1 new finding (QACoverageBadge fetch branches), Gate 7 persists",
     "status_updated_at": "2026-04-14T20:51:34Z",
-    "worktree_activity_at": "2026-04-14T21:05:00Z",
+    "worktree_activity_at": "2026-04-14T21:05:59Z",
     "review_failures": [
       "Gate 7: libatk missing in container (E2E infra blocker)",
       "Gate 3: QACoverageBadge fetch branches uncovered (!response.ok and sessionId=null paths)"
@@ -37,5 +37,5 @@
     "anonymous": "cooldown"
   },
   "action": "monitor_only",
-  "notes": "Child ALIVE at iter=71/plan (~2h35m elapsed). status.json last updated 20:51Z (15m ago) but worktree TODO.md updated 21:05Z (1m ago) — actively working. cyclePosition=0 (plan phase) fixing Gate 3 (QACoverageBadge !response.ok and sessionId=null paths). Gate 7 E2E infra blocker (libatk) persists/deferred. Cap=1 slot full, no new dispatch possible."
+  "notes": "Child ALIVE at iter=71/plan (~2h38m elapsed). status.json last updated 20:51Z (18m ago) but worktree TODO.md updated 21:05Z (4m ago) — actively working in plan phase. Fixing Gate 3 (QACoverageBadge !response.ok and sessionId=null branch coverage). Gate 7 E2E infra blocker (libatk) persists/deferred. Both parallel orchestrators ALIVE and fresh (190413@iter=93 updated 21:08Z, 195732@iter=44 updated 21:07Z). Cap=1 slot full, no new dispatch possible."
 }
