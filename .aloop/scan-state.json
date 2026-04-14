@@ -1,46 +1,37 @@
 {
-  "scan_at": "2026-04-14T21:48:04Z",
-  "iteration": 139,
+  "scan_at": "2026-04-14T21:50:49Z",
+  "iteration": 140,
   "active_child": {
     "session": "orchestrator-20260321-172932-issue-157-20260414-184129",
     "issue": 157,
     "pid": 422016,
     "alive": true,
-    "phase": "review",
-    "iteration": 84,
+    "phase": "plan",
+    "iteration": 85,
     "branch": "aloop/issue-157",
-    "latest_commit": "b1d59bb0 qa: re-test QACoverageBadge !response.ok + sessionId=null coverage — PASS (282/282 dashboard tests) — iter 54",
-    "status_updated_at": "2026-04-14T21:45:28Z",
-    "worktree_activity_at": "2026-04-14T21:45:24Z",
+    "latest_commit": "24a71d5d chore(review): FAIL — 1 prior finding resolved (QACoverageBadge fetch branches), Gate 7 persists",
+    "status_updated_at": "2026-04-14T21:49:02Z",
     "review_failures": [
       "Gate 7: libatk missing in container (E2E infra blocker) — deferred"
     ],
     "resolved_since_last_scan": [
-      "Gate 3: QACoverageBadge fetch branches uncovered — RESOLVED (commit 7e1ec74e)",
-      "QA pass: 282/282 dashboard tests passing (commit b1d59bb0, iter=54)"
+      "Gate 3: QACoverageBadge fetch branches — RESOLVED (commit 24a71d5d)"
     ],
     "known_issues": [
-      "build_opencode phase_retry_exhausted repeatedly (unsupported provider: '') — opencode on cooldown",
+      "build_opencode phase_retry_exhausted (unsupported provider: '') — opencode on cooldown",
       "codex degraded (auth error) — skipped by runner",
       "33 pre-existing test failures (dashboard.test.ts, orchestrate.test.ts, process-requests.test.ts, github-monitor.test.ts)",
       "16 pre-existing TypeScript errors in orchestrate.ts, process-requests.ts"
     ]
   },
-  "parallel_scans": [
-    "orchestrator-20260414-190413",
-    "orchestrator-20260414-195732",
-    "orchestrator-20260414-211029",
-    "orchestrator-20260414-211359"
-  ],
+  "parallel_scans": [],
   "capacity": {"cap": 1, "occupied": 1, "available": 0},
   "provider_status": {
     "claude": "ok",
     "opencode": "cooldown",
     "gemini": "cooldown",
-    "codex": "degraded_auth",
-    "minimax": "ok",
-    "anonymous": "cooldown"
+    "codex": "degraded_auth"
   },
   "action": "monitor_only",
-  "notes": "Child #157 iter=84 review phase ALIVE (PID 422016, started 21:45:28Z, ~2.5min running). Review gate 7 (libatk/E2E infra) remains deferred. PR #310 OPEN. QA PASS 282/282 (commit b1d59bb0) confirmed. Parallel orchs 190413@115/195732@64/211029@16/211359@8 all fresh. 195732 children: issue-6@qa(15min)/issue-2@plan(fresh)/issue-11@build(fresh). Cap=1 full, no new dispatch."
+  "notes": "Child #157 iter=85/plan ALIVE (PID 422016, updated 21:49:02Z). Gate 7 (libatk/Playwright infra) still deferred — persistent container infra block. Gate 3 QACoverageBadge fully resolved. PR #310 OPEN. QA PASS 282/282. Issue #68 child dead (stuck in starting state, sandbox=container), blocked_on_human. Parallel orchs (190413/195732/211029/211359) session dirs not found — presumed terminated. Cap=1 full, no new dispatch."
 }
