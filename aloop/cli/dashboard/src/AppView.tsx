@@ -25,392 +25,34 @@ import { useCost } from '@/hooks/useCost';
 import { useLongPress } from '@/hooks/useLongPress';
 import { parseTodoProgress } from '../../src/lib/parseTodoProgress';
 import { ResponsiveLayout, useResponsiveLayout } from '@/components/layout/ResponsiveLayout';
+import type {
+  SessionStatus, ArtifactManifest, DashboardState, SessionSummary,
+  FileChange, ProviderHealth, QACoverageFeature, QACoverageViewData,
+  CostSessionResponse, LogEntry, ArtifactEntry, ManifestPayload,
+} from '@/lib/types';
+import { renderAnsiToHtml } from '@/lib/ansi';
+import {
+  isRecord, str, numStr, toSession,
+  formatTime, formatTimeShort, formatSecs, formatDuration, formatDateKey, relativeTime,
+  SIGNIFICANT_EVENTS, parseLogLine,
+  IMAGE_EXT, isImageArtifact, artifactUrl, parseManifest, extractModelFromOutput,
+  parseDurationSeconds, computeAvgDuration,
+  extractIterationUsage, formatTokenCount,
+  parseQACoveragePayload, deriveProviderHealth, slugify,
+} from '@/lib/format';
 
-// ── ANSI + Markdown rendering ──
-// Strip ANSI escape codes from text (for compact log entries)
-const STRIP_ANSI_RE = /\x1b\[[0-9;]*[A-Za-z]/g;
-export function stripAnsi(text: string): string {
-  return text.replace(STRIP_ANSI_RE, '');
-}
-// Parses ANSI SGR escape codes into styled segments, runs each segment's
-// text through marked (markdown→HTML), and wraps the result in <span>s
-// with inline styles. Based on ansi_up's palette and SGR handling.
-
-// 256-color palette — indices 0-15: standard, 16-231: 6x6x6 RGB, 232-255: grayscale
-const PALETTE_256: [number, number, number][] = (() => {
-  const p: [number, number, number][] = [];
-  // Standard colors (0-7 normal, 8-15 bright)
-  const std: [number, number, number][] = [
-    [0, 0, 0], [187, 0, 0], [0, 187, 0], [187, 187, 0],
-    [0, 0, 187], [187, 0, 187], [0, 187, 187], [187, 187, 187],
-    [85, 85, 85], [255, 85, 85], [0, 255, 0], [255, 255, 85],
-    [85, 85, 255], [255, 85, 255], [85, 255, 255], [255, 255, 255],
-  ];
-  for (const c of std) p.push(c);
-  // 6x6x6 RGB cube (16-231)
-  for (const r of [0, 95, 135, 175, 215, 255])
-    for (const g of [0, 95, 135, 175, 215, 255])
-      for (const b of [0, 95, 135, 175, 215, 255])
-        p.push([r, g, b]);
-  // Grayscale ramp (232-255)
-  for (let i = 0; i < 24; i++) {
-    const v = 8 + i * 10;
-    p.push([v, v, v]);
-  }
-  return p;
-})();
-
-export function rgbStr(r: number, g: number, b: number): string {
-  return `${r},${g},${b}`;
-}
-
-interface AnsiStyle {
-  fg?: string;      // "r,g,b"
-  bg?: string;      // "r,g,b"
-  bold?: boolean;
-  faint?: boolean;
-  italic?: boolean;
-  underline?: boolean;
-}
-
-export function parseAnsiSegments(text: string): { text: string; style: AnsiStyle }[] {
-  const segments: { text: string; style: AnsiStyle }[] = [];
-  let style: AnsiStyle = {};
-  let last = 0;
-  const re = /\x1b\[([0-9;]*)m/g;
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(text)) !== null) {
-    if (m.index > last) segments.push({ text: text.slice(last, m.index), style: { ...style } });
-    const cmds = m[1] ? m[1].split(';') : ['0'];
-    let i = 0;
-    while (i < cmds.length) {
-      const num = parseInt(cmds[i], 10);
-      if (isNaN(num) || num === 0) {
-        style = {};
-      } else if (num === 1) { style.bold = true; }
-      else if (num === 2) { style.faint = true; }
-      else if (num === 3) { style.italic = true; }
-      else if (num === 4) { style.underline = true; }
-      else if (num === 21) { style.bold = false; }
-      else if (num === 22) { style.bold = false; style.faint = false; }
-      else if (num === 23) { style.italic = false; }
-      else if (num === 24) { style.underline = false; }
-      else if (num === 39) { style.fg = undefined; }
-      else if (num === 49) { style.bg = undefined; }
-      else if (num >= 30 && num < 38) { style.fg = rgbStr(...PALETTE_256[num - 30]); }
-      else if (num >= 40 && num < 48) { style.bg = rgbStr(...PALETTE_256[num - 40]); }
-      else if (num >= 90 && num < 98) { style.fg = rgbStr(...PALETTE_256[num - 90 + 8]); }
-      else if (num >= 100 && num < 108) { style.bg = rgbStr(...PALETTE_256[num - 100 + 8]); }
-      else if (num === 38 || num === 48) {
-        const isFg = num === 38;
-        const mode = cmds[i + 1];
-        if (mode === '5' && i + 2 < cmds.length) {
-          // 256-color palette: 38;5;N or 48;5;N
-          const idx = parseInt(cmds[i + 2], 10);
-          if (idx >= 0 && idx <= 255) {
-            const c = rgbStr(...PALETTE_256[idx]);
-            if (isFg) style.fg = c; else style.bg = c;
-          }
-          i += 2;
-        } else if (mode === '2' && i + 4 < cmds.length) {
-          // True color: 38;2;R;G;B or 48;2;R;G;B
-          const r = parseInt(cmds[i + 2], 10);
-          const g = parseInt(cmds[i + 3], 10);
-          const b = parseInt(cmds[i + 4], 10);
-          if ([r, g, b].every(v => v >= 0 && v <= 255)) {
-            const c = rgbStr(r, g, b);
-            if (isFg) style.fg = c; else style.bg = c;
-          }
-          i += 4;
-        }
-      }
-      i++;
-    }
-    last = m.index + m[0].length;
-  }
-  if (last < text.length) segments.push({ text: text.slice(last), style: { ...style } });
-  return segments;
-}
-
-export function renderAnsiToHtml(text: string, opts: { gfm?: boolean; breaks?: boolean } = {}): string {
-  const segments = parseAnsiSegments(text);
-  const { gfm = true, breaks = true } = opts;
-  return segments.map(({ text: segText, style }) => {
-    const html = marked.parse(segText, { gfm, breaks }) as string;
-    if (!style.fg && !style.bg && !style.bold && !style.faint && !style.italic && !style.underline) {
-      return html;
-    }
-    const styles: string[] = [];
-    if (style.fg) styles.push(`color:rgb(${style.fg})`);
-    if (style.bg) styles.push(`background-color:rgb(${style.bg})`);
-    if (style.bold) styles.push('font-weight:bold');
-    if (style.faint) styles.push('opacity:0.7');
-    if (style.italic) styles.push('font-style:italic');
-    if (style.underline) styles.push('text-decoration:underline');
-    return `<span class="ansi" style="${styles.join(';')}">${html}</span>`;
-  }).join('');
-}
-
-// ── Types ──
-
-type SessionStatus = Record<string, unknown>;
-
-interface ArtifactManifest { iteration: number; manifest: unknown; outputHeader?: string }
-
-interface DashboardState {
-  sessionDir: string;
-  workdir: string;
-  runtimeDir: string;
-  updatedAt: string;
-  status: SessionStatus | null;
-  log: string;
-  docs: Record<string, string>;
-  activeSessions: unknown[];
-  recentSessions: unknown[];
-  artifacts: ArtifactManifest[];
-  repoUrl: string | null;
-  meta: Record<string, unknown> | null;
-}
-
-interface SessionSummary {
-  id: string;
-  name: string;
-  projectName: string;
-  status: string;
-  phase: string;
-  elapsed: string;
-  iterations: string;
-  isActive: boolean;
-  branch: string;
-  startedAt: string;
-  endedAt: string;
-  pid: string;
-  provider: string;
-  workDir: string;
-  stuckCount: number;
-}
-
-export interface LogEntry {
-  timestamp: string;
-  phase: string;
-  event: string;
-  provider: string;
-  model: string;
-  duration: string;
-  message: string;
-  raw: string;
-  rawObj: Record<string, unknown> | null;
-  iteration: number | null;
-  dateKey: string;
-  isSuccess: boolean;
-  isError: boolean;
-  commitHash: string;
-  resultDetail: string;
-  filesChanged: FileChange[];
-  isSignificant: boolean;
-}
-
-interface FileChange {
-  path: string;
-  type: 'M' | 'A' | 'D' | 'R';
-  additions: number;
-  deletions: number;
-}
-
-export interface ArtifactEntry {
-  type: string;
-  path: string;
-  description: string;
-  metadata?: { baseline?: string; diff_percentage?: number };
-}
-
-export interface ManifestPayload {
-  iteration: number;
-  phase: string;
-  summary: string;
-  artifacts: ArtifactEntry[];
-  outputHeader?: string;
-}
-
-interface ProviderHealth {
-  name: string;
-  status: 'healthy' | 'cooldown' | 'failed' | 'unknown';
-  lastEvent: string;
-  reason?: string;
-  consecutiveFailures?: number;
-  cooldownUntil?: string;
-}
-
-interface QACoverageFeature {
-  feature: string;
-  component: string;
-  last_tested: string;
-  commit: string;
-  status: 'PASS' | 'FAIL' | 'UNTESTED';
-  criteria_met: string;
-  notes: string;
-}
-
-interface QACoverageViewData {
-  percentage: number | null;
-  available: boolean;
-  features: QACoverageFeature[];
-}
-
-interface CostSessionResponse {
-  total_usd?: number | string;
-  error?: string;
-}
-
-// ── Helpers ──
-
-export function isRecord(v: unknown): v is Record<string, unknown> {
-  return typeof v === 'object' && v !== null && !Array.isArray(v);
-}
-
-export function str(source: Record<string, unknown>, keys: string[], fb = ''): string {
-  for (const k of keys) {
-    const v = source[k];
-    if (typeof v === 'string' && v.trim()) return v;
-  }
-  return fb;
-}
-
-export function numStr(source: Record<string, unknown>, keys: string[], fb = '--'): string {
-  for (const k of keys) {
-    const v = source[k];
-    if (typeof v === 'number' && Number.isFinite(v)) return String(v);
-    if (typeof v === 'string' && v.trim()) return v.trim();
-  }
-  return fb;
-}
-
-export function toSession(source: Record<string, unknown>, fallback: string, isActive: boolean): SessionSummary {
-  return {
-    id: str(source, ['session_id', 'id'], fallback),
-    name: str(source, ['session_id', 'name', 'session_name'], fallback),
-    projectName: str(source, ['project_name'], '') || (() => {
-      const root = str(source, ['project_root'], '');
-      if (root) { const parts = root.replace(/[\\/]+$/, '').split(/[\\/]/); return parts[parts.length - 1] || root; }
-      return fallback.split('-').slice(0, -1).join('-') || fallback;
-    })(),
-    status: str(source, ['state', 'status'], 'unknown'),
-    phase: str(source, ['phase', 'mode'], ''),
-    elapsed: str(source, ['elapsed', 'elapsed_time', 'duration'], '--'),
-    iterations: numStr(source, ['iteration', 'iterations']),
-    isActive,
-    branch: str(source, ['branch'], ''),
-    startedAt: str(source, ['started_at'], ''),
-    endedAt: str(source, ['ended_at'], ''),
-    pid: numStr(source, ['pid'], ''),
-    provider: str(source, ['provider'], ''),
-    workDir: str(source, ['work_dir'], ''),
-    stuckCount: typeof source.stuck_count === 'number' ? source.stuck_count : 0,
-  };
-}
-
-export function formatTime(ts: string): string {
-  if (!ts) return '';
-  try { return new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }); }
-  catch { return ts; }
-}
-
-export function formatTimeShort(ts: string): string {
-  if (!ts) return '';
-  try { return new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }); }
-  catch { return ts; }
-}
-
-export function formatSecs(total: number): string {
-  const m = Math.floor(total / 60);
-  const s = Math.round(total % 60);
-  if (m === 0) return `${s}s`;
-  return s > 0 ? `${m}m ${s}s` : `${m}m`;
-}
-
-export function formatDuration(raw: string): string {
-  const match = raw.match(/^(\d+)s$/);
-  if (!match) return raw;
-  return formatSecs(parseInt(match[1], 10));
-}
-
-export function formatDateKey(ts: string): string {
-  if (!ts) return 'Unknown';
-  try { return new Date(ts).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' }); }
-  catch { return 'Unknown'; }
-}
-
-export function relativeTime(ts: string): string {
-  if (!ts) return '';
-  try {
-    const diff = Date.now() - new Date(ts).getTime();
-    const mins = Math.floor(diff / 60000);
-    if (mins < 1) return 'just now';
-    if (mins < 60) return `${mins}m ago`;
-    const hrs = Math.floor(mins / 60);
-    if (hrs < 24) return `${hrs}h ago`;
-    const days = Math.floor(hrs / 24);
-    return `${days}d ago`;
-  } catch { return ''; }
-}
-
-export const SIGNIFICANT_EVENTS = new Set([
-  'iteration_complete', 'iteration_error', 'provider_cooldown', 'provider_recovered',
-  'review_verdict_read', 'review_verdict_missing', 'session_start', 'session_end', 'session_restart',
-  'queue_override_applied', 'queue_override_error',
-]);
-
-export function parseLogLine(line: string): LogEntry | null {
-  const trimmed = line.trim();
-  if (!trimmed) return null;
-
-  let rawObj: Record<string, unknown> | null = null;
-  try {
-    const obj = JSON.parse(trimmed);
-    if (isRecord(obj)) rawObj = obj;
-  } catch { /* plain text */ }
-
-  if (rawObj) {
-    const event = str(rawObj, ['event', 'type', 'action'], '');
-    const isSignificant = SIGNIFICANT_EVENTS.has(event);
-    const ts = str(rawObj, ['timestamp', 'ts', 'time', 'created_at']);
-    const phase = str(rawObj, ['phase', 'mode']);
-    const provider = str(rawObj, ['provider']);
-    const model = str(rawObj, ['model']);
-    const duration = str(rawObj, ['duration', 'elapsed', 'took']);
-    const message = str(rawObj, ['message', 'msg', 'detail', 'description', 'text'], event);
-    const iterRaw = rawObj.iteration;
-    const iteration = typeof iterRaw === 'number' ? iterRaw : (typeof iterRaw === 'string' ? parseInt(iterRaw, 10) || null : null);
-    const commitHash = str(rawObj, ['commit', 'commit_hash', 'sha']);
-    const isSuccess = event.includes('complete') || event.includes('success') || event.includes('approved') || event.includes('recovered');
-    const isError = event.includes('error') || event.includes('fail') || event.includes('cooldown');
-
-    let resultDetail = '';
-    if (commitHash) resultDetail = commitHash.slice(0, 7);
-    else if (event.includes('verdict')) resultDetail = str(rawObj, ['verdict']);
-    else if (isError) resultDetail = str(rawObj, ['reason', 'error', 'exit_code'], 'error');
-
-    const filesChanged: FileChange[] = [];
-    const files = rawObj.files ?? rawObj.files_changed;
-    if (Array.isArray(files)) {
-      for (const f of files) {
-        if (isRecord(f)) {
-          filesChanged.push({
-            path: typeof f.path === 'string' ? f.path : typeof f.file === 'string' ? f.file : '?',
-            type: (typeof f.status === 'string' ? f.status[0]?.toUpperCase() : 'M') as FileChange['type'],
-            additions: typeof f.additions === 'number' ? f.additions : 0,
-            deletions: typeof f.deletions === 'number' ? f.deletions : 0,
-          });
-        }
-      }
-    }
-
-    return { timestamp: ts, phase, event, provider, model, duration, message: stripAnsi(message), raw: trimmed, rawObj, iteration, dateKey: formatDateKey(ts), isSuccess, isError, commitHash, resultDetail, filesChanged, isSignificant };
-  }
-
-  // Plain text lines (provider stderr, stack traces) are not significant — hide from activity view
-  return { timestamp: '', phase: '', event: '', provider: '', model: '', duration: '', message: stripAnsi(trimmed), raw: trimmed, rawObj: null, iteration: null, dateKey: 'Log', isSuccess: false, isError: false, commitHash: '', resultDetail: '', filesChanged: [], isSignificant: false };
-}
+// Re-exports for backward compatibility with existing consumers.
+export type { LogEntry, ArtifactEntry, ManifestPayload, IterationUsage } from '@/lib/types';
+export { stripAnsi, parseAnsiSegments, renderAnsiToHtml, rgbStr } from '@/lib/ansi';
+export {
+  isRecord, str, numStr, toSession,
+  formatTime, formatTimeShort, formatSecs, formatDuration, formatDateKey, relativeTime,
+  SIGNIFICANT_EVENTS, parseLogLine,
+  IMAGE_EXT, isImageArtifact, artifactUrl, parseManifest, extractModelFromOutput,
+  parseDurationSeconds, computeAvgDuration,
+  extractIterationUsage, formatTokenCount,
+  deriveProviderHealth, slugify,
+} from '@/lib/format';
 
 // ── Phase colors ──
 
@@ -508,213 +150,6 @@ function ElapsedTimer({ since }: { since: string }) {
     return () => clearInterval(id);
   }, [since]);
   return <>{elapsed}</>;
-}
-
-// ── Token/cost usage helpers ──
-
-export interface IterationUsage {
-  tokens_input: number;
-  tokens_output: number;
-  tokens_cache_read: number;
-  cost_usd: number;
-}
-
-/** Extract token/cost usage from a log entry's rawObj. Returns null if no usage data. */
-export function extractIterationUsage(rawObj: Record<string, unknown> | null): IterationUsage | null {
-  if (!rawObj) return null;
-  const costVal = typeof rawObj.cost_usd === 'number' ? rawObj.cost_usd
-    : typeof rawObj.cost_usd === 'string' ? parseFloat(rawObj.cost_usd as string) : NaN;
-  if (isNaN(costVal) || costVal <= 0) return null;
-  return {
-    tokens_input: Number(rawObj.tokens_input) || 0,
-    tokens_output: Number(rawObj.tokens_output) || 0,
-    tokens_cache_read: Number(rawObj.tokens_cache_read) || 0,
-    cost_usd: costVal,
-  };
-}
-
-/** Format a token count for compact display (e.g., 15200 → "15.2k"). */
-export function formatTokenCount(n: number): string {
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
-  return String(n);
-}
-
-// ── Artifact helpers ──
-
-export const IMAGE_EXT = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg']);
-export function isImageArtifact(a: ArtifactEntry) {
-  const ext = a.path.includes('.') ? a.path.slice(a.path.lastIndexOf('.')).toLowerCase() : '';
-  return IMAGE_EXT.has(ext) || a.type === 'screenshot' || a.type === 'visual_diff';
-}
-export function artifactUrl(iter: number, file: string) { return `/api/artifacts/${iter}/${encodeURIComponent(file)}`; }
-
-export function parseManifest(am: ArtifactManifest): ManifestPayload | null {
-  const m = am.manifest;
-  if (!isRecord(m) && !am.outputHeader) return null;
-  const manifest = isRecord(m) ? m : null;
-  return {
-    iteration: am.iteration,
-    phase: manifest && typeof manifest.phase === 'string' ? manifest.phase : 'proof',
-    summary: manifest && typeof manifest.summary === 'string' ? manifest.summary : '',
-    artifacts: manifest && Array.isArray(manifest.artifacts) ? (manifest.artifacts as unknown[]).filter(isRecord).map((a) => ({
-      type: typeof a.type === 'string' ? a.type : 'unknown',
-      path: typeof a.path === 'string' ? a.path : '',
-      description: typeof a.description === 'string' ? a.description : '',
-      metadata: isRecord(a.metadata) ? {
-        baseline: typeof a.metadata.baseline === 'string' ? a.metadata.baseline : undefined,
-        diff_percentage: typeof a.metadata.diff_percentage === 'number' ? a.metadata.diff_percentage : undefined,
-      } : undefined,
-    })) : [],
-    outputHeader: am.outputHeader,
-  };
-}
-
-/** Extract model from opencode output header like "> build · openrouter/hunter-alpha" */
-export function extractModelFromOutput(header?: string): string {
-  if (!header) return '';
-  const match = header.match(/^>\s*\w+\s*·\s*(.+)$/m);
-  return match ? match[1].trim() : '';
-}
-
-// ── Average iteration duration from log ──
-
-export function parseDurationSeconds(raw: string): number | null {
-  if (!raw) return null;
-  const msMatch = raw.match(/^(\d+(?:\.\d+)?)ms$/);
-  if (msMatch) return parseFloat(msMatch[1]) / 1000;
-  const sMatch = raw.match(/^(\d+(?:\.\d+)?)s$/);
-  if (sMatch) return parseFloat(sMatch[1]);
-  const mixedMatch = raw.match(/^(\d+)m\s*(\d+(?:\.\d+)?)s$/);
-  if (mixedMatch) return parseInt(mixedMatch[1], 10) * 60 + parseFloat(mixedMatch[2]);
-  const plainMatch = raw.match(/^(\d+(?:\.\d+)?)$/);
-  if (plainMatch) return parseFloat(plainMatch[1]);
-  return null;
-}
-
-function parseQACoveragePayload(payload: unknown): QACoverageViewData {
-  if (!isRecord(payload)) return { percentage: null, available: false, features: [] };
-  const available = typeof payload.available === 'boolean' ? payload.available : true;
-  const percentValue = typeof payload.coverage_percent === 'number'
-    ? payload.coverage_percent
-    : (typeof payload.percentage === 'number' ? payload.percentage : null);
-  const features = Array.isArray(payload.features)
-    ? payload.features
-      .filter((f): f is Record<string, unknown> => isRecord(f))
-      .map((f): QACoverageFeature => {
-        const rawStatus = typeof f.status === 'string' ? f.status.toUpperCase() : 'UNTESTED';
-        const status: QACoverageFeature['status'] = rawStatus === 'PASS' || rawStatus === 'FAIL' ? rawStatus : 'UNTESTED';
-        return {
-          feature: typeof f.feature === 'string' ? f.feature : '',
-          component: typeof f.component === 'string' ? f.component : '',
-          last_tested: typeof f.last_tested === 'string' ? f.last_tested : '',
-          commit: typeof f.commit === 'string' ? f.commit : '',
-          status,
-          criteria_met: typeof f.criteria_met === 'string' ? f.criteria_met : '',
-          notes: typeof f.notes === 'string' ? f.notes : '',
-        };
-      })
-    : [];
-
-  return { percentage: percentValue, available, features };
-}
-
-export function computeAvgDuration(log: string): string {
-  if (!log) return '';
-  let totalSec = 0;
-  let count = 0;
-  for (const line of log.split('\n')) {
-    const trimmed = line.trim();
-    if (!trimmed) continue;
-    try {
-      const obj = JSON.parse(trimmed);
-      if (!isRecord(obj)) continue;
-      const event = str(obj, ['event']);
-      if (event !== 'iteration_complete') continue;
-      const dur = str(obj, ['duration', 'elapsed', 'took']);
-      const secs = parseDurationSeconds(dur);
-      if (secs !== null && secs > 0) {
-        totalSec += secs;
-        count++;
-      }
-    } catch { /* skip */ }
-  }
-  if (count === 0) return '';
-  return formatSecs(totalSec / count);
-}
-
-function latestQaCoverageRefreshSignal(log: string): string | null {
-  if (!log) return null;
-  const lines = log.split('\n');
-  for (let i = lines.length - 1; i >= 0; i--) {
-    const line = lines[i]?.trim();
-    if (!line) continue;
-    try {
-      const entry = JSON.parse(line);
-      if (!isRecord(entry)) continue;
-      const event = str(entry, ['event', 'type']);
-      const phase = str(entry, ['phase', 'mode']).toLowerCase();
-      if (event !== 'iteration_complete' || phase !== 'qa') continue;
-      const timestamp = str(entry, ['timestamp', 'ts', 'time', 'created_at']);
-      const iterationRaw = entry.iteration;
-      const iteration = typeof iterationRaw === 'number' ? String(iterationRaw)
-        : typeof iterationRaw === 'string' ? iterationRaw : '';
-      return `${timestamp}|${iteration}|${line}`;
-    } catch {
-      // Skip non-JSON lines in log stream.
-    }
-  }
-  return null;
-}
-
-// ── Provider health derived from log ──
-
-export function deriveProviderHealth(log: string, configuredProviders?: string[]): ProviderHealth[] {
-  const providers = new Map<string, ProviderHealth>();
-
-  // Seed configured providers as baseline with 'unknown' status
-  if (configuredProviders) {
-    for (const name of configuredProviders) {
-      if (name) providers.set(name, { name, status: 'unknown', lastEvent: '' });
-    }
-  }
-
-  for (const line of log.split('\n')) {
-    const trimmed = line.trim();
-    if (!trimmed) continue;
-    try {
-      const obj = JSON.parse(trimmed);
-      if (!isRecord(obj)) continue;
-      const event = str(obj, ['event']);
-      const provider = str(obj, ['provider']);
-      const ts = str(obj, ['timestamp']);
-      if (!provider) continue;
-
-      if (event === 'provider_cooldown') {
-        providers.set(provider, {
-          name: provider,
-          status: 'cooldown',
-          lastEvent: ts,
-          reason: str(obj, ['reason']),
-          consecutiveFailures: typeof obj.consecutive_failures === 'number' ? obj.consecutive_failures : undefined,
-          cooldownUntil: str(obj, ['cooldown_until']),
-        });
-      } else if (event === 'provider_recovered') {
-        providers.set(provider, { name: provider, status: 'healthy', lastEvent: ts });
-      } else if (event === 'iteration_complete' || event === 'iteration_error') {
-        if (!providers.has(provider) || providers.get(provider)!.status === 'unknown') {
-          providers.set(provider, { name: provider, status: 'healthy', lastEvent: ts });
-        } else {
-          const existing = providers.get(provider)!;
-          if (event === 'iteration_complete' && existing.status !== 'cooldown') {
-            existing.status = 'healthy';
-          }
-          existing.lastEvent = ts;
-        }
-      }
-    } catch { /* skip */ }
-  }
-  return Array.from(providers.values()).sort((a, b) => a.name.localeCompare(b.name));
 }
 
 // ── Sidebar ──
@@ -1328,9 +763,6 @@ function DocsPanel({ docs, providerHealth, activityCollapsed, repoUrl }: { docs:
   );
 }
 
-export function slugify(text: string): string {
-  return text.toLowerCase().replace(/[^\w\s-]/g, '').replace(/\s+/g, '-').replace(/-+/g, '-').trim();
-}
 
 export function DocContent({ content, name, wide }: { content: string; name: string; wide?: boolean }) {
   const isSpec = /spec/i.test(name);
@@ -2145,6 +1577,30 @@ function CommandPalette({ open, onClose, sessions, onSelectSession, onStop }: {
 }
 
 // ── Main App ──
+
+function latestQaCoverageRefreshSignal(log: string): string | null {
+  if (!log) return null;
+  const lines = log.split('\n');
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const line = lines[i]?.trim();
+    if (!line) continue;
+    try {
+      const entry = JSON.parse(line);
+      if (!isRecord(entry)) continue;
+      const event = str(entry, ['event', 'type']);
+      const phase = str(entry, ['phase', 'mode']).toLowerCase();
+      if (event !== 'iteration_complete' || phase !== 'qa') continue;
+      const timestamp = str(entry, ['timestamp', 'ts', 'time', 'created_at']);
+      const iterationRaw = entry.iteration;
+      const iteration = typeof iterationRaw === 'number' ? String(iterationRaw)
+        : typeof iterationRaw === 'string' ? iterationRaw : '';
+      return `${timestamp}|${iteration}|${line}`;
+    } catch {
+      // Skip non-JSON lines in log stream.
+    }
+  }
+  return null;
+}
 
 function AppInner() {
   const [state, setState] = useState<DashboardState | null>(null);
