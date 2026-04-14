@@ -1,3 +1,20 @@
+## Orchestrator scan — 2026-04-14T21:59:00Z (iter 143)
+
+**Child #157** (PID 422016) ALIVE — iteration 86, phase=**build** (updated 21:51:09Z)
+- Latest commit: `24a71d5d` — `chore(review): FAIL — 1 prior finding resolved (QACoverageBadge fetch branches), Gate 7 persists`
+- All non-Playwright gates pass; Gate 7 (Playwright/browser) persistent infra block — `libatk-1.0.so.0` missing
+- **Action taken:** `#157` flagged `blocked_on_human` in orchestrator.json for Gate 7 Playwright infra block
+- Fix: `apt-get install -y libatk1.0-0 libatk-bridge2.0-0` in container, or waive Gate 7 with documented manual verification plan
+- PR #310 OPEN
+
+**Child #68**: Blocked (`needs_redispatch=true`), cap full — no slot available
+
+**Capacity:** 1/1 slots occupied (#157) — no new dispatches
+
+**No queue overrides** — queue/ empty
+
+---
+
 ## Orchestrator scan — 2026-04-14T21:55:00Z (iter 142)
 
 **Child #157** (PID 422016) ALIVE — iteration 86, phase=**build** (fresh, updated 21:51:09Z)
