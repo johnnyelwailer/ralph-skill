@@ -1,36 +1,50 @@
-# Issue #22: Epic: Set up GitHub Actions CI
+# Issue #2: Provider Health & Resilient Round-Robin
+
+## Gap Analysis Summary
+
+Most of this issue is **already implemented**:
+- Per-provider health files, failure classification, exponential backoff, file locking, round-robin
+  integration, health logging, and `aloop status` health table all exist in `loop.sh`, `loop.ps1`,
+  and `cli/src/commands/status.ts`.
+
+**One gap remains**: the dashboard SSE state does not include provider health from `~/.aloop/health/`
+files. `DashboardState` has no `providerHealth` field; `loadStateForContext` never calls
+`readProviderHealth`. The frontend derives health solely from session log entries, which misses
+cross-session state.
+
+## CONSTITUTION NOTE
+
+The spec lists `loop.sh` / `loop.ps1` as "files in scope" and acceptance criterion #11 says both
+scripts must implement health with cross-runtime parity. However, CONSTITUTION rule 1 forbids adding
+**anything** to these scripts (they are already at 2373/2388 LOC, far above the 400 LOC target).
+This criterion is already satisfied — both scripts have matching health infrastructure. **No changes
+to loop.sh or loop.ps1 are needed or permitted.**
 
 ## Tasks
 
-### In Progress
-_(none)_
-
 ### Up Next
 
-- [ ] Fix branch triggers in `ci.yml`: replace `agent/trunk` with `agent/*` wildcard; add `aloop/*` to push triggers (TASK_SPEC: "Workflow supports `agent/*` branch pattern")
-- [ ] Add CLI tests job to `ci.yml`: `bun install` + `bun run test` in `aloop/cli` (TASK_SPEC acceptance criteria #3)
-- [ ] Add CLI type-check job to `ci.yml`: `bun install` + `bun run type-check` in `aloop/cli` (TASK_SPEC acceptance criteria #5)
-- [ ] Add dashboard type-check job to `ci.yml`: `npm ci` + `npm run type-check` in `aloop/cli/dashboard` (TASK_SPEC acceptance criteria #5)
-- [ ] Add loop script tests (Linux) job to `ci.yml`: install bats, run `bats loop.bats` + at least one `loop_*.tests.sh` in `aloop/bin/tests` (TASK_SPEC acceptance criteria #6)
+- [x] Add `providerHealth: Record<string, unknown>` to `DashboardState` interface in
+  `cli/src/commands/dashboard.ts`, read it via `readProviderHealth(runtimeDir)` inside
+  `loadStateForContext`, and include it in the returned state object. This makes the SSE `state`
+  event automatically carry provider health (since `toStateEventPayload` = `JSON.stringify(state)`).
 
-### Deferred / Out of scope
+- [x] Add tests in `cli/src/commands/dashboard.test.ts` verifying that the `/api/state` response
+  and the initial SSE `state` event include a `providerHealth` key, with correct data when health
+  files exist in the fixture home dir.
 
-Optional jobs (not in TASK_SPEC acceptance criteria):
-- Dashboard E2E job (Playwright/Chromium) — optional per TASK_SPEC
-- Loop script tests (Windows/Pester) — optional per TASK_SPEC
-
-Pre-existing CI failures not caused by issue-22 (separate issues):
-- CLI type-check: 2 TypeScript errors in `process-requests.ts` (TS2367, TS2304) — separate issue
-- Dashboard type-check: missing Vitest globals in `App.coverage.test.ts`, `ArtifactEntry` shape mismatch in `App.test.tsx` — separate issue
-- CLI tests (`bun run test`): pre-existing test failures — separate issue
-
-Shell integration test failures — out of scope for CI setup (loop.sh behavior issues, not CI config):
-- `loop_provenance.tests.sh`: assertions fail on provenance trailer injection in agent commits
-- `loop_path_hardening.tests.sh`: Test 5 assertion fails on path hardening behavior in `invoke_provider`
-- `loop_finalizer_qa_coverage.tests.sh`: `check_finalizer_qa_coverage_gate: command not found` (stale function reference)
+- [ ] Update the dashboard frontend (`AppView.tsx`) to prefer `state.providerHealth` (file-based,
+  cross-session) over the log-derived `deriveProviderHealth(log)` fallback when the server-provided
+  field is available; keep the log fallback for backwards compatibility during the transition.
 
 ### Completed
 
-- [x] `.github/workflows/ci.yml` file exists — verified by direct read of branch HEAD
-- [x] Dashboard tests job (`npm test` in `aloop/cli/dashboard`) — present in ci.yml, correct commands
-- [x] README.md CI badge URL contains `actions/workflows/ci.yml/badge.svg` — verified line 1 of README.md
+- [x] Per-provider health files at `~/.aloop/health/<provider>.json` (loop.sh + loop.ps1)
+- [x] Failure classification: rate_limit, auth, timeout, concurrent_cap, unknown (both scripts)
+- [x] Exponential backoff table: 2→5→15→30→60 min hard-cap (get_provider_cooldown_seconds / Get-ProviderCooldownSeconds)
+- [x] File locking with graceful degradation on lock failure (both scripts)
+- [x] Round-robin skips providers in cooldown/degraded (resolve_healthy_provider)
+- [x] All providers in cooldown → sleep until earliest cooldown expiry (both scripts)
+- [x] Health state changes logged to log.jsonl: provider_cooldown, provider_recovered, provider_degraded
+- [x] `aloop status` shows provider health table (formatHealthLine, renderStatus, readProviderHealth)
+- [x] loop.sh / loop.ps1 cross-runtime parity (matching cooldown tables and failure classifiers)

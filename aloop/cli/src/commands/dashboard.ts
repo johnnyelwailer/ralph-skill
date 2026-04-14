@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { processAgentRequests } from '../lib/requests.js';
 import { readLoopPlan, mutateLoopPlan, writeQueueOverride, queueSteeringPrompt } from '../lib/plan.js';
 import { monitorSessionState } from '../lib/monitor.js';
+import { readProviderHealth } from './session.js';
 
 interface DashboardOptions {
   port: string;
@@ -36,6 +37,7 @@ interface DashboardState {
   artifacts: ArtifactManifest[];
   meta: unknown | null;
   repoUrl: string | null;
+  providerHealth: Record<string, unknown>;
 }
 
 interface SessionContext {
@@ -284,7 +286,7 @@ async function loadStateForContext(
   const activeSessionsPath = path.join(runtimeDir, 'active.json');
   const recentSessionsPath = path.join(runtimeDir, 'history.json');
 
-  const [status, meta, log, activeSessions, recentSessions, docsEntries, artifacts] = await Promise.all([
+  const [status, meta, log, activeSessions, recentSessions, docsEntries, artifacts, providerHealth] = await Promise.all([
     readJsonFile(statusPath),
     readJsonFile(metaPath),
     readLogTail(logPath),
@@ -297,6 +299,7 @@ async function loadStateForContext(
       }),
     ),
     loadArtifactManifests(ctx.sessionDir),
+    readProviderHealth(path.dirname(runtimeDir)),
   ]);
 
   // Resolve PID: prefer ctx.pid (from session resolution), fall back to
@@ -347,6 +350,7 @@ async function loadStateForContext(
     artifacts,
     meta,
     repoUrl: getRepoUrl(ctx.workdir),
+    providerHealth,
   };
 }
 

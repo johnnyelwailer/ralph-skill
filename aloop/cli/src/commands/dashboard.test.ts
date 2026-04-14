@@ -198,6 +198,41 @@ test('GET /api/state includes active and recent sessions from runtime state file
   }
 });
 
+test('GET /api/state includes providerHealth as empty object when no health files exist', async () => {
+  const fixture = await createServerFixture();
+  try {
+    const response = await fetch(`${fixture.handle.url}/api/state`);
+    assert.equal(response.status, 200);
+    const payload = (await response.json()) as Record<string, unknown>;
+    assert.ok(Object.prototype.hasOwnProperty.call(payload, 'providerHealth'), 'providerHealth key should be present');
+    assert.deepEqual(payload.providerHealth, {});
+  } finally {
+    await fixture.handle.close();
+  }
+});
+
+test('GET /api/state includes providerHealth with data from health files', async () => {
+  const fixture = await createServerFixture();
+  const healthDir = path.join(fixture.root, '.aloop', 'health');
+  try {
+    await mkdir(healthDir, { recursive: true });
+    const claudeHealth = { status: 'healthy', last_success: '2026-04-14T10:00:00Z', consecutive_failures: 0 };
+    const openaiHealth = { status: 'cooldown', last_failure: '2026-04-14T09:00:00Z', consecutive_failures: 2, cooldown_until: '2026-04-14T09:05:00Z', failure_reason: 'rate_limit' };
+    await writeFile(path.join(healthDir, 'claude.json'), JSON.stringify(claudeHealth), 'utf8');
+    await writeFile(path.join(healthDir, 'openai.json'), JSON.stringify(openaiHealth), 'utf8');
+
+    const response = await fetch(`${fixture.handle.url}/api/state`);
+    assert.equal(response.status, 200);
+    const payload = (await response.json()) as Record<string, unknown>;
+    assert.ok(Object.prototype.hasOwnProperty.call(payload, 'providerHealth'), 'providerHealth key should be present');
+    const health = payload.providerHealth as Record<string, unknown>;
+    assert.deepEqual(health.claude, claudeHealth);
+    assert.deepEqual(health.openai, openaiHealth);
+  } finally {
+    await fixture.handle.close();
+  }
+});
+
 test('host monitor processes GH convention requests outside loop runtime', async () => {
   const calls: string[] = [];
   const fixture = await createServerFixture({
