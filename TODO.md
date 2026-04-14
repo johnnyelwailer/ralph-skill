@@ -24,9 +24,7 @@ Current state (verified 2026-04-14):
 
 ### Up Next
 
-- [x] [review] Add branch coverage tests for `QACoverageBadge.tsx` — add `QACoverageBadge.test.tsx` covering: (1) green tone (`coverage_percent >= 80`), (2) red tone (`coverage_percent < 50`), (3) null/N/A state (`available: false`), (4) `parseQACoveragePayload` with non-record input, (5) `percentValue` from `payload.percentage` fallback. Import from `src/components/layout/QACoverageBadge.tsx`.
-
-- [ ] [review] Gate 3: `QACoverageBadge.tsx` expansion panel has zero branch coverage — new-module ≥90% threshold not met. Add tests for: (1) click button to expand (set `expanded=true`) and assert `ChevronDown` renders (currently only `ChevronRight` is tested); (2) expanded panel with empty `features` array — assert the "No feature rows found" message renders; (3) expanded panel with one `PASS` feature — assert green `statusTone` class and `CheckCircle2` icon; (4) expanded panel with `FAIL` feature — assert red `statusTone` class and `XCircle` icon; (5) expanded panel with `UNTESTED` feature — assert muted `statusTone` class and `Circle` icon; (6) feature with empty `component` string — assert the component `<p>` is absent (line 125: `{feature.component && ...}`). Use `userEvent.click(btn)` to trigger expand. (priority: high)
+- [x] [review] Gate 3: `QACoverageBadge.tsx` expansion panel has zero branch coverage — new-module ≥90% threshold not met. Add tests for: (1) click button to expand (set `expanded=true`) and assert `ChevronDown` renders (currently only `ChevronRight` is tested); (2) expanded panel with empty `features` array — assert the "No feature rows found" message renders; (3) expanded panel with one `PASS` feature — assert green `statusTone` class and `CheckCircle2` icon; (4) expanded panel with `FAIL` feature — assert red `statusTone` class and `XCircle` icon; (5) expanded panel with `UNTESTED` feature — assert muted `statusTone` class and `Circle` icon; (6) feature with empty `component` string — assert the component `<p>` is absent (line 125: `{feature.component && ...}`). Use `userEvent.click(btn)` to trigger expand. (priority: high)
 
 - [ ] Extract `LogEntryRow` + `ImageLightbox` from AppView.tsx to `src/components/activity/LogEntryRow.tsx` (~250 LOC); update AppView.tsx to import from new location; add re-export in AppView.tsx
 
@@ -61,6 +59,8 @@ Current state (verified 2026-04-14):
 - [ ] [review] Gate 7: Browser verification — `Dashboard renders identically before and after refactor`. Playwright blocked by missing `libatk-1.0.so.0` in container. Options: install libatk (`apt-get install -y libatk1.0-0 libatk-bridge2.0-0`), use system Chrome, or document a reproducible manual verification step. Defer until after main refactor is complete.
 
 ### Completed
+
+- [x] [review] Add branch coverage tests for `QACoverageBadge.tsx` — `QACoverageBadge.test.tsx` covers: (1) green tone (`coverage_percent >= 80`), (2) red tone (`coverage_percent < 50`), (3) null/N/A state (`available: false`), (4) `parseQACoveragePayload` with non-record input, (5) `percentValue` from `payload.percentage` fallback. Verified: 274/274 tests pass (iter 52).
 
 - [x] [review] Gate 3: Add `StatusDot` and `ConnectionIndicator` branch coverage tests to `StatusIndicators.test.tsx` — covers running/stopped/unknown status, connected/connecting/disconnected states. Verified by QA: 269/269 tests pass.
 
