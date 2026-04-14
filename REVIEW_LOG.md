@@ -57,3 +57,21 @@
 - **Gate 7 — FAIL (persists):** No Playwright/browser verification performed. Spec acceptance criterion: "Dashboard renders identically before and after refactor." Gate 7 is a mandatory fail without browser evidence for layout extractions (Header, Footer, DocsPanel).
 
 ---
+
+## Review — 2026-04-14 18:02 — commit d9498aa3..ab9fb46b
+
+**Verdict: FAIL** (2 prior findings unresolved; 0 new findings)
+**Scope:** `REVIEW_LOG.md` only (QA re-test iteration — no code changes)
+
+**Build summary:** Commit ab9fb46b is a QA re-test pass. It only appended prior review entries to REVIEW_LOG.md. No source files were changed. All 250 tests pass, type-check clean.
+
+**Gate 5 — PASS:** `vitest run` → 23 test files, 250 tests, all pass. `tsc --noEmit` → clean.
+**Gate 6 — PASS (N/A):** QA-only commit with no observable output; empty proof is correct.
+**Gate 8 — PASS:** No dependency changes.
+**Gate 9 — PASS:** No user-facing docs changed.
+
+- **Gate 4 (log.ts LOC) — FAIL (persists):** `src/lib/log.ts` is 381 LOC — confirmed unchanged. Violates spec criterion #2 and Constitution Rule 7. `[review]` task remains open in TODO.md: split into `log-types.ts`, `log-parse.ts`, `log-session.ts`.
+
+- **Gate 7 — FAIL (persists):** No Playwright/browser verification performed across any iteration. Spec acceptance criterion: "Dashboard renders identically before and after refactor." `[review]` task remains open in TODO.md. Gate 7 is a mandatory fail without browser evidence for layout component extractions (Header, Footer, DocsPanel).
+
+---
