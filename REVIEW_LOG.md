@@ -1,5 +1,58 @@
 # Review Log
 
+## Review — 2026-04-14 — commit f5f5dcd8..0ca6a950 + working tree
+
+**Verdict: FAIL** (3 prior findings still open; 7 new findings in working tree)
+**Scope:** `aloop/cli/dashboard/src/lib/`, `aloop/cli/dashboard/src/AppView.tsx`, `aloop/cli/dashboard/src/components/`, `aloop/cli/dashboard/src/test-setup.ts`, `SPEC.md`
+
+### Gate 1: Spec Compliance — FAIL
+
+**Prior finding F1 (format.ts coverage) — still open.** Five exported functions in `format.ts` have zero test coverage: `formatTime` (line 60), `formatTimeShort` (line 66), `extractIterationUsage` (line 146), `parseManifest` (line 178), `parseQACoveragePayload` (line 268). Also confirmed: `parseLogLine` error/verdict/commitHash/filesChanged branches untested.
+
+**Prior finding F2 (format.ts LOC) — still open.** `format.ts` is 347 LOC. Constitution Rule 7 requires < 150 LOC per file. Needs split (e.g., `format-time.ts`, `format-parse.ts`, `format-session.ts`).
+
+**Prior finding F3 (ArtifactViewer type errors) — still open.** `ArtifactViewer.tsx` imports `ArtifactEntry` and `ManifestPayload` from `../../AppView`, which does not export them. `ArtifactViewer.test.tsx` imports `LogEntryRow`, `ManifestPayload`, `LogEntry` from AppView — same issue. `npm run type-check` exits 2 with 5 new TS errors (TS2459 × 4, TS7006 × 1). Fix: change imports to `@/lib/types`.
+
+### Gate 2: Test Depth — PASS (for committed work)
+
+`ansi.test.ts:105` shallow `.toBeDefined()` resolved in `2a0f9bf2` — now asserts `.toBe('255,0,0')`. Finding F1 above covers remaining test-depth gaps in format.ts.
+
+### Gate 3: Coverage — FAIL
+
+Same as prior finding F1. formatTime, formatTimeShort, extractIterationUsage, parseManifest, parseQACoveragePayload have 0% coverage.
+
+### Gate 4: Code Quality — PASS (committed work only)
+
+No dead code, no unused imports in committed lib modules. AppView.tsx re-exports are structurally correct (but see working-tree regressions below).
+
+### Gate 5: Integration — PARTIAL
+
+Dashboard `npm test`: 309/317 pass (8 failures pre-existing, confirmed against master). Dashboard `npm run type-check`: exits 2 — 5 new errors from ArtifactViewer (P1, prior finding F3) + 3 pre-existing TS2769 in App.coverage tests.
+
+### Working Tree — CRITICAL REGRESSIONS (7 findings)
+
+The following uncommitted changes must NOT be committed. They represent work that reverts previously committed features.
+
+**[WT-1] SPEC.md gutted (staged):** `SPEC.md` has been truncated from 4086 lines to ~40 lines — the full project architecture spec replaced with an issue-scoped stub. SPEC.md is not in issue-6 scope. Constitution Rules 12 (one issue, one concern) and 18 (respect file ownership). **Revert this change entirely.**
+
+**[WT-2] AppView.tsx lib extraction reverted (unstaged):** The working tree re-inlines the full ANSI parser and type definitions directly into `AppView.tsx` while removing the lib imports (`@/lib/ansi`, `@/lib/format`, `@/lib/types`). This undoes commit `cde50742` and creates dead code (lib files exist but are unused). **Revert this change entirely.**
+
+**[WT-3] Touch targets stripped (unstaged):** `button.tsx`, `tabs.tsx`, `dropdown-menu.tsx` (4 elements) have `min-h-[44px] min-w-[44px] md:min-h-0 md:min-w-0` removed. These were committed accessibility improvements for WCAG 2.5.5 (44×44px touch targets). **Revert.**
+
+**[WT-4] Touch-aware HoverCard reverted (unstaged):** `hover-card.tsx` custom `HoverCard` + `HoverCardTrigger` (touch tap-to-open, context provider) replaced with bare `HoverCardPrimitive.Root` / `HoverCardPrimitive.Trigger` pass-throughs. Previously committed feature. **Revert.**
+
+**[WT-5] Touch-aware Tooltip reverted (unstaged):** `tooltip.tsx` custom `Tooltip` (isTouch detection, 2s auto-close timer, context provider) replaced with bare `TooltipPrimitive.Root` pass-through. Previously committed feature. **Revert.**
+
+**[WT-6] Progress value safety removed (unstaged):** `progress.tsx` removes `Math.max(0, Math.min(100, value))` clamping and the `opacity-0` zero-value animation. The replacement `value ?? 0` is not equivalent: negative values, values > 100, and NaN are no longer guarded. **Revert.**
+
+**[WT-7] matchMedia stub removed (unstaged):** `test-setup.ts` loses the `window.matchMedia` mock (32 lines). This will break any test using `useBreakpoint`, `useIsTouchDevice`, or any hook that calls `window.matchMedia`. QA confirmed tests pass with this stub present. **Revert.**
+
+### Summary
+
+Three prior review findings (F1, F2, F3) remain unresolved. Seven working-tree changes must be reverted before any commit — they undo previously committed work and introduce regressions. Fix order: (1) revert all 8 working-tree files to HEAD, (2) fix ArtifactViewer imports (F3), (3) add tests for 5 untested format.ts functions (F1), (4) split format.ts into ≤150 LOC modules (F2).
+
+---
+
 ## Review — 2026-04-13 — commit aff01407..33cfe894
 
 **Verdict: FAIL** (3 findings → written to TODO.md as [review] tasks)
