@@ -37,7 +37,6 @@ COPILOT_MODEL="${ALOOP_COPILOT_MODEL:-gpt-5.3-codex}"
 COPILOT_RETRY_MODEL="${ALOOP_COPILOT_RETRY_MODEL:-claude-sonnet-4.6}"
 MAX_ITERATIONS="${ALOOP_MAX_ITERATIONS:-50}"
 MAX_STUCK="${ALOOP_MAX_STUCK:-3}"
-BACKUP_ENABLED="${ALOOP_BACKUP:-false}"
 NO_TASK_EXIT=false
 DRY_RUN=false
 DANGEROUSLY_SKIP_CONTAINER=false
@@ -67,7 +66,6 @@ usage() {
     echo "  --max-iterations <n>    Maximum iterations (default: 50)"
     echo "  --max-stuck <n>         Skip task after N failures (default: 3)"
     echo "  --launch-mode <mode>    start|restart|resume (default: start)"
-    echo "  --backup                Enable remote git backup"
     echo "  --dry-run               Print commands without executing"
     echo "  --dangerously-skip-container  Skip devcontainer routing (agents run on host)"
     exit 1
@@ -83,7 +81,6 @@ while [[ $# -gt 0 ]]; do
         --round-robin)  ROUND_ROBIN_PROVIDERS="$2"; shift 2 ;;
         --max-iterations) MAX_ITERATIONS="$2"; shift 2 ;;
         --max-stuck)    MAX_STUCK="$2"; shift 2 ;;
-        --backup)       BACKUP_ENABLED="true"; shift ;;
         --dry-run)      DRY_RUN=true; shift ;;
         --dangerously-skip-container) DANGEROUSLY_SKIP_CONTAINER=true; shift ;;
         --no-task-exit) NO_TASK_EXIT=true; shift ;;
@@ -1794,101 +1791,6 @@ PROVENANCE_HOOK
 }
 
 # ============================================================================
-# REMOTE BACKUP
-# ============================================================================
-
-setup_remote_backup() {
-    if [ "$BACKUP_ENABLED" != "true" ]; then
-        echo "Remote backup: disabled"
-        return 1
-    fi
-
-    cd "$WORK_DIR"
-
-    if [ ! -d ".git" ]; then
-        echo "Initializing git repository..."
-        git init
-        git add -A
-        local trailer_session="${SESSION_ID:-$(basename "$SESSION_DIR")}"
-        git commit -m "Initial commit" \
-            -m "Aloop-Agent: harness" \
-            -m "Aloop-Iteration: 0" \
-            -m "Aloop-Session: $trailer_session" 2>/dev/null || true
-    fi
-
-    if remote_url=$(git remote get-url origin 2>/dev/null); then
-        echo "Remote backup: $(normalize_remote_backup_url "$remote_url")"
-        return 0
-    fi
-
-    if ! command -v gh &>/dev/null; then
-        echo "Warning: gh CLI not found. Remote backup disabled."
-        BACKUP_ENABLED="false"
-        return 1
-    fi
-
-    if ! gh auth status &>/dev/null; then
-        echo "Warning: gh CLI not authenticated. Remote backup disabled."
-        BACKUP_ENABLED="false"
-        return 1
-    fi
-
-    local project_name=$(basename "$WORK_DIR")
-    local repo_name="${project_name}-aloop-backup"
-    echo "Creating private backup repo: $repo_name"
-
-    if gh repo create "$repo_name" --private --source=. --push 2>/dev/null; then
-        local created_remote_url
-        created_remote_url=$(git remote get-url origin 2>/dev/null || true)
-        if [ -n "$created_remote_url" ]; then
-            echo "Remote backup: $(normalize_remote_backup_url "$created_remote_url")"
-        else
-            local created_repo_web_url
-            created_repo_web_url=$(gh repo view "$repo_name" --json url -q .url 2>/dev/null || true)
-            if [ -n "$created_repo_web_url" ]; then
-                echo "Remote backup: $created_repo_web_url"
-            else
-                echo "Remote backup: $repo_name"
-            fi
-        fi
-        return 0
-    else
-        echo "Warning: Could not create backup repo. Remote backup disabled."
-        BACKUP_ENABLED="false"
-        return 1
-    fi
-}
-
-normalize_remote_backup_url() {
-    local remote_url="$1"
-    remote_url="${remote_url//$'\r'/}"
-    remote_url="${remote_url//$'\n'/}"
-
-    if [[ "$remote_url" =~ ^git@([^:]+):(.+)$ ]]; then
-        local host="${BASH_REMATCH[1]}"
-        local path="${BASH_REMATCH[2]}"
-        path="${path%.git}"
-        echo "https://$host/$path"
-        return
-    fi
-
-    if [[ "$remote_url" =~ ^ssh://git@([^/]+)/(.+)$ ]]; then
-        local host="${BASH_REMATCH[1]}"
-        local path="${BASH_REMATCH[2]}"
-        path="${path%.git}"
-        echo "https://$host/$path"
-        return
-    fi
-
-    if [[ "$remote_url" =~ ^https?:// ]]; then
-        echo "${remote_url%.git}"
-        return
-    fi
-
-    echo "$remote_url"
-}
-
-# ============================================================================
 # MAIN LOOP
 # ============================================================================
 
@@ -1977,9 +1879,7 @@ else
     MAX_PHASE_RETRIES=2
 fi
 
-# Setup remote backup
 SESSION_ID=$(basename "$SESSION_DIR")
-setup_remote_backup || true
 start_dashboard
 setup_provenance_hook
 

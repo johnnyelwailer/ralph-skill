@@ -41,9 +41,5 @@ Shell integration test failures — out of scope for CI setup (loop.sh behavior 
 - [x] `.github/workflows/ci.yml` file exists — verified by direct read of branch HEAD
 - [x] Dashboard tests job (`npm test` in `aloop/cli/dashboard`) — present in ci.yml, correct commands
 - [x] README.md CI badge URL contains `actions/workflows/ci.yml/badge.svg` — verified line 1 of README.md
-
-### In Progress (Review Findings)
-
-- [ ] [review] Extract `sync_branch()` from loop.sh into `aloop/bin/lib/sync_branch.sh` and source it from loop.sh (1 line). Remove the ~82-line function body from loop.sh. Net change to loop.sh: −81 LOC — resolves Constitution Rule 1 violation. Update `loop_branch_coverage.tests.sh` to extract `sync_branch` from `aloop/bin/lib/sync_branch.sh` instead of `loop.sh` (update the `extract_function` call at line 165 to pass the helper file path as second argument, and update the `extract_function` helper to accept an optional source file parameter). (critical)
-
-- [ ] [review] Extract `Sync-Branch` from loop.ps1 into `aloop/bin/lib/SyncBranch.ps1` and dot-source it from loop.ps1 (1 line: `. "$PSScriptRoot/lib/SyncBranch.ps1"`). Remove the ~84-line function body from loop.ps1. Net change to loop.ps1: −83 LOC — resolves Constitution Rule 1 violation. Update `loop.tests.ps1` to dot-source or reference `aloop/bin/lib/SyncBranch.ps1` when loading `Sync-Branch` for unit-test isolation. (critical)
+- [x] Extract `sync_branch()` from loop.sh into `aloop/bin/lib/sync_branch.sh` and source it from loop.sh (1 line). Remove the ~82-line function body from loop.sh. Net change to loop.sh: −81 LOC — resolves Constitution Rule 1 violation.
+- [x] Extract `Sync-Branch` from loop.ps1 into `aloop/bin/lib/SyncBranch.ps1` and dot-source it from loop.ps1 (1 line). Remove the ~84-line function body from loop.ps1. Net change to loop.ps1: −83 LOC — resolves Constitution Rule 1 violation.
