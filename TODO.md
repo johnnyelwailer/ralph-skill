@@ -314,6 +314,26 @@
 - [x] Queue: empty — no override prompts to process.
 - [x] No state transitions required — child #157 actively running qa tests (19:04Z), progressing normally.
 
+# orchestrator scan (2026-04-14 ~twenty-fifth pass)
+
+## State transitions
+
+- [x] #157: child PID 422016 ALIVE (~53 min running). status.json: iteration=21, phase=**build** (cyclePosition=2/PROMPT_build_opencode.md), state=running, updated_at=19:34:19Z (fresh). loop-plan.json: allTasksMarkedDone=false. Concurrency slot occupied (cap=1) — no new dispatches.
+- [x] #173: still blocked_on_human — human must remove false "Implementation Status" section from GH issue #173 body.
+- [x] #108: still blocked_on_human (In review) — human must manually rebase PR #132 onto agent/trunk.
+- [x] Queue: empty — no override prompts to process.
+- [x] No state transitions required — child #157 progressing normally in build phase, iteration 21.
+
+# orchestrator scan (2026-04-14 ~twenty-sixth pass)
+
+## State transitions
+
+- [x] #157: child PID 422016 ALIVE. status.json: iteration=27, phase=**qa**, state=running, updated_at=19:34:42Z (5 min ago — fresh). Advanced from build → qa. Concurrency slot occupied (cap=1) — no new dispatches.
+- [x] #173: still blocked_on_human — human must remove false "Implementation Status" section from GH issue #173 body.
+- [x] #108: still blocked_on_human (In review) — human must manually rebase PR #132 onto agent/trunk.
+- [x] Queue: empty — no override prompts to process.
+- [x] No state transitions required — child #157 progressing normally in qa phase, iteration 27.
+
 # orchestrator scan (2026-04-14 ~twenty-fourth pass)
 
 ## State transitions
