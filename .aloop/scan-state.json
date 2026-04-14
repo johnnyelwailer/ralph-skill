@@ -1,0 +1,29 @@
+{
+  "scan_at": "2026-04-14T20:16:13Z",
+  "iteration": 108,
+  "active_child": {
+    "session": "orchestrator-20260321-172932-issue-157-20260414-184129",
+    "issue": 157,
+    "pid": 422016,
+    "alive": true,
+    "phase": "qa",
+    "iteration": 55,
+    "branch": "aloop/issue-157",
+    "latest_commit": "f0692311 test: add branch coverage tests for QACoverageBadge",
+    "review_failures": ["QACoverageBadge branch coverage missing", "Gate 7: libatk missing in container (E2E infra blocker)"]
+  },
+  "parallel_scans": ["orchestrator-20260414-190413", "orchestrator-20260414-195732"],
+  "capacity": {
+    "cap": 1,
+    "occupied": 1,
+    "available": 0
+  },
+  "provider_status": {
+    "claude": "healthy",
+    "opencode": "cooldown",
+    "gemini": "cooldown",
+    "minimax": "ok"
+  },
+  "action": "monitor_only",
+  "notes": "Child alive and making progress. Gate 7 E2E infra blocker (libatk missing in container) requires human intervention. No new dispatch possible."
+}
