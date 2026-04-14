@@ -154,3 +154,13 @@
 - [x] #108: still blocked_on_human (In review) — human must manually rebase PR #132 onto agent/trunk.
 - [x] Queue directory absent — no override prompts.
 - [x] 105 Ready issues waiting. Top priority (-10): #188, #187, #186, #185, #184. Next dispatch after #157 completes.
+
+# orchestrator scan (2026-04-14 ~ninth pass)
+
+## State transitions
+
+- [x] #157: child PID 139176 ALIVE. status.json: iteration=16, phase=**build**, state=running, updated_at=17:00:30Z. loop-plan.json: cyclePosition=1 (build_claude), allTasksMarkedDone=false. Concurrency slot occupied (cap=1) — no new dispatches.
+- [x] #173: still blocked_on_human — human must remove false "Implementation Status" section from GH issue #173 body.
+- [x] #108: still blocked_on_human (In review) — human must manually rebase PR #132 onto agent/trunk.
+- [x] Queue: fixture files only (e2e test data, not real overrides) — nothing to process.
+- [x] 105 Ready issues waiting. No state transitions required — child active and progressing.
