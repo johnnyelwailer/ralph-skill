@@ -26,7 +26,8 @@
 - [ ] #172 review already queued from prior scan (review-172-pr308)
 - [ ] #144, #124, #39 needs_redispatch=true — awaiting free slot after #173 dispatch
 - [x] #173 reaped again: child 161533 (dispatch from 16:13 scan) completed plan-only — 3rd failure. Root cause: issue body corrupted with false "This issue is already implemented" text causing child sessions to exit after plan. Transitioned → pr_open/needs_redispatch. New dispatch written with explicit override instructions.
-- [ ] #39 dispatch still pending (dispatch-39-review-fix from 16:04 unarchived) — runtime to process next available slot
+- [x] #173 reaped again: child 162409 / PID 95703 (force-impl dispatch from 16:32) completed plan-only — **4th failure**. Branch diff shows zero loop.sh/loop.ps1 changes. Escalated → `blocked_on_human`. Dispatch archived. Human must remove false "Implementation Status" section from GitHub issue #173 body before redispatching.
+- [ ] #39 dispatch still pending (dispatch-39-review-fix from 16:04) — slot now free, runtime to dispatch next
 
 # runtime bug fix (2026-04-14)
 
