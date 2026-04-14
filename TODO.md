@@ -2,20 +2,35 @@
 
 ## Tasks
 
-- [x] Implement as described in the issue
+- [x] Implement as described in the issue — merged and done
 
 # Issue #183: Configure Storybook 8 with react-vite and Tailwind decorators
 
 ## Tasks
 
-- [x] Implement as described in the issue — `.storybook/main.ts`, `.storybook/preview.tsx`, `button.stories.tsx`, and package.json scripts/deps all in place; storybook build verified
+- [x] Implement as described in the issue — `.storybook/main.ts`, `.storybook/preview.tsx`, `button.stories.tsx`, and package.json scripts/deps all in place; storybook build verified — issue CLOSED on GitHub
 
 # Cleanup tasks
 
 ## Tasks
 
-- [x] Add storybook-static to .gitignore
+- [x] Add storybook-static to .gitignore — done on aloop/issue-183 branch
 - [x] Review untracked files and decide whether to commit or ignore
+
+# orchestrator scan (2026-04-14)
+
+## State transitions
+
+- [x] #173 transitioned from `in_progress` → `pr_open` (child 154752 completed plan only, PR still wrong) — redispatch written
+- [x] #160 review request queued (child 154010 completed, PR #309 open, no review yet)
+- [ ] #172 review already queued from prior scan (review-172-pr308)
+- [ ] #144, #124, #39 needs_redispatch=true — awaiting free slot after #173 dispatch
+
+# runtime bug fix (2026-04-14)
+
+## Findings
+
+- [x] [FIXED] `ReferenceError: state is not defined` in `/home/pj/.aloop/cli/dist/index.js` — `launchChildLoop` referenced undeclared `state` and `roundRobinOrder` variables (lines 13766-13768, 13791). Caused every redispatch to fail with `child_dispatch_failed`. Fixed by removing the dead `state?.round_robin_order` block and replacing the `stateRoundRobinOrder` assignment with `["claude", "opencode"]` fallback.
 
 # spec-gap analysis (2026-04-13)
 
