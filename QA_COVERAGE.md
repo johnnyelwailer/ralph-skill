@@ -14,9 +14,9 @@
 | AppView.tsx LOC (<100) | 2026-04-14 | 6a72a5f9 | FAIL | 1393 LOC — main refactoring not yet started; all Up Next tasks pending |
 | Dashboard HTML served | 2026-04-14 | 009a6123 | PASS | HTTP 200, JS 463KB + CSS 34KB bundles load; SSE /events endpoint returns live session state |
 | StatusIndicators.tsx branch coverage tests | 2026-04-14 | ee910c72 | PASS | StatusDot (running/stopped/unknown) + ConnectionIndicator (connected/connecting/disconnected) tests added; all 269 dashboard tests pass |
-| QACoverageBadge.tsx branch coverage tests | 2026-04-14 | 5378ad46 | PASS | 11/11 tests pass: 5 original + 6 expansion panel (ChevronDown toggle, empty features, PASS/FAIL/UNTESTED rows, empty component omission) |
-| Dashboard vitest suite (all tests) | 2026-04-14 | 5378ad46 | PASS | 280/280 tests pass across 26 test files (up from 274 — 6 new QACoverageBadge expansion panel tests added) |
-| Dashboard dev server | 2026-04-14 | 5378ad46 | PASS | HTTP 200 on localhost:5173 — vite dev server starts and serves correctly |
+| QACoverageBadge.tsx branch coverage tests | 2026-04-14 | 7e1ec74e | PASS | 13/13 tests pass: 5 original + 6 expansion panel + 2 new (!response.ok returns null, sessionId=null fetches without ?session= param) |
+| Dashboard vitest suite (all tests) | 2026-04-14 | 7e1ec74e | PASS | 282/282 tests pass across 26 test files (up from 280 — 2 new QACoverageBadge fetch branch tests added) |
+| Dashboard dev server | 2026-04-14 | 7e1ec74e | PASS | HTTP 200 on localhost:5175 — vite dev server starts and serves correctly |
 | SSE /events endpoint | 2026-04-14 | 6a72a5f9 | PASS | Returns live session state and log stream |
 | SPEC.md restoration | 2026-04-14 | 6a72a5f9 | PASS | 4086 lines confirmed |
 | Gate 7 browser verification (Playwright e2e) | 2026-04-14 | ee910c72 | FAIL | Playwright can't launch — missing libatk-1.0.so.0 in container; sudo blocked (no new privileges flag); curl fallback confirms dev server serves HTTP 200; visual rendering unverifiable |

@@ -1,5 +1,89 @@
 # QA Log
 
+## QA Session — 2026-04-14 (iteration 54)
+
+### Test Environment
+- Binary under test: /tmp/aloop-test-install-xQMhjY/bin/aloop (version 1.0.0)
+- Worktree: /home/pj/.aloop/sessions/orchestrator-20260321-172932-issue-157-20260414-184129/worktree
+- Branch: aloop/issue-157
+- Commit: 7e1ec74e
+- Features tested: 4
+
+### Results
+- PASS: QACoverageBadge !response.ok + sessionId=null branch coverage tests — 13/13 tests pass (all prior + 2 new: !response.ok returns null, sessionId=null fetches without ?session= param)
+- PASS: Dashboard vitest suite (all tests) — 282/282 pass across 26 test files (up from 280; +2 tests from new QACoverageBadge coverage)
+- PASS: Dashboard dev server — HTTP 200 on localhost:5175
+- FAIL: npm run type-check — still 16 TS errors in orchestrate.ts/process-requests.ts (pre-existing; unchanged)
+- FAIL: npm test full suite — 1077/1111 pass, 33 fail (pre-existing; unchanged)
+- FAIL: AppView.tsx LOC — still 1393 LOC (refactoring tasks in Up Next, not started)
+
+### Bugs Filed
+None — no new bugs. All failures are pre-existing and already tracked.
+
+### Re-tested
+- QACoverageBadge !response.ok + sessionId=null: newly completed → PASS (13/13 tests)
+- Dashboard vitest suite: PASS (280) → PASS (282, +2 new coverage tests)
+- npm run type-check: FAIL (16 errors) → FAIL (16 errors, unchanged)
+- npm test: FAIL (33) → FAIL (33, unchanged)
+- AppView.tsx LOC: FAIL (1393) → FAIL (1393, unchanged — expected)
+
+### Command Transcript
+
+```
+# Binary installed from source
+$ ALOOP_BIN=/tmp/aloop-test-install-xQMhjY/bin/aloop
+$ $ALOOP_BIN --version
+1.0.0
+
+# QACoverageBadge new branch coverage tests
+$ npx vitest run --reporter=verbose src/components/layout/QACoverageBadge.test.tsx
+✓ QACoverageBadge > renders green tone when coverage_percent >= 80
+✓ QACoverageBadge > renders red tone when coverage_percent < 50
+✓ QACoverageBadge > renders N/A with muted tone when available is false
+✓ QACoverageBadge > renders N/A when parseQACoveragePayload receives non-record input (null)
+✓ QACoverageBadge > uses payload.percentage as fallback when coverage_percent is absent
+✓ QACoverageBadge > renders ChevronDown when expanded (click toggles expand)
+✓ QACoverageBadge > renders "No feature rows found" when expanded with empty features
+✓ QACoverageBadge > renders PASS feature row with green statusTone and CheckCircle2 icon
+✓ QACoverageBadge > renders FAIL feature row with red statusTone and XCircle icon
+✓ QACoverageBadge > renders UNTESTED feature row with muted statusTone and Circle icon
+✓ QACoverageBadge > renders null (no button) when response.ok is false
+✓ QACoverageBadge > fetches without ?session= query param when sessionId is null
+✓ QACoverageBadge > omits component <p> when feature.component is empty string
+Test Files: 1 passed (1)
+Tests: 13 passed (13)
+Exit code: 0
+
+# Full dashboard vitest suite (second run — first run had 2 transient flakes in App.coverage tests)
+$ npm run test [from aloop/cli/dashboard]
+Test Files: 26 passed (26)
+Tests: 282 passed (282)
+Exit code: 0
+
+# TypeScript type-check
+$ npm run type-check [from aloop/cli]
+src/commands/orchestrate.ts(3166,7): error TS2304: Cannot find name 'state'.
+... (16 errors total, same as iter 48, 52, 53)
+Exit code: 2
+
+# Full npm test suite
+$ npm test [from aloop/cli]
+# tests 1111, pass 1077, fail 33, exit code 1 (same as iter 53)
+
+# Dashboard dev server
+$ npm run dev -- --port 5175 [from aloop/cli/dashboard]
+$ curl http://localhost:5175 → HTTP 200
+Exit code: 0
+
+# AppView.tsx LOC
+$ wc -l aloop/cli/dashboard/src/AppView.tsx
+1393 (unchanged)
+
+# Note: first full vitest run had 2 transient flakes (App.coverage tests; 5.8s/5.4s duration).
+# Isolated run of those 2 files: 28/28 pass. Second full run: 282/282 pass.
+# Confirmed flaky timing issue, not a regression from new tests.
+```
+
 ## QA Session — 2026-04-14 (iteration 53)
 
 ### Test Environment
