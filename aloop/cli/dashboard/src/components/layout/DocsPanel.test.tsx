@@ -82,7 +82,7 @@ describe('HealthPanel', () => {
 
   it('renders provider name and status', () => {
     const providers: ProviderHealth[] = [
-      { name: 'claude', status: 'healthy', lastEvent: null },
+      { name: 'claude', status: 'healthy', lastEvent: '' },
     ];
     render(
       <Wrapper>

@@ -530,6 +530,8 @@ describe('App.tsx AppView integration coverage', () => {
   });
 
   it('covers panel toggles, sidebar shortcut, and session switching', async () => {
+    // Use tablet viewport so Ctrl+B sidebar toggle is active (desktop ≥1024px disables it).
+    Object.defineProperty(window, 'innerWidth', { writable: true, configurable: true, value: 800 });
     const state = {
       ...baseState,
       activeSessions: [{ session_id: 'sess-1', project_name: 'proj', state: 'running', phase: 'build', iteration: 3 }],
@@ -548,26 +550,29 @@ describe('App.tsx AppView integration coverage', () => {
     const { container } = render(createElement(App));
     await screen.findByRole('button', { name: /stop/i });
 
-    fireEvent.keyDown(document, { key: 'b', ctrlKey: true });
+    // Sidebar starts collapsed on tablet → Ctrl+B opens it.
     fireEvent.keyDown(document, { key: 'b', ctrlKey: true });
 
-    fireEvent.click(screen.getByRole('button', { name: /activity/i }));
-    fireEvent.click(screen.getByRole('button', { name: /documents/i }));
+    fireEvent.click(screen.getByRole('button', { name: /^activity$/i }));
+    fireEvent.click(screen.getByRole('button', { name: /^documents$/i }));
 
+    // Sidebar is open → close button visible.
     const collapseBtn = container.querySelector('button .lucide-panel-left-close')?.closest('button') as HTMLButtonElement | null;
     expect(collapseBtn).not.toBeNull();
-    fireEvent.click(collapseBtn!);
+    fireEvent.click(collapseBtn!); // closes sidebar → sidebarOpen = false
     const expandBtn = container.querySelector('button .lucide-panel-left-open')?.closest('button') as HTMLButtonElement | null;
     expect(expandBtn).not.toBeNull();
-    fireEvent.click(expandBtn!);
+    // Keep sidebar closed so hamburger opens the overlay below.
 
     const mobileMenuBtn = container.querySelector('button .lucide-menu')?.closest('button') as HTMLButtonElement | null;
     expect(mobileMenuBtn).not.toBeNull();
-    fireEvent.click(mobileMenuBtn!);
+    fireEvent.click(mobileMenuBtn!); // toggleSidebar → sidebarOpen = true → overlay appears
     const mobileOverlay = container.querySelector('.fixed.inset-0.z-40') as HTMLDivElement | null;
     expect(mobileOverlay).not.toBeNull();
-    fireEvent.click(mobileOverlay!);
+    fireEvent.click(mobileOverlay!); // sidebarOpen = false → overlay gone
 
+    // Re-open sidebar to switch sessions.
+    fireEvent.click(mobileMenuBtn!);
     fireEvent.click(screen.getAllByText('sess-1')[0]);
     await waitFor(() => {
       expect(window.history.replaceState).toHaveBeenCalled();
@@ -576,6 +581,8 @@ describe('App.tsx AppView integration coverage', () => {
   });
 
   it('covers older-session grouping and docs overflow branches', async () => {
+    // Use tablet viewport so Ctrl+B sidebar toggle is active (desktop ≥1024px disables it).
+    Object.defineProperty(window, 'innerWidth', { writable: true, configurable: true, value: 800 });
     const state = {
       ...baseState,
       status: null,
@@ -611,13 +618,18 @@ describe('App.tsx AppView integration coverage', () => {
     vi.stubGlobal('fetch', fetchMock);
 
     const { container } = render(createElement(App));
-    await screen.findByText('Older');
-    fireEvent.click(screen.getByText('Older'));
+    // Sidebar starts collapsed on tablet → open it to see session names.
+    fireEvent.keyDown(document, { key: 'b', ctrlKey: true });
+    await screen.findAllByText('Older');
+    fireEvent.click(screen.getAllByText('Older')[0]);
 
-    const repoLink = container.querySelector('a[href=\"https://example.com/repo\"]');
+    const repoLink = container.querySelector('a[href="https://example.com/repo"]');
     expect(repoLink).not.toBeNull();
 
-    fireEvent.keyDown(document, { key: 'b', ctrlKey: true });
+    // Toggle open→close→open→close to end with sidebar collapsed.
+    fireEvent.keyDown(document, { key: 'b', ctrlKey: true }); // close
+    fireEvent.keyDown(document, { key: 'b', ctrlKey: true }); // open
+    fireEvent.keyDown(document, { key: 'b', ctrlKey: true }); // close → collapsed
     const collapsedSessionBtn = container.querySelector('aside .mt-3 button');
     expect(collapsedSessionBtn).not.toBeNull();
     fireEvent.click(collapsedSessionBtn!);
@@ -633,13 +645,14 @@ describe('App.tsx AppView integration coverage', () => {
     ];
     const onSelect = vi.fn();
     const onToggle = vi.fn();
-    const { container } = render(createElement(TooltipProvider, {}, createElement(Sidebar, {
+    const { container } = render(createElement(TooltipProvider, { children: createElement(Sidebar, {
       sessions: sessions as any[],
       selectedSessionId: 's1',
       onSelectSession: onSelect,
       collapsed: false,
       onToggle: onToggle,
-    })));
+      sessionCost: 0,
+    }) }));
     expect(screen.getByText('p1')).toBeInTheDocument();
     fireEvent.click(screen.getByText('s1'));
     expect(onSelect).toHaveBeenCalled();
@@ -671,19 +684,20 @@ describe('App.tsx AppView integration coverage', () => {
       },
     }];
     vi.stubGlobal('fetch', vi.fn(async () => new Response('build output', { status: 200 })));
-    render(createElement(TooltipProvider, {}, createElement(ActivityPanel, {
+    render(createElement(TooltipProvider, { children: createElement(ActivityPanel, {
       log,
       artifacts: artifacts as any[],
       currentIteration: 2,
       currentPhase: 'build',
       currentProvider: 'c',
       isRunning: true,
-    })));
+    }) }));
     const row = screen.getByText('built something').closest('div');
     if (row) fireEvent.click(row);
-    expect(await screen.findByText('a.png')).toBeInTheDocument();
-    fireEvent.click(screen.getByText('a.png'));
-    fireEvent.click(screen.getByText('b.txt'));
+    const imgArtifact = await screen.findByRole('img', { name: 'a.png' });
+    expect(imgArtifact).toBeInTheDocument();
+    fireEvent.click(imgArtifact.closest('button')!);
+    expect(await screen.findByText('b.txt')).toBeInTheDocument();
   });
 
   it('covers DocContent and HealthPanel', () => {
@@ -692,7 +706,7 @@ describe('App.tsx AppView integration coverage', () => {
     render(createElement(DocContent, { content: '', name: 'Empty.md' }));
     expect(screen.getByText(/No content/i)).toBeInTheDocument();
     const providers = [{ name: 'p1', status: 'cooldown', lastEvent: 't', cooldownUntil: new Date(Date.now() + 100000).toISOString() }];
-    render(createElement(TooltipProvider, {}, createElement(HealthPanel, { providers: providers as any[] })));
+    render(createElement(TooltipProvider, { children: createElement(HealthPanel, { providers: providers as any[] }) }));
     expect(screen.getByText('p1')).toBeInTheDocument();
   });
 });
