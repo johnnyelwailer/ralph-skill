@@ -15,9 +15,7 @@ Already extracted (with issues): `Header.tsx` (385 LOC — exceeds 200 LOC limit
 
 ### In Progress
 
-- [ ] [review] Gate 3: **`log-session.ts` coverage gaps** — `log-session.ts` is a new module requiring ≥90% branch coverage. Two branches are untested: (1) `latestQaCoverageRefreshSignal` has no unit test — add tests for `!log` early return, non-JSON-line skip, and a non-QA-phase `iteration_complete` that does NOT match; (2) `toSession` project_root IIFE (lines 8-12) — add a `toSession` test that supplies `{ project_root: '/home/user/my-project' }` and asserts `projectName === 'my-project'`. Both live in `aloop/cli/dashboard/src/lib/log-session.ts`. (priority: high)
-
-- [x] [review] Gate 4: **Restore SPEC.md** — Commit 9ce0a643 truncated `SPEC.md` from 4086 lines (full project spec) to 64 lines (sub-issue spec only). Confirmed via `git show 9ce0a643^:SPEC.md | wc -l` = 4086 and `git show 9ce0a643:SPEC.md | wc -l` = 64. Restore with `git show 9ce0a643^:SPEC.md > SPEC.md`. Fix QA agent prompt to prevent future spec file modifications (Constitution Rule 16: "QA agents never read source code"). (priority: high)
+- [x] [review] Gate 3: **`log-session.ts` coverage gaps** — No dedicated test file for `log-session.ts` exists. Four branches are untested: (1) `latestQaCoverageRefreshSignal('')` → `null` early return; (2) log with malformed JSON lines should skip (catch branch); (3) `iteration_complete` with `phase: 'build'` (non-QA) should return `null`; (4) `toSession({ project_root: '/home/user/my-project' }, 'fallback', true)` should set `projectName === 'my-project'`. Create `src/lib/__tests__/log-session.test.ts` (or equivalent path) importing directly from `lib/log-session`. All four branches must be covered. (priority: high)
 
 - [ ] [review] Gate 7: **Playwright/browser verification** — No browser verification performed after extracting Header, Footer, DocsPanel layout components. Spec acceptance criterion: "Dashboard renders identically before and after refactor." Run `npm run test:e2e` (Playwright) against the dashboard dev server and confirm panels render correctly (Header at top, Footer at bottom, DocsPanel tabs visible). Gate 7 is a mandatory fail without browser verification for layout changes. (priority: high)
 
@@ -66,3 +64,5 @@ Already extracted (with issues): `Header.tsx` (385 LOC — exceeds 200 LOC limit
 - [x] [qa/P1] **Trim DocsPanel.tsx to ≤200 LOC** — `DocsPanel.tsx` is now 199 LOC (previously 204 LOC).
 
 - [x] [review] Gate 4: **Split `lib/log.ts` to ≤200 LOC** — `lib/log.ts` was 381 LOC. Split into `log-types.ts` (101 LOC), `log-parse.ts` (172 LOC), and `log-session.ts` (110 LOC). `log.ts` is now a 3-LOC re-export barrel. All files within limits.
+
+- [x] [review] Gate 4: **Restore SPEC.md** — Confirmed restored to full 4086-line project spec.
