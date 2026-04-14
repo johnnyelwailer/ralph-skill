@@ -47,7 +47,8 @@ fail_case() {
 
 extract_function() {
     local name="$1"
-    sed -n "/^${name}() {/,/^}/p" "$LOOP_SH"
+    local source_file="${2:-$LOOP_SH}"
+    sed -n "/^${name}() {/,/^}/p" "$source_file"
 }
 
 contains_log() {
@@ -162,7 +163,7 @@ WAIT_FOR_REQUESTS_FUNC="$(extract_function wait_for_requests)"
 RUN_QUEUE_FUNC="$(extract_function run_queue_if_present)"
 RESOLVE_MODE_FUNC="$(extract_function resolve_iteration_mode)"
 DERIVE_MODE_FUNC="$(extract_function derive_mode_from_prompt_name)"
-SYNC_BRANCH_FUNC="$(extract_function sync_branch)"
+SYNC_BRANCH_FUNC="$(extract_function sync_branch "$SCRIPT_DIR/lib/sync_branch.sh")"
 
 if [ -z "$RESOLVE_FUNC" ] || [ -z "$SETUP_FUNC" ] || [ -z "$CLEANUP_FUNC" ] || [ -z "$INVOKE_FUNC" ] || [ -z "$WAIT_FUNC" ] || [ -z "$KILL_PROVIDER_FUNC" ]; then
     echo "FAIL: could not extract one or more target functions from $LOOP_SH"
