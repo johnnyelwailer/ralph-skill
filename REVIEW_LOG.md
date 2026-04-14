@@ -161,3 +161,30 @@ Confirmed: running branch test file against master's orchestrate.ts gives 29 fai
 - Gate 4: `sync_branch.sh` and `Sync-Branch.ps1` clean — no dead code, no hardcoded paths, correct use of `write_log_entry`/`write_log_entry_mixed`. ✓
 - Gate 5 (shell): `bash aloop/bin/loop_branch_coverage.tests.sh` → 58/58 PASS. ✓
 - Gates 6, 7, 8, 9: N/A for shell/lib changes.
+
+---
+
+## Review — 2026-04-14 — commit 75d0b51a (no new build commits)
+
+**Verdict: FAIL** (prior findings still unresolved — no new build work since last review)
+**Scope:** No new commits since last review (`75d0b51a..HEAD` is empty). Uncommitted change to `loop.sh` is mode-only (644→755), not a content change.
+
+### Prior findings status
+
+**Finding 1 (orchestrate.ts out-of-scope changes): STILL OPEN — NOT RESOLVED**
+`aloop/cli/src/commands/orchestrate.ts` still contains all 5 out-of-scope behavior changes vs master:
+- `validateDoR`: acceptance criteria regex widened + Criterion 5 (`dor_validated`) added
+- `applyEstimateResults`: status progression narrowed to `Needs refinement` only
+- `getDispatchableIssues`: `dor_validated` guard removed
+- `launchChildLoop`: signature changed (`baseBranch?` replaces `provider: string`), seeds `base_branch`/`auto_merge` into meta.json, removes `getProvidersByHealth` and SPEC.md seeding, hardcodes `'round-robin'` throughout
+
+**Finding 2 (orchestrate.test.ts out-of-scope changes introducing 6 regressions): STILL OPEN — NOT RESOLVED**
+CLI tests still show 10 failures; confirmed 6 new vs master:
+- `launchChildLoop > seeds SPEC.md from issue body` (tests removed behavior)
+- `checkPrGates > returns pending when workflows exist but checks are not yet reported`
+- `reviewPrDiff > auto-approves when no agent reviewer configured`
+- `reviewPrDiff > flags for human when diff fetch fails`
+- `processPrLifecycle > merges PR when all gates pass and review approves`, `handles merge failure after approval`, `closes issue after successful merge`
+- `monitorChildSessions > marks stopped child as failed`
+
+Shell tests remain green: 58/58 PASS (100%).
