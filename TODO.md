@@ -24,9 +24,7 @@ Current state (verified 2026-04-14):
 
 ### Up Next
 
-- [x] [review] Add branch coverage tests for `StatusIndicators.tsx` — add `StatusIndicators.test.tsx` covering: (1) `PhaseBadge` with null/empty phase (null return path), (2) `PhaseBadge` with unknown phase (fallback color), (3) `formatSecs` with `m > 0, s === 0` (formats as `"Nm"`). Import components directly from `src/components/layout/StatusIndicators.tsx`.
-
-- [ ] [review] Gate 3: `StatusIndicators.test.tsx` added tests only for `PhaseBadge` and `ElapsedTimer` — `StatusDot` and `ConnectionIndicator` have zero test coverage. New-module ≥90% branch coverage not met. Add tests for: (1) `StatusDot` with `status='running'` — animated pulse dot (assert two nested `<span>` elements with `animate-pulse-dot`); (2) `StatusDot` with `status='stopped'` — static dot (assert single `<span>` with `bg-muted-foreground/50`); (3) `StatusDot` with unknown status (e.g. `status='idle'`) — falls back to `STATUS_DOT_CONFIG.unknown` (`bg-muted-foreground/30`); (4) `ConnectionIndicator` with `status='connected'` — renders Zap icon, text `'Live'`; (5) `ConnectionIndicator` with `status='connecting'` — renders Loader2 icon with `animate-spin`, text `'Connecting...'`; (6) `ConnectionIndicator` with `status='disconnected'` — renders AlertTriangle icon, text `'Disconnected'`. Import from `src/components/layout/StatusIndicators.tsx`. (priority: high)
+- [x] [review] Gate 3: `StatusIndicators.test.tsx` added tests only for `PhaseBadge` and `ElapsedTimer` — `StatusDot` and `ConnectionIndicator` have zero test coverage. New-module ≥90% branch coverage not met. Add tests for: (1) `StatusDot` with `status='running'` — animated pulse dot (assert two nested `<span>` elements with `animate-pulse-dot`); (2) `StatusDot` with `status='stopped'` — static dot (assert single `<span>` with `bg-muted-foreground/50`); (3) `StatusDot` with unknown status (e.g. `status='idle'`) — falls back to `STATUS_DOT_CONFIG.unknown` (`bg-muted-foreground/30`); (4) `ConnectionIndicator` with `status='connected'` — renders Zap icon, text `'Live'`; (5) `ConnectionIndicator` with `status='connecting'` — renders Loader2 icon with `animate-spin`, text `'Connecting...'`; (6) `ConnectionIndicator` with `status='disconnected'` — renders AlertTriangle icon, text `'Disconnected'`. Import from `src/components/layout/StatusIndicators.tsx`. (priority: high)
 
 - [ ] [review] Add branch coverage tests for `QACoverageBadge.tsx` — add `QACoverageBadge.test.tsx` covering: (1) green tone (`coverage_percent >= 80`), (2) red tone (`coverage_percent < 50`), (3) null/N/A state (`available: false`), (4) `parseQACoveragePayload` with non-record input, (5) `percentValue` from `payload.percentage` fallback. Import from `src/components/layout/QACoverageBadge.tsx`.
 
@@ -63,6 +61,8 @@ Current state (verified 2026-04-14):
 - [ ] [review] Gate 7: Browser verification — `Dashboard renders identically before and after refactor`. Playwright blocked by missing `libatk-1.0.so.0` in container. Options: install libatk (`apt-get install -y libatk1.0-0 libatk-bridge2.0-0`), use system Chrome, or document a reproducible manual verification step. Defer until after main refactor is complete.
 
 ### Completed
+
+- [x] Add branch coverage tests for `StatusIndicators.tsx` — `StatusIndicators.test.tsx` covers: `PhaseBadge` null/empty phase, unknown phase fallback, `formatSecs` with `m > 0, s === 0`, `ElapsedTimer` timing cases
 
 - [x] Split `Header.tsx` (385 LOC → 168 LOC): extracted `PhaseBadge`, `StatusDot`, `ConnectionIndicator`, `ElapsedTimer` to `src/components/layout/StatusIndicators.tsx` (98 LOC), and `QACoverageBadge` with its types/helpers to `src/components/layout/QACoverageBadge.tsx` (142 LOC); Header.tsx imports from both; re-exports provided for backward compat
 
