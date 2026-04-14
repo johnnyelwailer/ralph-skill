@@ -1,3 +1,24 @@
+## Orchestrator scan — 2026-04-14T21:13:05Z (iter 128)
+
+**Child #157** (PID 422016) ALIVE — iteration 71, phase=**plan**
+- status.json updated_at=20:51:34Z (~21 min ago); worktree TODO.md updated 21:05Z (8 min ago)
+- Fixing Gate 3: QACoverageBadge `!response.ok` and `sessionId=null` branch coverage (2 remaining paths)
+- Gate 7 libatk E2E infra blocker persists (deferred)
+
+**Parallel orchestrators:**
+- `orchestrator-20260414-190413`: PID 488488 ALIVE — iter=96, updated 21:13:00Z (fresh)
+- `orchestrator-20260414-195732`: PID 663470 ALIVE — iter=47, updated 21:12:37Z (fresh)
+
+**Capacity:** 1/1 slots occupied — no new dispatches
+
+**Blocked on human (unchanged):**
+- #108: PR #132 needs manual rebase onto agent/trunk
+- #173: Issue body contains false "Implementation Status" text
+
+**Actions taken:** none — child alive (plan phase running ~21 min, TODO.md 8 min ago), no new dispatches possible
+
+---
+
 ## Orchestrator scan — 2026-04-14T21:11:24Z (iter 127)
 
 **Child #157** (PID 422016) ALIVE — iteration 71, phase=**plan**
