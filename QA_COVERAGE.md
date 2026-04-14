@@ -20,6 +20,8 @@
 | Loop script tests (Windows/Pester) | 2026-04-13 | — | never | Requires Windows; skipped this session |
 | Dashboard /api/state providerHealth key | 2026-04-14 | aloop/issue-2 | PASS | providerHealth present in response; provider entries (claude, openai, gemini, codex, opencode) have correct schema |
 | Dashboard SSE state event providerHealth | 2026-04-14 | aloop/issue-2 | PASS | Initial SSE state event includes providerHealth with real health file data |
-| aloop status provider health table | 2026-04-14 | aloop/issue-2 | FAIL | Table rendered but includes non-provider files (claude-throttle-state, heal-counter, etc.) with `unknown` status; blank entry for hidden .json file. Bug filed [qa/P1] |
+| aloop status provider health table | 2026-04-14 | 53e63ad7 | PARTIAL | Re-tested iter 2: hidden entry and 6 non-providers removed by fix, but claude-throttle-state, minimax-quota, opencode-throttle-state still appear (field overlap). Bug updated [qa/P1] |
 | Provider health files at ~/.aloop/health/ | 2026-04-14 | aloop/issue-2 | PASS | Files exist for claude, openai, gemini, codex, opencode; correct schema with all 6 required fields; global (not session-specific) |
-| providerHealth no non-provider file pollution | 2026-04-14 | aloop/issue-2 | FAIL | readProviderHealth reads ALL JSON files in health dir, including throttle-state, counters, usage files. Bug filed [qa/P1] |
+| providerHealth no non-provider file pollution | 2026-04-14 | 53e63ad7 | PARTIAL | Re-tested iter 2: partial fix — 6 non-providers removed, 3 remain (coincidental schema overlap). New bug filed [qa/P1] |
+| Dashboard frontend uses state.providerHealth | 2026-04-14 | 53e63ad7 | FAIL | AppView.tsx still derives providerHealth from log (Lj/deriveProviderHealth). state.providerHealth from server not consumed. Pending task not yet implemented |
+| Dashboard unit tests (issue-2 branch) | 2026-04-14 | 53e63ad7 | FAIL | 4 failures in App.coverage.test.ts + integration-sidebar.test.ts; 235 tests total (87 new). Bug filed [qa/P1] |

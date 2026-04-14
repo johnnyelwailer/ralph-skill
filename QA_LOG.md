@@ -1,5 +1,106 @@
 # QA Log
 
+## QA Session — 2026-04-14 (iteration 2, issue-2)
+
+### Test Environment
+- Branch: aloop/issue-2
+- Binary under test: /tmp/aloop-test-install-XaTUT6/bin/aloop (v1.0.0)
+- Commit: 53e63ad7 (fix(session): exclude hidden files and non-provider JSON from readProviderHealth)
+- Features tested: 5 (2 PASS, 1 PARTIAL FIX, 2 FAIL)
+- Temp dir: /tmp/qa-test-issue2-HAQJxO (cleaned up)
+
+### Results
+- PARTIAL FIX (was FAIL): `aloop status` provider health table — 6 non-provider entries removed, 3 remain (claude-throttle-state, minimax-quota, opencode-throttle-state)
+- PARTIAL FIX (was FAIL): `/api/state` and SSE providerHealth — same 3 non-provider entries remain
+- FAIL: Dashboard frontend (AppView.tsx) still uses log-derived providerHealth — pending task not implemented
+- FAIL: Dashboard unit tests — 4 failures in App.coverage.test.ts and integration-sidebar.test.ts (235 tests total, 231 pass)
+
+### Bugs Filed
+- [qa/P1] readProviderHealth still includes 3 non-provider files: claude-throttle-state, minimax-quota, opencode-throttle-state (coincidental field overlap)
+- [qa/P1] Dashboard unit tests: 4 failures after issue-2 changes
+
+### Command Transcript
+
+#### Install CLI from source
+```
+$ npm --prefix aloop/cli run --silent test-install -- --keep 2>/dev/null | tail -1
+/tmp/aloop-test-install-XaTUT6/bin/aloop
+$ /tmp/aloop-test-install-XaTUT6/bin/aloop --version
+1.0.0
+EXIT: 0 → PASS
+```
+
+#### Test 1: aloop status (re-test after readProviderHealth fix, commit 53e63ad7)
+```
+$ aloop status
+Provider Health:
+  claude-throttle-state unknown   ← NON-PROVIDER still present (has consecutive_failures field)
+  claude     healthy      (last success: 20s ago)
+  codex      degraded     (auth error)
+  gemini     cooldown
+  minimax-quota ok         ← NON-PROVIDER still present (has status: "ok" field)
+  openai     cooldown
+  opencode-throttle-state unknown ← NON-PROVIDER still present (has consecutive_failures field)
+  opencode   cooldown
+EXIT: 0 → PARTIAL FIX
+```
+Removed vs. iter 1: blank entry (hidden .json file), heal-counter, hourly-stats-state, opencode-go-usage, provider-status, resource-guard-state
+Still present: claude-throttle-state (has `consecutive_failures: 0`), minimax-quota (has `"status": "ok"`), opencode-throttle-state (has `consecutive_failures: 0`)
+
+#### Test 2: /api/state providerHealth (dashboard on port 14041)
+```
+$ aloop dashboard --port 14041 --session-dir /tmp/qa-test-issue2-HAQJxO/session ... &
+$ curl -s http://localhost:14041/api/state | python3 -c "..."
+providerHealth keys: ['claude', 'claude-throttle-state', 'codex', 'gemini', 'minimax-quota', 'openai', 'opencode', 'opencode-throttle-state']
+Non-provider entries: ['claude-throttle-state', 'minimax-quota', 'opencode-throttle-state']
+EXIT: 0 → PARTIAL FIX (same 3 remain)
+```
+
+#### Test 3: SSE state event providerHealth
+```
+$ timeout 4 curl -s -N http://localhost:14041/events > /tmp/qa-sse-output.txt
+SSE state event providerHealth keys: ['claude', 'claude-throttle-state', 'codex', 'gemini', 'minimax-quota', 'openai', 'opencode', 'opencode-throttle-state']
+Non-provider entries: ['claude-throttle-state', 'minimax-quota', 'opencode-throttle-state']
+EXIT: 0 → PARTIAL FIX (same 3 remain)
+```
+
+#### Test 4: Dashboard frontend uses state.providerHealth
+```
+Inspected built JS: /tmp/aloop-test-install-XaTUT6/.../dist/dashboard/assets/index-Bze4vxLR.js
+Found: const Nn=p.useMemo(()=>Lj((e==null?void 0:e.log)??"",Rr),[e==null?void 0:e.log,Rr])
+Found: providerHealth:Nn
+No occurrences of: stateHealthToProviderHealth, e.providerHealth, state.providerHealth
+EXIT: FAIL — frontend still derives providerHealth from log, not from state.providerHealth
+```
+Pending task (update AppView.tsx) not yet implemented.
+
+#### Test 5: Dashboard unit tests
+```
+$ npm --prefix aloop/cli/dashboard run test -- --reporter=dot
+Test Files  2 failed | 20 passed (22)
+      Tests  4 failed | 231 passed (235)
+
+FAIL src/App.coverage.integration-sidebar.test.ts > covers older-session grouping and docs overflow branches
+  Error: Test timed out in 5000ms
+
+FAIL src/App.coverage.test.ts > covers panel toggles, sidebar shortcut, and session switching
+  TestingLibraryElementError: Found multiple elements with role "button" and name /activity/i
+
+FAIL src/App.coverage.test.ts > covers older-session grouping and docs overflow branches
+  AssertionError: expected null not to be null
+
+FAIL src/App.coverage.test.ts > covers ActivityPanel and LogEntryRow exhaustive
+  TestingLibraryElementError: Unable to find element with text: a.png
+EXIT: non-zero → FAIL (4 test failures)
+```
+
+#### Cleanup
+```
+kill 1023612  # dashboard server
+rm -rf /tmp/qa-test-issue2-HAQJxO
+rm -rf $(dirname $(dirname /tmp/aloop-test-install-XaTUT6/bin/aloop))
+```
+
 ## QA Session — 2026-04-14 (iteration 1, issue-2)
 
 ### Test Environment

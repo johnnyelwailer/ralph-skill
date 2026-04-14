@@ -35,6 +35,25 @@ to loop.sh or loop.ps1 are needed or permitted.**
   Files lacking all of these fields (e.g. `heal-counter.json`, `hourly-stats-state.json`) should be
   excluded. Tests should be added or updated in `cli/src/commands/status.test.ts` and
   `cli/src/commands/dashboard.test.ts` to verify the filtering behavior.
+  **Re-tested iter 2 (2026-04-14, commit 53e63ad7): PARTIAL FIX — hidden .json entry and 6 files
+  removed, but `claude-throttle-state`, `minimax-quota`, `opencode-throttle-state` still appear due
+  to coincidental field overlap (`consecutive_failures`, `status`).**
+
+- [ ] [qa/P1] readProviderHealth still includes 3 non-provider files after fix: `claude-throttle-state`,
+  `minimax-quota`, and `opencode-throttle-state` remain in `aloop status` and `/api/state` providerHealth
+  because they coincidentally contain canonical provider health field names (`consecutive_failures` or
+  `status`). The schema-validation approach (match at least one canonical field) is too permissive.
+  Fix: require that `status` values be one of the known provider health statuses (`healthy`, `cooldown`,
+  `degraded`) when `status` is used as a discriminator, or require a minimum of 3 canonical fields to
+  be present. Tested at iter 2 (2026-04-14). (priority: high)
+
+- [ ] [qa/P1] Dashboard unit tests: 4 failures in App.coverage.test.ts and App.coverage.integration-sidebar.test.ts
+  after issue-2 changes. Failures: (1) timeout in `covers older-session grouping and docs overflow branches`
+  (integration-sidebar, 5000ms timeout), (2) "Found multiple elements with role button and name /activity/i"
+  in `covers panel toggles, sidebar shortcut, and session switching`, (3) "expected null not to be null"
+  in `covers older-session grouping and docs overflow branches`, (4) "Unable to find element with text: a.png"
+  in `covers ActivityPanel and LogEntryRow exhaustive`. Run `npm --prefix aloop/cli/dashboard test` to
+  reproduce. Tested at iter 2 (2026-04-14). (priority: high)
 
 - [ ] Update the dashboard frontend (`AppView.tsx`) to:
   1. Add `providerHealth?: Record<string, unknown>` to the `DashboardState` interface (the frontend
