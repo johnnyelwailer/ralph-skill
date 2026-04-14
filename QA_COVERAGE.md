@@ -18,3 +18,10 @@
 | Dashboard type-check (`npm run type-check`) | 2026-04-13 | 0e6ea585 | FAIL | tsc exits code 2: missing Vitest globals in App.coverage.test.ts, ArtifactEntry shape mismatch in App.test.tsx. Bug filed [qa/P1] |
 | CLI tests (`bun run test`) | 2026-04-13 | 0e6ea585 | FAIL | 27 failures out of 922 tests via tsx --test; pre-existing test failures in codebase |
 | Loop script tests (Windows/Pester) | 2026-04-13 | — | never | Requires Windows; skipped this session |
+| aloop gh policy enforcement (child-loop) | 2026-04-14 | 630526b3 | PASS | pr-merge, issue-create, issue-close all denied; gh_operation_denied logged |
+| aloop gh policy enforcement (orchestrator) | 2026-04-14 | 630526b3 | PASS | main-targeting denied, branch-delete denied |
+| gh_operation_denied logging | 2026-04-14 | 630526b3 | PASS | log.jsonl written with event, role, reason fields |
+| process-requests request archival | 2026-04-14 | 630526b3 | FAIL | Files NOT moved to requests/processed/ after processing; malformed NOT moved to requests/failed/ |
+| aloop finalizer-qa-gate command | 2026-04-14 | 630526b3 | PASS | FAIL detection, all-PASS case, TODO.md task injection all work |
+| PATH sanitization in loop.sh | 2026-04-14 | 630526b3 | PASS | All 11 bash tests pass: gh shim blocks, PATH restored, no trap leaks |
+| wait_for_requests timeout | 2026-04-14 | 630526b3 | PASS | Waits for pending files, times out at REQUEST_TIMEOUT seconds |

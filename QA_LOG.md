@@ -1,5 +1,140 @@
 # QA Log
 
+## QA Session — 2026-04-14 (iteration 1)
+
+### Test Environment
+- Branch: aloop/issue-11 (commit 630526b3)
+- Binary under test: /tmp/aloop-test-install-KNXxuK/bin/aloop (v1.0.0)
+- Installed via: `bun run build:server && build:shebang && build:templates && build:bin && build:agents && node scripts/test-install.mjs --keep`
+- Features tested: 5 (4 PASS, 1 FAIL)
+- Issue: Security Model — Trust Boundaries, aloop gh Policy & Request Protocol Hardening
+
+### Results
+- PASS: `aloop gh` policy enforcement (child-loop) — pr-merge, issue-create, issue-close all denied with `gh_operation_denied` logged
+- PASS: `aloop gh` policy enforcement (orchestrator) — main-targeting denied, branch-delete always denied
+- PASS: `aloop finalizer-qa-gate` — FAIL detection, all-PASS case, TODO.md task injection
+- PASS: PATH sanitization in loop.sh — all 11 bash tests pass (gh shim blocks, PATH restored, no trap leaks)
+- PASS: `wait_for_requests` timeout — waits for pending files, times out at REQUEST_TIMEOUT
+- FAIL: `aloop process-requests` request archival — files NOT archived after processing (bug filed)
+
+### Bugs Filed
+- [qa/P1] process-requests does not archive request files to requests/processed/ or requests/failed/
+
+### Command Transcript
+
+#### Install CLI from source (skipping dashboard build — vite not installed)
+```
+$ bun run build:server && build:shebang && build:templates && build:bin && build:agents
+→ builds dist/index.js, copies bin/loop.sh, loop.ps1, templates, agents
+
+$ node scripts/test-install.mjs --keep
+→ /tmp/aloop-test-install-KNXxuK/bin/aloop
+
+$ /tmp/aloop-test-install-KNXxuK/bin/aloop --version
+1.0.0
+EXIT: 0 → PASS
+```
+
+#### Test 1: child-loop pr-merge policy (should be denied)
+```
+$ aloop gh pr-merge --session qa-test-child-loop-1 --role child-loop --home-dir $TESTHOME --request req.json
+{"event":"gh_operation_denied","type":"pr-merge","role":"child-loop","reason":"pr-merge not allowed for child-loop role"}
+EXIT: 1 → PASS (denied as expected)
+log.jsonl verified: contains gh_operation_denied entry with full context
+```
+
+#### Test 2-3: child-loop issue-create and issue-close (both denied)
+```
+$ aloop gh issue-create ... --role child-loop
+{"event":"gh_operation_denied","reason":"issue-create not allowed for child-loop role"}
+EXIT: 1 → PASS
+
+$ aloop gh issue-close ... --role child-loop
+{"event":"gh_operation_denied","reason":"issue-close not allowed for child-loop role"}
+EXIT: 1 → PASS
+```
+
+#### Test 4-5: orchestrator main-targeting and branch-delete (both denied)
+```
+$ aloop gh pr-merge ... --role orchestrator (request with "base":"main")
+{"event":"gh_operation_denied","reason":"Operations targeting main are rejected; human must promote to main"}
+EXIT: 1 → PASS
+
+$ aloop gh branch-delete ... --role orchestrator
+{"event":"gh_operation_denied","reason":"branch-delete rejected - cleanup is manual"}
+EXIT: 1 → PASS
+```
+
+#### Test 6-7: process-requests request archival (FAIL)
+```
+Setup: SESSION_DIR with config.json, orchestrator.json {"issues":[]}, log.jsonl
+Request files: req-001-dispatch_child.json (valid, id+type+payload format), req-002-malformed.json (invalid JSON), req-003-notype.json (missing type field)
+
+$ aloop process-requests --session-dir $SESSION_DIR
+(no output)
+EXIT: 0
+
+requests/: req-001-dispatch_child.json req-002-malformed.json req-003-notype.json (ALL UNCHANGED)
+requests/processed/: (directory does not exist)
+requests/failed/: (directory does not exist)
+```
+FAIL: No files were archived. Spec requires valid requests → requests/processed/, malformed → requests/failed/. Even invalid JSON was not moved to failed/.
+
+Also confirmed via loop.sh's wait_for_requests orchestrator path:
+```
+$ wait_for_requests  (SESSION_DIR with orchestrator.json)
+Running orchestrator process-requests...
+EXIT: 0 — request file still in requests/ after aloop process-requests ran
+```
+
+Additionally: `bun test src/commands/process-requests.test.ts` fails with:
+```
+SyntaxError: Export named 'syncMasterToTrunk' not found in module process-requests.ts
+0 pass, 1 fail
+```
+
+#### Test 8-10: finalizer-qa-gate
+```
+# FAIL item blocks exit
+$ aloop finalizer-qa-gate --work-dir $DIR (QA_COVERAGE.md with 1 FAIL row)
+{"passed":false,"reason":"qa_coverage_blocked","qa_fail":1}
+EXIT: 1 → PASS; TODO.md appended with [qa/P1] remediation task
+
+# All PASS items exit 0
+$ aloop finalizer-qa-gate --work-dir $DIR (QA_COVERAGE.md with 2 PASS rows)
+{"passed":true,"reason":"qa_coverage_pass","qa_fail":0}
+EXIT: 0 → PASS
+```
+
+#### Test 11: PATH sanitization in loop.sh
+```
+$ bash aloop/bin/loop_path_hardening.tests.sh
+PASS: gh shim blocks execution with expected message
+PASS: provider binary co-located with gh still executes
+PASS: gh is blocked even though real gh exists in co-located dir
+PASS: gh.exe shim exists in block directory
+PASS: PATH structure preserved with shim prepended
+PASS: PATH is restored after invoke_provider returns
+PASS: gh shim was prepended during provider execution
+PASS: provider directory preserved on PATH during execution
+PASS: invoke_provider success does not leak a RETURN trap
+PASS: PATH is restored after provider exits non-zero
+PASS: invoke_provider failure does not leak a RETURN trap
+All tests passed!
+EXIT: 0 → PASS
+Note: loop_path_hardening.tests.sh is a bash script (not bats) — must run with `bash`, not `bats`
+```
+
+#### Test 12: wait_for_requests timeout (non-orchestrator mode)
+```
+SESSION_DIR with requests/req-001-pending.json, REQUEST_TIMEOUT=3
+wait_for_requests → "Waiting for 1 pending requests..." → timeout after 3s → "Warning: Timeout..."
+EXIT: 0 (timeout is non-fatal, as designed)
+Elapsed: ~4s → PASS
+```
+
+---
+
 ## QA Session — 2026-04-13 (iteration 4)
 
 ### Test Environment
