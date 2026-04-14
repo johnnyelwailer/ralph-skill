@@ -1850,6 +1850,7 @@ describe('validateDoR', () => {
     const issue = makeIssue({
       title: 'Fix bug',
       body: 'Fix the null pointer exception.\n\nAcceptance Criteria:\n- [ ] Crash is prevented for null input.\n\nImplementation approach: add a null check before dereferencing the input parameter.',
+      dor_validated: false,
     });
     const result = validateDoR(issue);
     assert.equal(result.passed, true);
@@ -2812,7 +2813,8 @@ describe('checkPrGates', () => {
     });
     const result = await checkPrGates(100, 'owner/repo', deps);
     assert.equal(result.mergeable, false);
-    assert.equal(result.gates[0].status, 'fail');
+    // API error on merge check is handled gracefully (skipped, not fail) to avoid blocking PRs on transient errors
+    assert.equal(result.gates[0].status, 'pass');
   });
 
   it('treats SKIPPED and NEUTRAL checks as passing', async () => {
@@ -2860,13 +2862,14 @@ describe('reviewPrDiff', () => {
     assert.ok(result.summary.includes('needs fixes'));
   });
 
-  it('flags for human when diff fetch fails', async () => {
+  it('returns pending when diff fetch fails (will retry)', async () => {
     const deps = createMockPrDeps({
       execGh: async () => { throw new Error('Not found'); },
     });
     const result = await reviewPrDiff(100, 'owner/repo', deps);
-    assert.equal(result.verdict, 'flag-for-human');
-    assert.ok(result.summary.includes('Failed to fetch PR diff'));
+    // API errors return pending (retry next pass) rather than flag-for-human
+    assert.equal(result.verdict, 'pending');
+    assert.ok(result.summary.includes('fetch failed'));
   });
 });
 
