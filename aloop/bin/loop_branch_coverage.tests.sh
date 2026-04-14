@@ -145,6 +145,7 @@ register_branch "sync.up_to_date" "sync_branch logs branch_sync result=up_to_dat
 register_branch "sync.fetch_failure" "sync_branch continues non-fatally when git fetch fails"
 register_branch "sync.conflict" "sync_branch logs merge_conflict, writes queue file, leaves conflict markers for merge agent, returns non-zero"
 register_branch "sync.disabled" "sync_branch skips when auto_merge is false"
+register_branch "sync.disabled_by_flag" "sync_branch skips when NO_SYNC is true"
 
 RESOLVE_FUNC="$(extract_function resolve_healthy_provider)"
 SETUP_FUNC="$(extract_function setup_gh_block)"
@@ -1200,6 +1201,24 @@ if sync_branch; then
 else
     fail_case "sync_branch returned non-zero when auto_merge=false"
 fi
+
+# sync.disabled_by_flag — set NO_SYNC=true, should skip immediately
+cat > "$SYNC_SESSION_DIR/meta.json" << 'METAEOF'
+{"auto_merge": true, "base_branch": "main"}
+METAEOF
+NO_SYNC=true
+> "$COVERAGE_LOG_FILE"
+if sync_branch; then
+    if ! grep -q 'branch_sync' "$COVERAGE_LOG_FILE"; then
+        cover_branch "sync.disabled_by_flag"
+        pass_case "sync_branch skips when NO_SYNC is true"
+    else
+        fail_case "sync_branch logged branch_sync despite NO_SYNC=true"
+    fi
+else
+    fail_case "sync_branch returned non-zero when NO_SYNC=true"
+fi
+NO_SYNC=false
 
 # Restore env
 WORK_DIR="$_ORIG_WORK_DIR"

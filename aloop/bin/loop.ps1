@@ -46,6 +46,7 @@ param(
     [string]$LaunchMode = 'start',
 
     [switch]$DryRun,
+    [switch]$NoSync,
     [switch]$DangerouslySkipContainer
 )
 

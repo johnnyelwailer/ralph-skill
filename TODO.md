@@ -12,7 +12,6 @@ _(none)_
 - [ ] Add CLI type-check job to `ci.yml`: `bun install` + `bun run type-check` in `aloop/cli` (TASK_SPEC acceptance criteria #5)
 - [ ] Add dashboard type-check job to `ci.yml`: `npm ci` + `npm run type-check` in `aloop/cli/dashboard` (TASK_SPEC acceptance criteria #5)
 - [ ] Add loop script tests (Linux) job to `ci.yml`: install bats, run `bats loop.bats` + at least one `loop_*.tests.sh` in `aloop/bin/tests` (TASK_SPEC acceptance criteria #6)
-- [ ] Update `TASK_SPEC.md` acceptance criteria to reflect the deliberately chosen "leave markers for agent" behavior
 
 ### Deferred / Out of scope
 
@@ -66,6 +65,7 @@ Shell integration test failures — out of scope for CI setup (loop.sh behavior 
 - [x] Add fetch-failure logging to `sync_branch.sh` and `Sync-Branch.ps1` — log `fetch_failed` event when `git fetch` fails
 - [x] Fix `sync.conflict` branch description in `loop_branch_coverage.tests.sh` (line 146) — currently reads "aborts merge, returns non-zero" but the implementation intentionally leaves conflict markers for the merge agent. Updated to "leaves conflict markers for merge agent, returns non-zero" to match actual behavior.
 - [x] Verify test suite passes end-to-end — run `bash aloop/bin/loop_branch_coverage.tests.sh` and confirm all five `sync.*` branches are covered and the overall coverage threshold is met.
+- [x] Add `--no-sync` (Bash) and `-NoSync` (PowerShell) flags to loop runners to allow disabling sync via command line
 
 ### Notes
 

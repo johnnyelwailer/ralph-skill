@@ -25,7 +25,7 @@ except Exception:
         base_branch=$(echo "$_sb_meta" | sed -n '2p')
     fi
 
-    if [ "$auto_merge" = "false" ]; then
+    if [ "$auto_merge" = "false" ] || [ "${NO_SYNC:-false}" = "true" ]; then
         return 0
     fi
 

@@ -67,10 +67,12 @@ usage() {
     echo "  --max-stuck <n>         Skip task after N failures (default: 3)"
     echo "  --launch-mode <mode>    start|restart|resume (default: start)"
     echo "  --dry-run               Print commands without executing"
+    echo "  --no-sync               Disable pre-iteration branch sync"
     echo "  --dangerously-skip-container  Skip devcontainer routing (agents run on host)"
     exit 1
 }
 
+NO_SYNC=false
 while [[ $# -gt 0 ]]; do
     case $1 in
         --prompts-dir)  PROMPTS_DIR="$2"; shift 2 ;;
@@ -82,6 +84,7 @@ while [[ $# -gt 0 ]]; do
         --max-iterations) MAX_ITERATIONS="$2"; shift 2 ;;
         --max-stuck)    MAX_STUCK="$2"; shift 2 ;;
         --dry-run)      DRY_RUN=true; shift ;;
+        --no-sync)      NO_SYNC=true; shift ;;
         --dangerously-skip-container) DANGEROUSLY_SKIP_CONTAINER=true; shift ;;
         --no-task-exit) NO_TASK_EXIT=true; shift ;;
         --claude-model) CLAUDE_MODEL="$2"; shift 2 ;;

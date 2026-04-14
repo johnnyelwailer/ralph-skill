@@ -20,7 +20,7 @@ function Sync-Branch {
         } catch { }
     }
 
-    if (-not $autoMerge) {
+    if (-not $autoMerge -or $NoSync) {
         return $true
     }
 
