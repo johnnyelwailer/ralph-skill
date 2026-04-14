@@ -37,6 +37,20 @@ export async function readSessionStatus(sessionDir) {
   return readJsonFile(statusPath);
 }
 
+const PROVIDER_HEALTH_FIELDS = new Set([
+  'status',
+  'last_success',
+  'last_failure',
+  'failure_reason',
+  'consecutive_failures',
+  'cooldown_until',
+]);
+
+function isProviderHealthRecord(data) {
+  if (!data || typeof data !== 'object' || Array.isArray(data)) return false;
+  return Object.keys(data).some((key) => PROVIDER_HEALTH_FIELDS.has(key));
+}
+
 export async function readProviderHealth(homeDir) {
   const healthDir = path.join(homeDir, '.aloop', 'health');
   if (!existsSync(healthDir)) return {};
@@ -50,10 +64,11 @@ export async function readProviderHealth(homeDir) {
 
   const health = {};
   for (const file of files) {
+    if (file.startsWith('.')) continue;
     if (!file.endsWith('.json')) continue;
     const provider = file.slice(0, -5);
     const data = await readJsonFile(path.join(healthDir, file));
-    if (data) health[provider] = data;
+    if (isProviderHealthRecord(data)) health[provider] = data;
   }
   return health;
 }

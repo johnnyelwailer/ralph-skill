@@ -9,6 +9,7 @@ import {
   formatHealthLine,
   renderStatus,
 } from './status.js';
+import { readProviderHealth } from './session.js';
 
 // --- Unit tests for formatting helpers ---
 
@@ -96,6 +97,69 @@ test('renderStatus includes provider health', () => {
   assert.match(output, /Provider Health/);
   assert.match(output, /claude/);
   assert.match(output, /healthy/);
+});
+
+// --- Unit tests for readProviderHealth filtering ---
+
+async function makeHealthDir() {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'aloop-health-test-'));
+  const healthDir = path.join(tempRoot, '.aloop', 'health');
+  await mkdir(healthDir, { recursive: true });
+  return { homeDir: tempRoot, healthDir };
+}
+
+test('readProviderHealth skips hidden files', async () => {
+  const { homeDir, healthDir } = await makeHealthDir();
+  await writeFile(
+    path.join(healthDir, '.hidden.json'),
+    JSON.stringify({ status: 'healthy' }),
+    'utf8',
+  );
+  const health = await readProviderHealth(homeDir);
+  assert.deepEqual(health, {});
+});
+
+test('readProviderHealth excludes non-provider JSON files without canonical health fields', async () => {
+  const { homeDir, healthDir } = await makeHealthDir();
+  await writeFile(
+    path.join(healthDir, 'heal-counter.json'),
+    JSON.stringify({ count: 5, updated_at: '2026-01-01T00:00:00Z' }),
+    'utf8',
+  );
+  await writeFile(
+    path.join(healthDir, 'hourly-stats-state.json'),
+    JSON.stringify({ hour: '2026-01-01T10:00:00Z', requests: 12 }),
+    'utf8',
+  );
+  const health = await readProviderHealth(homeDir);
+  assert.deepEqual(health, {});
+});
+
+test('readProviderHealth includes valid provider health files', async () => {
+  const { homeDir, healthDir } = await makeHealthDir();
+  const claudeHealth = { status: 'healthy', last_success: '2026-04-14T10:00:00Z', consecutive_failures: 0 };
+  await writeFile(path.join(healthDir, 'claude.json'), JSON.stringify(claudeHealth), 'utf8');
+  const health = await readProviderHealth(homeDir);
+  assert.deepEqual(health.claude, claudeHealth);
+});
+
+test('readProviderHealth excludes hidden files and non-provider files while including valid ones', async () => {
+  const { homeDir, healthDir } = await makeHealthDir();
+  const claudeHealth = { status: 'cooldown', consecutive_failures: 2 };
+  await writeFile(path.join(healthDir, 'claude.json'), JSON.stringify(claudeHealth), 'utf8');
+  await writeFile(
+    path.join(healthDir, '.lock'),
+    '{}',
+    'utf8',
+  );
+  await writeFile(
+    path.join(healthDir, 'heal-counter.json'),
+    JSON.stringify({ count: 1 }),
+    'utf8',
+  );
+  const health = await readProviderHealth(homeDir);
+  assert.deepEqual(Object.keys(health), ['claude']);
+  assert.deepEqual(health.claude, claudeHealth);
 });
 
 // --- CLI integration test for --watch ---

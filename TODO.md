@@ -6,11 +6,15 @@ Most of this issue is **already implemented**:
 - Per-provider health files, failure classification, exponential backoff, file locking, round-robin
   integration, health logging, and `aloop status` health table all exist in `loop.sh`, `loop.ps1`,
   and `cli/src/commands/status.ts`.
+- `DashboardState` now has `providerHealth` field; `loadStateForContext` calls `readProviderHealth`.
+- Dashboard tests for `/api/state` providerHealth are in place.
 
-**One gap remains**: the dashboard SSE state does not include provider health from `~/.aloop/health/`
-files. `DashboardState` has no `providerHealth` field; `loadStateForContext` never calls
-`readProviderHealth`. The frontend derives health solely from session log entries, which misses
-cross-session state.
+**Two bugs remain** in `readProviderHealth` (in `cli/lib/session.mjs`): the function reads ALL JSON
+files including non-provider files and hidden files, causing pollution in `aloop status` and the
+dashboard SSE `providerHealth` field.
+
+**One frontend task remains**: `AppView.tsx` still derives provider health solely from log events
+via `deriveProviderHealth(log)` and doesn't consume `state.providerHealth` from the server.
 
 ## CONSTITUTION NOTE
 
@@ -22,26 +26,26 @@ to loop.sh or loop.ps1 are needed or permitted.**
 
 ## Tasks
 
-### QA Bugs
-
-- [ ] [qa/P1] providerHealth includes non-provider files: `readProviderHealth` reads ALL JSON files in `~/.aloop/health/` including `claude-throttle-state.json`, `heal-counter.json`, `hourly-stats-state.json`, `opencode-go-usage.json`, `opencode-throttle-state.json`, `provider-status.json`, `resource-guard-state.json`. These appear in `aloop status` with `unknown` status and pollute the dashboard SSE `providerHealth` field. The function should only include files whose content has the expected provider health schema (`status`, `last_success`, `last_failure`, `failure_reason`, `consecutive_failures`, `cooldown_until`), or filter by a known provider allowlist. Tested at iter 1. (priority: high)
-
-- [ ] [qa/P1] providerHealth has empty-string provider key: A hidden file `~/.aloop/health/.json` (174 bytes, created 2026-04-14) contains a provider health record with 135 consecutive_failures and an empty provider name. This renders as a blank entry at the top of `aloop status` Provider Health table and appears as key `""` in the dashboard SSE payload. Root cause: a loop run wrote a health file with an empty provider name. `readProviderHealth` should skip hidden files (names starting with `.`) and `loop.sh`/`loop.ps1` should guard against empty provider names. Tested at iter 1. (priority: high)
-
 ### Up Next
 
-- [x] Add `providerHealth: Record<string, unknown>` to `DashboardState` interface in
-  `cli/src/commands/dashboard.ts`, read it via `readProviderHealth(runtimeDir)` inside
-  `loadStateForContext`, and include it in the returned state object. This makes the SSE `state`
-  event automatically carry provider health (since `toStateEventPayload` = `JSON.stringify(state)`).
+- [x] [qa/P1] Fix `readProviderHealth` in `cli/lib/session.mjs`: skip hidden files (names starting
+  with `.`) and validate the provider health schema before including a file's data. A file is a
+  valid provider health record if its content is an object with at least one of the canonical fields:
+  `status`, `last_success`, `last_failure`, `failure_reason`, `consecutive_failures`, `cooldown_until`.
+  Files lacking all of these fields (e.g. `heal-counter.json`, `hourly-stats-state.json`) should be
+  excluded. Tests should be added or updated in `cli/src/commands/status.test.ts` and
+  `cli/src/commands/dashboard.test.ts` to verify the filtering behavior.
 
-- [x] Add tests in `cli/src/commands/dashboard.test.ts` verifying that the `/api/state` response
-  and the initial SSE `state` event include a `providerHealth` key, with correct data when health
-  files exist in the fixture home dir.
-
-- [ ] Update the dashboard frontend (`AppView.tsx`) to prefer `state.providerHealth` (file-based,
-  cross-session) over the log-derived `deriveProviderHealth(log)` fallback when the server-provided
-  field is available; keep the log fallback for backwards compatibility during the transition.
+- [ ] Update the dashboard frontend (`AppView.tsx`) to:
+  1. Add `providerHealth?: Record<string, unknown>` to the `DashboardState` interface (the frontend
+     copy in `AppView.tsx` at line 160 — distinct from the server-side copy in `dashboard.ts`).
+  2. Add a `stateHealthToProviderHealth` conversion function that maps the raw file-based
+     `Record<string, unknown>` (fields: `status`, `last_success`, `last_failure`, `failure_reason`,
+     `consecutive_failures`, `cooldown_until`) to `ProviderHealth[]` for display in `HealthPanel`.
+  3. In the `providerHealth` useMemo (line 2365), prefer `state.providerHealth` (converted) when it
+     is non-empty; fall back to `deriveProviderHealth(log)` otherwise.
+  4. Update/add tests in `App.coverage.test.ts` or a dedicated file verifying that when
+     `state.providerHealth` is present, the converted values are used instead of log-derived ones.
 
 ### Completed
 
@@ -54,3 +58,6 @@ to loop.sh or loop.ps1 are needed or permitted.**
 - [x] Health state changes logged to log.jsonl: provider_cooldown, provider_recovered, provider_degraded
 - [x] `aloop status` shows provider health table (formatHealthLine, renderStatus, readProviderHealth)
 - [x] loop.sh / loop.ps1 cross-runtime parity (matching cooldown tables and failure classifiers)
+- [x] Add `providerHealth: Record<string, unknown>` to `DashboardState` interface in `cli/src/commands/dashboard.ts`
+- [x] Read provider health via `readProviderHealth(runtimeDir)` inside `loadStateForContext`
+- [x] Add tests verifying `/api/state` includes `providerHealth` key with correct data

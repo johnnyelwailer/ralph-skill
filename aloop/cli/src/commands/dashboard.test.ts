@@ -233,6 +233,30 @@ test('GET /api/state includes providerHealth with data from health files', async
   }
 });
 
+test('GET /api/state providerHealth excludes hidden files and non-provider JSON files', async () => {
+  const fixture = await createServerFixture();
+  const healthDir = path.join(fixture.root, '.aloop', 'health');
+  try {
+    await mkdir(healthDir, { recursive: true });
+    const claudeHealth = { status: 'healthy', last_success: '2026-04-14T10:00:00Z', consecutive_failures: 0 };
+    await writeFile(path.join(healthDir, 'claude.json'), JSON.stringify(claudeHealth), 'utf8');
+    // hidden file — should be excluded
+    await writeFile(path.join(healthDir, '.hidden.json'), JSON.stringify({ status: 'healthy' }), 'utf8');
+    // non-provider file without canonical health fields — should be excluded
+    await writeFile(path.join(healthDir, 'heal-counter.json'), JSON.stringify({ count: 5, updated_at: '2026-01-01T00:00:00Z' }), 'utf8');
+
+    const response = await fetch(`${fixture.handle.url}/api/state`);
+    assert.equal(response.status, 200);
+    const payload = (await response.json()) as Record<string, unknown>;
+    const health = payload.providerHealth as Record<string, unknown>;
+    assert.ok(Object.prototype.hasOwnProperty.call(health, 'claude'), 'claude should be present');
+    assert.ok(!Object.prototype.hasOwnProperty.call(health, '.hidden'), '.hidden should be excluded');
+    assert.ok(!Object.prototype.hasOwnProperty.call(health, 'heal-counter'), 'heal-counter should be excluded');
+  } finally {
+    await fixture.handle.close();
+  }
+});
+
 test('host monitor processes GH convention requests outside loop runtime', async () => {
   const calls: string[] = [];
   const fixture = await createServerFixture({
