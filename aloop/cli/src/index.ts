@@ -16,6 +16,7 @@ import { devcontainerCommand, verifyDevcontainerCommand } from './commands/devco
 import { orchestrateCommand } from './commands/orchestrate.js';
 import { steerCommand } from './commands/steer.js';
 import { processRequestsCommand } from './commands/process-requests.js';
+import { finalizerQaGateCommand } from './commands/finalizer-qa-gate.js';
 
 import { withErrorHandling } from './lib/error-handling.js';
 
@@ -182,6 +183,12 @@ program
   .option('--home-dir <path>', 'Home directory override')
   .option('--output <mode>', 'Output format: json or text', 'text')
   .action(withErrorHandling(processRequestsCommand));
+
+program
+  .command('finalizer-qa-gate')
+  .description('Check QA_COVERAGE.md gate and append remediation tasks to TODO.md (called by loop.ps1)')
+  .requiredOption('--work-dir <path>', 'Work directory containing QA_COVERAGE.md and TODO.md')
+  .action(withErrorHandling(finalizerQaGateCommand));
 
 // For subcommands like ghCommand that might have their own actions, we might need to be careful,
 // but since ghCommand is a Command object added via addCommand, we can't wrap it easily here.
