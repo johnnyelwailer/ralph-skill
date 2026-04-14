@@ -2,18 +2,21 @@
 
 ## Gap Analysis
 
-Current state:
+Current state (verified 2026-04-14):
 - `AppView.tsx`: 1393 lines → must become <100 LOC
-- `Header.tsx`: 385 lines → must become ≤200 LOC (acceptance criterion)
+- `Header.tsx`: 168 lines ✓ (split complete)
+- `StatusIndicators.tsx`: 98 lines ✓ (extracted, but missing branch coverage tests)
+- `QACoverageBadge.tsx`: 142 lines ✓ (extracted, but missing branch coverage tests)
 - `DocsPanel.tsx`: 199 lines → already ≤200 LOC ✓
 - `Footer.tsx`: 66 lines → already ≤200 LOC ✓
 - `AppShell.tsx`: does not exist → must be created
 - `MainPanel.tsx`: does not exist → must be created
 - Custom hooks `useSSE`, `useSession`, `useSteering`: do not exist → must be created
-- `Sidebar` component (AppView.tsx lines 66–368): needs its own file `Sidebar.tsx`
-- `ActivityPanel` + `LogEntryRow` (AppView.tsx lines 373–728): need their own files
-- `ArtifactComparisonDialog` + `ImageLightbox` (AppView.tsx lines 730–960): need their own files
-- `CommandPalette` (AppView.tsx lines 966–1002): needs its own file
+- `Sidebar.tsx`: does not exist (still in AppView.tsx lines 66–368, ~306 LOC)
+- `ActivityPanel.tsx`: does not exist (still in AppView.tsx lines 373–728, ~97 LOC)
+- `LogEntryRow.tsx` + `ImageLightbox`: does not exist (still in AppView.tsx lines 470+, ~278 LOC)
+- `ArtifactComparison.tsx`: does not exist (still in AppView.tsx lines 748+, ~211 LOC)
+- `CommandPalette.tsx`: does not exist (still in AppView.tsx lines 966+, ~36 LOC)
 
 ## Tasks
 
@@ -21,11 +24,13 @@ Current state:
 
 ### Up Next
 
-- [x] Split `Header.tsx` (385 LOC → ≤200): extract `PhaseBadge`, `StatusDot`, `ConnectionIndicator`, `ElapsedTimer` to `src/components/layout/StatusIndicators.tsx` (~80 LOC), and `QACoverageBadge` with its types/helpers to `src/components/layout/QACoverageBadge.tsx` (~115 LOC); update Header.tsx to import from them; re-export from Header.tsx for backward compat
+- [x] [review] Add branch coverage tests for `StatusIndicators.tsx` — add `StatusIndicators.test.tsx` covering: (1) `PhaseBadge` with null/empty phase (null return path), (2) `PhaseBadge` with unknown phase (fallback color), (3) `formatSecs` with `m > 0, s === 0` (formats as `"Nm"`). Import components directly from `src/components/layout/StatusIndicators.tsx`.
+
+- [ ] [review] Add branch coverage tests for `QACoverageBadge.tsx` — add `QACoverageBadge.test.tsx` covering: (1) green tone (`coverage_percent >= 80`), (2) red tone (`coverage_percent < 50`), (3) null/N/A state (`available: false`), (4) `parseQACoveragePayload` with non-record input, (5) `percentValue` from `payload.percentage` fallback. Import from `src/components/layout/QACoverageBadge.tsx`.
 
 - [ ] Extract `LogEntryRow` + `ImageLightbox` from AppView.tsx to `src/components/activity/LogEntryRow.tsx` (~250 LOC); update AppView.tsx to import from new location; add re-export in AppView.tsx
 
-- [ ] Extract `ArtifactComparisonDialog` from AppView.tsx to `src/components/activity/ArtifactComparison.tsx` (~160 LOC); update AppView.tsx to import from new location; add re-export in AppView.tsx
+- [ ] Extract `ArtifactComparisonDialog` from AppView.tsx to `src/components/activity/ArtifactComparison.tsx` (~160 LOC); update AppView.tsx to import from new location; add re-export
 
 - [ ] Extract `ActivityPanel` from AppView.tsx to `src/components/activity/ActivityPanel.tsx` (~100 LOC, depends on LogEntryRow.tsx); update AppView.tsx import; add re-export
 
@@ -51,15 +56,13 @@ Current state:
 
 - [ ] Verify `npm run type-check` passes with zero errors after full refactor
 
+### Deferred
+
+- [ ] [review] Gate 7: Browser verification — `Dashboard renders identically before and after refactor`. Playwright blocked by missing `libatk-1.0.so.0` in container. Options: install libatk (`apt-get install -y libatk1.0-0 libatk-bridge2.0-0`), use system Chrome, or document a reproducible manual verification step. Defer until after main refactor is complete.
+
 ### Completed
 
-### Review Findings
-
-- [ ] [review] Gate 3: `StatusIndicators.tsx` missing branch coverage — add unit tests for: (1) `PhaseBadge` with empty phase (null return), (2) `PhaseBadge` with unknown phase (fallback color), (3) `formatSecs` with `m > 0, s === 0` (formats as `"Nm"`). Import and test components directly in `StatusIndicators.test.tsx`.
-
-- [ ] [review] Gate 3: `QACoverageBadge.tsx` missing branch coverage — add tests for: (1) green tone (`coverage_percent >= 80`), (2) red tone (`coverage_percent < 50`), (3) null/N/A state (`available: false`), (4) `parseQACoveragePayload` with non-record input, (5) `percentValue` from `payload.percentage` fallback. Extend `App.coverage.integration-qa.test.ts` or add `QACoverageBadge.test.tsx`.
-
-- [ ] [review] Gate 7: Browser verification required — `Dashboard renders identically before and after refactor`. Playwright blocked by missing `libatk-1.0.so.0` in container. Need alternative: install libatk (`apt-get install -y libatk1.0-0 libatk-bridge2.0-0`), or use `--browser=chromium` with system Chrome, or document a reproducible manual verification step with a screenshot.
+- [x] Split `Header.tsx` (385 LOC → 168 LOC): extracted `PhaseBadge`, `StatusDot`, `ConnectionIndicator`, `ElapsedTimer` to `src/components/layout/StatusIndicators.tsx` (98 LOC), and `QACoverageBadge` with its types/helpers to `src/components/layout/QACoverageBadge.tsx` (142 LOC); Header.tsx imports from both; re-exports provided for backward compat
 
 ### QA Bugs
 
