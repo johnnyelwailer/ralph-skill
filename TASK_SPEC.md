@@ -23,12 +23,12 @@ Implement pre-iteration branch sync so each loop iteration attempts to merge the
 
 ## Constraints
 - This issue explicitly authorizes adding `sync_branch` / `Sync-Branch` in loop runners (Constitution #1 exception clause).
-- Keep runner behavior mechanical only: resolve base branch, fetch, merge, detect conflict, emit event, queue prompt, leave markers for resolution. Do not implement conflict resolution in loop scripts (Constitution #1, #8).
+- Keep runner behavior mechanical only: resolve base branch, fetch, merge, detect conflict, emit event, queue prompt, abort merge. Do not implement conflict resolution in loop scripts (Constitution #1, #8).
 - Avoid hardcoded prompt filename routing in loop code; dispatch by prompt frontmatter trigger `merge_conflict` so prompt selection remains data-driven (Constitution #6).
 - Base branch resolution must be explicit and identical across Bash/PowerShell: `meta.json.base_branch` -> git-config/remote default branch -> `main` -> `master`.
 - Sync must be disableable via config/flag, default enabled (Constitution #15, #19).
 - `git fetch` failures are non-fatal and must not end the loop iteration cycle (Constitution #3).
-- On conflict, conflict markers must remain in the working tree after `sync_branch` returns so the merge agent (`PROMPT_merge.md`) can resolve them (Constitution #5).
+- On conflict, `git merge --abort` is mandatory before continuing so the repository returns to a clean state for queued merge work (Constitution #5).
 
 ## Implementation Deliverables
 ### loop.sh
@@ -38,7 +38,7 @@ Implement pre-iteration branch sync so each loop iteration attempts to merge the
   - runs `git fetch origin <base_branch>` and continues on fetch errors
   - runs `git merge origin/<base_branch> --no-edit`
   - logs `branch_sync` with `base_branch`, `result` (`merged` or `up_to_date`), and `merged_commit_count`
-  - on conflict: logs `merge_conflict`, queues merge prompt content matched by `trigger: merge_conflict`, and returns non-zero without terminating loop; conflict markers remain in the working tree for the merge agent to resolve
+  - on conflict: logs `merge_conflict`, queues merge prompt content matched by `trigger: merge_conflict`, runs `git merge --abort`, and returns non-zero without terminating loop
 - Call `sync_branch` once per iteration after queue override handling and before finalizer/mode resolution.
 
 ### loop.ps1
@@ -53,7 +53,7 @@ Implement pre-iteration branch sync so each loop iteration attempts to merge the
 - Extend `aloop/bin/loop_branch_coverage.tests.sh` for:
   - successful merge / up-to-date path
   - fetch failure non-fatal path
-  - conflict path (event + queued prompt + markers remain)
+  - conflict path (event + queued prompt + merge abort)
   - sync-disabled path
 - Extend `aloop/bin/loop.tests.ps1` for equivalent `Sync-Branch` behavior and call-order coverage.
 
@@ -62,7 +62,7 @@ Implement pre-iteration branch sync so each loop iteration attempts to merge the
 - [ ] With sync enabled and upstream commits available, loop logs `branch_sync` and merge result is applied.
 - [ ] With no upstream changes, loop logs `branch_sync` with `result=up_to_date` and `merged_commit_count=0`.
 - [ ] If `git fetch` fails (network/auth), loop continues iteration and logs failure context (no process exit).
-- [ ] On merge conflict, loop logs `merge_conflict` and enqueues exactly one merge prompt file in session queue; conflict markers remain in the working tree (verified by `git diff --name-only --diff-filter=U` returning at least one entry) so the merge agent can resolve them.
+- [ ] On merge conflict, loop logs `merge_conflict`, enqueues exactly one merge prompt file in session queue, then runs `git merge --abort`; afterward `git diff --name-only --diff-filter=U` returns no entries.
 - [ ] Sync can be disabled via config/flag and, when disabled, no fetch/merge commands are attempted.
 - [ ] Bash and PowerShell implementations emit equivalent event names/fields and pass their respective tests.
 - [ ] Verification commands pass:
