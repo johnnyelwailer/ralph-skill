@@ -72,3 +72,44 @@ No proof manifests found. ci.yml is a config file — CI workflow proof would re
 All prior [review] tasks resolved.
 
 ---
+
+## Review — 2026-04-15 — commit 553d9449..cb8c79c7
+
+**Verdict: FAIL** (2 findings → written to TODO.md as [review] tasks)
+**Scope:** `aloop/templates/PROMPT_final-qa.md`, `aloop/bin/loop.ps1`, `aloop/bin/loop_finalizer_qa_coverage.tests.sh`
+
+### Gate 1: Spec Compliance — FAIL
+
+`aloop/templates/PROMPT_final-qa.md` itself passes all 7 content acceptance criteria:
+- ✅ AC1: finalizer-specific section present before `{{include:instructions/qa.md}}`
+- ✅ AC2: reads QA_COVERAGE.md, computes `total_features`, `untested_count`, `fail_count`, `coverage_percent`
+- ✅ AC3: Gate A — if untested > 30%, file one `[qa/P1]` TODO per untested feature and stop
+- ✅ AC4: Gate B — if fail_count > 0, file one `[qa/P1]` TODO per FAIL feature and stop
+- ✅ AC5: normal QA proceeds only when fail_count == 0 AND untested ratio <= 30%
+- ✅ AC6: completion requires coverage >= 70%, fail_count == 0, no [qa/P1] TODOs
+- ✅ AC7: coverage summary block required in every QA_LOG.md session entry
+
+**AC8 fails** — two out-of-scope files remain modified:
+
+1. `aloop/bin/loop.ps1` — commit `3a2b184f` changed the threshold from 30→20 and was NOT reverted (only loop.sh was reverted in `d1bf02cd`). Current state: `loop.ps1:919` checks `if ($untestedPct -gt 20)` and line 921 prints `<=20%`. Spec says 30%. File is explicitly out of scope. This is both a scope violation and a threshold correctness bug.
+
+2. `aloop/bin/loop_finalizer_qa_coverage.tests.sh` — file still exists (created during this branch) with modified fixture data. It exists solely to test the out-of-scope loop.sh coverage gate functions. Should be removed.
+
+### Gates 2, 3, 4: N/A / Pass
+
+- Gate 2: PROMPT_final-qa.md is a prompt template, not executable code — no unit tests apply.
+- Gate 3: N/A (prompt file, no branch coverage metric).
+- Gate 4: PROMPT_final-qa.md is clean — no dead instructions, no leftover comments, no duplication.
+
+### Gate 5: Integration — Deferred
+
+Prior QA iterations confirmed 452 CLI tests and 148 dashboard tests pass. Pre-existing loop.sh and loop.ps1 test failures are unrelated to this prompt change. Cannot re-run full suite in review context.
+
+### Gates 6, 7, 8, 9: N/A / Pass
+
+- Gate 6: Template/prompt-only change with no observable output — proof skip with empty artifacts is the correct outcome per gate rules. No rejection.
+- Gate 7: N/A (no UI changes).
+- Gate 8: N/A (no dependency changes).
+- Gate 9: README not affected by this prompt-only change.
+
+---
