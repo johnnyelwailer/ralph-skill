@@ -2,26 +2,30 @@
 
 ## Status
 
-- **Wave**: 1
-- **Concurrency cap**: 3 / occupied: 0
-- **Active issues**: none (pending runtime dispatch)
+- **Wave:** 1
+- **Concurrency cap:** 3 (0 occupied)
+- **Active children:** none
 
-## Pending Work
+## Issues
 
-- `req-001-dispatch_child.json` is written in `requests/` — dispatching issue #1 (Epic: Loop Engine Core)
-- Request has been awaiting runtime processing for many iterations
-- No override prompts in `queue/`
+| # | Title | Wave | State | Depends On |
+|---|-------|------|-------|-----------|
+| 1 | Epic: Loop Engine Core | 1 | pending | — |
+| 2 | Epic: Security Model & Trust Boundary | 2 | pending | #1 |
+| 3 | Epic: Configurable Agent Pipeline | 3 | pending | #1, #2 |
+| 4 | Epic: Loop Pipeline Agents | 4 | pending | #1, #3 |
+| 5 | Epic: CLI UX | 4 | pending | #1, #2, #3 |
+| 6 | Epic: Devcontainer Support | 5 | pending | #1, #5 |
+| 7 | Epic: Domain Skill Discovery | 5 | pending | #3, #5 |
 
-## Issues Summary
+## Dispatch Status
 
-| # | Title | Wave | State |
-|---|-------|------|-------|
-| 1 | Loop Engine Core | 1 | pending (dispatch req written) |
-| 2 | Security Model & Trust Boundary | 2 | pending (blocked on #1) |
-| 3 | Configurable Agent Pipeline | 3 | pending (blocked on #1, #2) |
-| 4 | Loop Pipeline Agents | 4 | pending (blocked on #1, #3) |
-| 5 | CLI UX | 4 | pending (blocked on #1, #2, #3) |
+`req-001-dispatch_child.json` is present in `requests/` — dispatch for issue #1 (wave 1) is awaiting runtime processing. No new dispatch action needed from orchestrator scan.
 
-## Action
+## Queue
 
-No new output required — waiting for runtime to process req-001.
+Empty — no override prompts pending.
+
+## Next Action
+
+Waiting for runtime to process `req-001`. Once issue #1 child session is active, wave 2 (issue #2) becomes dispatchable.
