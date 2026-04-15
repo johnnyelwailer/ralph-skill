@@ -1,38 +1,46 @@
-# Issue #6: Dashboard Component Decomposition + Storybook
+# Issue #6: `aloop start`/`setup` UX: CLI Consolidation, Auto-Monitoring & ZDR Configuration
 
-## Current Phase: Decompose AppView.tsx + Add Storybook
+## Tasks
 
 ### In Progress
 
-- [ ] [review/CRITICAL] Revert all 8 modified working-tree files to HEAD before any new commit: `SPEC.md` (staged — full project spec gutted to 40-line stub, violates Constitution Rules 12+18), `AppView.tsx` (unstaged — lib extraction undone, code re-inlined), `button.tsx`, `tabs.tsx`, `dropdown-menu.tsx` (unstaged — touch targets stripped), `hover-card.tsx`, `tooltip.tsx` (unstaged — touch-aware implementations replaced with bare primitives), `progress.tsx` (unstaged — value clamping/animation removed), `test-setup.ts` (unstaged — matchMedia stub deleted). Run: `git checkout HEAD -- SPEC.md aloop/cli/dashboard/src/AppView.tsx aloop/cli/dashboard/src/components/ui/button.tsx aloop/cli/dashboard/src/components/ui/card.tsx aloop/cli/dashboard/src/components/ui/dropdown-menu.tsx aloop/cli/dashboard/src/components/ui/hover-card.tsx aloop/cli/dashboard/src/components/ui/progress.tsx aloop/cli/dashboard/src/components/ui/tabs.tsx aloop/cli/dashboard/src/components/ui/tooltip.tsx aloop/cli/dashboard/src/test-setup.ts` (priority: critical)
-
-- [ ] [qa/P1] `ArtifactViewer.tsx` imports types from `../../AppView` that are not exported: `ArtifactEntry`, `ManifestPayload` (TS2459 x2). `ArtifactViewer.test.tsx` also imports `LogEntryRow`, `ManifestPayload`, `LogEntry` from AppView (TS2459 x3). Also `Parameter 'a' implicitly has an 'any' type` (TS7006). All three files should import from `../../lib/types` instead. `npm run type-check` exits code 2 with 5 TS errors on these files. Tested at iter 27. (priority: high)
-
-- [x] [review] Gate 2: `ansi.test.ts:105` — `expect(segs[0].style.fg).toBeDefined()` is a shallow existence check; rewrite to assert the exact RGB value (e.g. `'215,0,0'` for palette index 196) so a broken colour lookup would actually fail the test. (priority: high)
-- [ ] [review] Gate 3: `format.ts` exports `formatTime`, `formatTimeShort`, `extractIterationUsage`, `parseManifest`, and `parseQACoveragePayload` — none of these have any tests in `format.test.ts`. Add dedicated `describe` blocks for each, covering at minimum: happy path with concrete value assertions, empty/null input, and the key error branches (e.g. `extractIterationUsage` with `NaN` cost, zero cost, null input; `parseManifest` with null manifest; `parseQACoveragePayload` with each status value). (priority: high)
-- [ ] [review] Gate 3: `format.test.ts` — `parseLogLine` tests cover only the happy path (JSON event) and plain text; add tests for: error event (isError=true, resultDetail from `reason`/`error`/`exit_code`), verdict event (resultDetail from `verdict`), iteration with `commitHash` (resultDetail truncated to 7 chars), and `filesChanged` array parsing. (priority: high)
-- [ ] [review] Constitution Rule 7: `src/lib/format.ts` is 347 LOC — more than double the 150 LOC target. Split into focused modules (e.g. `lib/session.ts` for `toSession`; `lib/log.ts` for `parseLogLine`/`SIGNIFICANT_EVENTS`/`deriveProviderHealth`; `lib/time.ts` for time-formatting helpers; keep `format.ts` for remaining record/artifact/cost helpers). Each split file must stay under 150 LOC. (priority: high)
-
 ### Up Next
 
-- [ ] Extract leaf components: `HealthIndicator.tsx`, `LogEntry.tsx`, `CostDisplay.tsx` (already exists — verify it uses types.ts), `ElapsedTimer.tsx` — each <150 LOC, with `.test.tsx` (Testing Library) and `.stories.tsx` (Storybook, 2–3 stories per component). (priority: critical)
+- [x] [review] Revert SPEC.md to HEAD — staged modification gutted spec from 4086 → 40 lines (WT-1); run `git restore HEAD -- SPEC.md` (priority: critical)
 
-- [ ] Extract composite components: `ActivityLog.tsx`, `SessionCard.tsx`, `SessionList.tsx`, `ProviderHealth.tsx`, `SteerInput.tsx` — each <150 LOC, with `.test.tsx` and `.stories.tsx`. (priority: high)
+- [ ] [review] Fix ArtifactViewer imports (F3) — `ArtifactViewer.tsx` and `ArtifactViewer.test.tsx` import types via `../../AppView`; change `type ArtifactEntry`/`type ManifestPayload` to import from `@/lib/types`, `isImageArtifact`/`artifactUrl` from `@/lib/format`; `findBaselineIterations`/`LogEntryRow` stay in AppView for now (priority: critical)
 
-- [ ] Extract layout components: `Sidebar.tsx`, `MainPanel.tsx`, `DocsPanel.tsx`, `AppShell.tsx` — each <150 LOC, with `.test.tsx` and `.stories.tsx`. (priority: high)
+- [ ] [review] Add test coverage for 5 untested `format.ts` functions (F1) — add to `format.test.ts`: `formatTime`, `formatTimeShort`, `extractIterationUsage` (null/NaN/zero-cost branches), `parseManifest` (nested parsing + conditionals), `parseQACoveragePayload` (PASS/FAIL/UNTESTED normalization); also add `parseLogLine` branches: error events, verdict events, commitHash path, filesChanged array (priority: high)
 
-- [ ] Reduce `AppView.tsx` to <100 LOC layout shell that only imports and composes extracted components. Verify all existing tests continue to pass. (priority: high)
+- [ ] [review] Split `format.ts` (347 LOC) into ≤150 LOC modules (F2) — extract to: `format-time.ts` (formatTime, formatTimeShort, formatSecs, formatDuration, formatDateKey, relativeTime, parseDurationSeconds, computeAvgDuration), `format-parse.ts` (parseLogLine, parseManifest, parseQACoveragePayload), `format-session.ts` (extractIterationUsage, formatTokenCount, deriveProviderHealth, isRecord, str, numStr, toSession, slugify, SIGNIFICANT_EVENTS); update all imports in format.ts, AppView.tsx, format.test.ts; keep format.ts as re-export barrel if needed (priority: high)
 
-- [ ] Add `.stories.tsx` files for already-extracted components that are missing stories: `CostDisplay.stories.tsx`, `ArtifactViewer.stories.tsx`, `ResponsiveLayout.stories.tsx`. At least 2–3 stories per component covering key visual states. (priority: high)
-
-- [ ] Playwright screenshot regression: capture before/after screenshots verifying the dashboard renders identically after refactor. Add to `e2e/` or document in `e2e/proof.spec.ts`. (priority: medium)
-
-- [ ] Verify no source file in `dashboard/src/` exceeds 200 LOC (excluding `ui/` Radix primitives). Fix any violations. (priority: medium)
+- [ ] Add `ui_variant_exploration` to `aloop setup` and `meta.json` — estimate from `discovery.spec_complexity` (enabled when `workstream_count ≥ 2` or `estimated_issue_count ≥ 3`); add as interactive prompt step in `setupCommandWithDeps` (confirm/override boolean); display in confirmation summary; pass to `scaffoldWorkspace`; write `ui_variant_exploration: true|false` to config; in `startCommandWithDeps` read `ui_variant_exploration` from project config and include in `meta.json` write (priority: high)
 
 ### Completed
 
-- [x] Storybook 8 infrastructure: `.storybook/main.ts` + `.storybook/preview.tsx` configured with `@storybook/react-vite`, global decorator applying Tailwind + dark mode, `npm run storybook` / `build-storybook` scripts in package.json.
-- [x] `CostDisplay.tsx` extracted to `components/progress/` with `.test.tsx`
-- [x] `ArtifactViewer.tsx` extracted to `components/artifacts/` with `.test.tsx`
-- [x] `ResponsiveLayout.tsx` extracted to `components/layout/` with `.test.tsx`
-- [x] Extract utility modules: `src/lib/ansi.ts`, `src/lib/format.ts`, `src/lib/types.ts` from AppView.tsx — move ANSI parsing/rendering, format helpers, and shared type/interface declarations out of the monolith. Add `ansi.test.ts` and `format.test.ts` (no UI deps, pure functions). (priority: critical, foundational)
+- [x] `aloop start` — single command handles resolve, session ID, session dir + prompts copy, git worktree, meta.json write, active.json registration, loop script launch (background)
+- [x] `aloop start` — dashboard auto-launch on random available port + browser open (Windows: `Start-Process`, macOS: `open`, Linux: `xdg-open`)
+- [x] `aloop start` — fallback to terminal window with `aloop status --watch` when browser open fails
+- [x] `aloop start` — `on_start: { monitor: dashboard|terminal|none, auto_open: true|false }` config reads from project and global config.yml
+- [x] `aloop start` — `--launch resume` reuses existing session dir/worktree/branch, re-launches loop without new branch
+- [x] `aloop start` — `version.json` staleness check at startup; warns when installed commit differs from repo HEAD
+- [x] `aloop update` — writes `version.json` with `commit` and `installed_at` after copying files from repo
+- [x] loop.sh — logs `runtime_commit` and `runtime_installed_at` in `session_start` event from `version.json`
+- [x] `/aloop:start` — thin delegate at `claude/commands/aloop/start.md` that calls `aloop start [flags]`
+- [x] `aloop setup` — interactive mode with discover → spec → providers → mode recommendation → ZDR → devcontainer auth strategy → confirmation summary
+- [x] `aloop setup` — scope/complexity analysis recommends loop vs orchestrator; user can override
+- [x] `aloop setup` — ZDR warnings for Anthropic/Google/OpenAI/Copilot providers when `data_privacy: private`
+- [x] `aloop setup` — `zdr_enabled: true` and `data_classification: private` stored in config under `privacy_policy` section
+- [x] `aloop setup` — devcontainer auth strategy choice (mount-first default, env-first, env-only) shown in summary with per-provider method
+- [x] `aloop setup` — non-interactive mode with all options as flags, `--mode loop|orchestrate`
+- [x] `/aloop:setup` and `/aloop:dashboard` — agent command files exist for Claude (`claude/commands/aloop/setup.md`, `claude/commands/aloop/dashboard.md`)
+- [x] `/aloop:setup` and `/aloop:dashboard` — agent command files exist for Copilot (`copilot/prompts/aloop-setup.prompt.md`, `copilot/prompts/aloop-dashboard.prompt.md`)
+- [x] `aloop-dashboard.prompt.md` — exists in `copilot/prompts/`
+- [x] Dashboard lib extraction — `lib/ansi.ts` (118 LOC), `lib/format.ts`, `lib/types.ts` (123 LOC) extracted from AppView with backward-compat re-exports
+- [x] `lib/ansi.test.ts` — 23 tests pass including exact RGB assertion for 256-colour palette index 196
+- [x] Storybook 8 infrastructure — `npm run build-storybook` succeeds; `.storybook/main.ts` + `preview.tsx` exist with Tailwind+dark mode decorator
+
+### Deferred
+
+- [~] Split `start.ts` (1155 LOC) into focused modules — Constitution Rule 7 requires <150 LOC; this file is in scope for issue #6 but at 1155 lines the split is a significant cross-cutting refactor; flag as new issue rather than bundling here per Constitution Rule 21
+- [~] Split `setup.ts` (305 LOC) into focused modules — minor oversize; acceptable for now given limited touch surface; will be cleaner after `ui_variant_exploration` is added; flag for future cleanup
