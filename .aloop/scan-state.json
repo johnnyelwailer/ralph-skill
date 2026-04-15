@@ -1,20 +1,19 @@
 {
-  "scan_at": "2026-04-15T06:15:00Z",
-  "iteration": 142,
+  "scan_at": "2026-04-15T06:17:00Z",
+  "iteration": 143,
   "active_child": {
     "session": "orchestrator-20260321-172932-issue-73-20260415-060315",
     "issue": 73,
     "pid": 52469,
     "alive": true,
     "phase": "build",
-    "iteration": 1,
+    "iteration": 2,
     "branch": "aloop/issue-73",
-    "latest_commit": "ae974780 fix: restore Gate A untested threshold to 30% per spec",
-    "status_updated_at": "2026-04-15T06:15:05Z",
+    "latest_commit": "d97b983c chore: save work-in-progress before rebase",
+    "status_updated_at": "2026-04-15T06:17:00Z",
     "review_failures": [],
     "resolved_since_last_scan": [],
     "known_issues": [
-      "build_opencode phase_retry_exhausted (unsupported provider: '') — opencode on cooldown",
       "allTasksMarkedDone=true from prior run — work already complete, running to get PR created via review phase"
     ]
   },
@@ -40,10 +39,6 @@
       "action_required": "Human must fix libatk/Playwright infra in container to unblock Gate 7"
     }
   ],
-  "parallel_scans": [
-    {"session": "orchestrator-20260415-055905", "pid": 5691, "phase": "orch_scan", "iteration": 3},
-    {"session": "orchestrator-20260415-060200", "pid": 24720, "phase": "orch_scan", "iteration": 3}
-  ],
   "capacity": {"cap": 1, "occupied": 1, "available": 0},
   "provider_status": {
     "claude": "ok",
@@ -52,5 +47,5 @@
     "codex": "degraded_auth"
   },
   "action": "monitor_only",
-  "notes": "Child #157 PID dead — cleared (Gate 7 blocker, human intervention needed). Dispatched #73 (issue-73-20260415-060315, PID 52469) for build/review phase — allTasksMarkedDone=true from prior QA pass. Issue #85 queued for next slot after #73 completes. Cap=1 full."
+  "notes": "Child #73 PID 52469 ALIVE — plan iter 1 complete, now in build iter 2 (claude/opus, stuck=0). No blockers. Issue #85 queued. Cap=1 full."
 }
