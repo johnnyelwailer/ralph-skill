@@ -6,12 +6,7 @@
 _(none)_
 
 ### Up Next
-
-- [ ] Fix branch triggers in `ci.yml`: replace `agent/trunk` with `agent/*` wildcard; add `aloop/*` to push triggers (TASK_SPEC: "Workflow supports `agent/*` branch pattern")
-- [ ] Add CLI tests job to `ci.yml`: `bun install` + `bun run test` in `aloop/cli` (TASK_SPEC acceptance criteria #3)
-- [ ] Add CLI type-check job to `ci.yml`: `bun install` + `bun run type-check` in `aloop/cli` (TASK_SPEC acceptance criteria #5)
-- [ ] Add dashboard type-check job to `ci.yml`: `npm ci` + `npm run type-check` in `aloop/cli/dashboard` (TASK_SPEC acceptance criteria #5)
-- [ ] Add loop script tests (Linux) job to `ci.yml`: install bats, run `bats loop.bats` + at least one `loop_*.tests.sh` in `aloop/bin/tests` (TASK_SPEC acceptance criteria #6)
+_(none)_
 
 ### Deferred / Out of scope
 
@@ -34,3 +29,8 @@ Shell integration test failures — out of scope for CI setup (loop.sh behavior 
 - [x] `.github/workflows/ci.yml` file exists — verified by direct read of branch HEAD
 - [x] Dashboard tests job (`npm test` in `aloop/cli/dashboard`) — present in ci.yml, correct commands
 - [x] README.md CI badge URL contains `actions/workflows/ci.yml/badge.svg` — verified line 1 of README.md
+- [x] Fix branch triggers in `ci.yml`: `agent/*` wildcard and `aloop/*` push triggers — already present in ci.yml
+- [x] Add CLI tests job to `ci.yml`: `bun install` + `bun run test` in `aloop/cli` — already present as `cli-tests` job
+- [x] Add CLI type-check job to `ci.yml`: `bun install` + `bun run type-check` in `aloop/cli` — already present as `cli-type-check` job
+- [x] Add dashboard type-check job to `ci.yml`: `npm ci` + `npm run type-check` in `aloop/cli/dashboard` — already present as `dashboard-type-check` job
+- [x] Add loop script tests (Linux) job to `ci.yml`: bats + shell tests — already present as `loop-script-tests` job

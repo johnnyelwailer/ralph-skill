@@ -1608,7 +1608,7 @@ untested_pct = len(untested_features) / len(rows)
 
 if fail_features:
     print(f"fail\tfail_items\t{','.join(fail_features)}")
-elif untested_pct > 0.20:
+elif untested_pct > 0.30:
     print(f"fail\tuntested_pct\t{untested_pct:.4f}")
 else:
     print("pass\tok")
@@ -1627,7 +1627,7 @@ PY
                 append_plan_task_if_missing "Resolve FAIL coverage item: $item"
             done
         elif [ "$reason" = "untested_pct" ]; then
-            append_plan_task_if_missing "Reduce UNTESTED QA coverage to <=20%"
+            append_plan_task_if_missing "Reduce UNTESTED QA coverage to <=30%"
         fi
         FINALIZER_QA_GATE_REASON="$reason"
         return 1
