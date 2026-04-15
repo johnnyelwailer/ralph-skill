@@ -13,6 +13,7 @@ interface LoopPlan {
   version: number;
   finalizer: string[];
   finalizerPosition: number;
+  allTasksMarkedDone: boolean;
 }
 
 interface CompileLoopPlanOptions {
@@ -451,6 +452,7 @@ export async function compileLoopPlan(
     version: 1,
     finalizer,
     finalizerPosition: 0,
+    allTasksMarkedDone: false,
   };
 
   const planPath = path.join(sessionDir, 'loop-plan.json');

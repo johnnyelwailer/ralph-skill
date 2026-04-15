@@ -304,6 +304,7 @@ test('compileLoopPlan — loop-plan.json is valid JSON with correct structure', 
   assert.equal(planJson.cyclePosition, 0);
   assert.equal(planJson.iteration, 1);
   assert.equal(planJson.version, 1);
+  assert.equal(planJson.allTasksMarkedDone, false);
 });
 
 test('compileLoopPlan — loads cycle from .aloop/pipeline.yml', async () => {

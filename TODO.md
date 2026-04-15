@@ -1,36 +1,29 @@
-# Issue #22: Epic: Set up GitHub Actions CI
+# Issue #1: Loop Engine: Finalizer Chain, Retry-Same-Phase & Phase Guards
 
 ## Tasks
 
-### In Progress
-_(none)_
-
 ### Up Next
 
-- [ ] Fix branch triggers in `ci.yml`: replace `agent/trunk` with `agent/*` wildcard; add `aloop/*` to push triggers (TASK_SPEC: "Workflow supports `agent/*` branch pattern")
-- [ ] Add CLI tests job to `ci.yml`: `bun install` + `bun run test` in `aloop/cli` (TASK_SPEC acceptance criteria #3)
-- [ ] Add CLI type-check job to `ci.yml`: `bun install` + `bun run type-check` in `aloop/cli` (TASK_SPEC acceptance criteria #5)
-- [ ] Add dashboard type-check job to `ci.yml`: `npm ci` + `npm run type-check` in `aloop/cli/dashboard` (TASK_SPEC acceptance criteria #5)
-- [ ] Add loop script tests (Linux) job to `ci.yml`: install bats, run `bats loop.bats` + at least one `loop_*.tests.sh` in `aloop/bin/tests` (TASK_SPEC acceptance criteria #6)
-
-### Deferred / Out of scope
-
-Optional jobs (not in TASK_SPEC acceptance criteria):
-- Dashboard E2E job (Playwright/Chromium) — optional per TASK_SPEC
-- Loop script tests (Windows/Pester) — optional per TASK_SPEC
-
-Pre-existing CI failures not caused by issue-22 (separate issues):
-- CLI type-check: 2 TypeScript errors in `process-requests.ts` (TS2367, TS2304) — separate issue
-- Dashboard type-check: missing Vitest globals in `App.coverage.test.ts`, `ArtifactEntry` shape mismatch in `App.test.tsx` — separate issue
-- CLI tests (`bun run test`): pre-existing test failures — separate issue
-
-Shell integration test failures — out of scope for CI setup (loop.sh behavior issues, not CI config):
-- `loop_provenance.tests.sh`: assertions fail on provenance trailer injection in agent commits
-- `loop_path_hardening.tests.sh`: Test 5 assertion fails on path hardening behavior in `invoke_provider`
-- `loop_finalizer_qa_coverage.tests.sh`: `check_finalizer_qa_coverage_gate: command not found` (stale function reference)
+- [x] Add `allTasksMarkedDone: false` to the initial loop-plan.json emitted by `compile-loop-plan.ts` — the LoopPlan interface in that file is missing this field, and the generated plan omits it. Spec says loop-plan.json must contain this field. Fix: (1) add `allTasksMarkedDone: boolean` to the local `LoopPlan` interface in `aloop/cli/src/commands/compile-loop-plan.ts`, (2) include `allTasksMarkedDone: false` in the `plan` object before writing, (3) add an assertion to `compile-loop-plan.test.ts` verifying `plan.allTasksMarkedDone === false`.
 
 ### Completed
 
-- [x] `.github/workflows/ci.yml` file exists — verified by direct read of branch HEAD
-- [x] Dashboard tests job (`npm test` in `aloop/cli/dashboard`) — present in ci.yml, correct commands
-- [x] README.md CI badge URL contains `actions/workflows/ci.yml/badge.svg` — verified line 1 of README.md
+- [x] `loop-plan.json` cycle[], finalizer[], cyclePosition, finalizerPosition, iteration, version — all present (compile-loop-plan.ts writes them; loop scripts persist them)
+- [x] Loop never exits mid-cycle — verified in both loop.sh and loop.ps1
+- [x] allTasksMarkedDone checked only at cycle boundary (after advance resets cyclePosition to 0)
+- [x] Switch to finalizer[] when all tasks done at cycle boundary — `finalizer_entered` logged
+- [x] After each finalizer step, TODO.md re-checked; new TODOs reset finalizerPosition and resume cycle; `finalizer_aborted` logged
+- [x] Only last finalizer completing with zero new TODOs sets state: completed; `finalizer_completed` logged
+- [x] Failed iterations do NOT advance cyclePosition; retry same phase with next round-robin provider
+- [x] After MAX_PHASE_RETRIES consecutive failures, advance anyway; `phase_retry_exhausted` logged
+- [x] Build phase prerequisite: checks for unchecked tasks; missing → forces plan; `phase_prerequisite_miss` logged
+- [x] Review phase prerequisite: checks commits since last plan; missing → forces build; `phase_prerequisite_miss` logged
+- [x] Queue overrides take priority and do NOT advance cyclePosition
+- [x] CLAUDECODE unset at top of loop.sh (line 20) and loop.ps1 (lines 56-58)
+- [x] `delete process.env.CLAUDECODE` at aloop/cli/src/index.ts entry (line 1)
+- [x] Defense-in-depth: invoke_provider (sh) uses `env -u CLAUDECODE`; Invoke-Provider (ps1) removes/restores CLAUDECODE around each provider call
+- [x] PID lockfile (session.lock) created on start, stale-PID checked, cleaned up in trap/finally
+- [x] Every agent commit includes Aloop-Agent, Aloop-Iteration, Aloop-Session provenance trailers via prepare-commit-msg hook
+- [x] Provider stderr captured separately (tmp_stderr) and included in failure log entries (LAST_PROVIDER_ERROR / error field)
+- [x] Per-iteration timeout: frontmatter `timeout` > ALOOP_PROVIDER_TIMEOUT > built-in default (10800s) — same in both scripts
+- [x] Child PIDs tracked (ACTIVE_PROVIDER_PID / activeProviderProcess); killed in EXIT trap / finally block
