@@ -1,4 +1,4 @@
-# Issue #22: Epic: Set up GitHub Actions CI
+# Issue #73: QA coverage enforcement in finalizer (final-qa abort logic)
 
 ## Tasks
 
@@ -9,28 +9,15 @@ _(none)_
 _(none)_
 
 ### Deferred / Out of scope
-
-Optional jobs (not in TASK_SPEC acceptance criteria):
-- Dashboard E2E job (Playwright/Chromium) — optional per TASK_SPEC
-- Loop script tests (Windows/Pester) — optional per TASK_SPEC
-
-Pre-existing CI failures not caused by issue-22 (separate issues):
-- CLI type-check: 2 TypeScript errors in `process-requests.ts` (TS2367, TS2304) — separate issue
-- Dashboard type-check: missing Vitest globals in `App.coverage.test.ts`, `ArtifactEntry` shape mismatch in `App.test.tsx` — separate issue
-- CLI tests (`bun run test`): pre-existing test failures — separate issue
-
-Shell integration test failures — out of scope for CI setup (loop.sh behavior issues, not CI config):
-- `loop_provenance.tests.sh`: assertions fail on provenance trailer injection in agent commits
-- `loop_path_hardening.tests.sh`: Test 5 assertion fails on path hardening behavior in `invoke_provider`
-- `loop_finalizer_qa_coverage.tests.sh`: `check_finalizer_qa_coverage_gate: command not found` (stale function reference)
+_(none)_
 
 ### Completed
 
-- [x] `.github/workflows/ci.yml` file exists — verified by direct read of branch HEAD
-- [x] Dashboard tests job (`npm test` in `aloop/cli/dashboard`) — present in ci.yml, correct commands
-- [x] README.md CI badge URL contains `actions/workflows/ci.yml/badge.svg` — verified line 1 of README.md
-- [x] Fix branch triggers in `ci.yml`: `agent/*` wildcard and `aloop/*` push triggers — already present in ci.yml
-- [x] Add CLI tests job to `ci.yml`: `bun install` + `bun run test` in `aloop/cli` — already present as `cli-tests` job
-- [x] Add CLI type-check job to `ci.yml`: `bun install` + `bun run type-check` in `aloop/cli` — already present as `cli-type-check` job
-- [x] Add dashboard type-check job to `ci.yml`: `npm ci` + `npm run type-check` in `aloop/cli/dashboard` — already present as `dashboard-type-check` job
-- [x] Add loop script tests (Linux) job to `ci.yml`: bats + shell tests — already present as `loop-script-tests` job
+- [x] Add finalizer-specific preamble before `{{include:instructions/qa.md}}` in `PROMPT_final-qa.md`
+- [x] Instruct final-qa to read `QA_COVERAGE.md` and compute `total_features`, `untested_count`, `fail_count`, `coverage_percent`
+- [x] Gate A: if untested > 30%, file one `[qa/P1]` TODO per untested feature and stop
+- [x] Gate B: if any FAIL features exist, file one `[qa/P1]` TODO per FAIL feature and stop
+- [x] Normal QA proceeds only when `fail_count == 0` and untested ratio `<= 30%`
+- [x] Completion criteria: coverage `>= 70%`, 0 FAIL features, no unresolved `[qa/P1]` TODOs
+- [x] Require coverage summary (total/untested/fail/coverage%) in `QA_LOG.md` session entries
+- [x] Preserve shared include line `{{include:instructions/qa.md}}`
