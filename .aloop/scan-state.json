@@ -1,6 +1,6 @@
 {
-  "scan_at": "2026-04-15T06:41:17Z",
-  "iteration": 147,
+  "scan_at": "2026-04-15T06:43:48Z",
+  "iteration": 148,
   "active_child": {
     "session": "orchestrator-20260321-172932-issue-73-20260415-062645",
     "issue": 73,
@@ -12,10 +12,10 @@
     "latest_commit": "d1bf02cd revert: remove out-of-scope loop.sh finalizer QA coverage gate additions",
     "status_updated_at": "2026-04-15T06:38:24Z",
     "review_failures": [],
-    "resolved_since_last_scan": ["qa completed — advanced to review"],
+    "resolved_since_last_scan": [],
     "known_issues": [
       "build phase_retry_exhausted (provider cooldowns: opencode unknown, codex degraded_auth) — fell through to QA",
-      "QA passed. Review agent now running (iter=14, phase=review, state=running). PR creation expected this iteration."
+      "QA passed. Review agent running (iter=14, phase=review, state=running, updated_at=06:38:24Z). Status unchanged since iter=147 — review in progress (~5m elapsed, normal)."
     ]
   },
   "queued_children": [
@@ -57,9 +57,7 @@
   ],
   "capacity": {"cap": 1, "occupied": 1, "available": 0},
   "pending_redispatches": 0,
-  "state_corrections": [
-    "iter=147: active_child.phase corrected from 'qa' (iter=13) to 'review' (iter=14) — QA completed at 06:38:20Z, review agent started at 06:38:24Z (confirmed via status.json)"
-  ],
+  "state_corrections": [],
   "provider_status": {
     "claude": "ok",
     "opencode": "cooldown",
@@ -67,5 +65,5 @@
     "codex": "degraded_auth"
   },
   "action": "monitor_only",
-  "notes": "iter=147: Child #73 PID 93695 ALIVE — QA passed, review agent now running (iter=14, phase=review, state=running, updated_at=06:38:24Z). PR creation expected this iteration. Issue #85 PR #311 CI status unverifiable (gh blocked), waiting. Issue #157 blocked on human (Gate 7 — Playwright deps). Capacity full (1/1), no dispatch."
+  "notes": "iter=148: Child #73 PID 93695 ALIVE — review phase ongoing (iter=14, state=running, updated_at=06:38:24Z, ~5m elapsed). No status change since iter=147. Issue #85 PR #311 CI still unverifiable (gh blocked). Issue #157 blocked on human (Gate 7 — Playwright deps). Capacity full (1/1), no dispatch."
 }
