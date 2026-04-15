@@ -2,22 +2,12 @@
 
 ## Tasks
 
-### In Progress
-_(none)_
-
 ### Up Next
-_(none)_
 
-### Deferred / Out of scope
-_(none)_
+- [x] Revert out-of-scope `loop.sh` additions: remove `append_plan_task_if_missing()`, `check_finalizer_qa_coverage_gate()`, and all calls to them (added in commits bc3eaf85 and 64ec8e1b). CONSTITUTION Rule 1 forbids any additions to loop.sh; SPEC explicitly lists loop.sh as out of scope. The prompt-level gate in PROMPT_final-qa.md is sufficient — no shell enforcement is needed.
+- [ ] Revert out-of-scope `loop.ps1` additions: remove `Append-PlanTaskIfMissing`, `Check-FinalizerQaCoverageGate`, and all calls to them. Same rationale as loop.sh.
+- [ ] Remove `aloop/bin/loop_finalizer_qa_coverage.tests.sh`: this file tests the out-of-scope loop.sh functions; it has no purpose once those functions are removed.
 
 ### Completed
 
-- [x] Add finalizer-specific preamble before `{{include:instructions/qa.md}}` in `PROMPT_final-qa.md`
-- [x] Instruct final-qa to read `QA_COVERAGE.md` and compute `total_features`, `untested_count`, `fail_count`, `coverage_percent`
-- [x] Gate A: if untested > 30%, file one `[qa/P1]` TODO per untested feature and stop
-- [x] Gate B: if any FAIL features exist, file one `[qa/P1]` TODO per FAIL feature and stop
-- [x] Normal QA proceeds only when `fail_count == 0` and untested ratio `<= 30%`
-- [x] Completion criteria: coverage `>= 70%`, 0 FAIL features, no unresolved `[qa/P1]` TODOs
-- [x] Require coverage summary (total/untested/fail/coverage%) in `QA_LOG.md` session entries
-- [x] Preserve shared include line `{{include:instructions/qa.md}}`
+- [x] Add finalizer-specific preamble to `aloop/templates/PROMPT_final-qa.md` before `{{include:instructions/qa.md}}` — implemented in commit a91993d6, refined in subsequent commits. All 7 content acceptance criteria are met: Step 1 computes metrics, Gate A blocks on >30% untested, Gate B blocks on any FAIL, Step 3 passes both, completion criteria and coverage summary requirement are present.

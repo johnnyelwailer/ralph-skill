@@ -1548,95 +1548,6 @@ invoke_provider() {
 # PLAN FILE HELPERS
 # ============================================================================
 
-# ============================================================================
-# FINALIZER QA COVERAGE GATE — enforcement before merge
-# ============================================================================
-
-append_plan_task_if_missing() {
-    local task="$1"
-    if ! grep -Fq "$task" "$PLAN_FILE" 2>/dev/null; then
-        # Ensure newline at end of file before appending
-        if [ -s "$PLAN_FILE" ] && [ "$(tail -c 1 "$PLAN_FILE" | wc -l)" -eq 0 ]; then
-            echo "" >> "$PLAN_FILE"
-        fi
-        echo "- [ ] $task" >> "$PLAN_FILE"
-        return 0
-    fi
-    return 1
-}
-
-check_finalizer_qa_coverage_gate() {
-    local cov_file="$WORK_DIR/QA_COVERAGE.md"
-    if [ ! -f "$cov_file" ]; then
-        FINALIZER_QA_GATE_REASON="qa_coverage_missing"
-        return 0
-    fi
-
-    # Use python to parse the markdown table and check status
-    local result
-    result=$(python3 - "$cov_file" <<'PY'
-import sys
-
-path = sys.argv[1]
-try:
-    with open(path, encoding="utf-8") as f:
-        lines = f.readlines()
-except Exception:
-    print("pass\tread_error")
-    sys.exit(0)
-
-rows = []
-for line in lines:
-    line = line.strip()
-    if not line.startswith("|"): continue
-    if "---" in line: continue
-    cols = [c.strip() for c in line.split("|")]
-    if len(cols) < 6: continue
-    feature = cols[1]
-    status = cols[5]
-    if feature.lower() in ["feature", ""]: continue
-    rows.append({"feature": feature, "status": status})
-
-if not rows:
-    print("pass\tempty")
-    sys.exit(0)
-
-fail_features = [r["feature"] for r in rows if r["status"].upper() == "FAIL"]
-untested_features = [r["feature"] for r in rows if r["status"].upper() in ["UNTESTED", "NEVER", "", "-"]]
-
-untested_pct = len(untested_features) / len(rows)
-
-if fail_features:
-    print(f"fail\tfail_items\t{','.join(fail_features)}")
-elif untested_pct > 0.30:
-    print(f"fail\tuntested_pct\t{untested_pct:.4f}")
-else:
-    print("pass\tok")
-PY
-)
-
-    local status reason extra
-    status=$(echo "$result" | cut -f1)
-    reason=$(echo "$result" | cut -f2)
-    extra=$(echo "$result" | cut -f3)
-
-    if [ "$status" = "fail" ]; then
-        if [ "$reason" = "fail_items" ]; then
-            IFS=',' read -ra FAIL_ITEMS <<< "$extra"
-            for item in "${FAIL_ITEMS[@]}"; do
-                append_plan_task_if_missing "Resolve FAIL coverage item: $item"
-            done
-        elif [ "$reason" = "untested_pct" ]; then
-            append_plan_task_if_missing "Reduce UNTESTED QA coverage to <=30%"
-        fi
-        FINALIZER_QA_GATE_REASON="$reason"
-        return 1
-    fi
-
-    FINALIZER_QA_GATE_REASON="pass"
-    return 0
-}
-
 check_all_tasks_complete() {
     if [ "$NO_TASK_EXIT" = "true" ]; then return 1; fi
     if [ ! -f "$PLAN_FILE" ]; then return 1; fi
@@ -2372,9 +2283,6 @@ while [ "$ITERATION" -lt "$MAX_ITERATIONS" ]; do
             # Advance finalizer position
             FINALIZER_POSITION=$((FINALIZER_POSITION + 1))
             
-            # ENFORCEMENT: check QA coverage gate after every finalizer iteration.
-            check_finalizer_qa_coverage_gate
-
             # Re-check TODO.md — if new incomplete tasks appeared, abort finalizer
             if ! check_all_tasks_complete; then
                 FINALIZER_MODE=false
@@ -2397,19 +2305,10 @@ while [ "$ITERATION" -lt "$MAX_ITERATIONS" ]; do
         if [ "$FINALIZER_MODE" = "false" ] && [ "$ALL_TASKS_MARKED_DONE" = "true" ] \
            && [ "$FINALIZER_LENGTH" -gt 0 ] && [ "$CYCLE_POSITION" -eq 0 ]; then
             
-            # ENFORCEMENT: check QA coverage gate before entering finalizer.
-            if ! check_finalizer_qa_coverage_gate; then
-                 # Gate failed, tasks were appended to TODO.md.
-                 # Reset flags to stay in build cycle.
-                 ALL_TASKS_MARKED_DONE=false
-                 write_log_entry "finalizer_entry_blocked" "iteration" "$ITERATION" "reason" "$FINALIZER_QA_GATE_REASON"
-                 echo "[Finalizer entry blocked — QA coverage gate failed]"
-            else
-                FINALIZER_MODE=true
-                FINALIZER_POSITION=0
-                write_log_entry "finalizer_entered" "iteration" "$ITERATION"
-                echo "[All tasks marked done — entering finalizer sequence]"
-            fi
+            FINALIZER_MODE=true
+            FINALIZER_POSITION=0
+            write_log_entry "finalizer_entered" "iteration" "$ITERATION"
+            echo "[All tasks marked done — entering finalizer sequence]"
         fi
 
         # Capture all commits made during this iteration (any agent may commit)
