@@ -1,14 +1,13 @@
 {
   "id": "create-pr-issue-1",
   "type": "create_pr",
-  "generated_at": "2026-04-15T07:35:00Z",
+  "generated_at": "2026-04-15T07:36:00Z",
   "payload": {
     "issue_number": 1,
     "issue_title": "Loop Engine: Finalizer Chain, Retry-Same-Phase & Phase Guards",
     "branch": "aloop/issue-1",
     "base_branch": "agent/trunk",
     "child_session": "orchestrator-20260415-055905-issue-1-20260415-062800",
-    "top_commit": "3aabfa2f feat(compile-loop-plan): add allTasksMarkedDone field to LoopPlan",
-    "notes": "Child session completed. Branch aloop/issue-1 has commits implementing loop-plan.json allTasksMarkedDone field and related loop engine changes per issue #1 scope. Request PR creation for review."
+    "notes": "Child session completed (13 iterations, final phase: qa). PR not yet confirmed created. Re-requesting PR creation for issue #1."
   }
 }

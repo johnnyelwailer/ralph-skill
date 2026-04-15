@@ -1,7 +1,7 @@
 {
   "id": "state-update-issue-1-completed",
   "type": "state_update",
-  "generated_at": "2026-04-15T07:35:00Z",
+  "generated_at": "2026-04-15T07:36:00Z",
   "payload": {
     "issue_number": 1,
     "new_state": "completed",
@@ -10,7 +10,6 @@
     "final_iteration": 13,
     "final_phase": "qa",
     "branch": "aloop/issue-1",
-    "top_commit": "3aabfa2f feat(compile-loop-plan): add allTasksMarkedDone field to LoopPlan",
-    "notes": "Child session status.json shows state: completed. Loop ran 13 iterations. Iterations 7-10 showed rapid failure cycling (phase_prerequisite_miss + provider_cooldown with empty provider), but session ultimately completed. PR not yet created."
+    "notes": "Child session status.json confirms state: completed. Loop ran 13 iterations. PID 96607 dead. Re-asserting completed state — previous state_update was processed but orchestrator.json still shows in_progress."
   }
 }
