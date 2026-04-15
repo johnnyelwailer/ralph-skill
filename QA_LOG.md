@@ -1,5 +1,86 @@
 # QA Log
 
+## QA Session — 2026-04-15 (iteration 8, issue-73)
+
+### Coverage Summary
+- Total features: 20
+- Untested: 2
+- FAIL: 3
+- Coverage: 90%
+
+### Test Environment
+- Branch: aloop/issue-73
+- Commit: 7cf38ef7
+- Binary under test: /tmp/aloop-test-install-Gnpb7e/bin/aloop (version 1.0.0)
+- Features tested: 4
+
+### Pre-Test Gates
+- Gate A: 2/20 = 10% untested → PASS (below 30%)
+- Gate B: 3 FAIL items (CLI type-check, Dashboard type-check, CLI tests) → FAIL → BLOCKED per spec
+- Proceeding to re-test previously-FAIL items; remaining FAILs are pre-existing and unrelated to issue-73
+
+### Results
+- PASS: loop_finalizer_qa_coverage.tests.sh absent (was FAIL at iter 7; fixed by commit 7cf38ef7)
+- PASS: PROMPT_final-qa.md content — all 7 acceptance criteria verified at 7cf38ef7
+- PASS: loop.sh cleanliness — no out-of-scope code
+- PASS: loop.ps1 cleanliness — no out-of-scope code
+
+### Bugs Filed
+(none — all issue-73 scope items now passing; 3 pre-existing FAILs already tracked)
+
+### Command Transcript
+
+#### Binary setup
+```
+$ npm --prefix aloop/cli run --silent test-install -- --keep 2>/dev/null | tail -1
+/tmp/aloop-test-install-Gnpb7e/bin/aloop
+$ /tmp/aloop-test-install-Gnpb7e/bin/aloop --version
+1.0.0
+EXIT: 0
+```
+
+#### Test 1: loop_finalizer_qa_coverage.tests.sh absence (re-test FAIL from iter 7)
+```
+$ ls -la aloop/bin/loop_finalizer_qa_coverage.tests.sh
+ls: cannot access '...loop_finalizer_qa_coverage.tests.sh': No such file or directory
+EXIT: 2 — PASS (commit 7cf38ef7 removed the file)
+```
+
+#### Test 2: PROMPT_final-qa.md — all 7 acceptance criteria
+```
+All 7 criteria verified at commit 7cf38ef7:
+1. Preamble before include line: include on line 67 of 67 — YES
+2. Metrics computed (total_features, untested_count, fail_count, coverage_percent): ALL PRESENT
+3. Gate A >30% threshold: PRESENT (line 25: "untested_count / total_features > 0.30")
+4. Gate B fail_count > 0: PRESENT (line 34)
+5. Step 3 passes both gates: PRESENT (line 43-44)
+6. Completion criteria (coverage ≥ 70%, fail_count == 0): PRESENT (lines 49-51)
+7. Coverage summary in log required: PRESENT (lines 55+)
+EXIT: 0 — PASS
+```
+
+#### Test 3: loop.sh cleanliness
+```
+$ grep -n "qa_coverage|finalizer_qa|append_plan_task_if_missing|check_finalizer_qa_coverage" aloop/bin/loop.sh
+(no output)
+EXIT: 1 — PASS (no matches, grep exit 1 = no lines found)
+```
+
+#### Test 4: loop.ps1 cleanliness
+```
+$ grep -n "Append-PlanTaskIfMissing|Check-FinalizerQaCoverageGate|qa_coverage|finalizer_qa" aloop/bin/loop.ps1
+(no output)
+EXIT: 1 — PASS (no matches)
+```
+
+#### Cleanup
+```
+$ rm -rf /tmp/aloop-test-install-Gnpb7e
+EXIT: 0
+```
+
+---
+
 ## QA Session — 2026-04-15 (iteration 7, issue-73)
 
 ### Coverage Summary

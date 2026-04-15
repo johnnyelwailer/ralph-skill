@@ -21,4 +21,4 @@
 | PROMPT_final-qa.md coverage gate content | 2026-04-15 | d378e91d | PASS | All 7 acceptance criteria re-verified at iter 7 (d378e91d); preamble, gates, thresholds, include line all present |
 | loop.sh cleanliness (no out-of-scope code) | 2026-04-15 | d378e91d | PASS | grep confirms no qa_coverage/finalizer_qa functions in loop.sh at iter 7 (d378e91d) |
 | loop.ps1 out-of-scope additions absent | 2026-04-15 | d378e91d | PASS | Revert at d378e91d removed Append-PlanTaskIfMissing, Check-FinalizerQaCoverageGate; grep confirms clean at iter 7 |
-| loop_finalizer_qa_coverage.tests.sh absent | 2026-04-15 | d378e91d | FAIL | File still exists at aloop/bin/loop_finalizer_qa_coverage.tests.sh; TODO.md tracks removal — re-tested iter 7, still pending |
+| loop_finalizer_qa_coverage.tests.sh absent | 2026-04-15 | 7cf38ef7 | PASS | File removed in commit 7cf38ef7; confirmed absent at iter 8 |
