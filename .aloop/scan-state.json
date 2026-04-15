@@ -1,43 +1,53 @@
 {
-  "scan_at": "2026-04-15T07:35:00Z",
-  "iteration": 159,
+  "scan_at": "2026-04-15T07:29:00Z",
+  "iteration": 160,
   "active_child": {
-    "session": "orchestrator-20260321-172932-issue-73-20260415-062645",
-    "issue": 73,
-    "pid": 372849,
+    "session": "orchestrator-20260321-172932-issue-71-20260415-072215",
+    "issue": 71,
+    "pid": 378686,
     "alive": true,
-    "phase": "finalizer",
-    "iteration": 41,
-    "branch": "aloop/issue-73",
-    "status_updated_at": "2026-04-15T07:15:15Z",
+    "phase": "qa",
+    "iteration": 13,
+    "branch": "aloop/issue-71",
+    "status_updated_at": "2026-04-15T07:27:55Z",
     "known_issues": [
-      "PID 93695 died after qa/iter=41 with allTasksMarkedDone=true, finalizerPosition=0. Resumed as PID 372849.",
-      "All review findings resolved: scope-violation test file removed (7cf38ef7). QA passed (loop.ps1 PASS). Finalizer phase starting."
+      "Provider cooldowns on opencode (7+ consecutive errors in build phase). Claude provider working.",
+      "Build\u2192qa transition in progress."
     ]
   },
   "queued_children": [
     {
-      "session": "orchestrator-20260321-172932-issue-85-20260415-060149",
+      "session": null,
       "issue": 85,
       "branch": "aloop/issue-85",
       "pr": 311,
       "phase": "review",
-      "prev_phase": "plan",
-      "iteration": 1,
       "pr_gates": {
         "merge_conflicts": "pass",
         "ci_checks": "pending"
       },
-      "notes": "Plan complete (child loop state=completed). PR #311 open. CI check status unverifiable (gh blocked). Waiting on CI to pass for merge."
+      "notes": "PR #311 open. CI check status unverifiable (gh blocked). Waiting on CI to pass for merge."
     }
   ],
   "cleared_children": [
+    {
+      "session": "orchestrator-20260321-172932-issue-73-20260415-062645",
+      "issue": 73,
+      "pid": 372849,
+      "cleared_reason": "Session completed (iter=1 of resumed session). Both PIDs (93695, 372849) dead. PR #312 open on aloop/issue-73.",
+      "pr": 312,
+      "pr_gates": {
+        "merge_conflicts": "unknown",
+        "ci_checks": "unknown (gh blocked)"
+      },
+      "action_required": "Review PR #312 when gh becomes available. No redispatch needed."
+    },
     {
       "session": "orchestrator-20260321-172932-issue-157-20260414-184129",
       "issue": 157,
       "pid": 422016,
       "cleared_reason": "PID dead. Gate 7 (Playwright infra): libatk-1.0.so.0 missing in container, sudo apt-get blocked by sandbox flags. PR #310 CI also failing. Requires human intervention.",
-      "pr": 310,
+      "pr": 238,
       "pr_gates": {
         "merge_conflicts": "pass",
         "ci_checks": "fail"
@@ -45,12 +55,17 @@
       "action_required": "Human must install Playwright browser deps in sandbox (libatk-1.0.so.0) OR explicitly waive Gate 7 for issue #157. Do NOT redispatch until resolved."
     }
   ],
-  "capacity": {"cap": 1, "occupied": 1, "available": 0},
-  "pending_redispatches": 0,
+  "capacity": {
+    "cap": 1,
+    "occupied": 1,
+    "available": 0
+  },
+  "pending_redispatches": 2,
   "state_corrections": [
-    "iter=154: #73 advanced from iter=15/plan → iter=16/build (status.json updated_at 07:02:52Z)",
-    "iter=156: #73 advanced from iter=16/build → iter=28/review (status.json updated_at 07:10:05Z)",
-    "iter=159: #73 PID 93695 dead, qa/iter=41 completed (allTasksDone=true). Resumed as PID 372849 for finalizer. Last commit: 7cf38ef7 (scope-violation file removed)."
+    "iter=154: #73 advanced from iter=15/plan \u2192 iter=16/build",
+    "iter=156: #73 advanced from iter=16/build \u2192 iter=28/review",
+    "iter=159: #73 PID 93695 dead, resumed as PID 372849 for finalizer.",
+    "iter=160: #73 session fully completed (PIDs 93695+372849 both dead). PR #312 open. Cleared from active."
   ],
   "provider_status": {
     "claude": "ok",
@@ -58,6 +73,6 @@
     "gemini": "cooldown",
     "codex": "degraded_auth"
   },
-  "action": "resumed_issue_73",
-  "notes": "iter=159: #73 PID dead, resumed as 372849 — allTasksDone=true, entering finalizer (spec-gap→docs→spec-review→final-review→final-qa→proof). #85 PR #311 CI unverifiable (gh blocked). #157 blocked human. Capacity full (1/1)."
+  "action": "monitoring_issue_71",
+  "notes": "iter=160: #73 done (both PIDs dead, session completed, PR #312 open). #71 PID 378686 ALIVE (iter=13/qa). #85 PR #311 CI pending (gh blocked). #157 blocked human. Capacity full (1/1). Redispatches #70 and #198 queued but blocked by cap."
 }
