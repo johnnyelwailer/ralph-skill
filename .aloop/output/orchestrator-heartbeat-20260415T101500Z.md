@@ -1,10 +1,11 @@
-# Orchestrator Heartbeat — 2026-04-15T10:15:00Z
+# Orchestrator Heartbeat — 2026-04-15T06:53:58Z (iter=45)
 
 ## Status
 
 - **Wave:** 1
 - **Concurrency cap:** 3 (0 occupied)
 - **Active children:** none
+- **Iteration:** ~45
 
 ## Issues
 
@@ -18,9 +19,15 @@
 | 6 | Epic: Devcontainer Support | 5 | pending | #1, #5 |
 | 7 | Epic: Domain Skill Discovery | 5 | pending | #3, #5 |
 
-## Dispatch Status
+## Dispatch Status — STUCK (44+ iterations)
 
-`req-001-dispatch_child.json` is present in `requests/` — dispatch for issue #1 (wave 1) is awaiting runtime processing. No new dispatch action needed from orchestrator scan.
+`req-001-dispatch_child.json` has been present in `requests/` since iteration ~1.
+The runtime has NOT processed this dispatch request across 44+ iterations.
+Issue #1 child session has never been launched.
+
+The orchestrator has correctly emitted the dispatch request; the runtime is failing
+to act on it. No new dispatch action is needed from the orchestrator — the existing
+`req-001` file remains valid and correct.
 
 ## Queue
 
@@ -28,4 +35,6 @@ Empty — no override prompts pending.
 
 ## Next Action
 
-Waiting for runtime to process `req-001`. Once issue #1 child session is active, wave 2 (issue #2) becomes dispatchable.
+Runtime must process `req-001-dispatch_child.json` to launch the child session for
+issue #1 (wave 1, no dependencies). Until the runtime unblocks, no forward progress
+is possible on any issue or wave.
