@@ -1,6 +1,6 @@
 {
-  "scan_at": "2026-04-15T06:40:00Z",
-  "iteration": 4,
+  "scan_at": "2026-04-15T07:20:00Z",
+  "iteration": 5,
   "active_child": null,
   "parallel_scans": [],
   "capacity": {"cap": 3, "occupied": 0, "available": 3},
@@ -8,5 +8,5 @@
     "claude": "ok"
   },
   "action": "awaiting_dispatch_issue_1",
-  "notes": "Iter=1 wrote req-001-dispatch_child.json for issue #1 (Loop Engine Core). Runtime has not yet created child session. Dispatch request still pending in requests/ after 4 scans. No additional action needed — waiting for runtime to process."
+  "notes": "Iter=1 wrote req-001-dispatch_child.json for issue #1 (Loop Engine Core). Runtime has not yet created child session. Dispatch request still pending in requests/ after 5 scans. No additional action needed — waiting for runtime to process."
 }
