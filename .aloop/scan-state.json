@@ -1,18 +1,18 @@
 {
-  "scan_at": "2026-04-15T07:30:00Z",
-  "iteration": 156,
+  "scan_at": "2026-04-15T07:35:00Z",
+  "iteration": 159,
   "active_child": {
     "session": "orchestrator-20260321-172932-issue-73-20260415-062645",
     "issue": 73,
-    "pid": 93695,
+    "pid": 372849,
     "alive": true,
-    "phase": "review",
-    "iteration": 28,
+    "phase": "finalizer",
+    "iteration": 41,
     "branch": "aloop/issue-73",
-    "status_updated_at": "2026-04-15T07:10:05Z",
+    "status_updated_at": "2026-04-15T07:15:15Z",
     "known_issues": [
-      "Review iter=14 FAILED (commit cc4c1ae6) — (1) loop.ps1:919 threshold wrong, (2) loop_finalizer_qa_coverage.tests.sh still exists.",
-      "Iter 16 build completed; iter=28 review now running as of 07:10:05Z."
+      "PID 93695 died after qa/iter=41 with allTasksMarkedDone=true, finalizerPosition=0. Resumed as PID 372849.",
+      "All review findings resolved: scope-violation test file removed (7cf38ef7). QA passed (loop.ps1 PASS). Finalizer phase starting."
     ]
   },
   "queued_children": [
@@ -49,7 +49,8 @@
   "pending_redispatches": 0,
   "state_corrections": [
     "iter=154: #73 advanced from iter=15/plan → iter=16/build (status.json updated_at 07:02:52Z)",
-    "iter=156: #73 advanced from iter=16/build → iter=28/review (status.json updated_at 07:10:05Z)"
+    "iter=156: #73 advanced from iter=16/build → iter=28/review (status.json updated_at 07:10:05Z)",
+    "iter=159: #73 PID 93695 dead, qa/iter=41 completed (allTasksDone=true). Resumed as PID 372849 for finalizer. Last commit: 7cf38ef7 (scope-violation file removed)."
   ],
   "provider_status": {
     "claude": "ok",
@@ -57,6 +58,6 @@
     "gemini": "cooldown",
     "codex": "degraded_auth"
   },
-  "action": "monitor_only",
-  "notes": "iter=156: #73 PID 93695 ALIVE, iter=28/review running (build iter=16 complete). #85 PR #311 CI unverifiable (gh blocked). #157 blocked human. Capacity full (1/1), no dispatch."
+  "action": "resumed_issue_73",
+  "notes": "iter=159: #73 PID dead, resumed as 372849 — allTasksDone=true, entering finalizer (spec-gap→docs→spec-review→final-review→final-qa→proof). #85 PR #311 CI unverifiable (gh blocked). #157 blocked human. Capacity full (1/1)."
 }
