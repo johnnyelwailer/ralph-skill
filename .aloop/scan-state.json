@@ -1,6 +1,6 @@
 {
-  "scan_at": "2026-04-15T06:33:48Z",
-  "iteration": 145,
+  "scan_at": "2026-04-15T06:35:00Z",
+  "iteration": 146,
   "active_child": {
     "session": "orchestrator-20260321-172932-issue-73-20260415-062645",
     "issue": 73,
@@ -58,9 +58,7 @@
   ],
   "capacity": {"cap": 1, "occupied": 1, "available": 0},
   "pending_redispatches": 0,
-  "state_corrections": [
-    "active_child updated from stale session 060315 (PID 52469, dead) to new session 062645 (PID 93695, alive, phase=qa)"
-  ],
+  "state_corrections": [],
   "provider_status": {
     "claude": "ok",
     "opencode": "cooldown",
@@ -68,5 +66,5 @@
     "codex": "degraded_auth"
   },
   "action": "monitor_only",
-  "notes": "Child #73 PID 93695 ALIVE — new session dispatched (iter=8 scan). Currently in QA (iter=13) after build phase exhausted providers. Prior session's QA already verified acceptance criteria. Expecting QA→review→PR creation. Issue #85 PR #311 awaiting CI (gh blocked). Issue #157 blocked on human (Gate 7). Capacity full (1/1)."
+  "notes": "iter=146: Child #73 PID 93695 ALIVE (confirmed ps) — QA iter=13, state=running, status_updated_at=06:32:20Z. Cycle position 3/4 (QA), next=review. PR creation expected after QA passes. Issue #85 session completed, PR #311 CI status unverifiable (gh blocked). Issue #157 blocked on human (Gate 7 — Playwright deps). Capacity full (1/1), no dispatch."
 }
