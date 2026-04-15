@@ -1,12 +1,12 @@
 {
-  "scan_at": "2026-04-15T06:10:00Z",
-  "iteration": 1,
+  "scan_at": "2026-04-15T06:02:00Z",
+  "iteration": 2,
   "active_child": null,
   "parallel_scans": [],
   "capacity": {"cap": 3, "occupied": 0, "available": 3},
   "provider_status": {
     "claude": "ok"
   },
-  "action": "dispatch_issue_1",
-  "notes": "Fresh orchestrator session (orchestrator-20260415-060200). All 12 epic issues pending. Wave 1 has issue #1 (Loop Engine Core) with no dependencies — dispatching now. Slots: 3 cap, 0 occupied."
+  "action": "awaiting_dispatch_issue_1",
+  "notes": "Iter=1 wrote req-001-dispatch_child.json for issue #1 (Loop Engine Core). Runtime has not yet created child session. Dispatch request still pending in requests/. No additional action needed this pass — waiting for runtime to process."
 }
