@@ -1,13 +1,9 @@
 import { useEffect, useState } from 'react';
 import { Image, FileText } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import {
-  isImageArtifact,
-  artifactUrl,
-  findBaselineIterations,
-  type ArtifactEntry,
-  type ManifestPayload,
-} from '../../AppView';
+import { type ArtifactEntry, type ManifestPayload } from '@/lib/types';
+import { isImageArtifact, artifactUrl } from '@/lib/format';
+import { findBaselineIterations } from '../../AppView';
 
 export { type ArtifactEntry, type ManifestPayload };
 

@@ -2,7 +2,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import '@testing-library/jest-dom/vitest';
 import { ArtifactViewer, diffBadgeClass } from './ArtifactViewer';
-import { LogEntryRow, type ManifestPayload, type LogEntry } from '../../AppView';
+import { type ManifestPayload, type LogEntry } from '@/lib/types';
+import { LogEntryRow } from '../../AppView';
 
 // Wrap with TooltipProvider for Tooltip to work in tests
 import { TooltipProvider } from '@/components/ui/tooltip';
