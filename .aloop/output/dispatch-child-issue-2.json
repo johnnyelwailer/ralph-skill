@@ -1,0 +1,15 @@
+{
+  "id": "dispatch-issue-2",
+  "type": "dispatch_child",
+  "generated_at": "2026-04-15T07:35:00Z",
+  "payload": {
+    "issue_number": 2,
+    "issue_title": "Provider Health & Resilience: Cross-Session Health Files & Exponential Backoff",
+    "wave": 2,
+    "branch": "aloop/issue-2",
+    "sandbox": "container",
+    "depends_on": [1],
+    "spec_source": "orchestrator.json#issues[1].body",
+    "notes": "Wave 2. Depends on #1 (now completed). Implements cross-session provider health files at ~/.aloop/health/<provider>.json, exponential backoff, auth-vs-transient classification, round-robin skip of unhealthy providers. dor_validated=false — refinement may be needed before dispatch."
+  }
+}

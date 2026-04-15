@@ -1,0 +1,15 @@
+{
+  "id": "dispatch-issue-6",
+  "type": "dispatch_child",
+  "generated_at": "2026-04-15T07:35:00Z",
+  "payload": {
+    "issue_number": 6,
+    "issue_title": "`aloop start`/`setup` UX: CLI Consolidation, Auto-Monitoring & ZDR Configuration",
+    "wave": 2,
+    "branch": "aloop/issue-6",
+    "sandbox": "container",
+    "depends_on": [1],
+    "spec_source": "orchestrator.json#issues[5].body",
+    "notes": "Wave 2. Depends on #1 (now completed). Implements aloop start and aloop setup CLI commands, browser auto-launch, ZDR configuration, devcontainer auth strategy. dor_validated=false — refinement may be needed before dispatch."
+  }
+}
