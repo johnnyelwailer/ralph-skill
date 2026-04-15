@@ -1,11 +1,11 @@
-# Orchestrator Heartbeat — 2026-04-15T06:53:58Z (iter=45)
+# Orchestrator Heartbeat — 2026-04-15T06:57:54Z (iter=47)
 
 ## Status
 
 - **Wave:** 1
 - **Concurrency cap:** 3 (0 occupied)
 - **Active children:** none
-- **Iteration:** ~45
+- **Iteration:** ~47
 
 ## Issues
 
@@ -19,10 +19,10 @@
 | 6 | Epic: Devcontainer Support | 5 | pending | #1, #5 |
 | 7 | Epic: Domain Skill Discovery | 5 | pending | #3, #5 |
 
-## Dispatch Status — STUCK (44+ iterations)
+## Dispatch Status — STUCK (46+ iterations)
 
-`req-001-dispatch_child.json` has been present in `requests/` since iteration ~1.
-The runtime has NOT processed this dispatch request across 44+ iterations.
+`req-001-dispatch_child.json` has been present in `requests/` since iteration ~1 (generated 2026-04-15T06:10:00Z).
+The runtime has NOT processed this dispatch request across 46+ iterations.
 Issue #1 child session has never been launched.
 
 The orchestrator has correctly emitted the dispatch request; the runtime is failing
