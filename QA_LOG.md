@@ -1,5 +1,58 @@
 # QA Log
 
+## QA Session — 2026-04-15 (iteration 5)
+
+### Test Environment
+- Binary under test: N/A — this issue tests prompt templates, not runtime CLI
+- Features tested: 13 acceptance criteria from SPEC.md (Issue #71)
+
+### Results
+- PASS (12): Gate 10 presence after Gate 9, coverage formula, <30% fail condition, stale [qa/P1] fail condition, coverage trend requirement, all 5 gate-count references, no stale 9-gate refs, PROMPT_review.md integrity
+- FAIL (1): qa.md was modified despite spec constraint "Do NOT modify: aloop/templates/instructions/qa.md"
+
+### Bugs Filed
+- [qa/P1] qa.md modified in violation of spec scope constraint (commit 631780ad, not yet reverted)
+
+### Command Transcript
+
+```
+$ git diff HEAD~3..HEAD -- aloop/templates/instructions/qa.md
+# Shows: 0d section expanded (3 lines → 5 lines) and QA_COVERAGE.md table format changed
+# from 5-column to 7-column in step 5. Both changes prohibited by spec ("Do NOT modify: qa.md")
+
+$ rg -n "9 quality gates|gates 1-9|## The 9 Gates" aloop/templates/instructions/review.md
+# Exit: 1 (no stale references found) ✓
+
+$ rg -n "Gate 9|Gate 10" aloop/templates/instructions/review.md
+15:0e. Study @QA_COVERAGE.md and @QA_LOG.md for Gate 10 verification
+127:### Gate 9: Documentation Freshness
+136:### Gate 10: QA Coverage & Bug Fix Rate
+# Gate 10 appears after Gate 9 ✓
+
+$ rg -n "10 quality gates|the 10 gates|The 10 Gates|gates 1-10" aloop/templates/instructions/review.md
+7:Audit the last build iteration's changes against 10 quality gates.
+19:2. Audit every changed file against the 10 gates below
+26:## The 10 Gates
+165:3. Add a brief note ... `[reviewed: gates 1-10 pass]`
+184:6. Commit both files with message: `chore(review): PASS — gates 1-10 pass`
+# All 5 gate-count references updated ✓
+
+$ cat aloop/templates/PROMPT_review.md
+# Contains: frontmatter (agent:review, provider:claude, reasoning:high) + {{include:instructions/review.md}} ✓
+```
+
+### Summary
+12 of 13 acceptance criteria PASS. One FAIL: `aloop/templates/instructions/qa.md` was modified in commit
+631780ad. The out-of-scope changes are:
+1. `0d. Check coverage gaps` expanded with 3 additional bullet lines
+2. QA_COVERAGE.md table format changed from 5-column to 7-column in step 5
+
+A revert task for this is already tracked in TODO.md as a pending item (not yet completed). The
+revert is required to satisfy Constitution Rule 12 (one issue, one concern) and the spec's explicit
+"Do NOT modify" constraint.
+
+---
+
 ## QA Session — 2026-04-13 (iteration 4)
 
 ### Test Environment

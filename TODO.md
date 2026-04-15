@@ -1,36 +1,17 @@
-# Issue #22: Epic: Set up GitHub Actions CI
+# Issue #71: Review agent Gate 10: QA coverage trend and bug fix rate
 
 ## Tasks
 
 ### In Progress
-_(none)_
 
-### Up Next
+- [ ] Revert `aloop/templates/instructions/qa.md` changes (out of scope per spec — "Do NOT modify: aloop/templates/instructions/qa.md"; Constitution Rule 12: one issue, one concern). The 7-column QA_COVERAGE.md format change and expanded `0d` section were added in commit 631780ad but are explicitly excluded from this issue's scope. (priority: high)
 
-- [ ] Fix branch triggers in `ci.yml`: replace `agent/trunk` with `agent/*` wildcard; add `aloop/*` to push triggers (TASK_SPEC: "Workflow supports `agent/*` branch pattern")
-- [ ] Add CLI tests job to `ci.yml`: `bun install` + `bun run test` in `aloop/cli` (TASK_SPEC acceptance criteria #3)
-- [ ] Add CLI type-check job to `ci.yml`: `bun install` + `bun run type-check` in `aloop/cli` (TASK_SPEC acceptance criteria #5)
-- [ ] Add dashboard type-check job to `ci.yml`: `npm ci` + `npm run type-check` in `aloop/cli/dashboard` (TASK_SPEC acceptance criteria #5)
-- [ ] Add loop script tests (Linux) job to `ci.yml`: install bats, run `bats loop.bats` + at least one `loop_*.tests.sh` in `aloop/bin/tests` (TASK_SPEC acceptance criteria #6)
-
-### Deferred / Out of scope
-
-Optional jobs (not in TASK_SPEC acceptance criteria):
-- Dashboard E2E job (Playwright/Chromium) — optional per TASK_SPEC
-- Loop script tests (Windows/Pester) — optional per TASK_SPEC
-
-Pre-existing CI failures not caused by issue-22 (separate issues):
-- CLI type-check: 2 TypeScript errors in `process-requests.ts` (TS2367, TS2304) — separate issue
-- Dashboard type-check: missing Vitest globals in `App.coverage.test.ts`, `ArtifactEntry` shape mismatch in `App.test.tsx` — separate issue
-- CLI tests (`bun run test`): pre-existing test failures — separate issue
-
-Shell integration test failures — out of scope for CI setup (loop.sh behavior issues, not CI config):
-- `loop_provenance.tests.sh`: assertions fail on provenance trailer injection in agent commits
-- `loop_path_hardening.tests.sh`: Test 5 assertion fails on path hardening behavior in `invoke_provider`
-- `loop_finalizer_qa_coverage.tests.sh`: `check_finalizer_qa_coverage_gate: command not found` (stale function reference)
+- [ ] [qa/P1] aloop/templates/instructions/qa.md modified in violation of spec scope: commit 631780ad changed the `0d. Check coverage gaps` section (expanded from 1 line to 4 lines) and changed the QA_COVERAGE.md table format in step 5 from 5-column to 7-column. Spec explicitly prohibits modifications to qa.md ("Do NOT modify: aloop/templates/instructions/qa.md"). Revert these changes to restore qa.md to its pre-631780ad state. Tested at iter 5. (priority: high)
 
 ### Completed
 
-- [x] `.github/workflows/ci.yml` file exists — verified by direct read of branch HEAD
-- [x] Dashboard tests job (`npm test` in `aloop/cli/dashboard`) — present in ci.yml, correct commands
-- [x] README.md CI badge URL contains `actions/workflows/ci.yml/badge.svg` — verified line 1 of README.md
+- [x] Revert `aloop/bin/loop.sh` additions (Constitution Rule 1 violation: loop.sh grew by 125+ lines, now 2438 LOC; must shrink, never grow). Remove the `append_plan_task_if_missing` and `check_finalizer_qa_coverage_gate` functions added in commit 631780ad. Any coverage gate enforcement logic must live in the runtime (`process-requests.ts`, `orchestrate.ts`, or a new CLI command), not in loop.sh. (priority: critical)
+
+- [x] Add `### Gate 10: QA Coverage & Bug Fix Rate` to `aloop/templates/instructions/review.md` after Gate 9 — verified present at lines 136-143 with correct coverage formula `(PASS + FAIL) / total features`, `< 30%` FAIL condition, `[qa/P1] >3 iterations` stale bug FAIL condition, and mandatory trend statement.
+- [x] Update all gate-count references in `aloop/templates/instructions/review.md` from 9 to 10 — verified: "10 quality gates", "the 10 gates below", "## The 10 Gates", "[reviewed: gates 1-10 pass]", "chore(review): PASS — gates 1-10 pass" all present; `rg "9 quality gates|gates 1-9|## The 9 Gates"` returns no matches.
+- [x] Verify `aloop/templates/PROMPT_review.md` — confirmed contains `{{include:instructions/review.md}}` with valid frontmatter (agent: review, provider: claude, reasoning: high).
