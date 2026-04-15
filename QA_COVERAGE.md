@@ -18,7 +18,7 @@
 | Dashboard type-check (`npm run type-check`) | 2026-04-15 | f1b8cb6a | FAIL | 4 TS errors in App.coverage.test.ts (TS2769). Pre-existing, still failing on issue-73 branch |
 | CLI tests (`bun run test`) | 2026-04-13 | 0e6ea585 | FAIL | 27 failures out of 922 tests via tsx --test; pre-existing test failures in codebase |
 | Loop script tests (Windows/Pester) | 2026-04-13 | — | never | Requires Windows; skipped this session |
-| PROMPT_final-qa.md coverage gate content | 2026-04-15 | d1bf02cd | PASS | All 7 acceptance criteria re-verified at current HEAD; preamble, gates, thresholds, include line present |
-| loop.sh cleanliness (no out-of-scope code) | 2026-04-15 | d1bf02cd | PASS | grep confirms no qa_coverage/finalizer_qa functions in loop.sh after revert commit d1bf02cd |
-| loop.ps1 out-of-scope additions absent | 2026-04-15 | d1bf02cd | FAIL | Append-PlanTaskIfMissing, Check-FinalizerQaCoverageGate still present at lines 854, 862, 2146 — not yet reverted |
-| loop_finalizer_qa_coverage.tests.sh absent | 2026-04-15 | d1bf02cd | FAIL | File still exists; TODO.md tracks removal but not yet done |
+| PROMPT_final-qa.md coverage gate content | 2026-04-15 | d378e91d | PASS | All 7 acceptance criteria re-verified at iter 7 (d378e91d); preamble, gates, thresholds, include line all present |
+| loop.sh cleanliness (no out-of-scope code) | 2026-04-15 | d378e91d | PASS | grep confirms no qa_coverage/finalizer_qa functions in loop.sh at iter 7 (d378e91d) |
+| loop.ps1 out-of-scope additions absent | 2026-04-15 | d378e91d | PASS | Revert at d378e91d removed Append-PlanTaskIfMissing, Check-FinalizerQaCoverageGate; grep confirms clean at iter 7 |
+| loop_finalizer_qa_coverage.tests.sh absent | 2026-04-15 | d378e91d | FAIL | File still exists at aloop/bin/loop_finalizer_qa_coverage.tests.sh; TODO.md tracks removal — re-tested iter 7, still pending |

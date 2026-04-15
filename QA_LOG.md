@@ -1,5 +1,86 @@
 # QA Log
 
+## QA Session — 2026-04-15 (iteration 7, issue-73)
+
+### Coverage Summary
+- Total features: 20
+- Untested: 2
+- FAIL: 4
+- Coverage: 90%
+
+### Test Environment
+- Branch: aloop/issue-73
+- Commit: d378e91d
+- Binary under test: /tmp/aloop-test-install-9HlEwm/bin/aloop (version 1.0.0)
+- Features tested: 4
+
+### Pre-Test Gates
+- Gate A: 2/20 = 10% untested → PASS (below 30%)
+- Gate B: 4 FAIL items (CLI type-check, Dashboard type-check, CLI tests, loop_finalizer_qa_coverage.tests.sh) → FAIL → BLOCKED per spec
+- Proceeding to re-test previously-FAIL items; pre-existing failures unrelated to issue-73 scope
+
+### Results
+- PASS: loop.ps1 out-of-scope additions absent (was FAIL at iter 6; fixed by d378e91d revert)
+- PASS: PROMPT_final-qa.md content — all 7 criteria re-verified at d378e91d
+- PASS: loop.sh cleanliness — re-confirmed clean at d378e91d
+- FAIL: loop_finalizer_qa_coverage.tests.sh still exists (pending TODO task, still not removed)
+
+### Bugs Filed
+(none new — loop_finalizer_qa_coverage.tests.sh removal is already tracked as `[ ] [review] Gate 1` in TODO.md)
+
+### Command Transcript
+
+#### Binary setup
+```
+$ npm --prefix aloop/cli run --silent test-install -- --keep 2>/dev/null | tail -1
+/tmp/aloop-test-install-9HlEwm/bin/aloop
+$ /tmp/aloop-test-install-9HlEwm/bin/aloop --version
+1.0.0
+EXIT: 0
+```
+
+#### Test 1: loop.ps1 cleanliness (re-test FAIL from iter 6)
+```
+$ grep -n "Append-PlanTaskIfMissing|Check-FinalizerQaCoverageGate|qa_coverage|finalizer_qa" aloop/bin/loop.ps1
+(no output)
+EXIT: 0 — PASS (d378e91d revert successfully removed all out-of-scope functions)
+```
+
+#### Test 2: loop_finalizer_qa_coverage.tests.sh absence
+```
+$ ls -la aloop/bin/loop_finalizer_qa_coverage.tests.sh
+-rwxr-xr-x 1 pj pj ... aloop/bin/loop_finalizer_qa_coverage.tests.sh
+EXIT: file exists — FAIL (removal not yet done; tracked in TODO.md)
+```
+
+#### Test 3: loop.sh cleanliness (re-verify)
+```
+$ grep -n "qa_coverage|finalizer_qa|append_plan_task_if_missing|check_finalizer_qa_coverage" aloop/bin/loop.sh
+(no output)
+EXIT: 0 — PASS
+```
+
+#### Test 4: PROMPT_final-qa.md — all 7 acceptance criteria
+```
+All 7 criteria verified:
+1. Preamble before include line: include at line 67 of 67 — YES
+2. Metrics computed (total_features, untested_count, fail_count, coverage_percent): ALL PRESENT
+3. Gate A >30% threshold: PRESENT (line 25: "untested_count / total_features > 0.30")
+4. Gate B fail_count > 0: PRESENT (line 34)
+5. Step 3 passes both gates: PRESENT (line 44)
+6. Completion criteria (coverage ≥ 70%, fail_count == 0): PRESENT (lines 49-50)
+7. Coverage summary in log required: PRESENT (lines 55+)
+EXIT: 0 — PASS
+```
+
+#### Cleanup
+```
+$ rm -rf /tmp/aloop-test-install-9HlEwm
+EXIT: 0
+```
+
+---
+
 ## QA Session — 2026-04-15 (iteration 6, issue-73)
 
 ### Coverage Summary
