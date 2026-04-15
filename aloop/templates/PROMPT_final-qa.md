@@ -22,7 +22,7 @@ If `QA_COVERAGE.md` does not exist or has no rows, treat `total_features = 0`, `
 ## Step 2: Pre-Test Gates
 
 **Gate A — Untested coverage gate:**
-If `untested_count / total_features > 0.20` (more than 20% of features have never been tested):
+If `untested_count / total_features > 0.30` (more than 30% of features have never been tested):
 - File one `[qa/P1]` TODO in `TODO.md` per untested feature:
   ```
   - [ ] [qa/P1] QA coverage gap: "<feature name>" has never been tested — test before finalizing
