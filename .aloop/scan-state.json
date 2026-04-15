@@ -1,20 +1,21 @@
 {
-  "scan_at": "2026-04-15T06:17:00Z",
-  "iteration": 143,
+  "scan_at": "2026-04-15T06:21:00Z",
+  "iteration": 144,
   "active_child": {
     "session": "orchestrator-20260321-172932-issue-73-20260415-060315",
     "issue": 73,
     "pid": 52469,
     "alive": true,
     "phase": "build",
-    "iteration": 2,
+    "iteration": 6,
+    "cycle_position": 5,
     "branch": "aloop/issue-73",
     "latest_commit": "d97b983c chore: save work-in-progress before rebase",
-    "status_updated_at": "2026-04-15T06:17:00Z",
+    "status_updated_at": "2026-04-15T06:20:35Z",
     "review_failures": [],
     "resolved_since_last_scan": [],
     "known_issues": [
-      "allTasksMarkedDone=true from prior run — work already complete, running to get PR created via review phase"
+      "allTasksMarkedDone=true — work complete, progressing through build cycle toward QA (cyclePosition=5 of 8, next: QA)"
     ]
   },
   "queued_children": [
@@ -22,10 +23,15 @@
       "session": "orchestrator-20260321-172932-issue-85-20260415-060149",
       "issue": 85,
       "branch": "aloop/issue-85",
-      "phase": "build",
+      "pr": 311,
+      "phase": "review",
       "prev_phase": "plan",
       "iteration": 1,
-      "notes": "Plan complete. Ready for build phase. Queued after #73."
+      "pr_gates": {
+        "merge_conflicts": "pass",
+        "ci_checks": "pending"
+      },
+      "notes": "Plan complete, PR #311 open. CI checks still running (as of 06:17 UTC). No loop.sh active — waiting on CI to pass for merge."
     }
   ],
   "cleared_children": [
@@ -33,13 +39,20 @@
       "session": "orchestrator-20260321-172932-issue-157-20260414-184129",
       "issue": 157,
       "pid": 422016,
-      "cleared_reason": "PID dead, stopped state. Gate 7 blocker (libatk missing in container). Requires human intervention.",
-      "review_failures": ["Gate 7: libatk missing in container (E2E infra blocker)"],
+      "cleared_reason": "PID dead. Gate 7 (Playwright infra): libatk-1.0.so.0 missing in container, sudo apt-get blocked by sandbox flags. PR #310 CI also failing (CLI Tests, Type Check, Loop Script Tests, Dashboard E2E). Requires human intervention.",
       "pr": 310,
-      "action_required": "Human must fix libatk/Playwright infra in container to unblock Gate 7"
+      "pr_gates": {
+        "merge_conflicts": "pass",
+        "ci_checks": "fail"
+      },
+      "action_required": "Human must install Playwright browser deps in sandbox (libatk-1.0.so.0) OR explicitly waive Gate 7 for issue #157. Do NOT redispatch until resolved."
     }
   ],
   "capacity": {"cap": 1, "occupied": 1, "available": 0},
+  "pending_redispatches": 4,
+  "state_corrections": [
+    "active.json stale (dead PID 422016 for issue #157 still listed) — state-correction-active-20260415T062100Z request written to requests/"
+  ],
   "provider_status": {
     "claude": "ok",
     "opencode": "cooldown",
@@ -47,5 +60,5 @@
     "codex": "degraded_auth"
   },
   "action": "monitor_only",
-  "notes": "Child #73 PID 52469 ALIVE — plan iter 1 complete, now in build iter 2 (claude/opus, stuck=0). No blockers. Issue #85 queued. Cap=1 full."
+  "notes": "Child #73 PID 52469 ALIVE — build iter=6, cyclePosition=5 (final build pass, approaching QA). allTasksMarkedDone=true. No capacity for new dispatches. Issue #85 PR #311 awaiting CI. Issue #157 blocked on human (Gate 7)."
 }
