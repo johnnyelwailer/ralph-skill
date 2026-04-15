@@ -113,3 +113,32 @@ Prior QA iterations confirmed 452 CLI tests and 148 dashboard tests pass. Pre-ex
 - Gate 9: README not affected by this prompt-only change.
 
 ---
+
+## Review — 2026-04-15 — commit cc4c1ae6..c712f724
+
+**Verdict: FAIL** (1 finding — existing `[review]` task in TODO.md remains open)
+**Scope:** `aloop/bin/loop.ps1` (reverted), `QA_COVERAGE.md`, `QA_LOG.md`, `TODO.md`
+
+### Gate 1: Spec Compliance — FAIL
+
+**Finding #1 (loop.ps1) — RESOLVED.** Commit `d378e91d` correctly reverted `Append-PlanTaskIfMissing`, `Check-FinalizerQaCoverageGate`, and all call sites. Diff against master shows only a single blank line artifact at line 854 — acceptable.
+
+**Finding #2 (loop_finalizer_qa_coverage.tests.sh) — STILL PRESENT.** The file exists at `aloop/bin/loop_finalizer_qa_coverage.tests.sh` (163 lines). It loads and tests `append_plan_task_if_missing` and `check_finalizer_qa_coverage_gate` from `loop.sh` via `extract_func`/`eval`. These functions were never durably added to `loop.sh` (they were reverted). The file is orphaned — running it would extract empty function bodies and immediately fail at `check_finalizer_qa_coverage_gate`. It is entirely out of scope per TASK_SPEC.md (only `PROMPT_final-qa.md` is in scope) and violates Constitution Rule 1 (loop-adjacent growth). The `[review]` task in TODO.md line 9 is still open: `[ ] [review] Gate 1: Remove aloop/bin/loop_finalizer_qa_coverage.tests.sh`.
+
+### Gates 2, 3, 4 — N/A
+
+No new code in this iteration; the only source change is the loop.ps1 revert.
+
+### Gate 4: Code Quality — Minor note
+
+`loop.ps1` line 854 has an extra blank line (two blank lines between `Check-AllTasksComplete` and `Get-CurrentTask`). Whitespace artifact from revert, not worth a dedicated finding.
+
+### Gate 5: Integration — Pass (deferred)
+
+Prior QA iterations confirmed 452 CLI + 148 dashboard tests pass. Revert does not affect the test suite.
+
+### Gates 6, 7, 8, 9 — N/A / Pass
+
+`PROMPT_final-qa.md` (the actual deliverable) is unchanged and was confirmed correct in prior review — all 7 content acceptance criteria still pass.
+
+---
