@@ -5,8 +5,8 @@
 ### Up Next
 
 - [x] Revert out-of-scope `loop.sh` additions: remove `append_plan_task_if_missing()`, `check_finalizer_qa_coverage_gate()`, and all calls to them (added in commits bc3eaf85 and 64ec8e1b). CONSTITUTION Rule 1 forbids any additions to loop.sh; SPEC explicitly lists loop.sh as out of scope. The prompt-level gate in PROMPT_final-qa.md is sufficient — no shell enforcement is needed.
-- [ ] Revert out-of-scope `loop.ps1` additions: remove `Append-PlanTaskIfMissing`, `Check-FinalizerQaCoverageGate`, and all calls to them. Same rationale as loop.sh.
-- [ ] Remove `aloop/bin/loop_finalizer_qa_coverage.tests.sh`: this file tests the out-of-scope loop.sh functions; it has no purpose once those functions are removed.
+- [ ] Revert out-of-scope `loop.ps1` additions: remove `Append-PlanTaskIfMissing`, `Check-FinalizerQaCoverageGate`, and all calls to them. Same rationale as loop.sh. [qa iter 6: confirmed still present at lines 854, 862, 2146 — commit d1bf02cd]
+- [ ] Remove `aloop/bin/loop_finalizer_qa_coverage.tests.sh`: this file tests the out-of-scope loop.sh functions; it has no purpose once those functions are removed. [qa iter 6: confirmed still exists — commit d1bf02cd]
 
 ### Completed
 
