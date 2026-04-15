@@ -1,5 +1,68 @@
 # QA Log
 
+## QA Session — 2026-04-15 (iteration 5, issue-73)
+
+### Coverage Summary
+- Total features: 16
+- Untested: 2
+- FAIL: 3
+- Coverage: 87.5%
+
+### Test Environment
+- Branch: aloop/issue-73
+- Commit: f1b8cb6a
+- Binary under test: N/A — testing prompt template content and loop.sh gate behavior
+- Features tested: 4
+
+### Results
+- PASS: PROMPT_final-qa.md acceptance criteria (all 7 checked)
+- PASS: Finalizer QA coverage gate test script (4/4 scenarios pass)
+- PASS: Gate thresholds match spec (30% untested, 0 FAIL)
+- FAIL: Dashboard type-check — 4 TS errors in App.coverage.test.ts (pre-existing, not caused by issue-73)
+
+### Feature 1: PROMPT_final-qa.md Content Verification
+Verified all 7 acceptance criteria from SPEC.md:
+1. ✅ Finalizer-specific preamble before `{{include:instructions/qa.md}}` — present (lines 8-65 before line 67)
+2. ✅ Instructs to read QA_COVERAGE.md and compute total_features, untested_count, fail_count, coverage_percent — Step 1
+3. ✅ Gate A: untested > 30% → file qa/P1 TODOs per untested feature and stop — lines 25-31
+4. ✅ Gate B: fail_count > 0 → file qa/P1 TODOs per FAIL feature and stop — lines 34-40
+5. ✅ Normal QA proceeds only when fail_count == 0 and untested ≤ 30% — Step 3 (lines 42-44)
+6. ✅ Completion requires coverage ≥ 70%, 0 FAIL, no [qa/P1] TODOs — lines 48-51
+7. ✅ Coverage summary required in QA_LOG.md — lines 55-63
+8. ✅ Shared include preserved — `{{include:instructions/qa.md}}` on line 67
+
+### Feature 2: Finalizer QA Coverage Gate Tests (loop.sh)
+```
+$ bash aloop/bin/loop_finalizer_qa_coverage.tests.sh
+PASS: finalizer QA gate passes at <=30% untested and 0 fail
+PASS: finalizer QA gate blocks when untested >30%
+PASS: finalizer QA gate blocks when FAIL rows exist
+PASS: finalizer QA gate skips enforcement when QA_COVERAGE.md is missing
+All finalizer QA coverage gate tests passed.
+EXIT: 0 → PASS
+```
+
+### Feature 3: Coverage Formula Consistency
+Spec says: `coverage_percent = ((PASS + FAIL) / total_features) * 100`
+Prompt says: `coverage_percent = ((total_features - untested_count) / total_features) * 100`
+These are mathematically equivalent since PASS + FAIL = total_features - untested_count.
+Result: PASS
+
+### Feature 4: Dashboard type-check regression check
+```
+$ cd aloop/cli/dashboard && npm run type-check
+4 TS errors in App.coverage.test.ts (TS2769 — overload mismatch)
+EXIT: 2 → FAIL (pre-existing, not caused by issue-73 changes)
+```
+
+### Scope Observation
+Commits bc3eaf85 and 64ec8e1b modify `aloop/bin/loop.sh` (adding QA coverage gate function + tests). The SPEC explicitly lists loop.sh as out-of-scope. However, the added gate logic is functional and all tests pass. This is noted as an observation for the review agent, not filed as a QA bug since the behavior works correctly.
+
+### Bugs Filed
+(none new — all FAIL items are pre-existing from prior sessions, not caused by issue-73)
+
+---
+
 ## QA Session — 2026-04-13 (iteration 4)
 
 ### Test Environment

@@ -15,6 +15,8 @@
 | Loop bash script tests (from repo root) | 2026-04-13 | 0e6ea585 | PASS | loop.bats (15/15), json_escape, provider_health, branch_coverage all pass; provenance/path_hardening/finalizer have internal FAILs but exit 0 (pre-existing) |
 | Dashboard E2E tests | 2026-04-13 | — | never | Requires Playwright; skipped this session |
 | CLI type-check (`bun run type-check`) | 2026-04-13 | 0e6ea585 | FAIL | tsc --noEmit exits code 2: 2 errors in process-requests.ts (TS2367, TS2304). Bug filed [qa/P1] |
-| Dashboard type-check (`npm run type-check`) | 2026-04-13 | 0e6ea585 | FAIL | tsc exits code 2: missing Vitest globals in App.coverage.test.ts, ArtifactEntry shape mismatch in App.test.tsx. Bug filed [qa/P1] |
+| Dashboard type-check (`npm run type-check`) | 2026-04-15 | f1b8cb6a | FAIL | 4 TS errors in App.coverage.test.ts (TS2769). Pre-existing, still failing on issue-73 branch |
 | CLI tests (`bun run test`) | 2026-04-13 | 0e6ea585 | FAIL | 27 failures out of 922 tests via tsx --test; pre-existing test failures in codebase |
 | Loop script tests (Windows/Pester) | 2026-04-13 | — | never | Requires Windows; skipped this session |
+| PROMPT_final-qa.md coverage gate content | 2026-04-15 | f1b8cb6a | PASS | All 7 acceptance criteria verified; preamble, gates, thresholds, include line present |
+| Finalizer QA coverage gate (loop.sh) | 2026-04-15 | f1b8cb6a | PASS | 4/4 test scenarios pass: ≤30% untested, >30% blocks, FAIL blocks, missing file skips |
