@@ -6,9 +6,15 @@
 
 ### Up Next
 
+- [ ] [qa/P1] Dashboard type-check: 4 TS2769 regressions in App.coverage.test.ts — `sessionCost` now required in Sidebar props but test doesn't pass it (line 636); `TooltipProvider` now requires `children` but tests pass `{}` (lines 636, 674, 695). Previous pre-existing set had 3 TS2769 errors (different lines/content); these are new regressions from component extraction. Fix: update App.coverage.test.ts to pass `sessionCost` to Sidebar and `children` to TooltipProvider wrappers. Tested at iter 28, commit 3b2d16df. (priority: high)
+
+- [ ] [qa/P2] aloop start: no staleness warning when version.json commit differs from repo HEAD — spec says "warns when installed commit differs from repo HEAD"; tested by writing `{"commit":"abc12345","installed_at":"2026-01-01T00:00:00Z"}` to version.json and running `aloop start`; output showed no warning. Tested at iter 28, commit 3b2d16df. (priority: medium)
+
+- [ ] [qa/P2] aloop setup non-interactive: no --data-privacy flag — spec says "non-interactive mode: all options as flags"; ZDR/data-privacy option has no corresponding flag in `aloop setup --help`; cannot set data_privacy to 'public' or override ZDR config via CLI flags. Tested at iter 28, commit 3b2d16df. (priority: medium)
+
 - [x] [review] Revert SPEC.md to HEAD — staged modification gutted spec from 4086 → 40 lines (WT-1); run `git restore HEAD -- SPEC.md` (priority: critical)
 
-- [ ] [review] Fix ArtifactViewer imports (F3) — `ArtifactViewer.tsx` and `ArtifactViewer.test.tsx` import types via `../../AppView`; change `type ArtifactEntry`/`type ManifestPayload` to import from `@/lib/types`, `isImageArtifact`/`artifactUrl` from `@/lib/format`; `findBaselineIterations`/`LogEntryRow` stay in AppView for now (priority: critical)
+- [x] [review] Fix ArtifactViewer imports (F3) — `ArtifactViewer.tsx` and `ArtifactViewer.test.tsx` import types via `../../AppView`; change `type ArtifactEntry`/`type ManifestPayload` to import from `@/lib/types`, `isImageArtifact`/`artifactUrl` from `@/lib/format`; `findBaselineIterations`/`LogEntryRow` stay in AppView for now (priority: critical)
 
 - [ ] [review] Add test coverage for 5 untested `format.ts` functions (F1) — add to `format.test.ts`: `formatTime`, `formatTimeShort`, `extractIterationUsage` (null/NaN/zero-cost branches), `parseManifest` (nested parsing + conditionals), `parseQACoveragePayload` (PASS/FAIL/UNTESTED normalization); also add `parseLogLine` branches: error events, verdict events, commitHash path, filesChanged array (priority: high)
 

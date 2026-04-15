@@ -1,5 +1,143 @@
 # QA Log
 
+## QA Session — 2026-04-15 (iteration 28, issue-6)
+
+### Test Environment
+- Branch: aloop/issue-6 @ 3b2d16df
+- Binary under test: /tmp/aloop-test-install-ktiGKe/bin/aloop (v1.0.0)
+- Dashboard: aloop/cli/dashboard/
+- Features tested: 5
+- Isolated test dirs: /tmp/qa-test-zdr, /tmp/qa-home-zdr, /tmp/qa-home-version, /tmp/qa-home-version2
+
+### Results
+- PASS: Agent command files — all 6 present (claude + copilot × start/setup/dashboard); start.md is thin wrapper; setup.md full discovery+interview; dashboard.md delegates to CLI
+- PASS: `aloop update` — writes version.json with commit+installed_at; JSON output works; 105 files updated
+- PASS: ArtifactViewer.tsx type errors FIXED — 5 TS2459/TS7006 errors from prior session resolved (imports now correct)
+- PARTIAL: Dashboard type-check — 4 TS2769 regressions introduced (sessionCost/TooltipProvider); new bug filed
+- PARTIAL: aloop setup ZDR — privacy_policy.zdr_enabled + data_classification written to config; but no --data-privacy flag, no openrouter provider; new bug filed
+- FAIL: aloop start staleness check — no warning when version.json commit differs from HEAD; new bug filed
+- PARTIAL: Dashboard unit tests — 313/317 pass (improved from 309/317)
+
+### Bugs Filed
+- [qa/P1] Dashboard type-check: 4 TS2769 regressions in App.coverage.test.ts (sessionCost/TooltipProvider)
+- [qa/P2] aloop start: no staleness warning when version.json commit differs from HEAD
+- [qa/P2] aloop setup non-interactive: no --data-privacy flag (spec: "all options as flags")
+
+### Command Transcript
+
+#### Install CLI from source
+```
+$ npm --prefix aloop/cli ci  # success
+$ npm run build:server && build:shebang && build:templates && build:bin && build:agents  # all succeed
+$ node scripts/test-install.mjs --keep
+✓ test-install passed (prefix kept at /tmp/aloop-test-install-ktiGKe)
+/tmp/aloop-test-install-ktiGKe/bin/aloop
+
+$ /tmp/aloop-test-install-ktiGKe/bin/aloop --version
+1.0.0
+EXIT: 0 → PASS
+```
+
+#### Agent command files
+```
+$ ls claude/commands/aloop/
+dashboard.md  devcontainer.md  orchestrate.md  setup.md  start.md  status.md  steer.md  stop.md
+EXIT: all 3 spec-required files present ✓
+
+$ ls copilot/prompts/
+aloop-dashboard.prompt.md  aloop-setup.prompt.md  aloop-start.prompt.md  [+ others]
+EXIT: all 3 spec-required files present ✓
+
+Verified start.md: thin wrapper (translate args → run `aloop start` → report result)
+Verified setup.md: full discovery+interview flow with 4 parallel subagents
+Verified dashboard.md: delegates to `aloop dashboard` CLI
+```
+
+#### aloop setup ZDR config
+```
+$ aloop setup --project-root /tmp/qa-test-zdr --home-dir /tmp/qa-home-zdr --non-interactive --providers anthropic,openrouter
+Error: Unknown provider(s): anthropic, openrouter (valid: claude, codex, gemini, copilot, opencode)
+EXIT: 1 → openrouter not a valid provider
+
+$ aloop setup --project-root /tmp/qa-test-zdr --home-dir /tmp/qa-home-zdr --non-interactive --providers claude --mode loop
+Running setup in non-interactive mode...
+Setup complete. Config written to: /tmp/qa-home-zdr/.aloop/projects/b49d40ef/config.yml
+EXIT: 0
+
+$ cat /tmp/qa-home-zdr/.aloop/projects/b49d40ef/config.yml
+# Contains:
+#   data_privacy: 'private'
+#   privacy_policy:
+#     data_classification: 'private'
+#     zdr_enabled: true
+#     require_data_retention_safe: true
+→ PARTIAL: ZDR stored correctly; but no --data-privacy flag to control in non-interactive mode
+```
+
+#### aloop update + version.json
+```
+$ aloop update --repo-root <worktree> --home-dir /tmp/qa-home-version
+Updated ~/.aloop from <worktree>
+Version: 3b2d16df (2026-04-15T07:07:52Z)
+Files updated: 105
+EXIT: 0 → PASS
+
+$ cat /tmp/qa-home-version/.aloop/version.json
+{"commit":"3b2d16df","installed_at":"2026-04-15T07:07:52Z"}
+→ version.json written with commit + installed_at ✓
+
+$ aloop update --output json ...
+{"success":true,"commit":"3b2d16df","installedAt":"...","updated":[...105 files...],"errors":[]}
+→ JSON output works ✓
+```
+
+#### aloop start staleness check
+```
+$ echo '{"commit":"abc12345","installed_at":"2026-01-01T00:00:00Z"}' > /tmp/qa-home-version2/.aloop/version.json
+$ aloop start --project-root /tmp/qa-test-zdr --home-dir /tmp/qa-home-version2 --in-place
+Aloop loop started!
+  Session: qa-test-zdr-20260415-070915
+  ...
+Warnings:
+  - Failed to auto-open dashboard URL...
+  - Failed to open terminal monitor fallback...
+EXIT: 0 — no staleness warning despite version.json commit (abc12345) ≠ HEAD (3b2d16df)
+→ FAIL: staleness check not triggered
+(killed PID 305860 + cleaned up session dir)
+```
+
+#### ArtifactViewer.tsx type-check re-test
+```
+$ npm run type-check  (aloop/cli/dashboard)
+# 4 errors total — NO ArtifactViewer errors
+# Remaining errors all in App.coverage.test.ts:
+#   (636,65) TS2769: TooltipProvider missing children
+#   (636,92) TS2769: Sidebar missing sessionCost
+#   (674,43) TS2769: TooltipProvider missing children
+#   (695,43) TS2769: TooltipProvider missing children
+# Prior session had 8 errors (5 ArtifactViewer + 3 App.coverage TS2769)
+# ArtifactViewer errors: FIXED ✓
+# New regressions (sessionCost/TooltipProvider): bug filed [qa/P1]
+EXIT: 2 → FAIL (new regressions)
+```
+
+#### Dashboard unit tests
+```
+$ npm test (aloop/cli/dashboard)
+Test Files: 2 failed | 22 passed (24)
+Tests: 4 failed | 313 passed (317)
+→ PARTIAL: improved from 8 failures (prior session) to 4; remaining failures in App.coverage tests
+```
+
+### Cleanup
+```
+$ kill 303508 305860  # background loop processes
+$ rm -rf /tmp/qa-test-zdr /tmp/qa-home-zdr /tmp/qa-home-zdr2 /tmp/qa-home-version /tmp/qa-home-version2
+$ rm -rf /tmp/aloop-test-install-ktiGKe
+```
+
+---
+
 ## QA Session — 2026-04-14 (iteration 27, issue-6)
 
 ### Test Environment

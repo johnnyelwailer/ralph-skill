@@ -24,6 +24,11 @@
 | lib/types.ts extraction | 2026-04-14 | 2a0f9bf2 | PASS | 123 LOC, types exported; ansi.ts and format.ts import from it correctly |
 | CostDisplay.tsx extracted component | 2026-04-14 | 2a0f9bf2 | PASS | 95 LOC, tests pass in isolation |
 | ResponsiveLayout.tsx extracted component | 2026-04-14 | 2a0f9bf2 | PASS | 100 LOC, tests pass in isolation |
-| ArtifactViewer.tsx extracted component | 2026-04-14 | 2a0f9bf2 | FAIL | Tests pass but `npm run type-check` fails: ArtifactViewer.tsx imports ArtifactEntry/ManifestPayload from AppView (not exported); should import from lib/types. 5 TS errors. Bug filed [qa/P1] |
-| Dashboard unit tests (`npm test`) — full suite | 2026-04-14 | 2a0f9bf2 | PARTIAL | 309/317 pass; 8 fail in 3 App.coverage test files due to test isolation timeouts (pre-existing: master has 15 failures in 8 files) |
-| Dashboard type-check (`npm run type-check`) | 2026-04-14 | 2a0f9bf2 | FAIL | 8 TS errors: 5 new in ArtifactViewer.tsx/.test.tsx (bug filed [qa/P1]); 3 pre-existing TS2769 in App.coverage tests |
+| ArtifactViewer.tsx extracted component | 2026-04-15 | 3b2d16df | PASS | ArtifactViewer type errors FIXED (5 TS errors from prior session resolved); type-check now clean for ArtifactViewer |
+| Dashboard unit tests (`npm test`) — full suite | 2026-04-15 | 3b2d16df | PARTIAL | 313/317 pass; 4 fail in App.coverage tests (improved from 8 last session; pre-existing: master has 15 failures) |
+| Dashboard type-check (`npm run type-check`) | 2026-04-15 | 3b2d16df | FAIL | 4 TS2769 errors in App.coverage.test.ts: sessionCost missing in Sidebar props (line 636) + TooltipProvider missing children (lines 636, 674, 695). ArtifactViewer errors fixed. Bug filed [qa/P1] |
+| /aloop:start, /aloop:setup, /aloop:dashboard agent files (Claude) | 2026-04-15 | 3b2d16df | PASS | All 3 exist in claude/commands/aloop/; start.md is thin wrapper; setup.md has full discovery+interview flow; dashboard.md delegates to CLI |
+| /aloop:start, /aloop:setup, /aloop:dashboard agent files (Copilot) | 2026-04-15 | 3b2d16df | PASS | All 3 exist in copilot/prompts/; aloop-dashboard.prompt.md, aloop-setup.prompt.md, aloop-start.prompt.md confirmed |
+| aloop setup ZDR config (zdr_enabled, data_classification) | 2026-04-15 | 3b2d16df | PARTIAL | privacy_policy.zdr_enabled=true + data_classification=private written to config ✓; but no --data-privacy flag in non-interactive mode (spec: all options as flags) ✗; openrouter not a valid provider so OpenRouter ZDR config untestable ✗. Bug filed [qa/P2] |
+| aloop update + version.json | 2026-04-15 | 3b2d16df | PASS | `aloop update --repo-root <path>` writes version.json with commit+installed_at; --output json works; files updated correctly |
+| aloop start version.json staleness check | 2026-04-15 | 3b2d16df | FAIL | No staleness warning when version.json commit (abc12345) differs from HEAD; spec says "warns when installed commit differs from repo HEAD". Bug filed [qa/P2] |
