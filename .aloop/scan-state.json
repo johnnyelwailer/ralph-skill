@@ -1,21 +1,25 @@
 {
-  "scan_at": "2026-04-15T06:46:55Z",
-  "iteration": 149,
+  "scan_at": "2026-04-15T07:00:03Z",
+  "iteration": 152,
   "active_child": {
     "session": "orchestrator-20260321-172932-issue-73-20260415-062645",
     "issue": 73,
     "pid": 93695,
     "alive": true,
-    "phase": "review",
+    "phase": "review→build",
     "iteration": 14,
     "branch": "aloop/issue-73",
-    "latest_commit": "d1bf02cd revert: remove out-of-scope loop.sh finalizer QA coverage gate additions",
+    "latest_commit": "cc4c1ae6 chore(review): FAIL — 2 findings",
     "status_updated_at": "2026-04-15T06:38:24Z",
-    "review_failures": [],
+    "review_failures": [
+      "loop.ps1:919 threshold is '>20' (spec requires 30%); commit 3a2b184f not reverted",
+      "loop_finalizer_qa_coverage.tests.sh still exists with modified fixtures"
+    ],
     "resolved_since_last_scan": [],
     "known_issues": [
-      "build phase_retry_exhausted (provider cooldowns: opencode unknown, codex degraded_auth) — fell through to QA",
-      "Review agent running (iter=14, phase=review, state=running, updated_at=06:38:24Z). ~8.5m elapsed since last status update — within normal range for review phase."
+      "Review iter=14 FAILED (commit cc4c1ae6 at 06:47:40Z, 2 findings). Pipeline onFailure: goto build — iter 15 build expected next.",
+      "~12m since review FAIL commit; PID alive; loop transitioning to build. Normal timing.",
+      "build phase_retry_exhausted (provider cooldowns: opencode unknown, codex degraded_auth) — may affect build iter 15"
     ]
   },
   "queued_children": [
@@ -31,7 +35,7 @@
         "merge_conflicts": "pass",
         "ci_checks": "pending"
       },
-      "notes": "Plan complete, PR #311 open. CI check status unverifiable (gh blocked). No loop.sh active — waiting on CI to pass for merge."
+      "notes": "Plan complete, PR #311 open. CI check status unverifiable (gh blocked). Waiting on CI to pass for merge."
     }
   ],
   "cleared_children": [
@@ -50,9 +54,7 @@
   ],
   "capacity": {"cap": 1, "occupied": 1, "available": 0},
   "pending_redispatches": 0,
-  "state_corrections": [
-    "active.json updated: iter 13/qa → 14/review for issue #73 child session"
-  ],
+  "state_corrections": [],
   "provider_status": {
     "claude": "ok",
     "opencode": "cooldown",
@@ -60,5 +62,5 @@
     "codex": "degraded_auth"
   },
   "action": "monitor_only",
-  "notes": "iter=149: Child #73 PID 93695 ALIVE — review phase ongoing (iter=14, state=running, updated_at=06:38:24Z, ~8.5m elapsed). active.json corrected to iter=14/review. Issue #85 PR #311 CI still unverifiable (gh blocked). Issue #157 blocked on human (Gate 7 — Playwright deps). Capacity full (1/1), no dispatch."
+  "notes": "iter=152: #73 PID 93695 ALIVE. Review iter=14 FAILED (commit cc4c1ae6, 06:47:40Z) — 2 findings: (1) loop.ps1:919 threshold wrong, (2) loop_finalizer_qa_coverage.tests.sh still exists. Loop transitioning to build iter=15 per pipeline onFailure. ~12m since review commit — PID alive, normal. #85 PR #311 CI unverifiable (gh blocked). #157 blocked human. Capacity full (1/1), no dispatch."
 }
