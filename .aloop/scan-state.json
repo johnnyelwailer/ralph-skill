@@ -1,35 +1,15 @@
 {
-  "scan_at": "2026-04-14T21:54:14Z",
-  "iteration": 141,
-  "active_child": {
-    "session": "orchestrator-20260321-172932-issue-157-20260414-184129",
-    "issue": 157,
-    "pid": 422016,
-    "alive": true,
-    "phase": "build_claude",
-    "iteration": 86,
-    "branch": "aloop/issue-157",
-    "latest_commit": "24a71d5d chore(review): FAIL — 1 prior finding resolved (QACoverageBadge fetch branches), Gate 7 persists",
-    "status_updated_at": "2026-04-14T21:51:09Z",
-    "review_failures": [
-      "Gate 7: libatk missing in container (E2E infra blocker) — deferred"
-    ],
-    "resolved_since_last_scan": [],
-    "known_issues": [
-      "build_opencode phase_retry_exhausted (unsupported provider: '') — opencode on cooldown",
-      "codex degraded (auth error) — skipped by runner",
-      "33 pre-existing test failures (dashboard.test.ts, orchestrate.test.ts, process-requests.test.ts, github-monitor.test.ts)",
-      "16 pre-existing TypeScript errors in orchestrate.ts, process-requests.ts"
-    ]
-  },
+  "scan_at": "2026-04-15T06:20:15Z",
+  "iteration": 6,
+  "active_child": null,
   "parallel_scans": [],
-  "capacity": {"cap": 1, "occupied": 1, "available": 0},
+  "capacity": {"cap": 3, "occupied": 0, "available": 3},
   "provider_status": {
     "claude": "ok",
-    "opencode": "cooldown",
-    "gemini": "cooldown",
-    "codex": "degraded_auth"
+    "opencode": "unknown",
+    "gemini": "unknown",
+    "codex": "unknown"
   },
-  "action": "monitor_only",
-  "notes": "Child #157 iter=86/build_claude ALIVE (PID 422016, last activity 21:51:09Z). Review at iter=85 failed Gate 7 (libatk/Playwright infra) — deferred. Child cycled back to build (cyclePosition=1). No new commits since 24a71d5d. PR #310 OPEN. QA PASS 282/282 still holds. Gate 7 requires human intervention (libatk missing in container). Cap=1 full, no new dispatch."
+  "action": "blocked_on_human",
+  "notes": "Iteration 6 (5th consecutive BLOCKED_ON_HUMAN). All 13 issues remain status='Needs decomposition', dor_validated=false. requests/epic-decomposition.json unprocessed by runtime — type 'epic_decomposition' has no handler in requests.ts. Decomposition results exist at requests/processed/epic-decomposition-results.json but statuses never advanced to 'Needs refinement'. Pipeline.yml orchestrator_events (refine/estimate) never triggered. Human must set issue statuses to 'Needs refinement' in orchestrator.json or fix runtime to handle epic_decomposition type. Cap=3 available, no children dispatched."
 }
