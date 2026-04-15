@@ -1,18 +1,18 @@
 {
-  "scan_at": "2026-04-15T07:10:00Z",
-  "iteration": 153,
+  "scan_at": "2026-04-15T07:20:00Z",
+  "iteration": 154,
   "active_child": {
     "session": "orchestrator-20260321-172932-issue-73-20260415-062645",
     "issue": 73,
     "pid": 93695,
     "alive": true,
-    "phase": "plan",
-    "iteration": 15,
+    "phase": "build",
+    "iteration": 16,
     "branch": "aloop/issue-73",
-    "status_updated_at": "2026-04-15T07:02:20Z",
+    "status_updated_at": "2026-04-15T07:02:52Z",
     "known_issues": [
       "Review iter=14 FAILED (commit cc4c1ae6) — (1) loop.ps1:919 threshold wrong, (2) loop_finalizer_qa_coverage.tests.sh still exists.",
-      "Iter 15 plan phase started at 07:02:20Z. Normal progression."
+      "Iter 15 plan complete, iter=16 build running as of 07:02:52Z."
     ]
   },
   "queued_children": [
@@ -48,7 +48,7 @@
   "capacity": {"cap": 1, "occupied": 1, "available": 0},
   "pending_redispatches": 0,
   "state_corrections": [
-    "active.json updated: iter=14/review → iter=15/plan for #73"
+    "iter=154: #73 advanced from iter=15/plan → iter=16/build (status.json updated_at 07:02:52Z)"
   ],
   "provider_status": {
     "claude": "ok",
@@ -57,5 +57,5 @@
     "codex": "degraded_auth"
   },
   "action": "monitor_only",
-  "notes": "iter=153: #73 PID 93695 ALIVE, iter=15/plan started 07:02:20Z (review iter=14 FAIL → plan iter=15). #85 PR #311 CI unverifiable (gh blocked). #157 blocked human. Capacity full (1/1), no dispatch."
+  "notes": "iter=154: #73 PID 93695 ALIVE, iter=16/build running (plan iter=15 complete). #85 PR #311 CI unverifiable (gh blocked). #157 blocked human. Capacity full (1/1), no dispatch."
 }
