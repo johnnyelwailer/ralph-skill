@@ -1,21 +1,22 @@
 {
-  "scan_at": "2026-04-15T06:21:00Z",
-  "iteration": 144,
+  "scan_at": "2026-04-15T06:33:48Z",
+  "iteration": 145,
   "active_child": {
-    "session": "orchestrator-20260321-172932-issue-73-20260415-060315",
+    "session": "orchestrator-20260321-172932-issue-73-20260415-062645",
     "issue": 73,
-    "pid": 52469,
+    "pid": 93695,
     "alive": true,
-    "phase": "build",
-    "iteration": 6,
-    "cycle_position": 5,
+    "phase": "qa",
+    "iteration": 13,
     "branch": "aloop/issue-73",
-    "latest_commit": "d97b983c chore: save work-in-progress before rebase",
-    "status_updated_at": "2026-04-15T06:20:35Z",
+    "latest_commit": "d1bf02cd revert: remove out-of-scope loop.sh finalizer QA coverage gate additions",
+    "status_updated_at": "2026-04-15T06:32:20Z",
     "review_failures": [],
     "resolved_since_last_scan": [],
     "known_issues": [
-      "allTasksMarkedDone=true — work complete, progressing through build cycle toward QA (cyclePosition=5 of 8, next: QA)"
+      "build phase_retry_exhausted (provider cooldowns: opencode unknown, codex degraded_auth) — fell through to QA",
+      "QA already passed in prior session (73ccf0e7 chore(qa): QA session iter 5 — acceptance criteria verified). Current QA is re-verification.",
+      "Review phase (PR creation) pending after QA completes"
     ]
   },
   "queued_children": [
@@ -31,7 +32,7 @@
         "merge_conflicts": "pass",
         "ci_checks": "pending"
       },
-      "notes": "Plan complete, PR #311 open. CI checks still running (as of 06:17 UTC). No loop.sh active — waiting on CI to pass for merge."
+      "notes": "Plan complete, PR #311 open. CI check status unverifiable (gh blocked). No loop.sh active — waiting on CI to pass for merge."
     }
   ],
   "cleared_children": [
@@ -46,12 +47,19 @@
         "ci_checks": "fail"
       },
       "action_required": "Human must install Playwright browser deps in sandbox (libatk-1.0.so.0) OR explicitly waive Gate 7 for issue #157. Do NOT redispatch until resolved."
+    },
+    {
+      "session": "orchestrator-20260321-172932-issue-73-20260415-060315",
+      "issue": 73,
+      "pid": 52469,
+      "cleared_reason": "PID dead. Session completed through QA (rattail chain complete, phase=qa, state=completed). Redispatched as new session 062645.",
+      "superseded_by": "orchestrator-20260321-172932-issue-73-20260415-062645"
     }
   ],
   "capacity": {"cap": 1, "occupied": 1, "available": 0},
-  "pending_redispatches": 4,
+  "pending_redispatches": 0,
   "state_corrections": [
-    "active.json stale (dead PID 422016 for issue #157 still listed) — state-correction-active-20260415T062100Z request written to requests/"
+    "active_child updated from stale session 060315 (PID 52469, dead) to new session 062645 (PID 93695, alive, phase=qa)"
   ],
   "provider_status": {
     "claude": "ok",
@@ -60,5 +68,5 @@
     "codex": "degraded_auth"
   },
   "action": "monitor_only",
-  "notes": "Child #73 PID 52469 ALIVE — build iter=6, cyclePosition=5 (final build pass, approaching QA). allTasksMarkedDone=true. No capacity for new dispatches. Issue #85 PR #311 awaiting CI. Issue #157 blocked on human (Gate 7)."
+  "notes": "Child #73 PID 93695 ALIVE — new session dispatched (iter=8 scan). Currently in QA (iter=13) after build phase exhausted providers. Prior session's QA already verified acceptance criteria. Expecting QA→review→PR creation. Issue #85 PR #311 awaiting CI (gh blocked). Issue #157 blocked on human (Gate 7). Capacity full (1/1)."
 }
