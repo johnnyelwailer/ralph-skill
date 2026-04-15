@@ -1,5 +1,48 @@
 # Review Log
 
+## Review — 2026-04-15 — commit 0625250e..8f5fffc6
+
+**Verdict: FAIL** (3 prior findings unresolved: F1, F2, [qa/P1])
+**Scope:** SPEC.md (restore), QA_COVERAGE.md, QA_LOG.md, TODO.md
+
+### Gate 1: Spec Compliance — PARTIAL
+
+- WT-1 **resolved**: SPEC.md restored to 4086 lines via `git checkout HEAD -- SPEC.md` (commit `3b2d16df`). Correct.
+- F3 **resolved**: `AppView.tsx` now re-exports `ArtifactEntry`, `ManifestPayload`, `IterationUsage` from `@/lib/types` (line 45) and `isImageArtifact`, `artifactUrl`, `parseManifest` from `@/lib/format` (line 51). `ArtifactViewer.tsx` imports via `../../AppView` — still indirect but no longer broken. Type-check no longer reports TS2459 errors for ArtifactViewer. Marked `[x]` in TODO.md correctly.
+- F1 (5 untested `format.ts` functions) — still open, still in TODO.md as `[review]` task.
+- F2 (`format.ts` 347 LOC) — still open, still in TODO.md as `[review]` task.
+
+### Gate 2: Test Depth — FAIL
+
+F1 unresolved. `format.test.ts` has no `describe` blocks for `formatTime`, `formatTimeShort`, `extractIterationUsage`, `parseManifest`, or `parseQACoveragePayload`. `parseLogLine` tests still cover only happy path + plain text — error events, verdict events, `commitHash` path, `filesChanged` array branches all untested.
+
+### Gate 3: Coverage — FAIL
+
+Same as F1. Five exported functions have 0% coverage; `parseLogLine` branch coverage well below 80%.
+
+### Gate 4: Code Quality — PASS
+
+No new source code in these two commits — only admin/QA files (SPEC.md restore, QA_LOG.md, QA_COVERAGE.md, TODO.md). No dead code or quality issues.
+
+### Gate 5: Integration — FAIL
+
+- `npm test`: 307/317 pass, **10 failures** (up from 8 pre-existing in prior review). 2 new failures match [qa/P1]: `App.coverage.test.ts` failures due to missing `sessionCost` prop on Sidebar and missing `children` on TooltipProvider wrapper.
+- `npm run type-check`: exits 2 — 4 TS2769 errors in `App.coverage.test.ts` (lines 636, 636, 674, 695). These are the [qa/P1] regressions filed in commit `8f5fffc6`.
+
+### Gate 6: Proof — N/A (acceptable skip)
+
+Commits are admin/QA work only (SPEC.md restore, QA documentation). No observable output changes. QA_LOG.md documents the QA session results. Proof skip is the expected correct outcome.
+
+### Gates 7, 8, 9 — N/A
+
+No CSS/layout changes, no dependency updates, no docs changes needed.
+
+### Summary
+
+WT-1 and F3 are resolved. F1, F2, and [qa/P1] remain open and are tracked in TODO.md. No new `[review]` tasks needed — all open issues are already queued. Next build iteration must address [qa/P1] (TS2769 regressions) before F1 and F2.
+
+---
+
 ## Review — 2026-04-14 — commit f5f5dcd8..0ca6a950 + working tree
 
 **Verdict: FAIL** (3 prior findings still open; 7 new findings in working tree)
