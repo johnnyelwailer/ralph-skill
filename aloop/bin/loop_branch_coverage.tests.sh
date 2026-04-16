@@ -142,6 +142,8 @@ register_branch "phase_prereq.review.has_builds" "check_phase_prerequisites allo
 register_branch "branch_sync.conflict" "sync_base_branch queues PROMPT_merge.md and logs merge_conflict on conflict"
 register_branch "branch_sync.success" "sync_base_branch writes no queue file on clean merge"
 register_branch "branch_sync.fetch_fail" "sync_base_branch returns 0 without queuing when fetch fails"
+register_branch "queue.steer_reset" "run_queue_if_present resets CYCLE_POSITION to 0 for steering queue items"
+register_branch "queue.nonsteer_no_reset" "run_queue_if_present does not reset CYCLE_POSITION for non-steering queue items"
 
 RESOLVE_FUNC="$(extract_function resolve_healthy_provider)"
 SETUP_FUNC="$(extract_function setup_gh_block)"
@@ -227,6 +229,7 @@ write_log_entry() {
 write_status() { :; }
 update_provider_health_on_success() { :; }
 update_provider_health_on_failure() { :; }
+persist_loop_plan_state() { :; }
 
 declare -A STATUS_BY_PROVIDER=()
 declare -A COOLDOWN_BY_PROVIDER=()
@@ -1117,6 +1120,55 @@ fi
 
 unset -f git
 rm -rf "$SYNC_TMPDIR"
+
+# ---------------------------------------------------------------------------
+# Steering cyclePosition reset branches (run_queue_if_present)
+# ---------------------------------------------------------------------------
+
+STEER_TMPDIR="$(mktemp -d)"
+SESSION_DIR="$STEER_TMPDIR"
+WORK_DIR="$STEER_TMPDIR/work"
+mkdir -p "$WORK_DIR"
+mkdir -p "$SESSION_DIR/queue"
+: > "$COVERAGE_LOG_FILE"
+
+# Mock invoke_provider to always succeed so we test the success branch
+invoke_provider() { return 0; }
+
+# queue.steer_reset — steering item resets CYCLE_POSITION to 0 after success
+CYCLE_POSITION=5
+cat > "$SESSION_DIR/queue/10-PROMPT_steer.md" << 'EOF'
+Test steering prompt
+EOF
+if run_queue_if_present "claude"; then
+    if [ "$CYCLE_POSITION" -eq 0 ]; then
+        cover_branch "queue.steer_reset"
+        pass_case "run_queue_if_present resets CYCLE_POSITION to 0 after steering item"
+    else
+        fail_case "run_queue_if_present did not reset CYCLE_POSITION (got $CYCLE_POSITION, expected 0)"
+    fi
+else
+    fail_case "run_queue_if_present failed for steering item"
+fi
+
+# queue.nonsteer_no_reset — non-steering item does not reset CYCLE_POSITION
+CYCLE_POSITION=3
+cat > "$SESSION_DIR/queue/20-build.md" << 'EOF'
+Test non-steering prompt
+EOF
+if run_queue_if_present "claude"; then
+    if [ "$CYCLE_POSITION" -eq 3 ]; then
+        cover_branch "queue.nonsteer_no_reset"
+        pass_case "run_queue_if_present does not reset CYCLE_POSITION for non-steering item"
+    else
+        fail_case "run_queue_if_present unexpectedly reset CYCLE_POSITION (got $CYCLE_POSITION, expected 3)"
+    fi
+else
+    fail_case "run_queue_if_present failed for non-steering item"
+fi
+
+unset -f invoke_provider
+rm -rf "$STEER_TMPDIR"
 
 # ---------------------------------------------------------------------------
 # Final summary
