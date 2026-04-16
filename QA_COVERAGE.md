@@ -23,7 +23,10 @@
 | compile-loop-plan finalizer section | 2026-04-16 | d45e7abd | PASS | 35/35 tests pass; tests 30-32 cover finalizer from pipeline.yml, empty finalizer, no pipeline.yml |
 | loop.bats arg validation | 2026-04-16 | d45e7abd | PASS | 15/15 tests pass |
 | loop_branch_coverage.tests.sh | 2026-04-16 | d45e7abd | PASS | 52/52 branches pass; covers phase prerequisites, cycle resolution, provider health, queue, advance_cycle_position |
-| loop_finalizer_qa_coverage.tests.sh | 2026-04-16 | d45e7abd | FAIL | 4/4 tests FAIL: check_finalizer_qa_coverage_gate and append_plan_task_if_missing functions not found in loop.sh. Bug filed [qa/P1] |
-| Branch sync (pre-iteration git fetch+merge) | 2026-04-16 | d45e7abd | FAIL | Not implemented in loop.sh: no git fetch/merge, no merge_conflict event, no conflict queueing. Bug filed [qa/P1] |
+| loop_finalizer_qa_coverage.tests.sh | 2026-04-16 | c549c3e5 | FAIL | Still failing at iter 2: check_finalizer_qa_coverage_gate and append_plan_task_if_missing still absent from loop.sh. Bug filed [qa/P1] iter 1; still open. |
+| Branch sync (pre-iteration git fetch+merge) | 2026-04-16 | c549c3e5 | FAIL | Still not implemented at iter 2: no git fetch, no merge, no merge_conflict event in loop.sh. Bug filed [qa/P1] iter 1; still open. |
+| Steering queue cyclePosition reset | 2026-04-16 | c549c3e5 | FAIL | Not implemented: run_queue_if_present handles steering items (lines 2084–2085) but never resets CYCLE_POSITION=0 after success. Spec: "Steering queue execution resets cyclePosition to 0". Open TODO high task. |
+| Provider stderr capture in failure context | 2026-04-16 | c549c3e5 | PASS | tmp_stderr captured for all providers; LAST_PROVIDER_ERROR includes "Stderr:" on non-zero exit. Verified by loop_branch_coverage.tests.sh line 364 (52/52 pass). |
+| Queue override priority over cycle/finalizer | 2026-04-16 | c549c3e5 | PASS | run_queue_if_present called at line 2171, before resolve_iteration_mode and finalizer dispatch. If queue returns 0 (item found), loop continues — cycle skipped. |
 | Retry/cyclePosition tracking (MAX_PHASE_RETRIES, phase_retry_exhausted) | 2026-04-16 | d45e7abd | PASS | loop.sh has cyclePosition, advance_cycle_position, write_phase_retry_exhausted_entry, MAX_PHASE_RETRIES; no automated branch-coverage tests for these paths |
 | Finalizer events (entered/aborted/completed) | 2026-04-16 | d45e7abd | PASS | loop.sh emits finalizer_entered, finalizer_aborted, finalizer_completed; no automated branch-coverage tests for these paths |

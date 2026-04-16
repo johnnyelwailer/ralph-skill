@@ -1,5 +1,88 @@
 # QA Log
 
+## QA Session — 2026-04-16 (iteration 2, issue-23)
+
+### Test Environment
+- Branch: aloop/issue-23
+- Commit: c549c3e5
+- Binary under test: /tmp/aloop-test-install-H0zThl/bin/aloop (v1.0.0)
+- Features tested: 5
+
+### Results
+- FAIL: loop_finalizer_qa_coverage.tests.sh — still failing (re-test); check_finalizer_qa_coverage_gate and append_plan_task_if_missing still absent from loop.sh
+- FAIL: Branch sync — still not implemented in loop.sh (re-test confirms no git fetch/merge/merge_conflict)
+- FAIL: Steering queue cyclePosition reset — NOT implemented; run_queue_if_present identifies steering items but never resets CYCLE_POSITION=0 after execution; already tracked as open High TODO
+- PASS: Provider stderr capture — tmp_stderr captured, LAST_PROVIDER_ERROR includes stderr on failure; loop_branch_coverage.tests.sh 52/52
+- PASS: Queue override priority — run_queue_if_present called before cycle/finalizer dispatch in main loop
+
+### Bugs Filed
+(none new — 2 previously filed bugs still open; steering reset is tracked as open TODO item, not a new QA bug)
+
+### Command Transcript
+
+#### 1. CLI install from source
+```
+npm run test-install -- --keep → /tmp/aloop-test-install-H0zThl/bin/aloop
+aloop --version → 1.0.0
+EXIT: 0 (PASS)
+```
+
+#### 2. loop_finalizer_qa_coverage.tests.sh (re-test)
+```
+bash aloop/bin/loop_finalizer_qa_coverage.tests.sh
+→ line 65: check_finalizer_qa_coverage_gate: command not found
+→ FAIL: finalizer QA gate passes at <=30% untested and 0 fail
+→ FAIL: should append untested coverage blocker task
+→ PASS: finalizer QA gate blocks when untested >30% (coincidental — fn missing, non-zero return)
+→ FAIL: should append fail item task
+→ PASS: finalizer QA gate blocks when FAIL rows exist (same coincidental pass)
+→ FAIL: gate should return success when QA_COVERAGE.md is missing
+→ FAIL: finalizer QA gate skips enforcement when QA_COVERAGE.md is missing
+EXIT: 1 (FAIL — still failing, same root cause as iter 1)
+```
+
+#### 3. Branch sync check (re-test)
+```
+grep "git fetch\|git merge\|merge_conflict\|branch_sync" aloop/bin/loop.sh → (empty output)
+EXIT: MISSING IMPLEMENTATION (same as iter 1)
+```
+
+#### 4. Steering queue cyclePosition reset
+```
+grep -n "cyclePosition.*0\|CYCLE_POSITION.*0\|steer" aloop/bin/loop.sh
+→ Lines 2084-2085: QUEUE_ITEM finds *-PROMPT_steer.md and *-steering.md (identifies steering items)
+→ Lines 2119-2130: successful steering path → no CYCLE_POSITION=0 reset, no loop-plan.json update
+→ Spec: "Steering queue execution resets cyclePosition to 0 (plan restart point)"
+Confirmed: steering reset NOT implemented. Already in open TODO.md High task list.
+EXIT: FAIL (spec mismatch confirmed)
+```
+
+#### 5. Provider stderr capture (first explicit test)
+```
+grep -n "LAST_PROVIDER_ERROR\|tmp_stderr\|tmp_stdout" aloop/bin/loop.sh
+→ line 1343-1346: tmp_stderr/tmp_stdout mktemp'd
+→ line 1382: LAST_PROVIDER_ERROR="claude exited with code $exit_code. Stderr: $(cat "$tmp_stderr") Stdout: $(cat "$tmp_stdout")"
+→ line 1404: LAST_PROVIDER_ERROR="codex exited with code $exit_code. Stderr: $(cat "$tmp_stderr")"
+→ Similar pattern for all providers
+
+bash aloop/bin/loop_branch_coverage.tests.sh
+→ Branch coverage summary: 52/52 (100%)
+→ Includes path.invoke.failure test (line 364): invoke_provider failure branch captures "claude exited with code 3" in LAST_PROVIDER_ERROR
+EXIT: 0 (PASS)
+```
+
+#### 6. Queue override priority (first explicit test)
+```
+grep -n "run_queue_if_present\|resolve_iteration_mode" aloop/bin/loop.sh
+→ line 2171: if run_queue_if_present "$iter_provider"; then continue; fi
+→ line ~2194: resolve_iteration_mode "$ITERATION" (cycle dispatch — called AFTER queue check)
+→ line ~2177: finalizer dispatch — also AFTER queue check
+Pattern confirms: queue checked first; if queue item found, `continue` skips cycle entirely.
+EXIT: PASS
+```
+
+---
+
 ## QA Session — 2026-04-16 (iteration 1, issue-23)
 
 ### Test Environment
