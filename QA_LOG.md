@@ -634,3 +634,84 @@ No automated tests for branch sync conflict queueing or steering cyclePosition r
 Spec acceptance criteria: "Automated coverage is added/updated in the in-scope test files for...branch-sync conflict branches."
 These match open medium [ ] tasks in TODO.md — no new qa bug filed (already tracked).
 EXIT: FAIL (gap against acceptance criteria, open tasks)
+
+## QA Session — 2026-04-16 (iteration 5)
+
+### Test Environment
+- Binary under test: /tmp/aloop-test-install-jkrAy1/bin/aloop (v1.0.0) — cleaned up post-session
+- Commit: 754943cc
+- Features tested: 4
+
+### Results
+- PASS: loop.sh line count (2363 ≤ 2372)
+- PASS: loop_branch_coverage.tests.sh (55/55)
+- PASS: loop_finalizer_qa_coverage.tests.sh (4/4)
+- FAIL: Gate 4 revert — dist/index.js still has 1575-line working tree diff from HEAD (bug filed)
+- FAIL: Steering reset automated test coverage — queue.steer_reset / queue.nonsteer_no_reset still absent
+
+### Bugs Filed
+- [qa/P1] Gate 4 incomplete — dist/index.js still has uncommitted out-of-scope changes in working tree
+
+### Command Transcript
+
+#### Setup
+```
+ALOOP_BIN=$(npm --prefix aloop/cli run --silent test-install -- --keep 2>/dev/null | tail -1)
+# Binary: /tmp/aloop-test-install-jkrAy1/bin/aloop
+aloop --version  → 1.0.0
+```
+
+#### Test 1: Gate 4 revert verification
+```
+$ git status
+On branch aloop/issue-23
+Changes not staged for commit:
+  modified:   aloop/cli/dist/index.js
+
+$ wc -l SPEC.md
+4086  ← PASS (full spec restored)
+
+$ git diff HEAD -- aloop/cli/dist/index.js | wc -l
+1575  ← FAIL (still 1575 lines different from HEAD)
+```
+Gate 4 revert commit 754943cc only committed changes to TODO.md.
+SPEC.md, start.ts, requests.ts, requests.test.ts — all clean (not in git status).
+dist/index.js — STILL modified: LOOP_PROMPT_TEMPLATES has 11 entries (HEAD has 6);
+pipeline.yml scaffolding additions present in working tree but absent from HEAD.
+EXIT: FAIL — bug filed [qa/P1]
+
+#### Test 2: loop.sh line count
+```
+$ wc -l aloop/bin/loop.sh
+2363  (≤ 2372 limit)
+EXIT: PASS
+```
+
+#### Test 3: loop_branch_coverage.tests.sh regression check
+```
+$ bash aloop/bin/loop_branch_coverage.tests.sh 2>&1 | tail -3
+Branch coverage summary: 55/55 (100%)
+Shell branch-coverage harness passed.
+EXIT: 0 — PASS
+```
+
+#### Test 4: Steering reset automated test coverage
+```python
+queue.steer_* branches: []
+Total branches: 55
+queue.* branches: ['queue.empty', 'queue.success', 'queue.frontmatter', 'queue.frontmatter_unavailable']
+```
+queue.steer_reset and queue.nonsteer_no_reset still absent.
+Open TODO task still unresolved.
+EXIT: FAIL (gap against acceptance criteria)
+
+#### Test 5: loop_finalizer_qa_coverage.tests.sh
+```
+$ bash aloop/bin/loop_finalizer_qa_coverage.tests.sh
+PASS: finalizer QA gate passes at <=30% untested and 0 fail
+PASS: finalizer QA gate blocks when untested >30%
+PASS: finalizer QA gate blocks when FAIL rows exist
+PASS: finalizer QA gate skips enforcement when QA_COVERAGE.md is missing
+All finalizer QA coverage gate tests passed.
+EXIT: 0 — PASS
+```
