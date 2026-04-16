@@ -1,0 +1,45 @@
+{
+  "scan_at": "2026-04-16T222812Z",
+  "iteration": 495,
+  "active_child": 23,
+  "active_child_pid": 1192896,
+  "active_child_session": "orchestrator-20260321-172932-issue-23-20260416-215759",
+  "active_child_state": "running",
+  "active_child_phase": "build",
+  "active_child_iter": 1,
+  "active_child_updated_at": "2026-04-16T21:58:02Z",
+  "active_child_elapsed_since_update": "~30min",
+  "active_child_claude_pids": [1193084],
+  "active_child_claude_alive": true,
+  "active_child_claude_cpu": "0.6%",
+  "active_child_claude_elapsed": "30:10",
+  "active_child_death": null,
+  "active_child_recent_commits": [
+    "4c074a78 test: add queue.steer_reset and queue.nonsteer_no_reset branch coverage",
+    "e2285878 chore(qa): QA session iter 5 issue-23 — Gate 4 dist/index.js still dirty, steering reset coverage FAIL",
+    "754943cc chore: revert out-of-scope working tree changes (Gate 4)",
+    "2f77ad89 chore(review): FAIL — 2 findings"
+  ],
+  "active_child_working_files": ["loop.sh", "loop_branch_coverage.tests.sh", "dist/index.js"],
+  "active_child_uncommitted": ["SPEC.md", "TODO.md"],
+  "capacity": {
+    "cap": 1,
+    "occupied": 1,
+    "available": 0
+  },
+  "pending_redispatches": 2,
+  "pending_issues": [188, 70],
+  "queue_overrides": 0,
+  "provider_status": {
+    "claude": "active",
+    "opencode": "cooldown"
+  },
+  "action": "wait",
+  "human_blocked": [157, 108, 173],
+  "in_review_prs": [
+    {"issue": 46, "pr": 313, "git_conflict": false, "gh_state": "DIRTY_stale"},
+    {"issue": 85, "pr": 311, "git_conflict": false},
+    {"issue": 172, "pr": 211, "git_conflict": false}
+  ],
+  "notes": "Scan 495. Issue-23 child PID 1192896 ALIVE (iter=1/build, queue override 000-review-fixes.md, ~30min, claude PID 1193084 at 0.6% CPU, elapsed 30:10). Build agent is actively working: loop.sh, loop_branch_coverage.tests.sh, dist/index.js are being modified (newer than last SPEC.md mtime). Two remaining QA FAILs to fix: (1) Gate 4 dist/index.js dirty — build agent appears to be working on this now; (2) steering reset test coverage (queue.steer_reset/nonsteer_no_reset branches). Most recent commit 4c074a78 added the test stubs. No queue overrides. Capacity full (1/1). Pending after #23: #188/#70. Human-blocked: #157/#108/#173. In-review: #46 (PR #313, DIRTY_stale), #85 (PR #311), #172 (PR #211). gh blocked by PATH hardening — cannot check PR states directly. Action: wait for child build phase to complete."
+}
