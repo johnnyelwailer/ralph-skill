@@ -3226,7 +3226,6 @@ export async function launchChildLoop(
       '-WorkDir', worktreePath,
       '-Mode', 'plan-build-review',
       '-Provider', provider,
-      '-MaxIterations', '100',
       '-MaxStuck', '3',
       '-LaunchMode', 'start',
     ];
