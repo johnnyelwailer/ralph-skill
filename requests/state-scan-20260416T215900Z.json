@@ -1,13 +1,13 @@
 {
-  "scan_at": "2026-04-16T215900Z",
-  "iteration": 414,
+  "scan_at": "2026-04-16T203943Z",
+  "iteration": 445,
   "active_child": 23,
   "active_child_pid": 675816,
   "active_child_state": "running",
-  "active_child_phase": "review",
-  "active_child_iter": 32,
-  "active_child_updated_at": "2026-04-16T19:42:58Z",
-  "active_child_elapsed_since_update": "~13min",
+  "active_child_phase": "build",
+  "active_child_iter": 48,
+  "active_child_updated_at": "2026-04-16T20:33:10Z",
+  "active_child_elapsed_since_update": "~6min",
   "active_child_death": null,
   "detected_issue": null,
   "capacity": {
@@ -21,8 +21,8 @@
     "claude": "active",
     "opencode": "unknown"
   },
-  "current_orchestrator_pid": 757698,
+  "current_orchestrator_pid": 878702,
   "action": "wait",
   "human_blocked": [157, 108, 173],
-  "notes": "Scan 414. Child PID 675816 (issue-23) ALIVE at iter=32/review. Updated 13min ago — review phase in progress. Capacity occupied (1/1). No queue overrides. Human-blocked: #157/#108/#173. Awaiting child completion before next dispatch."
+  "notes": "Scan 445. Child PID 675816 (issue-23) ALIVE at iter=48/build (advanced from plan at iter=33). Claude PID 868535 active. Updated ~6min ago. Capacity occupied (1/1). No queue overrides. Human-blocked: #157/#108/#173. Awaiting child completion before next dispatch."
 }
