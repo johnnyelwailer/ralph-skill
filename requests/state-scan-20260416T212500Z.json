@@ -1,0 +1,36 @@
+{
+  "scan_at": "2026-04-16T212500Z",
+  "iteration": 2,
+  "session": "orchestrator-20260416-211340",
+  "active_children": [],
+  "capacity": {
+    "cap": 3,
+    "occupied": 0,
+    "available": 3
+  },
+  "wave": 1,
+  "dispatching": [
+    {
+      "issue_number": 1,
+      "branch": "aloop/issue-1",
+      "spec_file": ".aloop/output/issue-1-spec.md",
+      "request_file": ".aloop/output/req-001-dispatch_child.json"
+    },
+    {
+      "issue_number": 2,
+      "branch": "aloop/issue-2",
+      "spec_file": ".aloop/output/issue-2-spec.md",
+      "request_file": ".aloop/output/req-002-dispatch_child.json"
+    },
+    {
+      "issue_number": 5,
+      "branch": "aloop/issue-5",
+      "spec_file": ".aloop/output/issue-5-spec.md",
+      "request_file": ".aloop/output/req-003-dispatch_child.json"
+    }
+  ],
+  "queue_overrides": 0,
+  "human_blocked": [],
+  "action": "dispatch_wave1",
+  "notes": "Scan 2. Fresh session — 12 epics loaded (iter 1 queue). All 3 concurrency slots free. Dispatching wave 1 issues #1, #2, #5 (all have no deps). Dispatch request files written to .aloop/output/ (gitignored). Wave 2 (7 issues) blocked on wave 1 merges. Wave 3 (2 issues) blocked on wave 2."
+}

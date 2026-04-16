@@ -1,30 +1,19 @@
 {
-  "scan_at": "2026-04-16T211245Z",
-  "iteration": 462,
-  "active_child": 23,
-  "active_child_pid": 675816,
-  "active_child_state": "running",
-  "active_child_phase": "review",
-  "active_child_iter": 60,
-  "active_child_updated_at": "2026-04-16T20:57:37Z",
-  "active_child_elapsed_since_update": "~15min",
-  "active_child_claude_pid": 942496,
-  "active_child_claude_alive": true,
-  "active_child_death": null,
-  "detected_issue": null,
+  "scan_at": "2026-04-16T212500Z",
+  "iteration": 2,
+  "session": "orchestrator-20260416-211340",
+  "active_children": [],
   "capacity": {
-    "cap": 1,
-    "occupied": 1,
-    "available": 0
+    "cap": 3,
+    "occupied": 0,
+    "available": 3
   },
-  "pending_redispatches": 0,
+  "wave": 1,
+  "pending_dispatch": [1, 2, 5],
+  "blocked_wave2": [3, 4, 7, 9, 10, 11, 12],
+  "blocked_wave3": [6, 8],
   "queue_overrides": 0,
-  "provider_status": {
-    "claude": "active",
-    "opencode": "unknown"
-  },
-  "current_orchestrator_pid": 968542,
-  "action": "wait",
-  "human_blocked": [157, 108],
-  "notes": "Scan 462. Child PID 675816 (issue-23) ALIVE — iter 60/review (~15min). Claude 942496 ALIVE. Prior QA iter 3: 3 FAILs resolved, 2 coverage gaps remain; now in review. #173 CLOSED — removed from human-blocked. Capacity 1/1 occupied. Queue empty. No aloop/ready or aloop/in-review issues. Human-blocked: #157/#108. Awaiting review completion."
+  "human_blocked": [],
+  "action": "dispatch_wave1",
+  "notes": "Scan 2. Fresh session — 12 epics loaded from decompose-epics.md (iter 1). Wave 1 (no deps): #1 Provider Health, #2 Loop Engine, #5 Convention-File Security. All 3 slots available. Dispatching all 3 wave-1 issues. Dispatch requests written to .aloop/output/. Wave 2 (7 issues) blocked on wave 1 merges. Wave 3 (2 issues) blocked on wave 2."
 }
