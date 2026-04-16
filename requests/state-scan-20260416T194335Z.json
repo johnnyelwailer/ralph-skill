@@ -20,5 +20,5 @@
   "current_orchestrator_pid": 2232310,
   "action": "wait",
   "labels": ["scan-411"],
-  "notes": "Scan 411. Orchestrator PID 2232310 ALIVE (child 727809/claude 727812 running this scan). Issue-23 child PID 675816 ALIVE: iteration=32, cyclePosition=4 (review phase), loop-plan.json updated 19:42Z (1 min ago = fresh). No queue overrides. Backlog phantom per prior scans. Human-blocked: #157 (Gate 7 Playwright), #108 (manual rebase), #173 (false issue text)."
+  "notes": "Scan 411. Orchestrator PID 2232310 ALIVE (child 727809 → claude 727812 = this scan). Issue-23 child PID 675816 ALIVE: iteration=32, cyclePosition=4 (review), loop-plan updated 19:42Z (fresh). Backlog phantom per prior scans. Human-blocked: #157 (Gate 7), #108 (manual rebase), #173 (false issue text). No queue overrides."
 }

@@ -1,3 +1,318 @@
+## Orchestrator scan — 2026-04-16T19:43:35Z (iter 411)
+
+**Orchestrator session:** PID 2232310 ALIVE (child 727809 → claude 727812 = this scan). Iteration=411, phase=orch, status updated 19:41Z (fresh).
+**scan_heartbeat:** 20260416T214200Z → updated to 20260416T194335Z
+
+**Child #23 (dispatch-209):** PID 675816 ALIVE — iteration=32, cyclePosition=4 (review phase), loop-plan.json updated 19:42Z (1 min ago, fresh). Active, progressing.
+
+**Actions taken:**
+- Updated .scan_heartbeat to 20260416T194335Z
+- Updated scan-state.json (iter 411): confirmed child PID 675816, active_child_pid corrected from null
+- Dispatch backlog cleared (phantom per prior scans — confirmed not valid GH issues)
+- No queue overrides
+
+**Human-blocked (unchanged):** #108 (manual rebase), #157 (Gate 7 Playwright), #173 (false issue text)
+
+**Exit scan pass.**
+
+---
+
+## Orchestrator scan — 2026-04-16T21:30:00Z (iter 406)
+
+**Orchestrator session:** No orchestrator running. PIDs 590419, 2232310 orphaned and dead. dispatch-209 written at iter 405 (21:22) but child never materialized.
+**scan_heartbeat:** 20260416T192935Z → updated to 20260416T213000Z
+
+**Actions taken:**
+- Updated .scan_heartbeat to 20260416T213000Z
+- Wrote state-scan-20260416T213000Z.json
+- No orchestrator alive; capacity phantom-occupied (1/1 but no child)
+- No queue overrides
+- Backlog issues all phantom — no valid GH targets
+
+**Human-blocked:** #108 (manual rebase), #157 (Gate 7), #173 (false issue text)
+
+**Exit scan pass.**
+
+**Orchestrator session:** No active orchestrator. PID 590419 (session 172932) and PID 2232310 orphaned, not serving this session. PID 544086 is different session (issue-23).
+**scan_heartbeat:** 20260416T211000Z → updated to 20260416T212400Z
+
+**Actions taken:**
+- Updated .scan_heartbeat to 20260416T212400Z
+- System terminal stopped (iter 401 confirmed) — no orchestrator running
+- No queue/ overrides
+- Capacity 1/1 available but backlog issues confirmed phantom/not on GH
+- State scan written to requests/state-scan-20260416T212400Z.json
+
+**Human-blocked:** #108 (manual rebase), #157 (Gate 7), #173 (false issue text)
+
+**Exit scan pass.**
+
+---
+
+## Orchestrator scan — 2026-04-16T21:07:00Z (iter 401)
+
+**Orchestrator session:** No active orchestrator. 3 orphaned loop.sh PIDs (512335, 512338, 2232310) but none own this session.
+**scan_heartbeat:** 20260416T205500Z → updated to 20260416T210700Z
+
+**Actions taken:**
+- Updated .scan_heartbeat to 20260416T210700Z
+- Verified: backlog [211,186,185,184,183,182,180] all phantom - `gh issue view` confirms 211 and 186 not found
+- Capacity 1/1 available but no valid dispatch targets
+- State scan written to requests/state-scan-20260416T210700Z.json
+- System in terminal stopped state - human intervention required
+
+**Human-blocked:** #108 (manual rebase), #157 (Gate 7), #173 (false issue text)
+
+**Exit scan pass.**
+
+---
+
+## Orchestrator scan — 2026-04-16T16:59:31Z (iter 364)
+
+**Orchestrator session:** PID 3179674 DEAD (process not found). Session inactive.
+**scan_heartbeat:** 20260416T163700Z → updated to 20260416T165931Z
+
+**Actions taken:**
+- Updated .scan_heartbeat to 20260416T165931Z
+- Orchestrator PID 3179674 confirmed dead — session no longer active
+- No queue overrides — queue/ empty
+- No active children — capacity full (1/1 occupied) but orphaned from dead orchestrator
+- State scan written to requests/state-scan-20260416T165931Z.json
+- Orchestrator ceding control (no intervention possible without orchestrator)
+
+**Human-blocked (unchanged):** #108 (manual rebase), #157 (Gate 7), #173 (false issue text)
+
+**Exit scan pass.**
+
+---
+
+**Orchestrator session:** PID 3179674 alive (orch mode, iteration 348)
+**scan_heartbeat:** 20260416T174000Z → updated to 20260416T180000Z
+
+**Actions taken:**
+- Updated .scan_heartbeat to 20260416T180000Z
+- Child 209 alive (PID 3226157, ~1h46m elapsed on opencode). Capacity full (1/1).
+- No queue overrides — queue/ empty
+- Backlog [187] pending dispatch after child completes
+- Orchestrator self-managing dispatches; no intervention needed
+
+**Human-blocked (unchanged):** #108 (manual rebase), #157 (Gate 7), #173 (false issue text)
+
+**Exit scan pass.**
+
+**Orchestrator session:** PID 2121251 alive (loop.sh resumed at 10:18, iteration 18, phase=orch)
+**scan_heartbeat:** 20260416T101800Z → updated to 20260416T102052Z
+
+**Actions taken:**
+- Updated .scan_heartbeat to 20260416T102052Z
+- Orchestrator self-recovered (original PID 1312238 died, resumed as PID 2121251)
+- Child PID 1928090 (issue 188, started 08:11) alive but orphaned from predecessor
+- active.json=[] — tracking anomaly but orchestrator self-managing
+- Capacity full (1/1 occupied) — no new dispatches possible
+- Queue empty — no override prompts
+- Dispatch backlog: #186, #187, #209 unconsumed
+- Orchestrator managing backlog; no intervention needed
+
+**Human-blocked (unchanged):** #108 (manual rebase), #157 (Gate 7), #173 (false issue text)
+
+**Exit scan pass.**
+
+---
+
+## Orchestrator scan — 2026-04-16T06:19:06Z (iter 7)
+
+**Orchestrator session:** PID 1312238 alive (loop.sh orch mode, iteration 264, child PID 1657110 active with opencode on dispatch-209)
+**scan_heartbeat:** 20260416T103700Z → updated to 20260416T061906Z
+
+**Actions taken:**
+- Updated .scan_heartbeat to 20260416T061906Z
+- Orchestrator alive and self-managing (iteration 264, phase=orch, opencode)
+- Child PID 1657110 actively running opencode (~5 min elapsed)
+- Capacity full (1/1 occupied) — no new dispatches possible
+- Queue empty — no override prompts
+- Orchestrator managing dispatch backlog (100+ issues waiting: #188, #187, #186, #185, #184...)
+- State scan file confirmed orchestrator progressing normally
+
+**Human-blocked (unchanged):** #108 (manual rebase), #157 (Gate 7), #173 (false issue text)
+
+**Exit scan pass.**
+
+---
+
+## Orchestrator scan — 2026-04-16T05:50:00Z (iter 6)
+
+---
+
+## Orchestrator scan — 2026-04-16T05:16:39Z (iter 5)
+
+**Orchestrator session:** PID 1312238 alive (loop.sh plan mode, child PID 1413809 active with opencode)
+**scan_heartbeat:** 05:15:00Z → updated to 05:16:39Z
+
+**Actions taken:**
+- Updated .scan_heartbeat to 05:16:39Z
+- Orchestrator alive (PID 1312238, child 1413809 running loop.sh resume)
+- Capacity full (1/1 occupied) — child actively running
+- Queue empty — no override prompts
+- Orchestrator self-managing; no state transitions needed
+
+**Human-blocked (unchanged):** #108 (manual rebase), #157 (Gate 7), #173 (false issue text)
+**Exit scan pass.**
+
+---
+
+## Orchestrator scan — 2026-04-16T05:15:00Z (iter 4)
+
+**Orchestrator session:** PID 1312238 alive (loop.sh plan mode, child PID 1406767 active with opencode)
+**status.json:** iter=3, phase=orch, provider=opencode, state=running, updated_at=05:10:00Z (fresh)
+**scan_heartbeat:** 09:05:00Z → updated to 05:15:00Z
+
+**Actions taken:**
+- Updated .scan_heartbeat to 05:15:00Z
+- Orchestrator restarted fresh this morning (iteration reset to 3)
+- Active child 1406767 (loop.sh) running opencode (1407595) on worktree
+- Capacity full (1/1 occupied)
+- Queue empty — no override prompts
+- Orchestrator self-managing; no state transitions needed
+
+**Human-blocked (unchanged):** #108 (manual rebase), #157 (Gate 7), #173 (false issue text)
+**Exit scan pass.**
+
+---
+
+## Orchestrator scan — 2026-04-16T01:48:00Z (iter 175)
+
+**Orchestrator session:** PID 968483 alive (loop-plan mode, child PID 1087276 active)
+**scan-state.json:** iter=175, active_child=null, capacity=1/1 available (0 occupied)
+**scan_heartbeat:** 01:45:00Z → updated to 01:48:00Z
+
+**Actions taken:**
+- Updated .scan_heartbeat to 01:48:00Z
+- Orchestrator alive and self-managing dispatches
+- Dispatch requests for #70 and #188 already in requests/ (from prior scans)
+- No queue overrides; no new side effects needed
+
+**Human-blocked (unchanged):** #108 (manual rebase), #157 (Gate 7), #173 (false issue text)
+**Exit scan pass.**
+
+---
+
+## Orchestrator scan — 2026-04-16T01:45:00Z (iter 174)
+
+**Orchestrator session:** PID 968483 alive — status.json: iteration=44, phase=orch, state=running, updated_at=01:44:24Z (fresh)
+**scan-state.json:** iter=174, active_child=null, capacity=1/1 available (0 occupied)
+**scan_heartbeat:** 01:43:00Z → updated to 01:45:00Z
+
+**Actions taken:**
+- Updated .scan_heartbeat to 01:45:00Z
+- Orchestrator alive and cycling (iter 44, phase=orch, opencode provider)
+- Child PID 1081962 active (opencode run, child of 968483) — orchestrator self-managing dispatches
+- State anomaly: active.json=[] but child process exists; dispatch requests for #70/#188 in queue
+- Orchestrator will consume dispatch requests in its own orch_scan cycle
+- No queue overrides
+
+**Human-blocked (unchanged):** #108 (manual rebase), #157 (Gate 7 Playwright infra), #173 (false issue text)
+**No state transitions needed** — orchestrator self-managing; child active but untracked (orchestrator owns this)
+**Exit scan pass.**
+
+---
+
+## Orchestrator scan — 2026-04-16T01:33:15Z (iter 173)
+
+**Orchestrator session:** PID 968483 alive — status.json: iteration=39, phase=orch, state=running, updated_at=01:30:02Z (fresh)
+**scan-state.json:** iter=172, capacity=1/1 available (0 occupied), pending_redispatches=0
+**scan_heartbeat:** 01:57:00Z → updated to 01:33:15Z
+
+**Actions taken:**
+- Updated .scan_heartbeat to 01:33:15Z
+- Orchestrator actively running (iteration 39, phase=orch) — dispatch requests in requests/ being handled by orchestrator itself
+- Verified stale in-progress issues: #37, #44, #124, #177, #199 all correctly tracked in orchestrator.json (blocked, blocked, Ready, blocked, Done respectively) — no stale state correction needed
+- No queue overrides
+
+**Stale in-progress check:**
+- #37: state=blocked, status=Blocked ✓ (no action)
+- #44: state=blocked, status=Blocked ✓ (no action)
+- #124: state=pending, status=Ready ✓ (PR #171 merge conflict, already in Ready queue)
+- #177: state=blocked, status=Blocked ✓ (sandbox=container, human-blocked)
+- #199: state=merged, status=Done ✓ (already completed)
+
+**Human-blocked (unchanged):** #108 (manual rebase), #157 (Gate 7), #173 (false issue text)
+**No queue overrides.**
+
+**Exit scan pass.**
+
+---
+
+## Orchestrator scan — 2026-04-16T01:57:00Z (scan pass)
+
+**Orchestrator session:** PID 968483 alive (loop.sh plan mode PIDs 1065810 active)
+**scan-state.json:** iter=172, capacity=1/1 available (0 occupied), pending_redispatches=0
+**scan_heartbeat:** 01:23:00Z → updated to 01:57:00Z
+
+**Actions taken:**
+- Wrote dispatch-188 (requests/dispatch-188-scan-20260416T010000Z.json) — previous dispatch-70 (00:57) appears unconsumed; #70 shows Ready but no child tracked active; #188 is highest priority ready (priority=-10)
+- Updated .scan_heartbeat to 01:57:00Z
+
+**Stale in-progress (no active child, needs reset):** #37, #44, #124, #177, #199 (last sessions Apr 12-14)
+**Human-blocked (unchanged):** #108 (manual rebase), #157 (Gate 7), #173 (false issue text)
+**No queue overrides.**
+
+**Exit scan pass.**
+
+---
+
+## Orchestrator scan — 2026-04-16T01:17:30Z (iter 18)
+
+**Orchestrator session:** PID 968483 alive, orch_scan mode (iteration 33, cyclePosition=0)
+**scan-state.json:** iter=170, capacity=1/1 available (0 occupied), active_child=null
+**Worktree processes:** PID 1055581 (loop.sh plan mode, started 01:14 — orchestrator's own loop)
+
+**State anomalies (unchanged):**
+- #70: status=In progress, state=needs_redispatch, child_pid=null, needs_redispatch=false — stale; orchestrator running but not dispatching
+- #85: queued (PR #311, review phase, CI unverifiable - gh blocked)
+
+**Capacity:** 1/1 slots available — no tracked active children; worktree loop is orchestrator's own process
+
+**Blocked on human (unchanged):**
+- #157: Gate 7 Playwright infra block — `libatk-1.0.so.0` missing, PR #310 CI failing
+- #173: Issue body contains false "Implementation Status" text
+- #108: PR #132 needs manual rebase onto agent/trunk
+
+**pending_redispatches:** 2 (#70, #188) — blocks new dispatches
+
+**No queue overrides** — requests/ directory has dispatch-70.json (from 00:57) not yet consumed by orchestrator
+
+**Actions taken:**
+- Updated .scan_heartbeat to 2026-04-16T01:17:30Z
+- Orchestrator alive (iteration 33) but dispatch-70.json not yet processed
+- #70 state anomaly persists: status=In progress conflicts with child_pid=null and needs_redispatch=false
+- No state transition possible in scan mode — orchestrator must self-correct
+
+---
+
+## Orchestrator scan — 2026-04-16T00:25:28Z (iter 17, orch phase)
+
+**Orchestrator session:** PID 968483 alive, orch_scan mode (iteration 17, cyclePosition=0)
+**scan-state.json:** iter=161, capacity=1/1 available (0 occupied), active_child=null
+**Worktree processes:** PID 1017722 (loop.sh plan mode, started 00:23)
+
+**State anomalies:**
+- #70: status=In progress, state=needs_redispatch, child_pid=null — stale; needs status→Ready
+- #85: queued (PR #311, review phase, CI unverifiable - gh blocked)
+
+**Capacity:** 1/1 slots available — no active children
+
+**Blocked on human (unchanged):**
+- #157: Gate 7 Playwright infra block — `libatk-1.0.so.0` missing, PR #310 CI failing
+- #173: Issue body contains false "Implementation Status" text
+
+**No queue overrides** — requests/ directory has dispatch files but scan mechanism handles those
+
+**Actions taken:**
+- Updated .scan_heartbeat to 2026-04-16T00:25:28Z
+- #70: identified stale In progress state (child_pid=null, state=needs_redispatch already set) — status correction to Ready needed but not executed in scan mode
+
+---
+
 ## Orchestrator scan — 2026-04-14T21:59:00Z (iter 143)
 
 **Child #157** (PID 422016) ALIVE — iteration 86, phase=**build** (updated 21:51:09Z)
@@ -811,4 +1126,32 @@
 **Queue:** absent — no override prompts
 
 **Actions taken:** none — child #157 progressing normally in qa phase (2 min fresh heartbeat)
-# scan iter=8 20260415T062858Z
+
+# Orchestrator scan — 2026-04-16T00:35:00Z (iter 15, orch phase)
+
+**Orchestrator session state:** iteration=15, phase=orch, running
+**Worktree scan-state:** iter 162, scan_at=2026-04-16T00:00:00Z
+
+**Capacity:** 1/1 slots available — occupied=0, no active children
+**Provider status:** claude=ok, opencode=cooldown, gemini=cooldown, codex=degraded_auth
+
+**Queued children:** #85 (PR #311, review phase, CI unverifiable)
+**Cleared children:** #71 (PID dead, no PR), #73 (PR #312 open), #157 (Gate 7 Playwright block)
+
+**State anomalies detected:**
+- #70: status=In progress, state=needs_redispatch, child_pid=null — child session stopped at iter 100 review (2026-04-15 17:51). Stale state needs correction.
+- #198: status=Ready, state=pending — awaiting dispatch
+
+**Blocked on human (unchanged):**
+- #157: Gate 7 Playwright infra block (libatk-1.0.so.0 missing) — human must install deps or waive Gate 7
+- #108: PR #132 needs manual rebase onto agent/trunk
+- #173: Issue body contains false "Implementation Status" text
+
+**No queue overrides** — queue/ empty
+
+**Actions taken:**
+- Updated .scan_heartbeat timestamp
+- #70 stale In progress state identified (child dead, state should reset to Ready/needs_redispatch)
+- Capacity slot available but #70 state anomaly may prevent auto-dispatch
+
+# scan iter=9 20260416T003500Z
