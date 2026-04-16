@@ -2,6 +2,10 @@
 
 ## Tasks
 
+### Review Status
+
+[review iter 2]: FAIL — 2 unresolved findings: (1) Gate 1: branch sync + finalizer gate functions missing from loop.sh; (2) Constitution Rule 1: loop.sh still 2373 LOC. Findings 3 and 4 from iter 1 resolved: out-of-scope claims confirmed accurate, TS errors confirmed pre-existing on master.
+
 ### Critical (block CI / type-check)
 
 - [x] Remove `aloop/cli/src/commands/process-requests.test.ts` — this file is new to this branch, imports 6 symbols (`formatReviewCommentHistory`, `getDirectorySizeBytes`, `pruneLargeV8CacheDir`, `syncMasterToTrunk`, `syncChildBranches`, `ChildBranchSyncDeps`) that do not exist in `process-requests.ts`, causing 6 TS type errors. `process-requests.ts` is out of scope per SPEC.md; the functions being tested belong to a different issue. Deleting this file removes all 6 errors it introduces. (Note: the remaining 8 errors in `orchestrate.ts` and `process-requests.ts` are pre-existing on master and were NOT introduced by this branch — confirmed via `git diff master -- orchestrate.ts process-requests.ts`; fixing them is out of scope.)

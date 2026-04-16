@@ -73,7 +73,7 @@ All prior [review] tasks resolved.
 
 ---
 
-## Review — 2026-04-16 — commit 553d9449..6c2aba20
+## Review — 2026-04-16 — commit 553d9449..6c2aba20 (iter 1)
 
 **Verdict: FAIL** (4 findings → written to TODO.md as [review] tasks)
 **Scope:** `aloop/bin/loop.sh`, `aloop/cli/src/commands/orchestrate.ts`, `aloop/cli/src/commands/process-requests.ts`, `aloop/cli/src/sanitize.ts`, `aloop/cli/src/index.ts`
@@ -122,5 +122,33 @@ Finalizer logic (cycle boundary gate, finalizerPosition tracking, `finalizer_ent
 - Gate 7: N/A — no UI changes
 - Gate 8: N/A — no dependency changes
 - Gate 9: README unchanged; N/A
+
+---
+
+## Review — 2026-04-16 — commit 6c2aba20..e45ea26a (iter 2)
+
+**Verdict: FAIL** (2 prior findings still unresolved — no new [review] tasks; outstanding work tracked in TODO.md as open tasks)
+**Scope:** `aloop/cli/src/commands/process-requests.test.ts` (deleted), `TODO.md`, `QA_COVERAGE.md`, `QA_LOG.md`
+
+### New commits since last review
+- `c549c3e5`: Deleted `process-requests.test.ts` + deferred 2 of 4 prior [review] findings in TODO.md
+- `e45ea26a`: QA log update (QA_COVERAGE.md, QA_LOG.md only)
+
+### Prior finding resolutions
+
+**Finding 3 (Constitution Rules 2, 12, 18 — out-of-scope changes): RESOLVED**
+Verified: `git diff master -- aloop/cli/src/commands/orchestrate.ts` = only removal of `-MaxIterations 100` flags (2 lines, in-scope for issue #23). `git diff master -- aloop/cli/src/commands/process-requests.ts` = 0 lines. TODO.md deferred claim confirmed accurate.
+
+**Finding 4 (Gate 5 — TS errors): RESOLVED (appropriately deferred)**
+Stash + `npm run type-check` on master confirms: identical 10 TS errors exist before this branch. Deleting `process-requests.test.ts` correctly eliminated 6 branch-specific import errors. Remaining errors are pre-existing — deferral correct. Test count: 32 failures (was 33; 1 fewer because deleted test file had failing subtests; all 32 remaining trace to pre-existing master type errors).
+
+### Prior findings still unresolved
+
+**Finding 1 (Gate 1 — Spec Compliance): UNRESOLVED**
+- `check_finalizer_qa_coverage_gate` and `append_plan_task_if_missing` not in `loop.sh`. Direct test run confirms: `loop_finalizer_qa_coverage.tests.sh` 4/5 tests FAIL with `check_finalizer_qa_coverage_gate: command not found`.
+- Branch sync (`git fetch origin <base_branch>` + merge + conflict queueing) absent from `loop.sh` and `loop.ps1`. Acceptance criterion not met.
+
+**Finding 2 (Constitution Rule 1 — loop.sh LOC): UNRESOLVED**
+`loop.sh` is still 2373 LOC. Constitution Rule 1 hard limit: < 400 LOC. No cleanup performed.
 
 ---
