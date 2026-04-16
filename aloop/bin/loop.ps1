@@ -47,7 +47,9 @@ param(
 
     [switch]$BackupEnabled,
     [switch]$DryRun,
-    [switch]$DangerouslySkipContainer
+    [switch]$DangerouslySkipContainer,
+
+    [string]$BaseBranch = 'master'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -2036,6 +2038,25 @@ function Wait-ForRequests {
     }
 }
 
+function Sync-BaseBranch {
+    try {
+        $fetchOut = git -C $WorkDir fetch origin $BaseBranch 2>&1
+        if ($LASTEXITCODE -ne 0) { return }
+        $mergeOut = git -C $WorkDir merge "origin/$BaseBranch" --no-edit 2>&1
+        if ($LASTEXITCODE -ne 0) {
+            $conflicted = git -C $WorkDir diff --name-only --diff-filter=U 2>&1
+            if ($conflicted) {
+                $queueDir = Join-Path $SessionDir "queue"
+                if (-not (Test-Path $queueDir)) { New-Item -ItemType Directory -Path $queueDir | Out-Null }
+                $ts = [int][DateTimeOffset]::Now.ToUnixTimeSeconds()
+                $qf = Join-Path $queueDir "$ts-PROMPT_merge.md"
+                "# Merge Conflict`n`nBase branch: $BaseBranch`n`nConflicting files:`n$conflicted`n`nMerge output:`n$mergeOut" | Set-Content -Path $qf -Encoding UTF8
+                Write-LogEntry -Event "merge_conflict" -Data @{ base_branch = $BaseBranch; conflicted_files = "$conflicted" }
+            }
+        }
+    } catch { }
+}
+
 function Run-QueueIfPresent {
     param([string]$IterationProvider)
     # Check queue/ folder for override prompts (takes priority over cycle)
@@ -2092,6 +2113,10 @@ function Run-QueueIfPresent {
             }
             Show-AgentSummary -ProviderName $queueIterProvider -ProviderOutput $providerOutput
             Update-ProviderHealthOnSuccess -ProviderName $queueIterProvider
+            if ($queueBasename -like "*-PROMPT_steer.md" -or $queueBasename -like "*-steering.md") {
+                $script:cyclePosition = 0
+                Persist-LoopPlanState -Iteration $iteration
+            }
             if ($queueIterMode -eq 'plan') {
                 try {
                     $script:lastPlanCommit = (git rev-parse HEAD | Out-String).Trim()
@@ -2136,6 +2161,7 @@ try {
         }
         $iterationProvider = Resolve-IterationProvider -IterationNumber $iteration
 
+        Sync-BaseBranch
         if (Run-QueueIfPresent -IterationProvider $iterationProvider) {
             continue
         }

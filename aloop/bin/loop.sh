@@ -1,20 +1,8 @@
 #!/bin/bash
-# Aloop Loop — Generic Multi-Provider Autonomous Coding Loop
+# Aloop Loop — Multi-Provider Autonomous Coding Loop
 # Usage: loop.sh --prompts-dir <path> --session-dir <path> --work-dir <path> [options]
-#
-# Modes:
-#   plan               - planning only (gap analysis, update TODO)
-#   build              - building only (implement tasks from TODO)
-#   review             - review only (audit last build against quality gates)
-#   plan-build         - alternating: plan -> build -> plan -> build -> ...
-#   plan-build-review  - full cycle: plan -> build x5 -> qa -> review -> ... (DEFAULT)
-#
-# Providers:
-#   claude, codex, gemini, copilot, round-robin
-
-# NOTE: Do NOT use "set -e" — the main loop must survive provider failures,
-# transient errors in helper functions, and unexpected exit codes.  Every
-# critical path uses explicit "if / ||" guards instead.
+# Modes: plan|build|review|plan-build|plan-build-review; Providers: claude,codex,gemini,copilot,round-robin
+# NOTE: Do NOT use "set -e" — main loop must survive provider failures; use explicit if/|| guards.
 
 # Defense in depth: clear CLAUDECODE from the process environment at script entry.
 unset CLAUDECODE
@@ -47,6 +35,7 @@ PROVIDER_HEALTH_DIR="${ALOOP_HEALTH_DIR:-$HOME/.aloop/health}"
 HEALTH_LOCK_RETRY_DELAYS=(0.05 0.10 0.15 0.20 0.25)
 HEALTH_LOCK_STALE_SECONDS=30
 SESSION_ID=""
+BASE_BRANCH="master"
 
 # ============================================================================
 # ARGUMENT PARSING
@@ -54,22 +43,11 @@ SESSION_ID=""
 
 usage() {
     echo "Usage: $0 --prompts-dir <path> --session-dir <path> --work-dir <path> [options]"
-    echo ""
-    echo "Required:"
-    echo "  --prompts-dir <path>    Directory containing PROMPT_{plan,build,qa,review}.md"
-    echo "  --session-dir <path>    Directory for session state (status.json, log.jsonl)"
-    echo "  --work-dir <path>       Project working directory"
-    echo ""
-    echo "Options:"
-    echo "  --mode <mode>           plan|build|review|plan-build|plan-build-review|single (default: plan-build-review)"
-    echo "  --provider <provider>   claude|codex|gemini|copilot|round-robin (default: claude)"
-    echo "  --round-robin <list>    Comma-separated provider list (default: claude,opencode,codex,gemini,copilot)"
-    echo "  --max-iterations <n>    Maximum iterations (default: 50)"
-    echo "  --max-stuck <n>         Skip task after N failures (default: 3)"
-    echo "  --launch-mode <mode>    start|restart|resume (default: start)"
-    echo "  --backup                Enable remote git backup"
-    echo "  --dry-run               Print commands without executing"
-    echo "  --dangerously-skip-container  Skip devcontainer routing (agents run on host)"
+    echo "Required: --prompts-dir (PROMPT_*.md dir), --session-dir (state dir), --work-dir (project dir)"
+    echo "Options: --mode plan|build|review|plan-build|plan-build-review|single (default: plan-build-review)"
+    echo "         --provider claude|codex|gemini|copilot|round-robin (default: claude)"
+    echo "         --round-robin <list>  --max-iterations <n>  --max-stuck <n>  --launch-mode start|restart|resume"
+    echo "         --base-branch <branch> (default: master)  --backup  --dry-run  --dangerously-skip-container"
     exit 1
 }
 
@@ -92,6 +70,7 @@ while [[ $# -gt 0 ]]; do
         --gemini-model) GEMINI_MODEL="$2"; shift 2 ;;
         --copilot-model) COPILOT_MODEL="$2"; shift 2 ;;
         --launch-mode)  LAUNCH_MODE="$2"; shift 2 ;;
+        --base-branch)  BASE_BRANCH="$2"; shift 2 ;;
         *)              echo "Unknown option: $1"; usage ;;
     esac
 done
@@ -421,12 +400,9 @@ check_phase_prerequisites() {
 }
 
 check_has_builds_to_review() {
-    # If we don't have a plan commit recorded, but we have ANY commits since session start,
-    # we allow review. If no commits at all since session start, force build.
-    # Actually, SPEC says "compare HEAD against stored last-plan-commit".
+    # Allow review if commits exist since last plan; fallback to session-start commits.
     if [ -z "$LAST_PLAN_COMMIT" ]; then
-        # Fallback: if no lastPlanCommit is recorded, check if there are any non-harness commits
-        # since iteration 0.
+        # Fallback: check for any commits since iteration 0.
         local session_start_sha
         session_start_sha=$(git -C "$WORK_DIR" log --grep="Aloop-Iteration: 0" --format="%h" -n 1 2>/dev/null || echo "")
         if [ -n "$session_start_sha" ]; then
@@ -896,27 +872,6 @@ acquire_provider_health_lock() {
             return 0
         fi
 
-        # Stale lock recovery: remove orphaned or old lock dirs.
-        if [ -d "$lock_dir" ]; then
-            local owner_pid lock_mtime now_epoch age
-            owner_pid=""
-            lock_mtime=""
-            now_epoch=$(date -u +%s)
-
-            if [ -f "$lock_dir/pid" ]; then
-                owner_pid=$(cat "$lock_dir/pid" 2>/dev/null || true)
-            fi
-            lock_mtime=$(stat -c %Y "$lock_dir" 2>/dev/null || true)
-            age=0
-            if [ -n "$lock_mtime" ]; then
-                age=$((now_epoch - lock_mtime))
-            fi
-
-            if { [ -n "$owner_pid" ] && ! kill -0 "$owner_pid" 2>/dev/null; } || [ "$age" -gt "$HEALTH_LOCK_STALE_SECONDS" ]; then
-                rm -rf "$lock_dir" 2>/dev/null || true
-            fi
-        fi
-
         sleep "${HEALTH_LOCK_RETRY_DELAYS[$i]}"
     done
 
@@ -1082,17 +1037,6 @@ update_provider_health_on_success() {
 }
 
 
-extract_explicit_cooldown_until() {
-    local text="$1"
-    local iso
-    iso=$(printf '%s' "$text" | grep -Eo '20[0-9]{2}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z' | head -n 1)
-    if [ -n "$iso" ]; then
-        echo "$iso"
-        return 0
-    fi
-    return 1
-}
-
 update_provider_health_on_failure() {
     local provider_name="$1"
     local error_text="$2"
@@ -1105,7 +1049,7 @@ update_provider_health_on_failure() {
     now_epoch=$(date -u +%s)
     now=$(date -u +%Y-%m-%dT%H:%M:%SZ)
     cooldown_until=""
-    explicit_cooldown=$(extract_explicit_cooldown_until "$error_text" || true)
+    explicit_cooldown=$(printf '%s' "$error_text" | grep -Eo '20[0-9]{2}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z' | head -n 1 || true)
 
     if [ "$reason" = "auth" ]; then
         new_status="degraded"
@@ -1316,9 +1260,7 @@ cleanup_gh_block() {
     fi
 }
 
-# Wait for ACTIVE_PROVIDER_PID with timeout.
-# Returns the process exit code, or 124 on timeout (matching GNU timeout convention).
-# Uses wall-clock time so mocked sleep in tests doesn't cause false timeouts.
+# Wait for ACTIVE_PROVIDER_PID; returns exit code or 124 on timeout (wall-clock based).
 _wait_for_provider() {
     local timeout_secs="${EFFECTIVE_TIMEOUT:-$PROVIDER_TIMEOUT}"
     local deadline=$(( $(date +%s) + timeout_secs ))
@@ -1345,9 +1287,7 @@ invoke_provider() {
     tmp_stderr=$(mktemp)
     tmp_stdout=$(mktemp)
 
-    # PATH hardening: prepend gh-blocking shim directory so gh resolves to a
-    # non-functional wrapper while provider binaries in the same directories
-    # remain reachable.
+    # PATH hardening: prepend gh-blocking shim so 'gh' resolves to a stub.
     local gh_block_dir
     gh_block_dir="$(setup_gh_block)"
     local saved_path="$PATH"
@@ -1544,9 +1484,41 @@ invoke_provider() {
     return "$invoke_rc"
 }
 
-# ============================================================================
 # PLAN FILE HELPERS
-# ============================================================================
+
+append_plan_task_if_missing() {
+    local task="$1"
+    if ! grep -qF "- [ ] $task" "$PLAN_FILE" 2>/dev/null; then
+        echo "- [ ] $task" >> "$PLAN_FILE"
+    fi
+}
+
+check_finalizer_qa_coverage_gate() {
+    FINALIZER_QA_GATE_REASON=""
+    local qa_cov="$WORK_DIR/QA_COVERAGE.md"
+    if [ ! -f "$qa_cov" ]; then
+        FINALIZER_QA_GATE_REASON="qa_coverage_missing"
+        return 0
+    fi
+    local total untested fail gate_failed=false
+    total=$(grep -c '^|' "$qa_cov" 2>/dev/null) || total=0
+    total=$(( total > 2 ? total - 2 : 0 ))
+    untested=$(grep -c '| UNTESTED |' "$qa_cov" 2>/dev/null) || untested=0
+    fail=$(grep -c '| FAIL |' "$qa_cov" 2>/dev/null) || fail=0
+    if [ "$total" -gt 0 ] && [ "$(( untested * 100 / total ))" -gt 30 ]; then
+        append_plan_task_if_missing "Reduce UNTESTED QA coverage to <=30%"
+        gate_failed=true
+    fi
+    if [ "$fail" -gt 0 ]; then
+        while IFS= read -r row; do
+            local feature
+            feature=$(printf '%s' "$row" | cut -d'|' -f2 | xargs)
+            append_plan_task_if_missing "Resolve FAIL coverage item: $feature"
+        done < <(grep '| FAIL |' "$qa_cov")
+        gate_failed=true
+    fi
+    [ "$gate_failed" = "false" ]
+}
 
 check_all_tasks_complete() {
     if [ "$NO_TASK_EXIT" = "true" ]; then return 1; fi
@@ -1569,9 +1541,7 @@ get_current_task() {
 }
 
 
-# ============================================================================
 # STUCK DETECTION
-# ============================================================================
 
 LAST_TASK=""
 STUCK_COUNT=0
@@ -1637,9 +1607,7 @@ skip_stuck_task() {
     STUCK_COUNT=0
 }
 
-# ============================================================================
 # ITERATION SUMMARY
-# ============================================================================
 
 print_iteration_summary() {
     local iteration_start="$1"
@@ -1687,9 +1655,7 @@ print_iteration_summary() {
     ITERATION_COMMIT_COUNT="$commit_count"
 }
 
-# ============================================================================
 # REPORT GENERATION
-# ============================================================================
 
 generate_report() {
     local exit_reason="$1"
@@ -1698,9 +1664,7 @@ generate_report() {
     local minutes=$((duration / 60))
     local seconds=$((duration % 60))
 
-    local completed
-    local skipped
-    local remaining
+    local completed skipped remaining
     completed=$(grep -c '^\s*- \[x\]' "$PLAN_FILE" 2>/dev/null) || completed=0
     skipped=$(grep -c '^\s*- \[S\]' "$PLAN_FILE" 2>/dev/null) || skipped=0
     remaining=$(grep -c '^\s*- \[ \]' "$PLAN_FILE" 2>/dev/null) || remaining=0
@@ -2117,6 +2081,10 @@ run_queue_if_present() {
         cd "$WORK_DIR"
         if invoke_provider "$queue_iter_provider" "$queue_prompt_content" "$FRONTMATTER_MODEL"; then
             update_provider_health_on_success "$queue_iter_provider"
+            if [[ "$QUEUE_BASENAME" == *-PROMPT_steer.md || "$QUEUE_BASENAME" == *-steering.md ]]; then
+                CYCLE_POSITION=0
+                persist_loop_plan_state
+            fi
             if [ "$queue_iter_mode" = "plan" ]; then
                 LAST_PLAN_COMMIT=$(git rev-parse HEAD 2>/dev/null || echo "")
             fi
@@ -2136,6 +2104,25 @@ run_queue_if_present() {
         return 0
     fi
     return 1
+}
+
+sync_base_branch() {
+    local fetch_out
+    fetch_out=$(git -C "$WORK_DIR" fetch origin "$BASE_BRANCH" 2>&1) || return 0
+    local merge_out merge_rc
+    merge_out=$(git -C "$WORK_DIR" merge "origin/$BASE_BRANCH" --no-edit 2>&1)
+    merge_rc=$?
+    if [ "$merge_rc" -ne 0 ]; then
+        local conflicted
+        conflicted=$(git -C "$WORK_DIR" diff --name-only --diff-filter=U 2>/dev/null)
+        if [ -n "$conflicted" ]; then
+            mkdir -p "$SESSION_DIR/queue"
+            local qf="$SESSION_DIR/queue/$(date +%s)-PROMPT_merge.md"
+            printf '# Merge Conflict\n\nBase branch: %s\n\nConflicting files:\n%s\n\nMerge output:\n%s\n' \
+                "$BASE_BRANCH" "$conflicted" "$merge_out" > "$qf"
+            write_log_entry "merge_conflict" "base_branch" "$BASE_BRANCH" "conflicted_files" "$conflicted"
+        fi
+    fi
 }
 
 # Cleanup on exit
@@ -2168,6 +2155,7 @@ while [ "$ITERATION" -lt "$MAX_ITERATIONS" ]; do
     fi
     iter_provider=$(resolve_iteration_provider $ITERATION)
 
+    sync_base_branch
     if run_queue_if_present "$iter_provider"; then
         continue
     fi
@@ -2303,10 +2291,12 @@ while [ "$ITERATION" -lt "$MAX_ITERATIONS" ]; do
         # Check for finalizer entry at cycle boundary
         if [ "$FINALIZER_MODE" = "false" ] && [ "$ALL_TASKS_MARKED_DONE" = "true" ] \
            && [ "$FINALIZER_LENGTH" -gt 0 ] && [ "$CYCLE_POSITION" -eq 0 ]; then
-            FINALIZER_MODE=true
-            FINALIZER_POSITION=0
-            write_log_entry "finalizer_entered" "iteration" "$ITERATION"
-            echo "[All tasks marked done — entering finalizer sequence]"
+            if check_finalizer_qa_coverage_gate; then
+                FINALIZER_MODE=true
+                FINALIZER_POSITION=0
+                write_log_entry "finalizer_entered" "iteration" "$ITERATION"
+                echo "[All tasks marked done — entering finalizer sequence]"
+            fi
         fi
 
         # Capture all commits made during this iteration (any agent may commit)
