@@ -152,3 +152,42 @@ Stash + `npm run type-check` on master confirms: identical 10 TS errors exist be
 `loop.sh` is still 2373 LOC. Constitution Rule 1 hard limit: < 400 LOC. No cleanup performed.
 
 ---
+
+## Review — 2026-04-16 — commit e45ea26a..c888c883 (iter 3)
+
+**Verdict: FAIL** (2 findings → written to TODO.md as [review] tasks)
+**Scope:** `aloop/bin/loop.sh`, `aloop/bin/loop.ps1`, `aloop/bin/loop_branch_coverage.tests.sh` (committed); `aloop/cli/src/commands/start.ts`, `aloop/cli/src/lib/requests.ts`, `aloop/cli/src/lib/requests.test.ts`, `aloop/cli/dist/index.js` (unstaged/uncommitted)
+
+### Prior findings resolved
+
+**Finding 1 (Gate 1 — branch sync + finalizer gate): RESOLVED**
+- `append_plan_task_if_missing` (line 1489) and `check_finalizer_qa_coverage_gate` (line 1496) present in loop.sh ✓
+- `sync_base_branch` implemented in loop.sh (line ~2109) and `Sync-BaseBranch` in loop.ps1 ✓
+- Steering reset: `CYCLE_POSITION=0; persist_loop_plan_state` after `*-PROMPT_steer.md` / `*-steering.md` queue items in both shells ✓
+- `loop_finalizer_qa_coverage.tests.sh`: 4/4 PASS ✓
+- `loop_branch_coverage.tests.sh`: 55/55 PASS (branch_sync.conflict, branch_sync.success, branch_sync.fetch_fail now covered) ✓
+
+**Finding 2 (Constitution Rule 1 — loop.sh LOC): PARTIALLY RESOLVED**
+loop.sh reduced from 2373 → 2363 LOC (net −10). New functions added (`append_plan_task_if_missing`, `check_finalizer_qa_coverage_gate`, `sync_base_branch`, steering reset block) with compensating removals (`extract_explicit_cooldown_until` inlined, stale-lock recovery block removed, comment condensation). Still 2363 LOC vs < 400 target — a known pre-existing technical debt. Key check: it did not grow. Constitution Rule 1 remains technically violated at 2363 LOC; flagged as an ongoing issue but not re-opened as a new finding since it was deferred by design.
+
+### New findings
+
+**Finding 1 (Gate 1 + Gate 3 — Steering reset test coverage): FAIL**
+`queue.steer_reset` and `queue.nonsteer_no_reset` branch IDs not registered or covered in `aloop/bin/loop_branch_coverage.tests.sh`. The SPEC acceptance criterion explicitly requires: "Automated coverage is added/updated in the in-scope test files for retry, prerequisite, finalizer, sanitization, and branch-sync conflict branches." Steering cyclePosition reset is a first-class spec deliverable (SPEC §Phase Advancement & Retry: "Steering queue execution resets `cyclePosition` to `0`") with zero automated coverage. Branch sync tests were added (3 new branches) but steering tests were not. QA confirmed absent in both iter 3 and iter 4. Written as [review] task.
+
+**Finding 2 (Gate 4 — Out-of-scope uncommitted changes): FAIL**
+Working tree contains unstaged changes in four out-of-scope files:
+- `start.ts`: removes unused `hasConfiguredValue()` helper — file not in issue scope, not modified for issue purposes
+- `requests.ts` (`aloop/cli/src/lib/`, not the in-scope `sanitize.ts` or `index.ts`): functional changes — removes `ValidationError` class, changes `findExistingIssueByTitle` parameter from `RequestProcessorOptions` to `spawnFn?: typeof spawnSync`, refactors `handleSteerChild` to delegate to `findActiveChildSessionByIssue` with changed error string (`'No active sessions found'` → `'Could not find child session for issue #N'`)
+- `requests.test.ts`: updates assertion to match changed error string — out of scope
+- `dist/index.js`: compiled from a different source state than current working tree — contains `LOOP_PROMPT_TEMPLATES` with 11 entries (source has 6 or none) and `pipeline.yml` scaffolding code absent from all TypeScript source files; dist is inconsistent with sources
+
+Per Constitution Rules 12 (one issue, one concern) and 18 (respect file ownership). Written as [review] task.
+
+### Gates not failing
+
+- Gate 2: branch_sync tests (loop_branch_coverage.tests.sh lines 1044–1124) have concrete assertions: queue file name pattern `*-PROMPT_merge.md`, `merge_conflict` log event present, return code 0 on fetch failure, no queue file on clean merge. Thorough.
+- Gate 5: 32 npm test failures — same pre-existing count as iter 2; no regressions. TypeScript type-check: same 10 pre-existing errors. `loop_branch_coverage.tests.sh` 55/55 PASS.
+- Gates 6, 7, 8, 9: N/A for shell mechanics changes.
+
+---
