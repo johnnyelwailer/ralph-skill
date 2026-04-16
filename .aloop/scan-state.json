@@ -1,6 +1,6 @@
 {
-  "scan_at": "2026-04-16T222019Z",
-  "iteration": 492,
+  "scan_at": "2026-04-16T222543Z",
+  "iteration": 494,
   "active_child": 23,
   "active_child_session": "orchestrator-20260321-172932-issue-23-20260416-215759",
   "active_child_pid": 1192896,
@@ -8,7 +8,7 @@
   "active_child_phase": "build",
   "active_child_iter": 1,
   "active_child_updated_at": "2026-04-16T21:58:02Z",
-  "active_child_elapsed_since_update": "~22min",
+  "active_child_elapsed_since_update": "~27min",
   "active_child_claude_alive": true,
   "active_child_death": null,
   "detected_issue": null,
@@ -25,5 +25,5 @@
   },
   "action": "wait",
   "human_blocked": [157, 108, 173],
-  "notes": "Scan 492. issue-23 child (PID 1192896) ALIVE at iter=1/build/claude (~22min). Build phase active — Claude running at 0.7% CPU. Most recent commit 4c074a78 adds steer_reset/nonsteer_no_reset coverage (fixes prior review FAIL). Expecting build to complete with dist/index.js rebuild (Gate 4). Pending redispatches after #23: #188/#70. Human-blocked: #157/#108/#173. Action: wait."
+  "notes": "Scan 494. issue-23 child (PID 1192896) ALIVE at iter=1/build/claude (~27min). Claude at 0.6% CPU. Uncommitted SPEC.md+TODO.md in child worktree. Queue override 000-review-fixes.md active. Last commit 4c074a78 adds steer_reset/nonsteer_no_reset coverage (fixes prior review FAIL). Gate 4 dist/index.js rebuild still pending. Pending after #23: #188/#70. Human-blocked: #157/#108/#173. Action: wait."
 }
