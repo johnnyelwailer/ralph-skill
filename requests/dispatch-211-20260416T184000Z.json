@@ -1,0 +1,9 @@
+{
+  "dispatch_id": 211,
+  "issue": 188,
+  "scan_at": "2026-04-16T184000Z",
+  "action": "redispatch",
+  "target_agent": "opencode",
+  "priority": "high",
+  "reason": "Child 187 dead. Redispatching issue 188 from backlog (first of [188,70])."
+}

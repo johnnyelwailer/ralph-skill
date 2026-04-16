@@ -1,0 +1,24 @@
+{
+  "scan_at": "2026-04-16T08:04:17Z",
+  "iteration": 223,
+  "active_child": null,
+  "queued_children": [],
+  "cleared_children": [1246219],
+  "capacity": {
+    "cap": 1,
+    "occupied": 0,
+    "available": 1
+  },
+  "pending_redispatches": 0,
+  "dispatch_backlog": [],
+  "corrective_backlog": [],
+  "state_corrections": ["PID 1246219 confirmed dead at 08:04:17Z, was active child in plan mode"],
+  "provider_status": {
+    "claude": "unknown",
+    "opencode": "active",
+    "gemini": "unknown",
+    "codex": "unknown"
+  },
+  "action": "scan_pass",
+  "notes": "Scan pass 223. Active child PID 1246219 confirmed dead. Cleared from active child slot. Capacity now 0/1 occupied. No queued children, no backlog. Child loop terminated normally (plan mode). Orchestrator continuing — ready for next dispatch if work exists in worktree."
+}

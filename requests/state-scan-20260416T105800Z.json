@@ -1,0 +1,34 @@
+{
+  "scan_at": "2026-04-16T10:58:00Z",
+  "iteration": 287,
+  "active_child": 188,
+  "active_child_pid": 1928090,
+  "active_child_elapsed": "2h47m",
+  "active_child_death": "orphaned",
+  "detected_issue": "process-requests daemon down. Orphaned child 188 occupying capacity. Dispatch backlog [186,187,209] unconsumed.",
+  "capacity": {
+    "cap": 1,
+    "occupied": 1,
+    "available": 0,
+    "note": "Capacity 1/1 full - orphaned child PID 1928090"
+  },
+  "pending_redispatches": 3,
+  "dispatch_backlog": "[186, 187, 209]",
+  "dispatch_backlog_status": "unconsumed - daemon down",
+  "provider_status": {
+    "claude": "active",
+    "opencode": "active"
+  },
+  "current_orchestrator_pid": null,
+  "action": "scan_pass_blocked",
+  "blockage_reason": [
+    "process-requests daemon not running",
+    "Capacity 1/1 full - orphaned child occupying slot",
+    "Dispatch backlog unconsumed"
+  ],
+  "required_human_actions": [
+    "Restart process-requests daemon to consume dispatch backlog",
+    "Kill orphaned child PID 1928090 to free capacity slot"
+  ],
+  "notes": "Scan pass 287 - state unchanged. Orchestrator blocked. No dispatch possible until daemon restored and orphaned child cleared."
+}

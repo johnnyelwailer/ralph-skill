@@ -1,0 +1,24 @@
+{
+  "scan_at": "20260416T202100Z",
+  "iteration": 387,
+  "active_child": null,
+  "active_child_pid": null,
+  "active_child_elapsed": null,
+  "active_child_death": null,
+  "detected_issue": "No queue override. Capacity available. dispatch-209 stale (issue not on GH). Backlog ready items present.",
+  "capacity": {
+    "cap": 1,
+    "occupied": 0,
+    "available": 1
+  },
+  "pending_redispatches": 0,
+  "dispatch_backlog": [211, 186, 185, 184, 183, 182, 180],
+  "provider_status": {
+    "claude": "active",
+    "opencode": "active"
+  },
+  "current_orchestrator_pid": 3179677,
+  "action": "dispatch",
+  "labels": ["dispatch-stale"],
+  "notes": "Scan 387. dispatch-209 confirmed stale. Capacity idle. Backlog 211,186,185,184,183,182,180 pending. Next dispatch should target 211 (skip 209)."
+}

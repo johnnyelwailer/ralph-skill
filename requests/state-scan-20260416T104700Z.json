@@ -1,0 +1,34 @@
+{
+  "scan_at": "2026-04-16T10:47:00Z",
+  "iteration": 282,
+  "active_child": null,
+  "active_child_pid": null,
+  "active_child_elapsed": null,
+  "active_child_death": "daemon_down",
+  "detected_issue": "process-requests daemon (PID 2244094) confirmed dead. Orchestrator capacity shows 0/0 (no daemon = no capacity tracking). Dispatch backlog [186, 187, 209] unconsumed. Scan blocked - human required to restart daemon.",
+  "capacity": {
+    "cap": 0,
+    "occupied": 0,
+    "available": 0,
+    "note": "No daemon running - capacity system unavailable"
+  },
+  "pending_redispatches": 3,
+  "dispatch_backlog": "[186, 187, 209]",
+  "dispatch_backlog_status": "unconsumed - daemon down",
+  "provider_status": {
+    "claude": "unknown",
+    "opencode": "unknown"
+  },
+  "current_orchestrator_pid": 2150515,
+  "action": "scan_pass_blocked_human_required",
+  "blockage_reason": [
+    "process-requests daemon dead (was PID 2244094)",
+    "No capacity tracking available",
+    "Dispatch files unconsumed: 186, 187, 209"
+  ],
+  "required_human_actions": [
+    "Restart process-requests daemon",
+    "Then dispatch backlog will be consumed"
+  ],
+  "notes": "Scan pass 282 BLOCKED. Daemon confirmed down, capacity 0/0. Orchestrator cannot self-heal. Human intervention required."
+}

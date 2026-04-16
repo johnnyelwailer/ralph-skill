@@ -1,0 +1,23 @@
+{
+  "scan_at": "2026-04-16T14:38:00Z",
+  "iteration": 324,
+  "active_child": null,
+  "active_child_pid": null,
+  "active_child_elapsed": null,
+  "active_child_death": null,
+  "detected_issue": "process-requests daemon NOT running. Dispatch files (186, 187, 209) remain unconsumed.",
+  "capacity": {
+    "cap": 1,
+    "occupied": 0,
+    "available": 1
+  },
+  "pending_redispatches": 3,
+  "dispatch_backlog": "[186, 187, 209]",
+  "provider_status": {
+    "claude": "unknown",
+    "opencode": "unknown"
+  },
+  "current_orchestrator_pid": null,
+  "action": "daemon_blocked",
+  "notes": "Scan pass 324. No queue overrides. process-requests daemon still dead. 3 dispatch files unconsumed. Human required to restart process-requests daemon. No safe action available."
+}

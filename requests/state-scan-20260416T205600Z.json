@@ -1,0 +1,24 @@
+{
+  "scan_at": "2026-04-16T205600Z",
+  "iteration": 395,
+  "active_child": null,
+  "active_child_pid": null,
+  "active_child_elapsed": null,
+  "active_child_death": null,
+  "detected_issue": "Ghost backlog confirmed. dispatch-186 attempted (205501Z) - no GH issue found. All backlog items (211,186,185,184,183,182,180) appear to be ghosts. Capacity idle.",
+  "capacity": {
+    "cap": 1,
+    "occupied": 0,
+    "available": 1
+  },
+  "pending_redispatches": 0,
+  "dispatch_backlog": [211, 186, 185, 184, 183, 182, 180],
+  "provider_status": {
+    "claude": "unknown",
+    "opencode": "unknown"
+  },
+  "current_orchestrator_pid": null,
+  "action": "stalled",
+  "labels": ["ghost-backlog"],
+  "notes": "Scan 395. Ghost backlog confirmed - no GH issues found for any backlog item. Need human review to either create real issues or clear ghost backlog. Stopping advancement."
+}

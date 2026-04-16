@@ -1,0 +1,28 @@
+{
+  "scan_at": "2026-04-16T203057Z",
+  "iteration": 438,
+  "active_child": 23,
+  "active_child_pid": 675816,
+  "active_child_state": "running",
+  "active_child_phase": "plan",
+  "active_child_iter": 47,
+  "active_child_updated_at": "2026-04-16T20:28:50Z",
+  "active_child_elapsed_since_update": "~2min",
+  "active_child_death": null,
+  "detected_issue": null,
+  "capacity": {
+    "cap": 1,
+    "occupied": 1,
+    "available": 0
+  },
+  "pending_redispatches": 0,
+  "queue_overrides": 0,
+  "provider_status": {
+    "claude": "active",
+    "opencode": "unknown"
+  },
+  "current_orchestrator_pid": 861079,
+  "action": "wait",
+  "human_blocked": [157, 108, 173],
+  "notes": "Scan 438. Child PID 675816 (issue-23) ALIVE at iter=47/plan. Claude PID 858535 active (2.3% CPU). Updated 2min ago — fresh. Capacity occupied (1/1). No queue overrides. Human-blocked: #157/#108/#173. Awaiting child completion before next dispatch."
+}

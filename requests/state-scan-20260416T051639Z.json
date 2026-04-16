@@ -1,0 +1,26 @@
+{
+  "scan_at": "2026-04-16T05:16:39Z",
+  "iteration": 5,
+  "action": "scan_pass",
+  "active_child": 1413809,
+  "active_child_pid": 1413809,
+  "detected_issue": null,
+  "queued_children": [],
+  "cleared_children": [],
+  "capacity": {
+    "cap": 1,
+    "occupied": 1,
+    "available": 0
+  },
+  "pending_redispatches": 0,
+  "dispatch_backlog": [],
+  "corrective_backlog": [],
+  "state_corrections": [],
+  "provider_status": {
+    "claude": "unknown",
+    "opencode": "active",
+    "gemini": "unknown",
+    "codex": "unknown"
+  },
+  "notes": "Scan pass 5. Orchestrator alive (PID 1312238). Child 1413809 active (loop.sh resume). Capacity full. Queue empty. Orchestrator self-managing. No state transitions needed."
+}

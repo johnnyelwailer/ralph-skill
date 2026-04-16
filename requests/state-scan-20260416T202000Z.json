@@ -1,0 +1,24 @@
+{
+  "scan_at": "2026-04-16T202000Z",
+  "iteration": 385,
+  "active_child": null,
+  "active_child_pid": null,
+  "active_child_elapsed": null,
+  "active_child_death": null,
+  "detected_issue": "No queue override. Capacity available. No in-review items detected.",
+  "capacity": {
+    "cap": 1,
+    "occupied": 0,
+    "available": 1
+  },
+  "pending_redispatches": 0,
+  "dispatch_backlog": [211, 186, 185, 184, 183, 182, 180],
+  "provider_status": {
+    "claude": "active",
+    "opencode": "active"
+  },
+  "current_orchestrator_pid": 3179677,
+  "action": "dispatch",
+  "labels": [],
+  "notes": "Scan 385. No queue override. Capacity idle. Backlog 211,186,185,184,183,182,180 still pending. In-progress: 188,124,108,44,37,199,98."
+}

@@ -1,0 +1,9 @@
+{
+  "scan_at": "2026-04-16T10:03:46Z",
+  "iteration": 269,
+  "action": "label-update",
+  "target_issue": 188,
+  "remove_labels": ["aloop/in-progress"],
+  "add_labels": ["aloop/blocked"],
+  "reason": "Issue 188 marked In-progress but child is dead and no PR exists. Safe transition to aloop/blocked to avoid duplicate dispatch attempts. dispatch-186 is next ready."
+}

@@ -1,0 +1,24 @@
+{
+  "scan_at": "2026-04-16T04:25:00Z",
+  "iteration": 192,
+  "active_child": null,
+  "queued_children": [],
+  "cleared_children": [],
+  "capacity": {
+    "cap": 1,
+    "occupied": 0,
+    "available": 1
+  },
+  "pending_redispatches": 2,
+  "dispatch_backlog": ["dispatch-70-scan-20260416T005700Z.json", "dispatch-188-scan-20260416T010000Z.json"],
+  "corrective_backlog": [],
+  "state_corrections": [],
+  "provider_status": {
+    "claude": "unknown",
+    "opencode": "active",
+    "gemini": "unknown",
+    "codex": "unknown"
+  },
+  "action": "scan_pass",
+  "notes": "Queue empty. No overrides. Dispatch backlog (2) still stranded — process-requests consumer not running. Capacity 1/1 available but no consumer. Human-blocked: restart process-requests to consume dispatch backlog. In-review issues (18) awaiting gate progression: 176,172,160,158,157,156,155,154,153,152,151,147,145,144,143,114,111,101. In-progress issues stable (7): 199,177,124,108,98,44,37. Ready queue large but cannot dispatch without consumer. Exit scan pass."
+}

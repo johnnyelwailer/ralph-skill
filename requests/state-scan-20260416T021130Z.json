@@ -1,0 +1,23 @@
+{
+  "id": "scan-20260416-0211-state",
+  "type": "state_update",
+  "payload": {
+    "iteration": 176,
+    "scan_at": "2026-04-16T02:11:30Z",
+    "action": "scan_pass_monitoring",
+    "active_child": null,
+    "capacity": {
+      "cap": 1,
+      "occupied": 0,
+      "available": 1
+    },
+    "pending_redispatches": 2,
+    "provider_status": {
+      "claude": "unknown",
+      "opencode": "active",
+      "gemini": "unknown",
+      "codex": "unknown"
+    },
+    "notes": "iter=176: Heartbeat scan. No active children. Capacity 0/1 occupied, 1 available. Dispatch requests for #70 and #188 remain in requests/ unconsumed. Queue empty. No override prompts. State stable — awaiting dispatch consumption or new input."
+  }
+}

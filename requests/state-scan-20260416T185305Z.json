@@ -1,0 +1,13 @@
+{
+  "scan_at": "2026-04-16T185305Z",
+  "iteration": 395,
+  "action": "state-scan",
+  "active_child": null,
+  "capacity": "1/1",
+  "in_progress_issues": [188, 124, 108, 98, 44, 37, 199],
+  "dispatch_backlog": [187, 209],
+  "ready_issues_count": 73,
+  "in_review_issues": [176, 172, 160, 158, 157, 156, 155, 154, 153, 152, 151, 147, 145, 144, 143, 114, 111, 101],
+  "queue_override": null,
+  "notes": "Scan 395. No active child. Capacity available. dispatch-186 spawned, awaiting confirmation. Backlog [187, 209]. Ready queue is large (73 issues). process-requests appears healthy (consumed dispatch-186)."
+}

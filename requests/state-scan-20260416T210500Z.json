@@ -1,0 +1,13 @@
+{
+  "scan_at": "2026-04-16T210500Z",
+  "iteration": 399,
+  "active_child": null,
+  "active_child_pid": null,
+  "capacity": { "cap": 1, "occupied": 0, "available": 1 },
+  "pending_redispatches": 0,
+  "dispatch_backlog": [211, 186, 185, 184, 183, 182, 180],
+  "queue_override": false,
+  "action": "idle",
+  "labels": ["ghost-backlog", "aloop/stopped"],
+  "notes": "Scan 399. Terminal state confirmed from prior scan 398. All backlog phantom. gh blocked. No queue overrides. System is stopped - awaiting human intervention to clear backlog or create real GH issues."
+}

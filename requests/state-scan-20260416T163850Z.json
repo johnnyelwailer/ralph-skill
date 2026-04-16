@@ -1,0 +1,24 @@
+{
+  "scan_at": "2026-04-16T163850Z",
+  "iteration": 362,
+  "active_child": 187,
+  "active_child_pid": 3781821,
+  "active_child_elapsed": "00:10:00",
+  "active_child_death": null,
+  "detected_issue": null,
+  "capacity": {
+    "cap": 1,
+    "occupied": 1,
+    "available": 0
+  },
+  "pending_redispatches": 0,
+  "dispatch_backlog": [],
+  "provider_status": {
+    "claude": "active",
+    "opencode": "active"
+  },
+  "current_orchestrator_pid": 3179674,
+  "action": "cede",
+  "labels": [],
+  "notes": "Scan pass 362. Another orchestrator session (PID 3781408) running child 187 via opencode (PID 3781821). This session ceded. No action needed."
+}

@@ -1,0 +1,24 @@
+{
+  "scan_at": "20260416T212400Z",
+  "iteration": 405,
+  "active_child": null,
+  "active_child_pid": null,
+  "active_child_elapsed": null,
+  "active_child_death": null,
+  "detected_issue": "No queue override. System terminal stopped. No valid dispatch targets.",
+  "capacity": {
+    "cap": 1,
+    "occupied": 0,
+    "available": 1
+  },
+  "pending_redispatches": 0,
+  "dispatch_backlog": [],
+  "provider_status": {
+    "claude": "unknown",
+    "opencode": "unknown"
+  },
+  "current_orchestrator_pid": null,
+  "action": "idle",
+  "labels": ["scan-405", "terminal-stopped"],
+  "notes": "Scan 405. System terminal stopped per TODO.md iter 401. No orchestrator active. No queue/ overrides. No backlog (backlog issues 211,186,185... confirmed phantom/not on GH). Capacity available but no valid targets. Human intervention required."
+}

@@ -1,0 +1,9 @@
+{
+  "scan_at": "2026-04-16T16:26:00Z",
+  "iteration": 334,
+  "action": "dispatch",
+  "target_issue": 186,
+  "target_agent": "opencode",
+  "priority": "high",
+  "reason": "Child PID 3101023 dead. Capacity 1/1 available. Redispatch issue 186 from backlog [186, 187, 209] as corrective action."
+}

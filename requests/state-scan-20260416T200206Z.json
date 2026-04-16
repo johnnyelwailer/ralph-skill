@@ -1,0 +1,28 @@
+{
+  "scan_at": "2026-04-16T200206Z",
+  "iteration": 417,
+  "active_child": 23,
+  "active_child_pid": 675816,
+  "active_child_state": "running",
+  "active_child_phase": "plan",
+  "active_child_iter": 33,
+  "active_child_updated_at": "2026-04-16T19:59:10Z",
+  "active_child_elapsed_since_update": "~3min",
+  "active_child_death": null,
+  "detected_issue": null,
+  "capacity": {
+    "cap": 1,
+    "occupied": 1,
+    "available": 0
+  },
+  "pending_redispatches": 0,
+  "queue_overrides": 0,
+  "provider_status": {
+    "claude": "active",
+    "opencode": "unknown"
+  },
+  "current_orchestrator_pid": 2232310,
+  "action": "wait",
+  "human_blocked": [157, 108, 173],
+  "notes": "Scan 417. Child PID 675816 (issue-23) ALIVE at iter=33/plan (advanced from review at iter=32). Updated 3min ago — fresh. Status: state=running, provider=claude. Capacity occupied (1/1). No queue overrides. Human-blocked: #157/#108/#173. Awaiting child completion before next dispatch."
+}

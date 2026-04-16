@@ -1,0 +1,24 @@
+{
+  "scan_at": "2026-04-16T195600Z",
+  "iteration": 381,
+  "active_child": null,
+  "active_child_pid": null,
+  "active_child_elapsed": null,
+  "active_child_death": "20260416T194520Z",
+  "detected_issue": "dispatch-187 piling up without spawn; process-requests may be blocked",
+  "capacity": {
+    "cap": 1,
+    "occupied": 0,
+    "available": 1
+  },
+  "pending_redispatches": 0,
+  "dispatch_backlog": [209, 211, 186, 185, 184, 183, 182, 180],
+  "provider_status": {
+    "claude": "active",
+    "opencode": "active"
+  },
+  "current_orchestrator_pid": 3179677,
+  "action": "dispatch",
+  "labels": [],
+  "notes": "Scan pass 381. Child 187 died. Capacity now available. dispatch-187 requests unconsumed (may indicate process-requests issue). Dispatching 209 as next ready."
+}

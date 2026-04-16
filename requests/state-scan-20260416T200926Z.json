@@ -1,0 +1,29 @@
+{
+  "scan_at": "2026-04-16T200926Z",
+  "iteration": 423,
+  "active_child": 23,
+  "active_child_pid": 675816,
+  "active_child_state": "running",
+  "active_child_phase": "plan",
+  "active_child_iter": 33,
+  "active_child_updated_at": "2026-04-16T19:59:10Z",
+  "active_child_elapsed_since_update": "~10min",
+  "active_child_process_tree": "loop.sh(675816)→loop.sh(770889)→claude(770892)→bash→npm test→node (actively running tests)",
+  "active_child_death": null,
+  "detected_issue": null,
+  "capacity": {
+    "cap": 1,
+    "occupied": 1,
+    "available": 0
+  },
+  "pending_redispatches": 0,
+  "queue_overrides": 0,
+  "provider_status": {
+    "claude": "active",
+    "opencode": "unknown"
+  },
+  "current_orchestrator_pid": 2232310,
+  "action": "wait",
+  "human_blocked": [157, 108, 173],
+  "notes": "Scan 423. Child PID 675816 (issue-23) ALIVE at iter=33/plan. Status.json ~10min stale but process tree confirms active: npm test running under claude(770892). Normal staleness during test execution. Capacity occupied (1/1). Queue empty. No new dispatches. Human-blocked: #157/#108/#173 unchanged."
+}

@@ -1,0 +1,9 @@
+{
+  "scan_at": "2026-04-16T202000Z",
+  "iteration": 385,
+  "action": "dispatch",
+  "target_issue": 211,
+  "target_agent": "opencode",
+  "priority": "normal",
+  "reason": "Capacity available. Dispatching first backlog item 211."
+}

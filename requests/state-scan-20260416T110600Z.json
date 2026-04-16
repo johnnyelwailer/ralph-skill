@@ -1,0 +1,30 @@
+# Orchestrator Scan — 2026-04-16T11:06:00Z (iter 291)
+
+## Daemon Status
+- `process-requests` daemon: **NOT RUNNING** (confirmed same as scan 290)
+- Capacity: 1/1 full (child 188 stale slot — PID dead, not cleaned)
+
+## Dispatch Backlog
+- `[186, 187, 209]` — dispatch requests unconsumed (daemon offline)
+
+## Blockage Same as Last Scan
+- Child 188: PID dead but not cleaned from capacity tracking
+- process-requests daemon: not running since at least 2026-04-14
+- Human intervention required to restore dispatch capability
+
+## Required Human Actions (unchanged)
+1. Restart process-requests daemon:
+   ```bash
+   aloop process-requests --session-dir /home/pj/.aloop/sessions/orchestrator-20260321-172932 &
+   ```
+2. Clear stale child 188 from capacity tracking (or restart orchestrator to auto-recover)
+
+## Issue Status Summary
+- Ready: 186, 187, 209 + many others (large backlog)
+- In progress: 188 (stuck — child dead)
+- In review: 176, 172, 160, 158, 157, 156, 155, 154, 153, 152, 151, 147, 145, 144, 143, 114, 111, 101
+- In progress: 199, 108, 124, 98, 44, 37, 177
+
+## No-Op This Pass
+- Daemon down, capacity full — no dispatch possible
+- Queue dir: empty (no override prompts)

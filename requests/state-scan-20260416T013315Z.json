@@ -1,0 +1,9 @@
+{
+  "id": "scan-20260416-0133-state",
+  "type": "state_update",
+  "payload": {
+    "child_session_clear": 93695,
+    "reason": "Child PID 93695 (issue-73) confirmed dead. Capacity is now 0/1. Ready for dispatch.",
+    "timestamp": "2026-04-16T01:33:15Z"
+  }
+}

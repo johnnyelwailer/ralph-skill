@@ -1,0 +1,10 @@
+{
+  "scan_at": "2026-04-16T205200Z",
+  "iteration": 394,
+  "action": "dispatch",
+  "target": "issue-211",
+  "reason": "Capacity available (1/1), no active child. dispatch-211 oldest in backlog.",
+  "priority": "normal",
+  "labels": ["dispatch-pending"],
+  "notes": "Scan 394. Dispatching 211. Backlog now [186,185,184,183,182,180]."
+}

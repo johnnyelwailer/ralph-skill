@@ -1,0 +1,24 @@
+{
+  "scan_at": "2026-04-16T205300Z",
+  "iteration": 394,
+  "active_child": null,
+  "active_child_pid": null,
+  "active_child_elapsed": null,
+  "active_child_death": null,
+  "detected_issue": "dispatch-211 pickup stale (~48min). Capacity idle. Re-confirm dispatch.",
+  "capacity": {
+    "cap": 1,
+    "occupied": 0,
+    "available": 1
+  },
+  "pending_redispatches": 1,
+  "dispatch_backlog": [211, 186, 185, 184, 183, 182, 180],
+  "provider_status": {
+    "claude": "unknown",
+    "opencode": "unknown"
+  },
+  "current_orchestrator_pid": null,
+  "action": "dispatch",
+  "labels": ["dispatch-pending", "dispatch-stale"],
+  "notes": "Scan 394. dispatch-211 request from 202200Z (~48min old) not picked up. Capacity available. Backlog 211,186,185,184,183,182,180 pending."
+}

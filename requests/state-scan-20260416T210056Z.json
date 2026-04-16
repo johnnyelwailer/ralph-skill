@@ -1,0 +1,7 @@
+{
+  "type": "state-scan",
+  "scan_at": "2026-04-16T210056Z",
+  "iteration": 454,
+  "action": "wait",
+  "notes": "Child PID 675816 (issue-23) ALIVE at iter=60/review. Claude 942496 active (~3min). Capacity full. Queue empty. Human-blocked: #157/#108/#173."
+}

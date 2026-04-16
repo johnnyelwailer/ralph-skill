@@ -1,0 +1,9 @@
+{
+  "scan_at": "2026-04-16T10:00:00Z",
+  "iteration": 254,
+  "action": "dispatch",
+  "target_issue": 209,
+  "target_agent": "opencode",
+  "priority": "normal",
+  "reason": "Redispatch: issue 209 child (PID 1505716) confirmed dead via capacity_recovery. opencode idle, capacity 1/1 available. Bypassing stuck issues 188, 187 to re-dispatch 209 as corrective action."
+}

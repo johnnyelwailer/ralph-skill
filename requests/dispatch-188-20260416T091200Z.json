@@ -1,0 +1,9 @@
+{
+  "scan_at": "2026-04-16T09:12:00Z",
+  "iteration": 245,
+  "action": "dispatch",
+  "target_issue": 188,
+  "target_agent": "opencode",
+  "priority": "normal",
+  "reason": "Issue 188 Ready. Capacity now available (0/1) after clearing dead child 1309507. Re-dispatching to utilize freed capacity."
+}

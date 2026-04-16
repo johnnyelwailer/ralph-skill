@@ -1,0 +1,23 @@
+{
+  "scan_at": "2026-04-16T10:41:00Z",
+  "iteration": 267,
+  "active_child": null,
+  "active_child_pid": null,
+  "active_child_elapsed": null,
+  "capacity": {
+    "cap": 1,
+    "occupied": 0,
+    "available": 1
+  },
+  "pending_redispatches": 1,
+  "dispatch_backlog": "[188, 186, 185, 184, 183, 182, 180, 178, 177, 174, 173, 148, 140, 134, 133, 130, 129, 128, 127, 126, 118, 113, 109, 105, 103, 99, 97, 96, 95, 94, 93, 92, 90, 89, 88, 87, 85, 83, 82, 81, 79, 78, 77, 76, 75, 74, 73, 72, 71, 70, 69, 68, 67, 66, 65, 64, 63, 62, 61, 60, 59, 58, 57, 56, 55, 54, 53, 52, 51, 50, 49, 48, 47, 46, 45, 43, 42, 41, 39, 36, 35, 34, 33, 32, 29, 28, 26, 24, 23, 22, 197, 198, 200, 201, 202, 203, 204, 205, 206, 207, 208, 209]",
+  "detected_issue": "dispatch-187 child not yet detected in process table. Issue 209 remains pending redispatch from prior capacity recovery. Issue 188 stuck In-progress with no child - labels may need update.",
+  "provider_status": {
+    "claude": "unknown",
+    "opencode": "idle",
+    "gemini": "unknown",
+    "codex": "unknown"
+  },
+  "action": "scan_pass",
+  "notes": "Scan pass 267. No active child detected, capacity 1/1 available. Issue 187 dispatch child not yet observed. Issue 209 was Ready but not redispatched after capacity recovery at iteration 266 - adding to pending_redispatches. Issue 188 marked In-progress but child dead - requires label update to avoid stuck state. Next ready issue is 186."
+}

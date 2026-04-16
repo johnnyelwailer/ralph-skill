@@ -1,0 +1,26 @@
+{
+  "scan_at": "2026-04-16T09:15:00Z",
+  "iteration": 246,
+  "action": "scan_pass",
+  "active_child": null,
+  "active_child_pid": null,
+  "detected_issue": null,
+  "queued_children": [],
+  "cleared_children": [],
+  "capacity": {
+    "cap": 1,
+    "occupied": 0,
+    "available": 1
+  },
+  "pending_redispatches": 0,
+  "dispatch_backlog": [],
+  "corrective_backlog": [],
+  "state_corrections": [],
+  "provider_status": {
+    "claude": "cooldown",
+    "opencode": "idle",
+    "gemini": "unknown",
+    "codex": "unknown"
+  },
+  "notes": "Scan pass 246. No open issues with aloop/* labels. Workspace idle. No dispatch backlog."
+}

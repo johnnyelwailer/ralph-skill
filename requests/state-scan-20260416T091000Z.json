@@ -1,0 +1,26 @@
+{
+  "scan_at": "2026-04-16T09:10:00Z",
+  "iteration": 244,
+  "action": "scan_pass",
+  "active_child": 1309507,
+  "active_child_pid": 1309507,
+  "detected_issue": null,
+  "queued_children": [],
+  "cleared_children": [],
+  "capacity": {
+    "cap": 1,
+    "occupied": 1,
+    "available": 0
+  },
+  "pending_redispatches": 0,
+  "dispatch_backlog": [],
+  "corrective_backlog": [],
+  "state_corrections": [],
+  "provider_status": {
+    "claude": "cooldown",
+    "opencode": "active",
+    "gemini": "unknown",
+    "codex": "unknown"
+  },
+  "notes": "Scan pass 244. Active child 1309507 (issue 188) still alive. Capacity full. Issue 177 is in Needs review (corrected last pass) - not eligible for redispatch. No action taken - waiting for child to complete or capacity to free."
+}

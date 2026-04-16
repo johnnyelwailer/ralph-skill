@@ -1,0 +1,6 @@
+{
+  "type": "dispatch",
+  "issue": 209,
+  "timestamp": "2026-04-16T16:06:30Z",
+  "reason": "Heartbeat scan: dispatch lowest numbered ready issue"
+}

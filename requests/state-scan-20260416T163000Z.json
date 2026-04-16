@@ -1,0 +1,24 @@
+{
+  "scan_at": "2026-04-16T16:30:00Z",
+  "iteration": 335,
+  "active_child": 186,
+  "active_child_pid": null,
+  "active_child_elapsed": null,
+  "active_child_death": null,
+  "detected_issue": null,
+  "capacity": {
+    "cap": 1,
+    "occupied": 1,
+    "available": 0
+  },
+  "pending_redispatches": 0,
+  "dispatch_backlog": "[187, 209]",
+  "provider_status": {
+    "claude": "active",
+    "opencode": "active"
+  },
+  "current_orchestrator_pid": null,
+  "action": "await_spawn",
+  "labels": [],
+  "notes": "Scan pass 335. Issue 186 redispatched + process-requests restarted at 16:26:00Z. Awaiting child loop spawn. Backlog [187, 209] remains. No queue overrides."
+}

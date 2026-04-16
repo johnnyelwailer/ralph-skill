@@ -1,0 +1,26 @@
+{
+  "scan_at": "2026-04-16T09:05:00Z",
+  "iteration": 242,
+  "active_child": null,
+  "active_child_pid": null,
+  "detected_issue": null,
+  "queued_children": [],
+  "cleared_children": [1301060],
+  "capacity": {
+    "cap": 1,
+    "occupied": 0,
+    "available": 1
+  },
+  "pending_redispatches": 1,
+  "dispatch_backlog": [177],
+  "corrective_backlog": [],
+  "state_corrections": ["CORRECTION: Child pid 1301060 (opencode, issue 177) is dead. Previous scan showed it as active but process no longer exists. Cleared dead child, corrected capacity to 0/1 available. Issue 177 may need status review."],
+  "provider_status": {
+    "claude": "cooldown",
+    "opencode": "idle",
+    "gemini": "unknown",
+    "codex": "unknown"
+  },
+  "action": "scan_pass",
+  "notes": "Scan pass 242. Detected stale active_child (pid 1301060) is dead. Corrected capacity to 0/1 available. pending_redispatches=1 for issue 177. Ready issues exist in backlog for dispatch when capacity opens."
+}

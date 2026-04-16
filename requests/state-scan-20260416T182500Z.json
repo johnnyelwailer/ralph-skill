@@ -1,0 +1,24 @@
+{
+  "scan_at": "2026-04-16T18:25:00Z",
+  "iteration": 354,
+  "active_child": null,
+  "active_child_pid": null,
+  "active_child_elapsed": null,
+  "active_child_death": "2026-04-16T18:20:00Z",
+  "detected_issue": "child_209_dead",
+  "capacity": {
+    "cap": 1,
+    "occupied": 0,
+    "available": 1
+  },
+  "pending_redispatches": 1,
+  "dispatch_backlog": [187],
+  "provider_status": {
+    "claude": "active",
+    "opencode": "active"
+  },
+  "current_orchestrator_pid": 3179674,
+  "action": "dispatch_next",
+  "labels": ["capacity-available"],
+  "notes": "Scan pass 354. Child 209 died (PID 3226157 no longer present). Capacity now 0/1 available. Backlog [187] stale. dispatch-209 requests piled up unconsumed. Ready to dispatch issue 187."
+}

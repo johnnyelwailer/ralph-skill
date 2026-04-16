@@ -1,0 +1,24 @@
+{
+  "scan_at": "2026-04-16T205000Z",
+  "iteration": 393,
+  "active_child": null,
+  "active_child_pid": null,
+  "active_child_elapsed": null,
+  "active_child_death": null,
+  "detected_issue": "No queue override. dispatch-211 pending pickup. No active child. Capacity idle.",
+  "capacity": {
+    "cap": 1,
+    "occupied": 0,
+    "available": 1
+  },
+  "pending_redispatches": 0,
+  "dispatch_backlog": [211, 186, 185, 184, 183, 182, 180],
+  "provider_status": {
+    "claude": "unknown",
+    "opencode": "unknown"
+  },
+  "current_orchestrator_pid": null,
+  "action": "monitoring",
+  "labels": ["dispatch-pending"],
+  "notes": "Scan 393. No change. dispatch-211 still pending pickup. No queue override. No active child. Backlog 211,186,185,184,183,182,180 pending."
+}

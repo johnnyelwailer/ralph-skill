@@ -1,0 +1,27 @@
+{
+  "scan_iter": 425,
+  "scan_at": "2026-04-16T20:12:05Z",
+  "orchestrator_pid": 2232310,
+  "orchestrator_alive": true,
+  "active_child": {
+    "issue": 23,
+    "session": "193150",
+    "pid": 675816,
+    "alive": true,
+    "iteration": 45,
+    "phase": "qa",
+    "provider": "claude",
+    "stuck_count": 0,
+    "status_updated_at": "2026-04-16T20:11:34Z",
+    "status_age_seconds": 31
+  },
+  "capacity": {
+    "max": 1,
+    "occupied": 1,
+    "available": 0
+  },
+  "queue_overrides": [],
+  "dispatches_this_pass": 0,
+  "human_blocked": ["#108", "#157", "#173"],
+  "notes": "Child #23 advanced build→qa (iter 34→45). Status fresh (31s). Orchestrator PID 2232310 alive (9h29m). Queue empty."
+}

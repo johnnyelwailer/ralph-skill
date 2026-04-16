@@ -1,0 +1,9 @@
+{
+  "scan_at": "2026-04-16T08:53:00Z",
+  "iteration": 237,
+  "action": "dispatch",
+  "target_issue": 209,
+  "target_agent": "opencode",
+  "priority": "normal",
+  "reason": "Issue 209 Ready in dispatch_backlog. Capacity available (1/1). pending_redispatches=1. Dispatching to advance queued work."
+}

@@ -1,0 +1,9 @@
+{
+  "type": "orchestrator-dispatch",
+  "timestamp": "2026-04-16T07:26:00Z",
+  "reason": "child_loop_completed",
+  "pipeline": "plan",
+  "priority": "normal",
+  "state_ref": ".aloop/scan-state.json",
+  "notes": "Child loop 1233175 died. Capacity free. Dispatch new plan agent."
+}

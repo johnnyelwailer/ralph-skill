@@ -1,0 +1,23 @@
+{
+  "scan_at": "2026-04-16T10:45:41Z",
+  "iteration": 279,
+  "active_child": 188,
+  "active_child_pid": 1928090,
+  "active_child_elapsed": "2h35m",
+  "active_child_death": null,
+  "detected_issue": "process-requests daemon NOT running. Child PID 1928090 (issue 188) stalled (CPU ~0). Dispatch files 186/187/209 unconsumed. Capacity 1/1 full. Orchestrator blocked - human intervention required.",
+  "capacity": {
+    "cap": 1,
+    "occupied": 1,
+    "available": 0
+  },
+  "pending_redispatches": 3,
+  "dispatch_backlog": "[186, 187, 209]",
+  "provider_status": {
+    "claude": "active",
+    "opencode": "active"
+  },
+  "current_orchestrator_pid": 2150515,
+  "action": "scan_pass_blocked",
+  "notes": "Scan pass 279 BLOCKED. Daemon down, child 188 stalled 2h35m, no capacity. Requires: (1) restart process-requests daemon, (2) handle stalled child 188 (kill/ignore), (3) clear dispatch backlog. Cannot advance automatically."
+}

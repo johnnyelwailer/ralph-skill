@@ -1,0 +1,24 @@
+{
+  "scan_at": "2026-04-16T201000Z",
+  "iteration": 382,
+  "active_child": null,
+  "active_child_pid": null,
+  "active_child_elapsed": null,
+  "active_child_death": "20260416T194520Z",
+  "detected_issue": "dispatch-209 stale (issue not found on GH, multiple dispatch attempts). dispatch-187 piling detected earlier may indicate process-requests consumption issue.",
+  "capacity": {
+    "cap": 1,
+    "occupied": 0,
+    "available": 1
+  },
+  "pending_redispatches": 0,
+  "dispatch_backlog": [211, 186, 185, 184, 183, 182, 180],
+  "provider_status": {
+    "claude": "active",
+    "opencode": "active"
+  },
+  "current_orchestrator_pid": 3179677,
+  "action": "monitor",
+  "labels": ["dispatch-stale"],
+  "notes": "Scan 382. dispatch-209 appears stale (issue not on GH). No ready/in-review issues. Capacity idle. Backlog items 211,186,185,184,183,182,180 still pending."
+}

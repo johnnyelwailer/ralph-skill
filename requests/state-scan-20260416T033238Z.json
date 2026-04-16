@@ -1,0 +1,24 @@
+{
+  "scan_at": "2026-04-16T03:32:38Z",
+  "iteration": 206,
+  "active_child": null,
+  "queued_children": [],
+  "cleared_children": [],
+  "capacity": {
+    "cap": 1,
+    "occupied": 0,
+    "available": 1
+  },
+  "pending_redispatches": 0,
+  "dispatch_backlog": ["dispatch-70-scan-20260416T005700Z.json", "dispatch-188-scan-20260416T010000Z.json"],
+  "corrective_backlog": [],
+  "state_corrections": [],
+  "provider_status": {
+    "claude": "unknown",
+    "opencode": "active",
+    "gemini": "unknown",
+    "codex": "unknown"
+  },
+  "action": "scan_pass",
+  "notes": "Orchestrator PID 968483 alive (loop-plan mode). Heartbeat fresh (03:30:52Z). No queue/ overrides. Capacity 1/1 available, no active child. Dispatch backlog persists - orchestrator self-managing. Human-blocked: #108 (rebase), #157 (Gate 7), #173 (false text). Exit scan pass."
+}

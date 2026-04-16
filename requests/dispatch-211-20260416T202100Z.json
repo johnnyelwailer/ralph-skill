@@ -1,0 +1,9 @@
+{
+  "scan_at": "20260416T202100Z",
+  "iteration": 387,
+  "action": "dispatch",
+  "target_issue": 211,
+  "target_agent": "opencode",
+  "priority": "normal",
+  "reason": "Capacity available. dispatch-209 stale (issue not on GH). Dispatching next backlog item: 211."
+}

@@ -1,0 +1,9 @@
+{
+  "scan_at": "2026-04-16T18:21:53Z",
+  "iteration": 354,
+  "action": "dispatch",
+  "target_issue": 187,
+  "target_agent": "opencode",
+  "priority": "normal",
+  "reason": "Child 209 died, freeing capacity (0/1 occupied). Dispatching backlog issue 187 as next ready."
+}

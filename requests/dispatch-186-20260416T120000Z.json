@@ -1,0 +1,9 @@
+{
+  "scan_at": "2026-04-16T12:00:00Z",
+  "iteration": 292,
+  "action": "dispatch",
+  "target_issue": 186,
+  "target_agent": "opencode",
+  "priority": "normal",
+  "reason": "Capacity recovered (stale child 188 cleared). Queue empty. Dispatch backlog [186, 187, 209]. Dispatching 186 as first in sequence."
+}

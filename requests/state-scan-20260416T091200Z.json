@@ -1,0 +1,26 @@
+{
+  "scan_at": "2026-04-16T09:12:00Z",
+  "iteration": 245,
+  "action": "scan_pass",
+  "active_child": null,
+  "active_child_pid": null,
+  "detected_issue": null,
+  "queued_children": [],
+  "cleared_children": [1309507],
+  "capacity": {
+    "cap": 1,
+    "occupied": 0,
+    "available": 1
+  },
+  "pending_redispatches": 0,
+  "dispatch_backlog": [188],
+  "corrective_backlog": [],
+  "state_corrections": ["CORRECTION: Child pid 1309507 (issue 188) is dead. Previous scan showed it as active but process no longer exists. Cleared dead child, corrected capacity to 0/1 available."],
+  "provider_status": {
+    "claude": "cooldown",
+    "opencode": "idle",
+    "gemini": "unknown",
+    "codex": "unknown"
+  },
+  "notes": "Scan pass 245. Detected stale active_child (pid 1309507, issue 188) is dead. Corrected capacity to 0/1 available. Issue 188 dispatch was written at 09:05 but may not have been consumed - re-adding to backlog."
+}

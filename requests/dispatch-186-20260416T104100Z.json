@@ -1,0 +1,9 @@
+{
+  "scan_at": "2026-04-16T10:41:00Z",
+  "iteration": 267,
+  "action": "dispatch",
+  "target_issue": 186,
+  "target_agent": "opencode",
+  "priority": "normal",
+  "reason": "Issue 187 dispatched at 10:40 but child not yet observed - possible timing gap. Issue 188 stuck In-progress with dead child. Issue 209 pending redispatch. Next ready in backlog is 186. Capacity 1/1 available."
+}

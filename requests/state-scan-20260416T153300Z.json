@@ -1,0 +1,24 @@
+{
+  "scan_at": "2026-04-16T15:33:00Z",
+  "iteration": 334,
+  "active_child": null,
+  "active_child_pid": null,
+  "active_child_elapsed": null,
+  "active_child_death": null,
+  "detected_issue": null,
+  "capacity": {
+    "cap": 1,
+    "occupied": 0,
+    "available": 1
+  },
+  "pending_redispatches": 3,
+  "dispatch_backlog": "[186, 187, 209] (daemon not consuming)",
+  "provider_status": {
+    "claude": "active",
+    "opencode": "active"
+  },
+  "current_orchestrator_pid": null,
+  "action": "idle_no_ready_work",
+  "labels": [],
+  "notes": "Scan pass 334. Orchestrator alive (PID 3075015/2232310). Child issue-23 (PID 3059897) alive at iter 41 review phase via child process list, but NOT tracked in active.json (empty). State anomaly persists - orchestrator dispatches but doesn't track children. Queue empty. Dispatch backlog [186, 187, 209] unconsumed. No queue overrides. Stable idle - awaiting orchestrator to self-heal or human intervention."
+}

@@ -1,0 +1,24 @@
+{
+  "scan_at": "2026-04-16T02:30:39Z",
+  "iteration": 187,
+  "active_child": null,
+  "queued_children": [],
+  "cleared_children": [],
+  "capacity": {
+    "cap": 1,
+    "occupied": 0,
+    "available": 1
+  },
+  "pending_redispatches": 2,
+  "dispatch_backlog": ["dispatch-70-scan-20260416T005700Z.json", "dispatch-188-scan-20260416T010000Z.json"],
+  "corrective_backlog": ["corrective-70-20260416T024500Z.json"],
+  "state_corrections": [],
+  "provider_status": {
+    "claude": "unknown",
+    "opencode": "active",
+    "gemini": "unknown",
+    "codex": "unknown"
+  },
+  "action": "scan_pass",
+  "notes": "No change. process-requests consumer stalled. Backlog unchanged: dispatch-70, dispatch-188, corrective-70 stranded. Issue #70 still needs status reset (In progress→Ready). Capacity=1/1 available. Human intervention required to restart process-requests."
+}

@@ -1,0 +1,23 @@
+{
+  "scan_at": "2026-04-16T10:45:30Z",
+  "iteration": 274,
+  "active_child": 188,
+  "active_child_pid": 1928090,
+  "active_child_elapsed": "2h34m",
+  "active_child_death": null,
+  "detected_issue": "Orchestrator PID 1312238 DEAD. New orchestrator instance PID 2135776 just started (10:21). Child PID 1928090 still alive on issue 188. process-requests daemon NOT running. Dispatch files 186/187/209 unconsumed. No dispatch possible - slot occupied by issue 188 child.",
+  "capacity": {
+    "cap": 1,
+    "occupied": 1,
+    "available": 0
+  },
+  "pending_redispatches": 3,
+  "dispatch_backlog": "[186, 187, 209]",
+  "provider_status": {
+    "claude": "active",
+    "opencode": "active"
+  },
+  "new_orchestrator_pid": 2135776,
+  "action": "scan_pass",
+  "notes": "Scan pass 274. Orchestrator dead. New orchestrator PID 2135776 detected. Capacity 1/1 occupied - slot unavailable for new dispatch. Human intervention required to restart process-requests daemon or handle orphaned child 1928090."
+}

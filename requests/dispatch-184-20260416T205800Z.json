@@ -1,0 +1,9 @@
+{
+  "scan_at": "2026-04-16T205800Z",
+  "iteration": 397,
+  "action": "dispatch",
+  "target_issue": 184,
+  "target_agent": "opencode",
+  "priority": "normal",
+  "reason": "Continue dispatch from backlog. Next issue 184 after 185 dispatch."
+}

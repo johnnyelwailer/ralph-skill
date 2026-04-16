@@ -1,0 +1,24 @@
+{
+  "scan_at": "2026-04-16T03:10:30Z",
+  "iteration": 189,
+  "active_child": null,
+  "queued_children": [],
+  "cleared_children": [],
+  "capacity": {
+    "cap": 1,
+    "occupied": 0,
+    "available": 1
+  },
+  "pending_redispatches": 0,
+  "dispatch_backlog": ["dispatch-70-scan-20260416T005700Z.json", "dispatch-188-scan-20260416T010000Z.json"],
+  "corrective_backlog": [],
+  "state_corrections": [],
+  "provider_status": {
+    "claude": "unknown",
+    "opencode": "active",
+    "gemini": "unknown",
+    "codex": "unknown"
+  },
+  "action": "scan_pass",
+  "notes": "Queue empty. Capacity 1/1 available, no active children. Dispatch backlog (2) remains stranded — process-requests consumer not running. Human-blocked unchanged: #108 (manual rebase), #157 (Gate 7), #173 (false issue text). Orchestrator self-managing but consumer-deadlock persists. No queue overrides. Exit scan pass."
+}

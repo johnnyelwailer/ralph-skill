@@ -1,0 +1,25 @@
+{
+  "scan_at": "2026-04-16T04:51:16Z",
+  "iteration": 241,
+  "active_child": null,
+  "active_child_pid": null,
+  "queued_children": [],
+  "cleared_children": [1275915, 1295619],
+  "capacity": {
+    "cap": 1,
+    "occupied": 0,
+    "available": 1
+  },
+  "pending_redispatches": 0,
+  "dispatch_backlog": [],
+  "corrective_backlog": [],
+  "state_corrections": [],
+  "provider_status": {
+    "claude": "cooldown",
+    "opencode": "idle",
+    "gemini": "unknown",
+    "codex": "unknown"
+  },
+  "action": "scan_pass",
+  "notes": "Scan pass 241. Capacity 1/1 available. No queue/ overrides. No dispatch backlog. No active children. Orchestrator idle - no work to advance."
+}

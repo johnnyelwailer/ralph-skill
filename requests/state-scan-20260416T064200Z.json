@@ -1,0 +1,24 @@
+{
+  "scan_at": "2026-04-16T06:42:00Z",
+  "iteration": 210,
+  "active_child": null,
+  "queued_children": [],
+  "cleared_children": [],
+  "capacity": {
+    "cap": 1,
+    "occupied": 0,
+    "available": 1
+  },
+  "pending_redispatches": 0,
+  "dispatch_backlog": [],
+  "corrective_backlog": [],
+  "state_corrections": [],
+  "provider_status": {
+    "claude": "unknown",
+    "opencode": "active",
+    "gemini": "unknown",
+    "codex": "unknown"
+  },
+  "action": "scan_pass",
+  "notes": "Scan pass 210. Queue/ empty - no override prompts. Provider opencode=active, capacity 1/1 available, no active child. No dispatch or corrective files in requests/. Orchestrator self-manages dispatches per prior scan notes. Human-blocked: #108 (rebase), #157 (Gate 7), #173 (false text). Exit scan - no direct action required."
+}

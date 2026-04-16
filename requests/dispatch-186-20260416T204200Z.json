@@ -1,0 +1,9 @@
+{
+  "scan_at": "2026-04-16T204200Z",
+  "iteration": 392,
+  "action": "dispatch",
+  "target_issue": 186,
+  "target_agent": "opencode",
+  "priority": "high",
+  "reason": "dispatch-211 stale (issue not on GH). Targeting next backlog issue 186 which has a valid spec. Capacity available."
+}

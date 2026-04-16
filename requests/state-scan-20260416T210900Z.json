@@ -1,0 +1,13 @@
+{
+  "scan_at": "2026-04-16T210900Z",
+  "iteration": 401,
+  "active_child": null,
+  "active_child_pid": null,
+  "capacity": { "cap": 1, "occupied": 0, "available": 1 },
+  "pending_redispatches": 0,
+  "dispatch_backlog": [],
+  "queue_override": false,
+  "action": "idle",
+  "labels": ["ghost-backlog", "aloop/stopped", "scan-401"],
+  "notes": "Scan 401. System stopped. gh unavailable for live issue check. No queue/ overrides present. Awaiting human intervention."
+}

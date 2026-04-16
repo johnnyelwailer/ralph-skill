@@ -1,0 +1,24 @@
+{
+  "scan_at": "2026-04-16T184200Z",
+  "iteration": 359,
+  "active_child": null,
+  "active_child_pid": null,
+  "active_child_elapsed": null,
+  "active_child_death": 187,
+  "detected_issue": null,
+  "capacity": {
+    "cap": 1,
+    "occupied": 0,
+    "available": 1
+  },
+  "pending_redispatches": 0,
+  "dispatch_backlog": [],
+  "provider_status": {
+    "claude": "active",
+    "opencode": "active"
+  },
+  "current_orchestrator_pid": 3179674,
+  "action": "noop",
+  "labels": [],
+  "notes": "Scan pass 359. Child 187 dead. Newer orchestrator session (3734519) already running. This session ceding control."
+}

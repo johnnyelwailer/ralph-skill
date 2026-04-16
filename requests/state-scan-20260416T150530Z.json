@@ -1,0 +1,24 @@
+{
+  "scan_at": "2026-04-16T15:05:30Z",
+  "iteration": 331,
+  "active_child": null,
+  "active_child_pid": null,
+  "active_child_elapsed": null,
+  "active_child_death": null,
+  "detected_issue": null,
+  "capacity": {
+    "cap": 1,
+    "occupied": 0,
+    "available": 1
+  },
+  "pending_redispatches": 3,
+  "dispatch_backlog": "[186, 187, 209]",
+  "provider_status": {
+    "claude": "unknown",
+    "opencode": "unknown"
+  },
+  "current_orchestrator_pid": null,
+  "action": "daemon_status_uncertain",
+  "labels": [],
+  "notes": "Scan pass 331. No queue overrides. Daemon state uncertain (PID 2953146 reported alive at 15:05 but dispatch backlog not consumed). 3 stale dispatch files. Orchestrator cannot safely dispatch - daemon may be alive but not consuming. No aloop/ready or aloop/in-review issues found. Exit scan."
+}

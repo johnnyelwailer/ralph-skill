@@ -1,0 +1,24 @@
+{
+  "scan_at": "2026-04-16T03:30:52Z",
+  "iteration": 206,
+  "active_child": null,
+  "queued_children": [],
+  "cleared_children": [],
+  "capacity": {
+    "cap": 1,
+    "occupied": 0,
+    "available": 1
+  },
+  "pending_redispatches": 0,
+  "dispatch_backlog": ["dispatch-70-scan-20260416T005700Z.json (worktree/requests/)", "dispatch-188-scan-20260416T010000Z.json (worktree/requests/)"],
+  "corrective_backlog": [],
+  "state_corrections": [],
+  "provider_status": {
+    "claude": "unknown",
+    "opencode": "active",
+    "gemini": "unknown",
+    "codex": "unknown"
+  },
+  "action": "scan_pass",
+  "notes": "Scan pass 206. Queue/ empty - no override prompts. Orchestrator loop running (iteration 97, phase=orch, provider=opencode). Capacity 1/1 available, no active child. Dispatch backlog (2) in worktree/requests/ - orchestrator monitors session/requests/ per prior notes. Dispatch files not being consumed from worktree location. Human-blocked: #108 (rebase), #157 (Gate 7), #173 (false text). In-review (18): 176,172,160,158,157,156,155,154,153,152,151,147,145,144,143,114,111,101. In-progress (7): 199,177,124,108,98,44,37. Ready queue: 70,71,72,73,74,75,76,77,78,79,80+ many others. Exit scan - no actionable state transitions available without dispatch consumption."
+}

@@ -1,0 +1,35 @@
+{
+  "id": "scan-20260416-024000Z",
+  "type": "state_update",
+  "payload": {
+    "iteration": 180,
+    "scan_at": "2026-04-16T02:40:00Z",
+    "action": "scan_pass_monitoring",
+    "active_child": null,
+    "capacity": {
+      "cap": 1,
+      "occupied": 0,
+      "available": 1
+    },
+    "pending_redispatches": 2,
+    "provider_status": {
+      "claude": "unknown",
+      "opencode": "active",
+      "gemini": "unknown",
+      "codex": "unknown"
+    },
+    "stall_condition": true,
+    "stall_notes": "iter=180: Orchestrator alive but appears stalled. loop-plan.json shows cycle=['PROMPT_orch_scan.md'], cyclePosition=0, iteration=55. Active work is empty []. Orchestrator appears stuck in orch_scan cycle and not dispatching. Dispatch requests for #70 (00:57) and #188 (01:00) remain unconsumed in requests/ - ~2 hours old. process-requests not running. Capacity 1 available, 0 occupied. No active children. Queue empty. No override prompts.",
+    "dispatch_requests_unconsumed": ["dispatch-70-scan-20260416T005700Z.json", "dispatch-188-scan-20260416T010000Z.json"],
+    "process_requests_status": "not_running",
+    "loop_plan_state": {
+      "cycle": ["PROMPT_orch_scan.md"],
+      "cyclePosition": 0,
+      "iteration": 55,
+      "active_work": []
+    },
+    "issues_blocked_on_human": ["#37", "#44", "#47", "#50", "#53", "#55", "#66", "#68", "#177"],
+    "state_corrections_needed": ["Issue #70 has stale In progress status with child_pid=null - issues_summary shows Ready", "PR state drift: 21 issues listed as pr_open but only 4 actually open on GitHub"],
+    "human_intervention_required": ["Restart process-requests to reconcile 1115+ queued requests", "Investigate why orch_scan cycle is not dispatching despite available capacity", "Fix sandbox=container issues for 9 blocked issues"]
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "scan_at": "2026-04-16T215000Z",
+  "iteration": 405,
+  "active_child": null,
+  "active_child_pid": null,
+  "active_child_elapsed": null,
+  "active_child_death": null,
+  "detected_issue": null,
+  "capacity": {
+    "cap": 1,
+    "occupied": 0,
+    "available": 1
+  },
+  "pending_redispatches": 0,
+  "dispatch_backlog": [],
+  "provider_status": {
+    "claude": "unknown",
+    "opencode": "unknown"
+  },
+  "current_orchestrator_pid": null,
+  "action": "idle",
+  "labels": ["scan-405"],
+  "notes": "Scan 405. System idle. No queue/ overrides. Capacity available. No backlog. Awaiting human intervention."
+}

@@ -1,0 +1,9 @@
+{
+  "scan_at": "2026-04-16T16:05:00Z",
+  "iteration": 332,
+  "action": "dispatch",
+  "target_issue": 186,
+  "target_agent": "opencode",
+  "priority": "normal",
+  "reason": "Daemon alive. Capacity 1/1 available. Dispatch backlog [186, 187, 209] pending. Dispatching issue 186 as next ready."
+}

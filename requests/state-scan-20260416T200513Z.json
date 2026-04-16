@@ -1,0 +1,26 @@
+{
+  "scan_at": "2026-04-16T20:05:13Z",
+  "iter": 419,
+  "orchestrator_pid": 2232310,
+  "orchestrator_alive": true,
+  "active_child": {
+    "issue": 23,
+    "session": "orchestrator-20260321-172932-issue-23-20260416-193150",
+    "pid": 675816,
+    "alive": true,
+    "iteration": 33,
+    "phase": "plan",
+    "cycle_position": 0,
+    "status_updated_at": "2026-04-16T19:59:10Z",
+    "status_age_min": 6.1
+  },
+  "capacity": {
+    "total": 1,
+    "occupied": 1,
+    "available": 0
+  },
+  "queue_overrides": [],
+  "dispatches_this_pass": 0,
+  "human_blocked": ["#108", "#157", "#173"],
+  "summary": "Child #23 PID 675816 ALIVE (iter=33, plan phase, 6 min since status update — normal). Orchestrator PID 2232310 ALIVE. Queue empty. No dispatches."
+}

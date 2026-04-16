@@ -1,0 +1,24 @@
+{
+  "scan_at": "2026-04-16T192800Z",
+  "iteration": 375,
+  "active_child": "187",
+  "active_child_pid": null,
+  "active_child_elapsed": null,
+  "active_child_death": null,
+  "detected_issue": null,
+  "capacity": {
+    "cap": 1,
+    "occupied": 1,
+    "available": 0
+  },
+  "pending_redispatches": 0,
+  "dispatch_backlog": [186, 185, 184, 183, 182, 180],
+  "provider_status": {
+    "claude": "active",
+    "opencode": "active"
+  },
+  "current_orchestrator_pid": 3179675,
+  "action": "idle",
+  "labels": [],
+  "notes": "Scan pass 375. No changes. Issue 187 still active. Backlog stable [186,185,184,183,182,180]. Capacity full - waiting for child completion or explicit override."
+}

@@ -1,0 +1,9 @@
+{
+  "scan_at": "2026-04-16T201200Z",
+  "iteration": 383,
+  "action": "dispatch",
+  "target_issue": 187,
+  "target_agent": "opencode",
+  "priority": "normal",
+  "reason": "Capacity available. dispatch-209 stale - skipping. Dispatching next ready issue 187."
+}

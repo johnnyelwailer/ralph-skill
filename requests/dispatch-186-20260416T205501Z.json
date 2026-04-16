@@ -1,0 +1,9 @@
+{
+  "scan_at": "2026-04-16T205501Z",
+  "iteration": 394,
+  "action": "dispatch",
+  "target_issue": 186,
+  "target_agent": "opencode",
+  "priority": "normal",
+  "reason": "Ghost dispatch 211 removed. Capacity available. Dispatching next backlog issue 186."
+}

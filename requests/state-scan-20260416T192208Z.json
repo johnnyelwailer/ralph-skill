@@ -1,0 +1,25 @@
+{
+  "scan_at": "20260416T192208Z",
+  "iteration": 406,
+  "active_child": null,
+  "active_child_pid": null,
+  "active_child_elapsed": null,
+  "active_child_death": "PID 600009 dead (not found)",
+  "detected_issue": "No queue override. Child 600009 dead. dispatch-184/185/186 unpicked but backlog issues confirmed phantom per prior scans. Capacity 1/1 idle.",
+  "capacity": {
+    "cap": 1,
+    "occupied": 0,
+    "available": 1
+  },
+  "pending_redispatches": 0,
+  "dispatch_backlog": [211, 186, 185, 184, 183, 182, 180],
+  "dispatch_files_unpicked": ["dispatch-184-20260416T205800Z.json", "dispatch-185-20260416T205800Z.json", "dispatch-186-20260416T205600Z.json"],
+  "provider_status": {
+    "claude": "unknown",
+    "opencode": "idle"
+  },
+  "current_orchestrator_pid": null,
+  "action": "monitoring",
+  "labels": ["dispatch-pending"],
+  "notes": "Scan 406. Child 600009 dead. No orchestrator active. Capacity idle. dispatch-184/185/186 unpicked but backlog issues confirmed phantom. No valid dispatch targets. Human-blocked: #108,#157,#173."
+}

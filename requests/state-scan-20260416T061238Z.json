@@ -1,0 +1,20 @@
+{
+  "scan_at": "2026-04-16T06:12:38Z",
+  "iteration": 263,
+  "action": "state_scan",
+  "active_child": null,
+  "active_child_death": "confirmed",
+  "capacity": {
+    "cap": 1,
+    "occupied": 0,
+    "available": 1
+  },
+  "pending_redispatches": 1,
+  "dispatch_backlog_size": 75,
+  "detected_issue": "child_death_during_corrective_redispatch",
+  "issues_of_concern": [209, 188, 187],
+  "provider_status": {
+    "opencode": "dead"
+  },
+  "notes": "opencode child (PID 1657110) confirmed dead during corrective redispatch of issue 209. This is the 3rd death for dispatch-209. Issues 188 (in-progress) and 187 (ready) flagged as stuck per prior dispatch reason. Capacity recovered. Human review recommended before further redispatch of these issues."
+}

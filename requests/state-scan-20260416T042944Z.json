@@ -1,0 +1,27 @@
+{
+  "scan_at": "2026-04-16T04:29:44Z",
+  "iteration": 227,
+  "active_child": 1267614,
+  "active_child_pid": 1267869,
+  "queued_children": [],
+  "cleared_children": [1266226],
+  "capacity": {
+    "cap": 1,
+    "occupied": 1,
+    "available": 0
+  },
+  "pending_redispatches": 0,
+  "dispatch_backlog": [],
+  "corrective_backlog": [],
+  "state_corrections": [
+    "active_child 1266226->1267614: PID 1266226 not found in ps (dead). Live child 1267614 (opencode node) started 04:29, ppid=1267611. Orchestrator alive (968483->1267611->1267614->1267869 chain intact)."
+  ],
+  "provider_status": {
+    "claude": "cooldown",
+    "opencode": "active",
+    "gemini": "unknown",
+    "codex": "unknown"
+  },
+  "action": "scan_pass",
+  "notes": "Scan pass 227. Corrective: stale scan-state.json (iter 226) reported dead child 1266226. Actual live child is 1267614/1267869 (opencode, started 04:29). Orchestrator alive (968483->1267611->1267614->1267869 chain intact). Capacity full (1/1). Queue/ empty. No new side effects."
+}

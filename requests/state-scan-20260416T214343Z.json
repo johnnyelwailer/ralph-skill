@@ -1,0 +1,34 @@
+{
+  "scan_at": "2026-04-16T214343Z",
+  "iteration": 476,
+  "active_child": 23,
+  "active_child_pid": 675816,
+  "active_child_state": "running",
+  "active_child_phase": "build",
+  "active_child_iter": 76,
+  "active_child_updated_at": "2026-04-16T21:42:43Z",
+  "active_child_elapsed_since_update": "~1min",
+  "active_child_claude_pids": [1110577],
+  "active_child_claude_alive": true,
+  "active_child_death": null,
+  "detected_issue": "opencode_provider_unsupported",
+  "capacity": {
+    "cap": 1,
+    "occupied": 1,
+    "available": 0
+  },
+  "pending_redispatches": 2,
+  "queue_overrides": 0,
+  "provider_status": {
+    "claude": "active",
+    "opencode": "unsupported"
+  },
+  "action": "wait",
+  "human_blocked": [157, 108, 173],
+  "in_review_prs": [
+    {"issue": 46, "pr": 313, "git_conflict": false, "gh_state": "DIRTY_stale"},
+    {"issue": 85, "pr": 311, "git_conflict": false},
+    {"issue": 172, "pr": 211, "git_conflict": false}
+  ],
+  "notes": "Scan 476. Child PID 675816 (issue-23) ALIVE at iter=76/build. iter 75/plan completed at 21:42:40Z (0 commits, plan phase passed quickly). iter 76/build started at 21:42:43Z (Claude PID 1110577 active, ~1min elapsed). Loop actively cycling to fix 2 review findings from iter 74. Two additional orchestrator sessions detected (orchestrator-20260416-211340 at iter=20, orchestrator-20260416-213442 at iter=2) — running as independent orch_scan loops, not conflicting with main orchestrator. Capacity full — pending redispatches #188/#70 will dispatch after #23 completes. Opencode still unsupported. Human-blocked: #157/#108/#173."
+}

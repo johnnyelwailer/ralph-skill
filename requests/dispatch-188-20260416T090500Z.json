@@ -1,0 +1,9 @@
+{
+  "scan_at": "2026-04-16T09:05:00Z",
+  "iteration": 242,
+  "action": "dispatch",
+  "target_issue": 188,
+  "target_agent": "opencode",
+  "priority": "normal",
+  "reason": "Issue 188 Ready. Capacity available (0/1). Clearing pending_redispatches for 177 (died mid-work, needs review) and dispatching 188 to utilize available capacity."
+}

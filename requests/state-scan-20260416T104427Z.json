@@ -1,0 +1,35 @@
+{
+  "scan_at": "2026-04-16T10:44:27Z",
+  "iteration": 282,
+  "active_child": null,
+  "active_child_pid": null,
+  "active_child_elapsed": null,
+  "active_child_death": "confirmed_dead_1928090",
+  "detected_issue": "process-requests daemon NOT running. Child PID 1928090 (issue 188) confirmed dead. Dispatch files 186/187/209 unconsumed. Orchestrator capacity 1/1 but unable to dispatch without daemon.",
+  "capacity": {
+    "cap": 1,
+    "occupied": 0,
+    "available": 1,
+    "note": "Capacity available but blocked - daemon down"
+  },
+  "pending_redispatches": 4,
+  "dispatch_backlog": "[186, 187, 188, 209]",
+  "dispatch_backlog_status": "unconsumed - process-requests daemon down",
+  "provider_status": {
+    "claude": "active (issue 71 in separate session)",
+    "opencode": "active"
+  },
+  "current_orchestrator_pid": 2237267,
+  "action": "scan_pass_blocked",
+  "blockage_reason": [
+    "process-requests daemon down - cannot consume dispatch files",
+    "issue 188 child confirmed dead (PID 1928090)",
+    "dispatch files unconsumed: 186, 187, 209"
+  ],
+  "required_human_actions": [
+    "Restart process-requests daemon",
+    "Verify issue 188 child dead - add to backlog",
+    "Consider manual dispatch or clear dispatch files"
+  ],
+  "notes": "Scan pass 282 BLOCKED. Same as 279/280/281. Child 188 now confirmed dead. Human intervention required to restart daemon or clear blockage."
+}

@@ -1,0 +1,25 @@
+{
+  "scan_at": "2026-04-16T08:50:47Z",
+  "iteration": 234,
+  "active_child": null,
+  "active_child_pid": null,
+  "queued_children": [],
+  "cleared_children": [1275915],
+  "capacity": {
+    "cap": 1,
+    "occupied": 0,
+    "available": 1
+  },
+  "pending_redispatches": 1,
+  "dispatch_backlog": [209],
+  "corrective_backlog": [],
+  "state_corrections": [],
+  "provider_status": {
+    "claude": "cooldown",
+    "opencode": "running",
+    "gemini": "unknown",
+    "codex": "unknown"
+  },
+  "action": "scan_pass",
+  "notes": "Scan pass 234. Orchestrator alive (iter 136, phase=orch, opencode). Capacity 1/1 available. Dispatch backlog [209] pending. Orchestrator self-managing. No override prompts. No state corrections needed."
+}

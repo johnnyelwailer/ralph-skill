@@ -1,0 +1,25 @@
+{
+  "scan_at": "2026-04-16T04:55:20Z",
+  "iteration": 242,
+  "active_child": null,
+  "active_child_pid": null,
+  "queued_children": [],
+  "cleared_children": [1301060],
+  "capacity": {
+    "cap": 1,
+    "occupied": 0,
+    "available": 1
+  },
+  "pending_redispatches": 0,
+  "dispatch_backlog": [],
+  "corrective_backlog": [],
+  "state_corrections": ["CORRECTION: opencode child pid 1301060 (reported active at 09:00:00Z) is no longer running. Cleared from active_child. Capacity 0/1 available."],
+  "provider_status": {
+    "claude": "cooldown",
+    "opencode": "idle",
+    "gemini": "unknown",
+    "codex": "unknown"
+  },
+  "action": "scan_pass",
+  "notes": "Scan pass 242. Detected dead active_child 1301060. Capacity now 0/1 (1 available). Queue empty. Ready issues available. Orchestrator idle - capacity available for dispatch."
+}

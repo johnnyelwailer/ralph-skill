@@ -1,0 +1,22 @@
+{
+  "scan_at": "2026-04-16T10:20:52Z",
+  "iteration": 273,
+  "active_child": null,
+  "active_child_pid": 1928090,
+  "active_child_elapsed": "2h09m",
+  "active_child_death": null,
+  "detected_issue": "Orchestrator PID 2121251 alive (resumed 10:18). Child PID 1928090 (issue 188, started 08:11) alive but orphaned - original orchestrator PID 1312238 died. Orchestrator self-recovered via resume.",
+  "capacity": {
+    "cap": 1,
+    "occupied": 1,
+    "available": 0
+  },
+  "pending_redispatches": 2,
+  "dispatch_backlog": "[186, 187, 209]",
+  "provider_status": {
+    "claude": "active",
+    "opencode": "active"
+  },
+  "action": "scan_pass",
+  "notes": "Orchestrator self-recovered. Child 1928090 alive but orphaned from dead predecessor. active.json=[] (tracking anomaly). Orchestrator managing backlog. No queue overrides. No intervention needed."
+}

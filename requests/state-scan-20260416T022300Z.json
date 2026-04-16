@@ -1,0 +1,23 @@
+{
+  "id": "scan-20260416-0223-state",
+  "type": "state_update",
+  "payload": {
+    "iteration": 178,
+    "scan_at": "2026-04-16T02:23:00Z",
+    "action": "scan_pass_monitoring",
+    "active_child": null,
+    "capacity": {
+      "cap": 1,
+      "occupied": 0,
+      "available": 1
+    },
+    "pending_redispatches": 2,
+    "provider_status": {
+      "claude": "unknown",
+      "opencode": "active",
+      "gemini": "unknown",
+      "codex": "unknown"
+    },
+    "notes": "iter=178: Orchestrator alive (iter=52, phase=orch, state=running). No active children. Capacity 0/1 occupied, 1 available. Dispatch requests for #70 and #188 remain in requests/ unconsumed since 01:00 and 00:57. Issue #70 has stale status=In progress with child_pid=null (state anomaly - previous attempt stalled). Issue #188 is Ready, priority=-10, needs_redispatch. Queue empty. No override prompts. Orchestrator should be consuming these dispatch requests but they remain pending."
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "scan_at": "2026-04-16T10:40:00Z",
+  "iteration": 266,
+  "action": "dispatch",
+  "target_issue": 187,
+  "target_agent": "opencode",
+  "priority": "normal",
+  "reason": "Capacity recovered: child PID 1657110 (dispatch-209) confirmed dead. Capacity 1/1 available. Issue 187 is next ready in backlog. Issue 188 is marked In-progress but stuck with no active child - not re-dispatching to avoid duplicate work."
+}

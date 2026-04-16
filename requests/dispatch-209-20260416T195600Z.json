@@ -1,0 +1,9 @@
+{
+  "scan_at": "2026-04-16T195600Z",
+  "iteration": 381,
+  "action": "dispatch",
+  "target_issue": 209,
+  "target_agent": "opencode",
+  "priority": "normal",
+  "reason": "Capacity available after 187 death. Dispatching backlog issue 209."
+}

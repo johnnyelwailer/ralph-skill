@@ -1,0 +1,26 @@
+{
+  "scan_at": "2026-04-16T05:15:00Z",
+  "iteration": 4,
+  "action": "scan_pass",
+  "active_child": 1406767,
+  "active_child_pid": 1406767,
+  "detected_issue": null,
+  "queued_children": [],
+  "cleared_children": [],
+  "capacity": {
+    "cap": 1,
+    "occupied": 1,
+    "available": 0
+  },
+  "pending_redispatches": 0,
+  "dispatch_backlog": [],
+  "corrective_backlog": [],
+  "state_corrections": [],
+  "provider_status": {
+    "claude": "unknown",
+    "opencode": "active",
+    "gemini": "unknown",
+    "codex": "unknown"
+  },
+  "notes": "Scan pass 4. Orchestrator alive (PID 1312238, iteration 3, phase=orch, opencode). Orchestrator restarted fresh this morning (iteration count reset). Active child 1406767 running opencode (1407595) on worktree. Capacity full. Queue empty. No overrides. No state transitions needed."
+}

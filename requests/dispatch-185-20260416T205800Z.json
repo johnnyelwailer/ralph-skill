@@ -1,0 +1,10 @@
+{
+  "scan_at": "2026-04-16T205800Z",
+  "iteration": 396,
+  "action": "dispatch",
+  "target_issue": 185,
+  "target_agent": "opencode",
+  "priority": "normal",
+  "reason": "Capacity available (1/1). Dispatching oldest backlog issue 185. Backlog now [184,183,182,180].",
+  "labels": ["dispatch-pending"]
+}

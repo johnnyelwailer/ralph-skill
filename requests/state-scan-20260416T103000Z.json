@@ -1,0 +1,38 @@
+{
+  "scan_at": "2026-04-16T10:30:00Z",
+  "iteration": 277,
+  "active_child": 188,
+  "active_child_pid": 1928090,
+  "active_child_elapsed": "2h17m",
+  "active_child_death": null,
+  "detected_issue": "Orchestrator alive. Issue 198 running in separate session (PID 2164942, merge phase). process-requests daemon NOT running. Dispatch files 186/187/209 unconsumed.",
+  "capacity": {
+    "cap": 1,
+    "occupied": 1,
+    "available": 0
+  },
+  "pending_redispatches": 3,
+  "dispatch_backlog": "[186, 187, 209]",
+  "provider_status": {
+    "claude": "active",
+    "opencode": "active"
+  },
+  "active_sessions": {
+    "orchestrator_main": {
+      "pid": 1928090,
+      "issue": 188,
+      "mode": "plan",
+      "elapsed": "2h17m"
+    },
+    "issue_198": {
+      "pid": 2164942,
+      "phase": "merge",
+      "iteration": 33,
+      "provider": "opencode",
+      "state": "running"
+    }
+  },
+  "current_orchestrator_pid": 1928090,
+  "action": "scan_pass",
+  "notes": "Scan pass 277. Orchestrator alive (PID 1928090). Issue 198 actively running in merge phase (PID 2164942). Queue empty - no override prompts. Orchestrator self-managing. Exit scan pass."
+}

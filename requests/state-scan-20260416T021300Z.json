@@ -1,0 +1,37 @@
+{
+  "id": "scan-20260416-021300Z",
+  "type": "state_update",
+  "payload": {
+    "iteration": 182,
+    "scan_at": "2026-04-16T02:13:00Z",
+    "action": "scan_pass_monitoring",
+    "active_child": null,
+    "capacity": {
+      "cap": 1,
+      "occupied": 0,
+      "available": 1
+    },
+    "pending_redispatches": 2,
+    "provider_status": {
+      "claude": "unknown",
+      "opencode": "active",
+      "gemini": "unknown",
+      "codex": "unknown"
+    },
+    "stall_condition": true,
+    "stall_notes": "iter=182: Orchestrator alive but dispatch requests dispatch-70-scan-20260416T005700Z.json and dispatch-188-scan-20260416T010000Z.json remain unconsumed (~2.8 hours old). process-requests not consuming dispatch queue. Capacity 1/1 available, 0 occupied. Orchestrator cycling orch_scan but not dispatching.",
+    "dispatch_requests_unconsumed": ["dispatch-70-scan-20260416T005700Z.json", "dispatch-188-scan-20260416T010000Z.json"],
+    "process_requests_status": "not_running",
+    "queue_empty": true,
+    "override_prompts": false,
+    "state_corrections_needed": [
+      "Issue #70: status=In progress but child_pid=null and state=needs_redispatch while needs_redispatch=false — anomaly in orchestrator.json"
+    ],
+    "human_intervention_required": [
+      "Investigate orch_scan cycle stall - dispatch requests not being consumed",
+      "Restart process-requests loop to resume dispatching"
+    ],
+    "in_review_issues": [176, 172, 160, 158, 157, 156, 155, 154, 153, 152, 151, 147, 145, 144, 143, 114, 111, 101],
+    "corrective_requests": []
+  }
+}

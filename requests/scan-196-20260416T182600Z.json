@@ -1,0 +1,33 @@
+{
+  "scan_at": "2026-04-16T18:26:00Z",
+  "iteration": 196,
+  "phase": "orch",
+  "queue_empty": true,
+  "process_requests_running": false,
+  "capacity_available": false,
+  "active_child": {
+    "issue": 23,
+    "pid": 3630192,
+    "child_session": "orchestrator-20260321-172932-issue-23-20260416-161437",
+    "started_at": "2026-04-16T16:14:37Z"
+  },
+  "in_progress": [23],
+  "needs_redispatch": [188, 70],
+  "blocked": 33,
+  "pending": 85,
+  "state_counts": {
+    "blocked": 33,
+    "closed_on_github": 1,
+    "in_progress": 1,
+    "merged": 34,
+    "needs_redispatch": 2,
+    "pending": 85,
+    "pr_open": 2
+  },
+  "dispatch_backlog_count": "many (process-requests dead)",
+  "human_action_required": [
+    "Restart process-requests daemon: aloop process-requests --session-dir /home/pj/.aloop/sessions/orchestrator-20260321-172932 &",
+    "Issues #188 and #70 need redispatch after daemon restart"
+  ],
+  "side_effects": []
+}

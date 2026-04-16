@@ -1,0 +1,9 @@
+{
+  "scan_at": "2026-04-16T10:44:27Z",
+  "iteration": 282,
+  "action": "label_update",
+  "target_issue": 188,
+  "old_status": "In progress",
+  "new_status": "Ready",
+  "reason": "Child PID 1928090 confirmed dead. Issue 188 must be re-dispatched. Status change from In-progress to Ready enables backlog requeue."
+}

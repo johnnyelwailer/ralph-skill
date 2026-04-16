@@ -1,0 +1,24 @@
+{
+  "scan_at": "2026-04-16T08:04:00Z",
+  "iteration": 222,
+  "active_child": 1246219,
+  "queued_children": [],
+  "cleared_children": [1244484, 1237069],
+  "capacity": {
+    "cap": 1,
+    "occupied": 1,
+    "available": 0
+  },
+  "pending_redispatches": 0,
+  "dispatch_backlog": [],
+  "corrective_backlog": [],
+  "state_corrections": [],
+  "provider_status": {
+    "claude": "unknown",
+    "opencode": "active",
+    "gemini": "unknown",
+    "codex": "unknown"
+  },
+  "action": "scan_pass",
+  "notes": "Scan pass 222. Orchestrator alive (PID 968483, mode=plan). Active child PID 1246219 alive (loop.sh plan mode, started ~07:04). PIDs 1244484 and 1237069 confirmed dead, cleared. Capacity full (1/1). Queue/ empty - no override prompts. Child loop self-managing. No action needed."
+}

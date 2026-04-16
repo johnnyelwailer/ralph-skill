@@ -1,0 +1,27 @@
+{
+  "scan_at": "2026-04-16T201456Z",
+  "iteration": 428,
+  "active_child": 23,
+  "active_child_pid": 675816,
+  "active_child_state": "running",
+  "active_child_phase": "qa",
+  "active_child_iter": 45,
+  "active_child_updated_at": "2026-04-16T20:11:34Z",
+  "active_child_elapsed_since_update": "~3min",
+  "active_child_death": null,
+  "detected_issue": null,
+  "capacity": {
+    "cap": 1,
+    "occupied": 1,
+    "available": 0
+  },
+  "pending_redispatches": 0,
+  "queue_overrides": 0,
+  "provider_status": {
+    "claude": "active",
+    "opencode": "unknown"
+  },
+  "action": "wait",
+  "human_blocked": [157, 108, 173],
+  "notes": "Scan 428. Child PID 675816 (issue-23) ALIVE at iter=45/qa. Updated 20:11:34Z (~3min ago, fresh for QA). Capacity occupied (1/1). No queue overrides. Human-blocked: #157/#108/#173. Awaiting child QA completion before next dispatch."
+}

@@ -1,0 +1,9 @@
+{
+  "scan_at": "2026-04-16T192200Z",
+  "iteration": 371,
+  "action": "dispatch",
+  "target_issue": 187,
+  "target_agent": "opencode",
+  "priority": "normal",
+  "reason": "Child 187 dead (PID 4003057 not found). Capacity now available (0/1). No queue overrides found. Re-dispatching issue 187."
+}

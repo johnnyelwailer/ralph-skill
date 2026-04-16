@@ -1,0 +1,28 @@
+{
+  "id": "scan-20260416-030501Z",
+  "type": "state_update",
+  "payload": {
+    "iteration": 185,
+    "scan_at": "2026-04-16T03:05:01Z",
+    "action": "scan_pass",
+    "active_child": null,
+    "capacity": {
+      "cap": 1,
+      "occupied": 0,
+      "available": 1
+    },
+    "pending_redispatches": 2,
+    "dispatch_requests_unconsumed": ["dispatch-70-scan-20260416T005700Z.json", "dispatch-188-scan-20260416T010000Z.json"],
+    "corrective_unconsumed": ["corrective-70-20260416T024500Z.json"],
+    "process_requests_status": "not_running",
+    "stall_condition": true,
+    "stall_notes": "orchestrator stalled - process-requests not running, dispatch queue and corrective actions backed up",
+    "human_intervention_required": [
+      "Start process-requests loop to consume dispatch requests and corrective actions: aloop process-requests --session-dir <session>"
+    ],
+    "in_review_issues": [176, 172, 160, 158, 157, 156, 155, 154, 153, 152, 151, 147, 145, 144, 143, 114, 111, 101],
+    "in_progress_issues_verified": [177, 124, 108, 98, 44, 37, 199],
+    "ready_issues_count": 102,
+    "top_ready_issues": [188, 187, 186, 185, 184, 183, 182, 181, 180, 178]
+  }
+}

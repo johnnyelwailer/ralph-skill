@@ -1,0 +1,6 @@
+{
+  "dispatch_id": 210,
+  "issue": 187,
+  "scan_at": "2026-04-16T18:10:00Z",
+  "notes": "Child 209 (PID 3226157) dead on arrival. Capacity freed. Dispatching backlogged issue 187 from scan 353."
+}

@@ -1,0 +1,16 @@
+{
+  "scan_at": "2026-04-16T20:15:52Z",
+  "iter": 429,
+  "child_pid": 675816,
+  "child_status": "alive",
+  "child_issue": 23,
+  "child_session": "193150",
+  "child_iteration": 46,
+  "child_phase": "review",
+  "child_updated_at": "2026-04-16T20:15:03Z",
+  "capacity_used": 1,
+  "capacity_total": 1,
+  "queue_overrides": [],
+  "human_blocked": ["#108", "#157", "#173"],
+  "note": "Child advanced qa (iter 45) → review (iter 46). Very fresh (49s ago). Progressing normally."
+}

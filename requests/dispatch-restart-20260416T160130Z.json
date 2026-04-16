@@ -1,0 +1,8 @@
+{
+  "scan_at": "2026-04-16T16:01:30Z",
+  "iteration": 331,
+  "action": "process-requests_restart",
+  "target_agent": "opencode",
+  "priority": "high",
+  "reason": "Daemon dead. Capacity available 1/1. Dispatch backlog [186, 187, 209] pending. Restarting process-requests loop."
+}

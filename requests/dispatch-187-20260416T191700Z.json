@@ -1,0 +1,7 @@
+{
+  "type": "dispatch",
+  "issue_number": 187,
+  "scan_at": "2026-04-16T191700Z",
+  "iteration": 369,
+  "reason": "Capacity available, no active children, queue clear. Dispatching highest-priority ready issue."
+}

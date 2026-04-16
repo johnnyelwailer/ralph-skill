@@ -1,0 +1,9 @@
+{
+  "scan_at": "2026-04-16T09:25:00Z",
+  "iteration": 248,
+  "action": "dispatch",
+  "target_issue": 209,
+  "target_agent": "opencode",
+  "priority": "normal",
+  "reason": "Issue 209 Ready. Capacity available (1/1). opencode idle. Issue 188 has been stuck in In-progress through multiple dispatches; bypassing to advance fresh ready work."
+}

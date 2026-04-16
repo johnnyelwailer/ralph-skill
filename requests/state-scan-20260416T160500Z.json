@@ -1,0 +1,24 @@
+{
+  "scan_at": "2026-04-16T16:05:00Z",
+  "iteration": 332,
+  "active_child": null,
+  "active_child_pid": null,
+  "active_child_elapsed": null,
+  "active_child_death": null,
+  "detected_issue": null,
+  "capacity": {
+    "cap": 1,
+    "occupied": 0,
+    "available": 1
+  },
+  "pending_redispatches": 3,
+  "dispatch_backlog": "[186, 187, 209]",
+  "provider_status": {
+    "claude": "active",
+    "opencode": "active"
+  },
+  "current_orchestrator_pid": null,
+  "action": "dispatch_ready",
+  "labels": [],
+  "notes": "Scan pass 332. process-requests daemon PID 3098058 alive. Capacity 1/1 available. Dispatch backlog [186, 187, 209] unconsumed. Dispatching next ready."
+}

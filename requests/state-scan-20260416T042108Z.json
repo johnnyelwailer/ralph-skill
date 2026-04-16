@@ -1,0 +1,24 @@
+{
+  "scan_at": "2026-04-16T04:21:08Z",
+  "iteration": 225,
+  "active_child": null,
+  "queued_children": [],
+  "cleared_children": [1252823],
+  "capacity": {
+    "cap": 1,
+    "occupied": 0,
+    "available": 1
+  },
+  "pending_redispatches": 0,
+  "dispatch_backlog": [],
+  "corrective_backlog": [],
+  "state_corrections": ["active_child=1252823 not found; cleared"],
+  "provider_status": {
+    "claude": "unknown",
+    "opencode": "unknown",
+    "gemini": "unknown",
+    "codex": "unknown"
+  },
+  "action": "scan_pass",
+  "notes": "Scan pass 225. PID 1252823 (opencode, last owned child) no longer running - cleared. live opencode child PID 1254996 not owned by orchestrator (active.json=[]). Queue/ empty. Capacity available=1. No new dispatches written. Runtime dispatch bug #71 'state is not defined' persists - runtime-level, not scan-correctable. Human-blocked unchanged: #108, #157, #173."
+}

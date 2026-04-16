@@ -1,0 +1,10 @@
+{
+  "scan_at": "2026-04-16T185714Z",
+  "iteration": 395,
+  "action": "heartbeat",
+  "target": null,
+  "reason": "No queue overrides. Issue-211 dispatched last scan. In-review items blocked on human input. In-progress items monitored.",
+  "priority": "normal",
+  "labels": ["scan-heartbeat"],
+  "notes": "Scan 395. All clear. Capacity: 1/1 used by issue-211. Backlog: [186,185,184,183,182,180]."
+}

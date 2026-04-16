@@ -1,0 +1,10 @@
+{
+  "scan_at": "2026-04-16T205600Z",
+  "iteration": 395,
+  "action": "dispatch",
+  "target_issue": 186,
+  "target_agent": "opencode",
+  "priority": "normal",
+  "reason": "Capacity available (1/1), no active child. Ghost 211 removed. Dispatching oldest backlog: 186.",
+  "labels": ["dispatch-pending"]
+}

@@ -1,0 +1,27 @@
+{
+  "scan_at": "2026-04-16T07:27:00Z",
+  "iteration": 218,
+  "active_child": 1237069,
+  "queued_children": [],
+  "cleared_children": [1233175],
+  "capacity": {
+    "cap": 1,
+    "occupied": 1,
+    "available": 0
+  },
+  "pending_redispatches": 0,
+  "dispatch_backlog": [],
+  "corrective_backlog": [],
+  "state_corrections": [
+    "active_child 1233175->null: PID 1233175 not found in ps (loop.sh child died)",
+    "active_child null->1237069: Scan 217 missed live child 1237069 (alive since 04:06, ppid=968483)"
+  ],
+  "provider_status": {
+    "claude": "unknown",
+    "opencode": "active",
+    "gemini": "unknown",
+    "codex": "unknown"
+  },
+  "action": "scan_pass",
+  "notes": "Scan pass 218. Corrective: scan 217 incorrectly cleared child 1237069 as dead. Child is alive (04:06, ppid=968483, mode=plan). Invalidated unnecessary dispatch request. Capacity full (1/1 occupied). Child loop self-managing. Queue/ empty - no override prompts. No action needed this pass."
+}

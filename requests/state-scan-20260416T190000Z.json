@@ -1,0 +1,24 @@
+{
+  "scan_at": "2026-04-16T190000Z",
+  "iteration": 367,
+  "active_child": null,
+  "active_child_pid": null,
+  "active_child_elapsed": null,
+  "active_child_death": null,
+  "detected_issue": null,
+  "capacity": {
+    "cap": 1,
+    "occupied": 0,
+    "available": 1
+  },
+  "pending_redispatches": 0,
+  "dispatch_backlog": [],
+  "provider_status": {
+    "claude": "active",
+    "opencode": "active"
+  },
+  "current_orchestrator_pid": 3179674,
+  "action": "idle",
+  "labels": [],
+  "notes": "Scan pass 367. No queue overrides. No active children. No aloop/ready or aloop/in-review issues detected. Capacity available. Idle."
+}

@@ -1,0 +1,24 @@
+{
+  "scan_at": "2026-04-16T03:10:00Z",
+  "iteration": 189,
+  "active_child": null,
+  "queued_children": [],
+  "cleared_children": [],
+  "capacity": {
+    "cap": 1,
+    "occupied": 0,
+    "available": 1
+  },
+  "pending_redispatches": 0,
+  "dispatch_backlog": ["dispatch-70-scan-20260416T005700Z.json", "dispatch-188-scan-20260416T010000Z.json"],
+  "corrective_backlog": [],
+  "state_corrections": [],
+  "provider_status": {
+    "claude": "unknown",
+    "opencode": "active",
+    "gemini": "unknown",
+    "codex": "unknown"
+  },
+  "action": "scan_pass",
+  "notes": "Orchestrator alive (PID 968483, iter 71, phase=orch). Queue empty. No active children (active.json=[]). Capacity 1/1 available. Dispatch backlog (2) remains stranded — process-requests consumer not running. Human-blocked unchanged: #108 (manual rebase), #157 (Gate 7), #173 (false issue text). Orchestrator self-managing. Exit scan pass."
+}

@@ -1,0 +1,9 @@
+{
+  "type": "dispatch",
+  "issue": 187,
+  "target": "opencode",
+  "priority": "normal",
+  "reason": "dispatch backlog aging",
+  "scan_iteration": 358,
+  "dispatched_at": "2026-04-16T183100Z"
+}

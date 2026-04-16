@@ -1,0 +1,9 @@
+{
+  "scan_at": "2026-04-16T09:39:00Z",
+  "iteration": 253,
+  "action": "dispatch",
+  "target_issue": 187,
+  "target_agent": "opencode",
+  "priority": "normal",
+  "reason": "opencode child (PID 1505716, issue 209) confirmed dead. Capacity now free (0/1). Issue 188 stuck in In-progress, skipping. Dispatching next ready issue #187."
+}

@@ -1,0 +1,20 @@
+{
+  "scan_at": "2026-04-16T211000Z",
+  "iteration": 402,
+  "active_child": null,
+  "active_child_pid": null,
+  "active_child_elapsed": null,
+  "active_child_death": null,
+  "detected_issue": null,
+  "capacity": { "cap": 1, "occupied": 0, "available": 1 },
+  "pending_redispatches": 0,
+  "dispatch_backlog": [],
+  "provider_status": {
+    "claude": "unknown",
+    "opencode": "unknown"
+  },
+  "queue_override": false,
+  "action": "idle",
+  "labels": ["scan-402"],
+  "notes": "Scan 402. System in stopped state. No queue/ overrides. No capacity occupied. Awaiting human intervention."
+}

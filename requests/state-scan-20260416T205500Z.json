@@ -1,0 +1,24 @@
+{
+  "scan_at": "2026-04-16T205500Z",
+  "iteration": 394,
+  "active_child": 460583,
+  "active_child_pid": 460583,
+  "active_child_elapsed": null,
+  "active_child_death": null,
+  "detected_issue": "No queue override. Orchestrator PID 460325 alive with child opencode PID 460583. Capacity 1/1 occupied. No action needed.",
+  "capacity": {
+    "cap": 1,
+    "occupied": 1,
+    "available": 0
+  },
+  "pending_redispatches": 0,
+  "dispatch_backlog": [211, 186, 185, 184, 183, 182, 180],
+  "provider_status": {
+    "claude": "unknown",
+    "opencode": "running"
+  },
+  "current_orchestrator_pid": 460325,
+  "action": "monitoring",
+  "labels": ["orchestrator-alive", "active-child"],
+  "notes": "Scan 394. Orchestrator alive with opencode child PID 460583. No queue override. No state transitions needed."
+}

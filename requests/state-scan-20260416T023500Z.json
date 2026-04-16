@@ -1,0 +1,23 @@
+{
+  "id": "scan-20260416-0235-state",
+  "type": "state_update",
+  "payload": {
+    "iteration": 179,
+    "scan_at": "2026-04-16T02:35:00Z",
+    "action": "scan_pass_monitoring",
+    "active_child": null,
+    "capacity": {
+      "cap": 1,
+      "occupied": 0,
+      "available": 1
+    },
+    "pending_redispatches": 2,
+    "provider_status": {
+      "claude": "unknown",
+      "opencode": "active",
+      "gemini": "unknown",
+      "codex": "unknown"
+    },
+    "notes": "iter=179: Orchestrator alive (iter=52, phase=orch, state=running). No active children. Capacity 0/1 occupied, 1 available. Dispatch requests for #70 (00:57) and #188 (01:00) still unconsumed in requests/. Issue #70 shows status=Ready in issues_summary (stale In progress anomaly persists in state). Issue #188 is Ready, priority=-10. Queue empty. No override prompts. Orchestrator is not progressing dispatch requests despite available capacity — possible stall condition or consumption mismatch."
+  }
+}

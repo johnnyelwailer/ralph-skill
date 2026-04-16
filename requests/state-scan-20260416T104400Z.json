@@ -1,0 +1,21 @@
+{
+  "scan_at": "2026-04-16T10:44:00Z",
+  "iteration": 271,
+  "active_child": 188,
+  "active_child_pid": 1928090,
+  "active_child_elapsed": "2h01m",
+  "capacity": {
+    "cap": 1,
+    "occupied": 1,
+    "available": 0
+  },
+  "pending_redispatches": 2,
+  "dispatch_backlog": "[186, 187, 209]",
+  "detected_issue": "orchestrator PID 1312238 DEAD. Child PID 1928090 (issue 188) alive. process-requests daemon not running. scan-state desync corrected: capacity 0/1 occupied.",
+  "provider_status": {
+    "claude": "active",
+    "opencode": "active"
+  },
+  "action": "scan_pass",
+  "notes": "Scan pass 271. Orchestrator dead (PID 1312238 not found). Child 1928090 alive on issue 188 (~2h). Capacity 0/1 occupied. process-requests daemon down. No dispatch - slot occupied."
+}

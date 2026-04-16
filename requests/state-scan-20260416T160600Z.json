@@ -1,0 +1,24 @@
+{
+  "scan_at": "2026-04-16T16:06:00Z",
+  "iteration": 333,
+  "active_child": null,
+  "active_child_pid": null,
+  "active_child_elapsed": null,
+  "active_child_death": null,
+  "detected_issue": null,
+  "capacity": {
+    "cap": 1,
+    "occupied": 0,
+    "available": 1
+  },
+  "pending_redispatches": 3,
+  "dispatch_backlog": "[187, 209]",
+  "provider_status": {
+    "claude": "active",
+    "opencode": "active"
+  },
+  "current_orchestrator_pid": null,
+  "action": "await_dispatch_consumption",
+  "labels": [],
+  "notes": "Scan pass 333. Issue 186 dispatch just issued (16:05:00Z). Waiting for child loop to spawn and occupy capacity. Dispatch backlog [187, 209] remains. No queue overrides."
+}

@@ -1,0 +1,9 @@
+{
+  "scan_at": "2026-04-16T05:42:00Z",
+  "iteration": 255,
+  "action": "dispatch",
+  "target_issue": 186,
+  "target_agent": "opencode",
+  "priority": "normal",
+  "reason": "Capacity 0/1 free. Issue 187 dispatch already written (pending pickup). Skipping to next ready issue #186."
+}

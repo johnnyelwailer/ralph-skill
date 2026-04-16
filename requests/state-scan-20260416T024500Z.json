@@ -1,0 +1,56 @@
+{
+  "id": "scan-20260416-024500Z",
+  "type": "state_update",
+  "payload": {
+    "iteration": 181,
+    "scan_at": "2026-04-16T02:45:00Z",
+    "action": "scan_pass_monitoring",
+    "active_child": null,
+    "capacity": {
+      "cap": 1,
+      "occupied": 0,
+      "available": 1
+    },
+    "pending_redispatches": 2,
+    "provider_status": {
+      "claude": "unknown",
+      "opencode": "active",
+      "gemini": "unknown",
+      "codex": "unknown"
+    },
+    "stall_condition": true,
+    "stall_notes": "iter=181: Orchestrator still stalled. Dispatch requests dispatch-70-scan-20260416T005700Z.json and dispatch-188-scan-20260416T010000Z.json remain unconsumed (~2.8 hours old). process-requests not running. Capacity 1/1 available, 0 occupied. Loop appears stuck in orch_scan cycle.",
+    "dispatch_requests_unconsumed": ["dispatch-70-scan-20260416T005700Z.json", "dispatch-188-scan-20260416T010000Z.json"],
+    "process_requests_status": "not_running",
+    "queue_empty": true,
+    "override_prompts": false,
+    "state_corrections_needed": [
+      "Issue #70: status=In progress in scan but issues_summary shows Ready - stale state needs reset",
+      "Issue #188: status=Ready, highest priority (-10), dispatch request stale"
+    ],
+    "human_intervention_required": [
+      "Restart process-requests loop to consume dispatch requests and resume dispatching",
+      "Investigate orch_scan cycle stall - loop may be looping without consuming dispatch queue"
+    ],
+    "in_review_issues": [176, 172, 160, 158, 157, 156, 155, 154, 153, 152, 151, 147, 145, 144, 143, 114, 111, 101],
+    "pr_state_drift": "21 issues listed as pr_open but only 4 actually open on GitHub",
+    "corrective_requests": [
+      {
+        "type": "state_correct",
+        "issue_number": 70,
+        "action": "reset_status",
+        "from_status": "In progress",
+        "to_status": "Ready",
+        "reason": "child_pid=null, no active work, issues_summary confirms Ready"
+      },
+      {
+        "type": "state_correct",
+        "issue_number": 188,
+        "action": "confirm_ready_for_dispatch",
+        "status": "Ready",
+        "priority": -10,
+        "reason": "Top priority ready issue, dispatch request exists but unconsumed"
+      }
+    ]
+  }
+}

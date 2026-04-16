@@ -1,0 +1,25 @@
+{
+  "scan_at": "2026-04-16T08:53:05Z",
+  "iteration": 239,
+  "active_child": "opencode",
+  "active_child_pid": 1295619,
+  "queued_children": [],
+  "cleared_children": [1275915],
+  "capacity": {
+    "cap": 1,
+    "occupied": 1,
+    "available": 0
+  },
+  "pending_redispatches": 0,
+  "dispatch_backlog": [],
+  "corrective_backlog": [],
+  "state_corrections": [],
+  "provider_status": {
+    "claude": "cooldown",
+    "opencode": "running",
+    "gemini": "unknown",
+    "codex": "unknown"
+  },
+  "action": "scan_pass",
+  "notes": "Scan pass 239. opencode active (issue 209, pid 1295619 confirmed running). Capacity 1/1 occupied. Queue/ does not exist - no override prompts. Dispatch backlog empty. No state corrections needed. Waiting for active child to clear."
+}

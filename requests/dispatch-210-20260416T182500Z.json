@@ -1,0 +1,8 @@
+{
+  "dispatch_id": 210,
+  "issue": 187,
+  "label": "aloop/ready",
+  "dispatched_at": "2026-04-16T18:25:00Z",
+  "prompt_override": null,
+  "notes": "Dispatching issue 187 after child 209 completion. Capacity now available."
+}

@@ -1,0 +1,13 @@
+{
+  "scan_at": "2026-04-16T210700Z",
+  "iteration": 401,
+  "active_child": null,
+  "active_child_pid": null,
+  "capacity": { "cap": 1, "occupied": 0, "available": 1 },
+  "pending_redispatches": 0,
+  "dispatch_backlog": [211, 186, 185, 184, 183, 182, 180],
+  "queue_override": false,
+  "action": "idle",
+  "labels": ["ghost-backlog", "aloop/stopped"],
+  "notes": "Scan 401. Terminal state. All backlog issues phantom (gh confirms 211,186 not found). Orchestrator dead. 3 loop.sh PIDs alive but orphaned from this session. System stopped - human intervention required to either create real GH issues or clear backlog."
+}

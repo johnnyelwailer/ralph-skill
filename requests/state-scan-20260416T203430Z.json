@@ -1,0 +1,24 @@
+{
+  "scan_at": "2026-04-16T203430Z",
+  "iteration": 390,
+  "active_child": null,
+  "active_child_pid": null,
+  "active_child_elapsed": null,
+  "active_child_death": null,
+  "detected_issue": "No queue override. dispatch-211 pending pickup. gh unavailable. Capacity idle. No active child.",
+  "capacity": {
+    "cap": 1,
+    "occupied": 0,
+    "available": 1
+  },
+  "pending_redispatches": 0,
+  "dispatch_backlog": [211, 186, 185, 184, 183, 182, 180],
+  "provider_status": {
+    "claude": "unknown",
+    "opencode": "unknown"
+  },
+  "current_orchestrator_pid": null,
+  "action": "monitoring",
+  "labels": ["dispatch-pending", "gh-unavailable"],
+  "notes": "Scan 390. dispatch-211 written T202200Z, awaiting pickup. No queue override. No active child. gh unavailable for verification. Backlog 211,186,185,184,183,182,180 pending."
+}

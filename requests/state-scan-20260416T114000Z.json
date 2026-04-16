@@ -1,0 +1,29 @@
+# Orchestrator Scan — 2026-04-16T11:40:00Z (iter 294)
+
+## Daemon Status
+- `process-requests` daemon: **NOT RUNNING**
+- Child 188 PID 1928090: **DEAD**
+
+## Capacity
+- 1/1 full — stale slot from dead child 188 not recovered
+- Cannot dispatch until slot is cleared
+
+## Dispatch Backlog
+- `[186, 187, 209]` — dispatch requests unconsumed (daemon offline)
+
+## Blockage
+- Orchestrator scan blocked — cannot dispatch
+- Human required to:
+  1. Restart process-requests daemon
+  2. Clear stale child 188 from capacity tracking
+  3. Dispatch backlog: 186, 187, 209
+
+## Issue Status
+- Ready: 186, 187, 209 + backlog
+- In progress (stuck): 188
+- In review: 176, 172, 160, 158, 157, 156, 155, 154, 153, 152, 151, 147, 145, 144, 143, 114, 111, 101
+- In progress: 199, 108, 124, 98, 44, 37, 177
+
+## No-Op This Pass
+- Queue: empty
+- System blocked — scan cannot advance

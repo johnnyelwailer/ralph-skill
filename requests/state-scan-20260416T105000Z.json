@@ -1,0 +1,28 @@
+{
+  "scan_at": "2026-04-16T10:50:00Z",
+  "iteration": 284,
+  "active_child": null,
+  "active_child_pid": null,
+  "active_child_elapsed": null,
+  "active_child_death": "daemon_down",
+  "detected_issue": "process-requests daemon remains dead. Orchestrator blocked.",
+  "capacity": {
+    "cap": 0,
+    "occupied": 0,
+    "available": 0,
+    "note": "No daemon running"
+  },
+  "pending_redispatches": 3,
+  "dispatch_backlog": "[186, 187, 209]",
+  "dispatch_backlog_status": "unconsumed - daemon down",
+  "action": "scan_pass_blocked_no_daemon",
+  "blockage_reason": [
+    "process-requests daemon still down",
+    "Capacity system unavailable",
+    "Dispatch backlog unconsumed"
+  ],
+  "required_human_actions": [
+    "Restart process-requests daemon to consume backlog"
+  ],
+  "notes": "Scan pass 284 - daemon confirmed down since at least pass 267. No state change."
+}
