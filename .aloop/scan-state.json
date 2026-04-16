@@ -1,6 +1,6 @@
 {
-  "scan_at": "2026-04-16T224500Z",
-  "iteration": 3,
+  "scan_at": "2026-04-16T225000Z",
+  "iteration": 4,
   "session": "orchestrator-20260416-211340",
   "active_children": [],
   "capacity": {
@@ -15,5 +15,5 @@
   "queue_overrides": 0,
   "human_blocked": [],
   "action": "waiting_for_runtime",
-  "notes": "Scan 3. Dispatch requests req-001/002/003 written in iter 2 (~80min ago) still pending in requests/. Runtime has not processed them yet. No active children, no queue overrides. Waiting for runtime to spin up child sessions."
+  "notes": "Scan 4. Dispatch requests req-001/002/003 for wave-1 issues #1/#2/#5 remain in requests/ unprocessed. Sub-spec files present in .aloop/output/. No active children, no queue overrides. Runtime has not yet processed dispatch requests. Wave 2 (9 issues) and wave 3 (2 issues) remain queued."
 }
