@@ -23,7 +23,6 @@
     "claude": "active",
     "opencode": "unsupported"
   },
-  "current_orchestrator_pid": 1031686,
   "action": "wait",
   "human_blocked": [157, 108, 173],
   "notes": "Scan 472. Child PID 675816 (issue-23) ALIVE — iter=74/review (~10min, started 21:26:19Z). Claude PID 1031686 ALIVE. Review progressing normally. Capacity 1/1 occupied. Queue empty. Pending redispatches: #188/#70 (awaiting #23 completion). Human-blocked: #157/#108/#173. Action: wait for review to complete."
