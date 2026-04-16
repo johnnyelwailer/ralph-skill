@@ -1,6 +1,6 @@
 {
-  "scan_at": "2026-04-16T220800Z",
-  "iteration": 483,
+  "scan_at": "2026-04-16T222019Z",
+  "iteration": 492,
   "active_child": 23,
   "active_child_session": "orchestrator-20260321-172932-issue-23-20260416-215759",
   "active_child_pid": 1192896,
@@ -8,7 +8,7 @@
   "active_child_phase": "build",
   "active_child_iter": 1,
   "active_child_updated_at": "2026-04-16T21:58:02Z",
-  "active_child_elapsed_since_update": "~10min",
+  "active_child_elapsed_since_update": "~22min",
   "active_child_claude_alive": true,
   "active_child_death": null,
   "detected_issue": null,
@@ -17,13 +17,13 @@
     "occupied": 1,
     "available": 0
   },
-  "pending_redispatches": 4,
+  "pending_redispatches": 2,
   "queue_overrides": 0,
   "provider_status": {
     "claude": "active",
-    "opencode": "unsupported"
+    "opencode": "cooldown"
   },
   "action": "wait",
   "human_blocked": [157, 108, 173],
-  "notes": "Scan 483. issue-23 child (PID 1192896) ALIVE at iter=1/build/claude (~10min). Queue override 000-review-fixes.md in progress (fixing Gate 4 dist/index.js dirty + steering-reset coverage gap). Claude PID 1193084 active. Pending redispatches after #23: #85/#172 (PRs #311/#211 closed-without-merge) + #188/#70. Human-blocked: #157/#108/#173. Action: wait for issue-23 build phase to complete."
+  "notes": "Scan 492. issue-23 child (PID 1192896) ALIVE at iter=1/build/claude (~22min). Build phase active — Claude running at 0.7% CPU. Most recent commit 4c074a78 adds steer_reset/nonsteer_no_reset coverage (fixes prior review FAIL). Expecting build to complete with dist/index.js rebuild (Gate 4). Pending redispatches after #23: #188/#70. Human-blocked: #157/#108/#173. Action: wait."
 }
