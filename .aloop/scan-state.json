@@ -1,14 +1,14 @@
 {
-  "scan_at": "2026-04-16T214600Z",
-  "iteration": 448,
+  "scan_at": "2026-04-16T210257Z",
+  "iteration": 456,
   "active_child": 23,
   "active_child_pid": 675816,
   "active_child_state": "running",
-  "active_child_phase": "qa",
-  "active_child_iter": 59,
-  "active_child_updated_at": "2026-04-16T20:45:57Z",
-  "active_child_elapsed_since_update": "~1min",
-  "active_child_claude_pid": 905774,
+  "active_child_phase": "review",
+  "active_child_iter": 60,
+  "active_child_updated_at": "2026-04-16T20:57:37Z",
+  "active_child_elapsed_since_update": "~5min",
+  "active_child_claude_pid": 942496,
   "active_child_claude_alive": true,
   "active_child_death": null,
   "detected_issue": null,
@@ -26,5 +26,5 @@
   "current_orchestrator_pid": 880130,
   "action": "wait",
   "human_blocked": [157, 108, 173],
-  "notes": "Scan 448. Child PID 675816 (issue-23) ALIVE at iter=59/qa. Build phase completed (was iter=48). Claude subprocess 905774 ALIVE (~1min elapsed since 20:45:57Z). QA phase in progress. No queue overrides. Human-blocked: #157/#108/#173. Awaiting child QA completion."
+  "notes": "Scan 456. Child PID 675816 (issue-23) ALIVE at iter=60/review, Claude subprocess 942496 ALIVE (~5min elapsed since last update). Review phase active — awaiting completion. Capacity 1/1 occupied. Queue empty. Human-blocked: #157/#108/#173."
 }
