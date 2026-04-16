@@ -1,0 +1,34 @@
+{
+  "scan_at": "2026-04-16T214710Z",
+  "iteration": 477,
+  "active_child": 23,
+  "active_child_pid": 675816,
+  "active_child_state": "running",
+  "active_child_phase": "qa",
+  "active_child_iter": 87,
+  "active_child_updated_at": "2026-04-16T21:44:43Z",
+  "active_child_elapsed_since_update": "~2.5min",
+  "active_child_claude_pids": [1120984],
+  "active_child_claude_alive": true,
+  "active_child_death": null,
+  "detected_issue": "opencode_provider_unsupported",
+  "capacity": {
+    "cap": 1,
+    "occupied": 1,
+    "available": 0
+  },
+  "pending_redispatches": 2,
+  "queue_overrides": 0,
+  "provider_status": {
+    "claude": "active",
+    "opencode": "unsupported"
+  },
+  "action": "wait",
+  "human_blocked": [157, 108, 173],
+  "in_review_prs": [
+    {"issue": 46, "pr": 313, "git_conflict": false, "gh_state": "DIRTY_stale"},
+    {"issue": 85, "pr": 311, "git_conflict": false},
+    {"issue": 172, "pr": 211, "git_conflict": false}
+  ],
+  "notes": "Scan 477. Child PID 675816 (issue-23) ALIVE at iter=87/qa. Build phase (iters 76-86) exhausted retries on PROMPT_build_opencode.md (unsupported provider) at 21:44:39Z; cooldown until 22:44:39Z. QA phase started at 21:44:43Z with claude (PID 1120984 alive). QA running normally at ~2.5min elapsed. Secondary orchestrator loops at PIDs 980448/982119/1082526 are independent scan loops, non-conflicting. PR #313 (issue-46) shows DIRTY_stale in GH but no actual git conflict — master fully contained in branch, stale merge state. Capacity full (1/1). Pending redispatches: #188/#70 (dispatch after #23 completes). Human-blocked: #157/#108/#173. Action: wait for QA to complete."
+}
