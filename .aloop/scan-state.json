@@ -1,18 +1,18 @@
 {
-  "scan_at": "2026-04-16T212118Z",
-  "iteration": 463,
+  "scan_at": "2026-04-16T213700Z",
+  "iteration": 465,
   "active_child": 23,
   "active_child_session": "orchestrator-20260321-172932-issue-23-20260416-193150",
   "active_child_pid": 675816,
   "active_child_state": "running",
-  "active_child_phase": "build",
-  "active_child_iter": 63,
-  "active_child_updated_at": "2026-04-16T21:22:00Z",
-  "active_child_elapsed_since_update": "~0min",
-  "active_child_claude_pid": 942496,
-  "active_child_claude_alive": false,
+  "active_child_phase": "review",
+  "active_child_iter": 74,
+  "active_child_updated_at": "2026-04-16T21:26:19Z",
+  "active_child_elapsed_since_update": "~11min",
+  "active_child_claude_pid": null,
+  "active_child_claude_alive": null,
   "active_child_death": null,
-  "detected_issue": "iter-63 opencode provider_cooldown (empty provider name) — loop will self-recover via round-robin retry to claude",
+  "detected_issue": null,
   "capacity": {
     "cap": 1,
     "occupied": 1,
@@ -27,5 +27,5 @@
   "current_orchestrator_pid": 968542,
   "action": "wait",
   "human_blocked": [157, 108],
-  "notes": "Scan 463. Child PID 675816 (issue-23, session 193150) ALIVE — iter 63/build. Iter 62 COMPLETED: claude/sonnet, 1 commit (branch sync coverage tests, 197s). Iter 63 started opencode build but hit provider_cooldown (empty provider name, 1h cooldown). Loop will self-recover via round-robin to claude. Claude PID 942496 DEAD (iter 62 finished). Queue empty. Human-blocked: #157/#108. No action needed — await iter 63 retry."
+  "notes": "Scan 465. Child PID 675816 (issue-23, session 193150) ALIVE — iter 74/review. Recovery confirmed: opencode cooldown caused phase_retry_exhausted on build (iter 72, 10 consecutive 'unsupported provider' errors). Loop advanced to QA (iter 73, COMPLETED: 1 commit, 218s, branch_sync coverage PASS, 1 FAIL remains). Now iter 74/review in progress using claude/sonnet. Child queue and requests both empty. Human-blocked: #157/#108 (unchanged). No action needed — await review completion."
 }
