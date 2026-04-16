@@ -1,14 +1,13 @@
 {
-  "scan_at": "2026-04-16T213625Z",
-  "iteration": 472,
+  "scan_at": "2026-04-16T215444Z",
+  "iteration": 479,
   "active_child": 23,
   "active_child_pid": 675816,
   "active_child_state": "running",
-  "active_child_phase": "review",
-  "active_child_iter": 74,
-  "active_child_updated_at": "2026-04-16T21:26:19Z",
-  "active_child_elapsed_since_update": "~10min",
-  "active_child_claude_pid": 1031686,
+  "active_child_phase": "build",
+  "active_child_iter": 90,
+  "active_child_updated_at": "2026-04-16T21:50:35Z",
+  "active_child_elapsed_since_update": "~4min",
   "active_child_claude_alive": true,
   "active_child_death": null,
   "detected_issue": null,
@@ -21,10 +20,9 @@
   "queue_overrides": 0,
   "provider_status": {
     "claude": "active",
-    "opencode": "unsupported"
+    "opencode": "cooldown_until_2244Z"
   },
-  "current_orchestrator_pid": 1031686,
   "action": "wait",
   "human_blocked": [157, 108, 173],
-  "notes": "Scan 472. Child PID 675816 (issue-23) ALIVE — iter=74/review (~10min, started 21:26:19Z). Claude PID 1031686 ALIVE. Review progressing normally. Capacity 1/1 occupied. Queue empty. Pending redispatches: #188/#70 (awaiting #23 completion). Human-blocked: #157/#108/#173. Action: wait for review to complete."
+  "notes": "Scan 479. Child PID 675816 (issue-23) ALIVE at iter=90/build/claude (~4min). Review-fix cycle: iter 88/review FAIL → iter 89/plan → iter 90/build (active). PRs #311/#211 (issues #85/#172) found closed-without-merge; labels already aloop/auto, pending re-dispatch after #23. PR #313 (issue-46) still open/dirty. Pending: #188/#70. Human-blocked: #157/#108/#173."
 }

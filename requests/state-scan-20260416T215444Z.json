@@ -1,0 +1,36 @@
+{
+  "scan_at": "2026-04-16T215444Z",
+  "iteration": 479,
+  "active_child": 23,
+  "active_child_pid": 675816,
+  "active_child_state": "running",
+  "active_child_phase": "build",
+  "active_child_iter": 90,
+  "active_child_updated_at": "2026-04-16T21:50:35Z",
+  "active_child_elapsed_since_update": "~4min",
+  "active_child_claude_pids": [675816],
+  "active_child_claude_alive": true,
+  "active_child_death": null,
+  "detected_issue": null,
+  "capacity": {
+    "cap": 1,
+    "occupied": 1,
+    "available": 0
+  },
+  "pending_redispatches": 2,
+  "queue_overrides": 0,
+  "provider_status": {
+    "claude": "active",
+    "opencode": "cooldown_until_22:44Z"
+  },
+  "action": "wait",
+  "human_blocked": [157, 108, 173],
+  "in_review_prs": [
+    {"issue": 46, "pr": 313, "state": "open", "mergeable": false, "mergeable_state": "dirty", "note": "conflicted — change-request labeled"}
+  ],
+  "closed_unmerged_prs": [
+    {"issue": 85, "pr": 311, "note": "PR closed without merge; issue has aloop/auto only — needs re-dispatch when capacity opens"},
+    {"issue": 172, "pr": 211, "note": "PR closed without merge; issue has aloop/auto only — needs re-dispatch when capacity opens"}
+  ],
+  "notes": "Scan 479. Child PID 675816 (issue-23) ALIVE at iter=90/build with claude (~4min elapsed since 21:50:35Z). Cycle: iter 88/review FAIL (0 commits), iter 89/plan (0 commits), iter 90/build in progress — actively fixing review findings. Opencode still in cooldown until ~22:44Z; current build using claude provider. Issues #85 (PR #311) and #172 (PR #211) discovered closed-without-merge; labels already cleaned to aloop/auto — queue for re-dispatch after #23 completes. Issue #46 PR #313 still open but dirty (conflicts). Pending redispatches: #188/#70 (will dispatch after #23 completes). Human-blocked: #157/#108/#173. Action: wait for iter 90/build to complete."
+}
