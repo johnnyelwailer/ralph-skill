@@ -4688,7 +4688,7 @@ export async function monitorChildSessions(
         stateIssue.status = 'Blocked';
         // Keep child_session so resume works on the same branch/worktree
         (stateIssue as any).needs_redispatch = true;
-        (stateIssue as any).review_feedback = `Child loop stopped after ${childStatus.iteration ?? '?'} iterations (limit reached). Resume and continue working.`;
+        (stateIssue as any).review_feedback = `Child loop stopped after ${childStatus.iteration} iterations in "${childStatus.phase}" phase${childStatus.stuck_count > 0 ? ` (${childStatus.stuck_count} stuck attempts)` : ''}. Resume and continue the work in the "${childStatus.phase}" phase.`;
       }
       result.failed++;
       entry.action = 'failed';
