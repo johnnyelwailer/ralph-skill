@@ -1,6 +1,6 @@
 {
-  "scan_at": "2026-04-17T001000Z",
-  "iteration": 7,
+  "scan_at": "2026-04-17T011000Z",
+  "iteration": 16,
   "session": "orchestrator-20260416-211340",
   "active_children": [],
   "capacity": {
@@ -15,5 +15,5 @@
   "queue_overrides": 0,
   "human_blocked": [],
   "action": "waiting_for_runtime",
-  "notes": "Scan 7. Dispatch requests req-001/002/003 for wave-1 issues #1/#2/#5 remain in requests/ unprocessed. Sub-spec files present in .aloop/output/. No active children, no queue overrides. Runtime has not yet processed dispatch requests. Wave 2 (7 issues) and wave 3 (2 issues) remain queued."
+  "notes": "Scan 16. Dispatch requests req-001/002/003 for wave-1 issues #1/#2/#5 remain in requests/ unprocessed across 16 iterations. Sub-spec files present in .aloop/output/ (issue-1-spec.md, issue-2-spec.md, issue-5-spec.md). No active children, 3/3 slots available. No queue overrides. Persistent runtime stall — runtime is not processing dispatch_child requests. Human intervention may be required to diagnose the runtime process-requests pipeline."
 }
