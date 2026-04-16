@@ -72,3 +72,55 @@ No proof manifests found. ci.yml is a config file — CI workflow proof would re
 All prior [review] tasks resolved.
 
 ---
+
+## Review — 2026-04-16 — commit 553d9449..6c2aba20
+
+**Verdict: FAIL** (4 findings → written to TODO.md as [review] tasks)
+**Scope:** `aloop/bin/loop.sh`, `aloop/cli/src/commands/orchestrate.ts`, `aloop/cli/src/commands/process-requests.ts`, `aloop/cli/src/sanitize.ts`, `aloop/cli/src/index.ts`
+
+### Gate 1: Spec Compliance — FAIL
+
+Two spec acceptance criteria remain unimplemented:
+
+1. **Branch sync missing**: Spec requires pre-iteration `git fetch origin <base_branch>` + merge + `PROMPT_merge.md` queue on conflict + `merge_conflict` log event. Zero grep matches for `git fetch`, `merge_conflict`, or `PROMPT_merge` in `loop.sh`. This was also flagged by QA (todo [qa/P1]).
+
+2. **`loop_finalizer_qa_coverage.tests.sh` fails**: The test file at `aloop/bin/loop_finalizer_qa_coverage.tests.sh` (lines 11-12) calls `extract_func check_finalizer_qa_coverage_gate` and `extract_func append_plan_task_if_missing`, but neither function exists in `loop.sh`. Result: 4/5 tests fail with `command not found`. These functions were referenced by the test file but never implemented in the loop script.
+
+CLAUDECODE sanitization (262d936c): `unset CLAUDECODE` at loop.sh line 20 and `env -u CLAUDECODE` on all provider invocations — correctly implemented. `sanitize.ts` deletes `process.env.CLAUDECODE` at line 12; `index.ts` imports it at entry. This criterion passes.
+
+Finalizer logic (cycle boundary gate, finalizerPosition tracking, `finalizer_entered`/`finalizer_aborted`/`finalizer_completed` events): present in loop.sh. Phase retry logic (cyclePosition, MAX_PHASE_RETRIES, `phase_retry_exhausted`, `phase_prerequisite_miss`): present. These criteria appear implemented.
+
+### Constitution Rule 1 — CRITICAL VIOLATION
+
+`loop.sh` is **2373 LOC**. Constitution Rule 1 is a hard rule: "Target: < 400 LOC each. Nothing may be added to loop.sh or loop.ps1." Commits 777a4fba (+36 lines), 32f56f0d (+5 lines), and 2bdd235c (+27 lines) added `extract_explicit_cooldown_until`, stale-lock recovery logic in `acquire_provider_health_lock`, and stdout capture in `invoke_provider`. This is the opposite of what the constitution requires.
+
+### Out-of-scope changes (Constitution Rules 2, 12, 18) — FAIL
+
+`orchestrate.ts` and `process-requests.ts` are **explicitly out of scope** per SPEC.md. Committed changes include:
+- orchestrate.ts (793ba420, d45e7abd, fdac98db merge): validateDoR criterion 1 regex change, criterion 5 removal, `dor_validated` guard, `round_robin_order` state passthrough in `launchChildLoop`, SPEC.md seeding, iteration limit removals
+- process-requests.ts (4472e66b, fdac98db merge): `sweepStaleRunningIssueStatuses` addition, stale session reconciliation
+
+### Gate 5: Integration — FAIL
+
+`npm run type-check` fails with **8 TypeScript errors**:
+- `orchestrate.ts:3166` — `state` undefined in `launchChildLoop` scope (not a parameter)
+- `orchestrate.ts:3195` — `roundRobinOrder` undefined in `launchChildLoop` scope
+- `orchestrate.ts:3483` — `round_robin_order` property missing from `OrchestratorState` type
+- `orchestrate.ts:5166, 5178` — `provider` undefined in scope
+- `process-requests.test.ts:7` — 6 symbols imported but never exported: `formatReviewCommentHistory`, `getDirectorySizeBytes`, `pruneLargeV8CacheDir`, `syncMasterToTrunk`, `syncChildBranches`, `ChildBranchSyncDeps`
+- `process-requests.ts:442` — unintentional type comparison overlap
+- `process-requests.ts:818` — `sweepStaleRunningIssueStatuses` reference error
+
+`npm test`: **33 failures** (1077 pass). Primary clusters: all 15 `launchChildLoop` subtests (orchestrate.test.ts test 355), `dispatchChildLoops` 7 subtests (test 356), `runOrchestratorScanPass` 2 subtests (test 376), `processQueuedPrompts` (test 391), `process-requests.test.ts` subtests 9-10 (test 7).
+
+### Gates 2, 3, 4, 6, 7, 8, 9
+
+- Gate 2: Not assessed — core Gate 5/1 failures take priority
+- Gate 3: Not assessed — type errors block meaningful coverage analysis
+- Gate 4: No dead code issues observed in loop.sh changes themselves
+- Gate 6: No proof manifests; loop.sh/sanitize changes are config/plumbing — skip is acceptable
+- Gate 7: N/A — no UI changes
+- Gate 8: N/A — no dependency changes
+- Gate 9: README unchanged; N/A
+
+---
