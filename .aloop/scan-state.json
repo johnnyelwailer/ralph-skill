@@ -1,13 +1,14 @@
 {
-  "scan_at": "2026-04-16T215444Z",
-  "iteration": 479,
+  "scan_at": "2026-04-16T220115Z",
+  "iteration": 481,
   "active_child": 23,
-  "active_child_pid": 675816,
+  "active_child_session": "orchestrator-20260321-172932-issue-23-20260416-215759",
+  "active_child_pid": 1192896,
   "active_child_state": "running",
   "active_child_phase": "build",
-  "active_child_iter": 90,
-  "active_child_updated_at": "2026-04-16T21:50:35Z",
-  "active_child_elapsed_since_update": "~4min",
+  "active_child_iter": 1,
+  "active_child_updated_at": "2026-04-16T21:58:02Z",
+  "active_child_elapsed_since_update": "~3min",
   "active_child_claude_alive": true,
   "active_child_death": null,
   "detected_issue": null,
@@ -16,13 +17,13 @@
     "occupied": 1,
     "available": 0
   },
-  "pending_redispatches": 2,
+  "pending_redispatches": 4,
   "queue_overrides": 0,
   "provider_status": {
     "claude": "active",
-    "opencode": "cooldown_until_2244Z"
+    "opencode": "unsupported"
   },
   "action": "wait",
   "human_blocked": [157, 108, 173],
-  "notes": "Scan 479. Child PID 675816 (issue-23) ALIVE at iter=90/build/claude (~4min). Review-fix cycle: iter 88/review FAIL → iter 89/plan → iter 90/build (active). PRs #311/#211 (issues #85/#172) found closed-without-merge; labels already aloop/auto, pending re-dispatch after #23. PR #313 (issue-46) still open/dirty. Pending: #188/#70. Human-blocked: #157/#108/#173."
+  "notes": "Scan 481. New child session for issue-23 (PID 1192896) ALIVE at iter=1/build/claude (~3min). Prior session (PID 675816) hit iter limit 100 at 21:55:53Z — all 19/19 tasks done but review FAIL (Gate 4 dist/index.js dirty + steering-reset coverage gap). New session dispatched at iter 480 with queue override 000-review-fixes.md to address 2 review findings. Multiple claude PIDs active (1193084/1194532/1195575/1214058/1216182/1217501). Pending redispatches after #23: #85/#172 (PRs #311/#211 closed-without-merge) + #188/#70. Human-blocked: #157/#108/#173. PR #313 (issue-46) still open/dirty. Action: wait for issue-23 review-fix cycle to complete."
 }
