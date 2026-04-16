@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env pwsh
+#!/usr/bin/env pwsh
 # Aloop Loop — Generic Multi-Provider Autonomous Coding Loop
 # Usage: loop.ps1 -PromptsDir <path> -SessionDir <path> -WorkDir <path> [-Mode plan-build-review] [-Provider claude] [-MaxIterations 50]
 #
@@ -37,7 +37,7 @@ param(
     [string]$CopilotModel = 'gpt-5.3-codex',
     [string]$CopilotRetryModel = 'claude-sonnet-4.6',
 
-    [int]$MaxIterations = 50,
+    [int]$MaxIterations = 0,  # 0 means no limit (read from loop-plan.json if not set via arg/env)
     [int]$MaxStuck = 3,
 
     [int]$ProviderTimeoutSec = $(if ($env:ALOOP_PROVIDER_TIMEOUT) { [int]$env:ALOOP_PROVIDER_TIMEOUT } else { 10800 }),
@@ -96,6 +96,22 @@ if (-not (Test-Path $WorkDir)) {
 # Create session directory if it doesn't exist
 if (-not (Test-Path $SessionDir)) {
     New-Item -ItemType Directory -Path $SessionDir -Force | Out-Null
+}
+
+# Read max_iterations from loop-plan.json if MaxIterations not already set via env/arg
+$loopPlanFile = Join-Path $SessionDir 'loop-plan.json'
+if ($MaxIterations -eq 0 -and (Test-Path $env:ALOOP_MAX_ITERATIONS)) {
+    $MaxIterations = [int]$env:ALOOP_MAX_ITERATIONS
+}
+if ($MaxIterations -eq 0 -and (Test-Path $loopPlanFile)) {
+    try {
+        $planJson = Get-Content $loopPlanFile -Raw | ConvertFrom-Json
+        if ($null -ne $planJson.max_iterations) {
+            $MaxIterations = [int]$planJson.max_iterations
+        }
+    } catch {
+        # Ignore errors reading plan file
+    }
 }
 
 # ============================================================================
@@ -2151,7 +2167,7 @@ function Run-QueueIfPresent {
 }
 
 try {
-    while (-not $cancelled -and $iteration -lt $MaxIterations) {
+    while (-not $cancelled -and ($MaxIterations -eq 0 -or $iteration -lt $MaxIterations)) {
         $iteration++
         $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
         $iterationStart = [int][DateTimeOffset]::Now.ToUnixTimeSeconds()

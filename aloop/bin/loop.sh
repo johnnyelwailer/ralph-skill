@@ -23,7 +23,7 @@ CODEX_MODEL="${ALOOP_CODEX_MODEL:-gpt-5.3-codex}"
 GEMINI_MODEL="${ALOOP_GEMINI_MODEL:-gemini-3.1-pro-preview}"
 COPILOT_MODEL="${ALOOP_COPILOT_MODEL:-gpt-5.3-codex}"
 COPILOT_RETRY_MODEL="${ALOOP_COPILOT_RETRY_MODEL:-claude-sonnet-4.6}"
-MAX_ITERATIONS="${ALOOP_MAX_ITERATIONS:-50}"
+MAX_ITERATIONS="${ALOOP_MAX_ITERATIONS:-}"
 MAX_STUCK="${ALOOP_MAX_STUCK:-3}"
 BACKUP_ENABLED="${ALOOP_BACKUP:-false}"
 NO_TASK_EXIT=false
@@ -98,6 +98,23 @@ case "$LAUNCH_MODE" in
 esac
 
 mkdir -p "$SESSION_DIR"
+
+# Read max_iterations from loop-plan.json if present and MAX_ITERATIONS not already set via env/arg
+if [ -z "$MAX_ITERATIONS" ] && [ -f "$LOOP_PLAN_FILE" ]; then
+    PLAN_MAX_ITERATIONS=$(python3 - "$LOOP_PLAN_FILE" <<'PY'
+import json, sys
+path = sys.argv[1]
+with open(path, encoding="utf-8") as f:
+    payload = json.load(f)
+max_iter = payload.get("max_iterations")
+if max_iter is not None:
+    print(int(max_iter))
+PY
+)
+    if [ -n "$PLAN_MAX_ITERATIONS" ]; then
+        MAX_ITERATIONS="$PLAN_MAX_ITERATIONS"
+    fi
+fi
 
 # ============================================================================
 # DEVCONTAINER AUTO-ROUTING — detect and route provider calls through container
@@ -2145,7 +2162,7 @@ trap 'cleanup "interrupted" "stopped"; exit 130' INT
 trap 'kill_active_provider; remove_session_lock' EXIT
 
 ITERATION=0
-while [ "$ITERATION" -lt "$MAX_ITERATIONS" ]; do
+while [ -z "$MAX_ITERATIONS" ] || [ "$ITERATION" -lt "$MAX_ITERATIONS" ]; do
     ITERATION=$((ITERATION + 1))
     ITERATION_START=$(date +%s)
     ITERATION_START_ISO=$(date -u +%Y-%m-%dT%H:%M:%SZ)
