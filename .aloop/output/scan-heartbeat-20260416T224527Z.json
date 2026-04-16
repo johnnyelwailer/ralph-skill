@@ -1,0 +1,67 @@
+{
+  "type": "scan_heartbeat",
+  "timestamp": "2026-04-16T22:45:27Z",
+  "session": "orchestrator-20260321-172932",
+  "active_sessions": {
+    "issue_23": {
+      "pid": 1192896,
+      "alive": true,
+      "claude_pid": 1193084,
+      "claude_alive": true,
+      "session": "orchestrator-20260321-172932-issue-23-20260416-215759",
+      "iter": 1,
+      "phase": "build",
+      "session_age_minutes": 47,
+      "state": "running",
+      "disposition": "MONITOR — healthy, claude PID 1193084 active at iter=1/build (~47 min). Build phase for XL issues can take 60+ min."
+    }
+  },
+  "pr_open": {
+    "issue_46": {
+      "pr_number": 313,
+      "child_pid": 2034694,
+      "child_alive": false,
+      "disposition": "AWAITING_REVIEW — child session ended (expected post-PR). PR #313 open."
+    }
+  },
+  "needs_redispatch": [
+    {
+      "number": 188,
+      "title": "Extract layout components and reduce AppView to <100 LOC shell",
+      "complexity_tier": "XL",
+      "disposition": "QUEUE — will dispatch when #23 completes and capacity frees"
+    },
+    {
+      "number": 70,
+      "title": "QA agent: structured coverage matrix and priority selection algorithm",
+      "complexity_tier": "S",
+      "disposition": "QUEUE — will dispatch when #23 completes and capacity frees"
+    }
+  ],
+  "capacity": {
+    "concurrency_cap": 1,
+    "in_progress_count": 1,
+    "available_slots": 0,
+    "note": "At cap — issue #23 build in progress. Hold all dispatches."
+  },
+  "action": "no_dispatch",
+  "reason": "At concurrency cap (1/1). Issue #23 is alive at iter=1/build with claude subprocess active (~47 min). No queue overrides. No dispatch until #23 completes or fails.",
+  "observations": [
+    "Issue #23 child PID 1192896 ALIVE — loop.sh running, claude PID 1193084 ALIVE.",
+    "Issue #23 is at iter=1/build, ~47 minutes elapsed — normal for XL complexity.",
+    "Issue #46 PR #313 is open, child session ended (expected). Awaiting review.",
+    "No queue overrides in /queue/ directory.",
+    "Issues #188 (XL) and #70 (S) remain queued for next available slot.",
+    "80+ pending unblocked issues await capacity."
+  ],
+  "summary": {
+    "in_progress": 1,
+    "pr_open": 1,
+    "needs_redispatch": 2,
+    "pending_unblocked": 80,
+    "blocked_on_human": 33,
+    "merged": 34,
+    "dispatch_action": "hold",
+    "health": "nominal"
+  }
+}
