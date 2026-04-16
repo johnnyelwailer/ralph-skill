@@ -1,0 +1,21 @@
+{
+  "type": "orchestrator_scan",
+  "timestamp": "2026-04-16T22:40:00Z",
+  "current_wave": 1,
+  "slots_used": 0,
+  "slots_cap": 3,
+  "active_children": [],
+  "wave_1_ready": [1],
+  "pending_requests": ["dispatch-issue-1.json"],
+  "process_requests_running": false,
+  "blocker": "process-requests not running — dispatch-issue-1.json is queued but cannot be consumed",
+  "action_needed": "human",
+  "action_detail": "Start process-requests to dispatch issue #1 (Set up GitHub Actions CI). Run: aloop process-requests in the session directory.",
+  "issues_summary": {
+    "wave_1": [{"number": 1, "state": "pending", "title": "Set up GitHub Actions CI (test, lint, type-check)"}],
+    "wave_2": [{"number": 2, "state": "pending"}, {"number": 7, "state": "pending"}],
+    "wave_3": [{"number": 3, "state": "pending"}, {"number": 5, "state": "pending"}, {"number": 6, "state": "pending"}, {"number": 8, "state": "pending"}, {"number": 9, "state": "pending"}],
+    "wave_4": [{"number": 4, "state": "pending"}, {"number": 10, "state": "pending"}, {"number": 11, "state": "pending"}],
+    "wave_5": [{"number": 12, "state": "pending"}]
+  }
+}
