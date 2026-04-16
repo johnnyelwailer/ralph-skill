@@ -1,0 +1,29 @@
+{
+  "scan_at": "2026-04-16T221720Z",
+  "iteration": 464,
+  "active_child": 23,
+  "active_child_pid": 675816,
+  "active_child_state": "running",
+  "active_child_phase": "review",
+  "active_child_iter": 60,
+  "active_child_updated_at": "2026-04-16T20:57:37Z",
+  "active_child_elapsed_since_update": "~20min",
+  "active_child_claude_pids": [942496, 980590, 982264, 989273],
+  "active_child_claude_alive": true,
+  "active_child_death": null,
+  "detected_issue": null,
+  "capacity": {
+    "cap": 1,
+    "occupied": 1,
+    "available": 0
+  },
+  "pending_redispatches": 2,
+  "queue_overrides": 0,
+  "provider_status": {
+    "claude": "active",
+    "opencode": "unknown"
+  },
+  "action": "wait",
+  "human_blocked": [157, 108, 173],
+  "notes": "Scan 464. Child PID 675816 (issue-23) ALIVE at iter=60/review (~20min since last status update at 20:57:37Z). Multiple Claude subprocesses active: 942496 (primary, ~20min), 980590/982264/989273 (newer spawns ~21:13-21:16 — review subagents). Review phase uses xhigh reasoning; 20-30min duration normal for XL epic. gh blocked by PATH hardening (cannot check issue labels directly). Capacity occupied (1/1). Queue empty. Human-blocked: #157/#108/#173. Pending redispatches: #188/#70 (will dispatch after #23 completes). No action needed — awaiting review completion."
+}
