@@ -1,5 +1,93 @@
 # QA Log
 
+## QA Session — 2026-04-16 (iteration 4, issue-23)
+
+### Test Environment
+- Branch: aloop/issue-23
+- Commit: 6e260640
+- Binary under test: /tmp/aloop-test-install-lVAhtq/bin/aloop (v1.0.0) — cleaned up post-session
+- Features tested: 5
+
+### Results
+- PASS: Branch sync automated test coverage — branch_sync.conflict/success/fetch_fail now in coverage JSON (55/55); previously FAIL, now resolved
+- PASS: loop_finalizer_qa_coverage.tests.sh (4/4) — confirmed no regression
+- PASS: compile-loop-plan.test.ts (35/35) — confirmed no regression
+- PASS: bats loop.bats (15/15) — confirmed no regression
+- PASS: requests.test.ts (82/82) — modified file tests all pass
+- FAIL: Steering reset automated test coverage — queue.steer_reset / queue.nonsteer_no_reset still absent from coverage JSON; open TODO task unchanged
+
+### Bugs Filed
+None new — steering reset test coverage gap was already tracked as open medium TODO.
+
+### Command Transcript
+
+#### Setup
+```
+ALOOP_BIN=$(npm --prefix aloop/cli run --silent test-install -- --keep 2>/dev/null | tail -1)
+# Binary: /tmp/aloop-test-install-lVAhtq/bin/aloop
+aloop --version → 1.0.0
+```
+
+#### Test 1: loop_branch_coverage.tests.sh (re-test — branch sync coverage)
+```
+$ bash aloop/bin/loop_branch_coverage.tests.sh 2>&1 | tail -5
+PASS: sync_base_branch queues PROMPT_merge.md and logs merge_conflict on conflict
+PASS: sync_base_branch success path writes no queue file
+PASS: sync_base_branch returns 0 and queues nothing when fetch fails
+Branch coverage summary: 55/55 (100%)
+EXIT: 0
+```
+3 new branch_sync.* tests added since iter 3. Coverage JSON now contains branch_sync.conflict,
+branch_sync.success, branch_sync.fetch_fail. Previously FAIL → now PASS.
+
+#### Test 2: Steering reset coverage gap check
+```python
+$ python3 -c "import json; ..."
+queue.* branches: ['queue.empty', 'queue.success', 'queue.frontmatter', 'queue.frontmatter_unavailable']
+Steer-related branches: []
+Total: 55
+```
+queue.steer_reset and queue.nonsteer_no_reset still absent. Spec acceptance criteria gap remains.
+Still tracked as open [ ] TODO task. No new bug filed.
+
+#### Test 3: loop_finalizer_qa_coverage.tests.sh
+```
+$ bash aloop/bin/loop_finalizer_qa_coverage.tests.sh
+All finalizer QA coverage gate tests passed.
+EXIT: 0 (4/4 PASS)
+```
+
+#### Test 4: compile-loop-plan.test.ts
+```
+$ cd aloop/cli && npx tsx --test src/commands/compile-loop-plan.test.ts
+# tests 35 / # pass 35 / # fail 0
+EXIT: 0
+```
+
+#### Test 5: bats loop.bats (15/15)
+```
+$ bats aloop/bin/tests/loop.bats
+ok 1..15
+EXIT: 0
+```
+
+#### Test 6: requests.test.ts (modified file — 82/82)
+```
+$ npx tsx --test src/lib/requests.test.ts
+# tests 82 / # pass 82 / # fail 0
+EXIT: 0
+```
+Modified requests.ts/requests.test.ts in working tree pass all tests.
+
+#### Test 7: loop.sh line count
+```
+$ wc -l aloop/bin/loop.sh
+2363 (≤ 2372 limit)
+```
+No regression.
+
+---
+
 ## QA Session — 2026-04-16 (iteration 2, issue-23)
 
 ### Test Environment
