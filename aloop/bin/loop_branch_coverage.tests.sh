@@ -139,6 +139,9 @@ register_branch "phase_prereq.build.todo_has_unchecked" "check_phase_prerequisit
 register_branch "phase_prereq.plan_passthrough" "check_phase_prerequisites passes through plan phase unchanged"
 register_branch "phase_prereq.review.no_builds" "check_phase_prerequisites forces build when no commits since last plan"
 register_branch "phase_prereq.review.has_builds" "check_phase_prerequisites allows review when commits exist"
+register_branch "branch_sync.conflict" "sync_base_branch queues PROMPT_merge.md and logs merge_conflict on conflict"
+register_branch "branch_sync.success" "sync_base_branch writes no queue file on clean merge"
+register_branch "branch_sync.fetch_fail" "sync_base_branch returns 0 without queuing when fetch fails"
 
 RESOLVE_FUNC="$(extract_function resolve_healthy_provider)"
 SETUP_FUNC="$(extract_function setup_gh_block)"
@@ -157,6 +160,7 @@ WAIT_FOR_REQUESTS_FUNC="$(extract_function wait_for_requests)"
 RUN_QUEUE_FUNC="$(extract_function run_queue_if_present)"
 RESOLVE_MODE_FUNC="$(extract_function resolve_iteration_mode)"
 DERIVE_MODE_FUNC="$(extract_function derive_mode_from_prompt_name)"
+SYNC_BRANCH_FUNC="$(extract_function sync_base_branch)"
 
 if [ -z "$RESOLVE_FUNC" ] || [ -z "$SETUP_FUNC" ] || [ -z "$CLEANUP_FUNC" ] || [ -z "$INVOKE_FUNC" ] || [ -z "$WAIT_FUNC" ] || [ -z "$KILL_PROVIDER_FUNC" ]; then
     echo "FAIL: could not extract one or more target functions from $LOOP_SH"
@@ -165,6 +169,11 @@ fi
 
 if [ -z "$CYCLE_RESOLVE_FUNC" ] || [ -z "$CHECK_PHASE_PREREQ_FUNC" ] || [ -z "$CHECK_HAS_BUILDS_FUNC" ] || [ -z "$FRONTMATTER_FUNC" ] || [ -z "$DURATION_FUNC" ] || [ -z "$EXEC_CONTROLS_FUNC" ] || [ -z "$ADVANCE_FUNC" ] || [ -z "$WAIT_FOR_REQUESTS_FUNC" ] || [ -z "$RUN_QUEUE_FUNC" ] || [ -z "$RESOLVE_MODE_FUNC" ] || [ -z "$DERIVE_MODE_FUNC" ]; then
     echo "FAIL: could not extract cycle/frontmatter/duration/exec-controls/advance/requests/queue functions from $LOOP_SH"
+    exit 1
+fi
+
+if [ -z "$SYNC_BRANCH_FUNC" ]; then
+    echo "FAIL: could not extract sync_base_branch from $LOOP_SH"
     exit 1
 fi
 
@@ -185,6 +194,7 @@ eval "$WAIT_FOR_REQUESTS_FUNC"
 eval "$RUN_QUEUE_FUNC"
 eval "$RESOLVE_MODE_FUNC"
 eval "$DERIVE_MODE_FUNC"
+eval "$SYNC_BRANCH_FUNC"
 
 ORIGINAL_PATH="$PATH"
 _gh_block_dir=""
@@ -1033,6 +1043,80 @@ else
 fi
 
 rm -rf "$QUEUE_TMPDIR"
+
+# ---------------------------------------------------------------------------
+# Branch sync branches (sync_base_branch)
+# ---------------------------------------------------------------------------
+
+SYNC_TMPDIR="$(mktemp -d)"
+SESSION_DIR="$SYNC_TMPDIR"
+WORK_DIR="$SYNC_TMPDIR"
+BASE_BRANCH="master"
+
+MOCK_FETCH_RC=0
+MOCK_MERGE_RC=0
+MOCK_MERGE_OUT=""
+MOCK_DIFF_OUT=""
+
+git() {
+    shift 2  # drop "-C" and the path argument
+    case "$1" in
+        fetch) return "$MOCK_FETCH_RC" ;;
+        merge) echo "$MOCK_MERGE_OUT"; return "$MOCK_MERGE_RC" ;;
+        diff)  echo "$MOCK_DIFF_OUT"; return 0 ;;
+    esac
+    return 0
+}
+
+# branch_sync.conflict — conflict queues PROMPT_merge.md and logs merge_conflict
+: > "$COVERAGE_LOG_FILE"
+rm -rf "$SESSION_DIR/queue"
+MOCK_FETCH_RC=0
+MOCK_MERGE_RC=1
+MOCK_MERGE_OUT="CONFLICT (content): Merge conflict in file.txt"
+MOCK_DIFF_OUT="file.txt"
+sync_base_branch
+queue_file=$(find "$SESSION_DIR/queue" -name '*-PROMPT_merge.md' 2>/dev/null | head -n1)
+if [ -n "$queue_file" ] && contains_log "merge_conflict"; then
+    cover_branch "branch_sync.conflict"
+    pass_case "sync_base_branch queues PROMPT_merge.md and logs merge_conflict on conflict"
+else
+    fail_case "sync_base_branch conflict branch failed (queue=$queue_file)"
+fi
+
+# branch_sync.success — clean merge, no queue file written
+: > "$COVERAGE_LOG_FILE"
+rm -rf "$SESSION_DIR/queue"
+MOCK_FETCH_RC=0
+MOCK_MERGE_RC=0
+MOCK_MERGE_OUT="Already up to date."
+MOCK_DIFF_OUT=""
+sync_base_branch
+queue_file=$(find "$SESSION_DIR/queue" -name '*-PROMPT_merge.md' 2>/dev/null | head -n1)
+if [ -z "$queue_file" ] && ! contains_log "merge_conflict"; then
+    cover_branch "branch_sync.success"
+    pass_case "sync_base_branch success path writes no queue file"
+else
+    fail_case "sync_base_branch success path unexpectedly queued a file or logged conflict"
+fi
+
+# branch_sync.fetch_fail — fetch failure returns 0 without queuing anything
+: > "$COVERAGE_LOG_FILE"
+rm -rf "$SESSION_DIR/queue"
+MOCK_FETCH_RC=1
+MOCK_MERGE_RC=0
+sync_base_branch
+rc=$?
+queue_file=$(find "$SESSION_DIR/queue" -name '*-PROMPT_merge.md' 2>/dev/null | head -n1)
+if [ "$rc" -eq 0 ] && [ -z "$queue_file" ]; then
+    cover_branch "branch_sync.fetch_fail"
+    pass_case "sync_base_branch returns 0 and queues nothing when fetch fails"
+else
+    fail_case "sync_base_branch fetch_fail branch failed (rc=$rc queue=$queue_file)"
+fi
+
+unset -f git
+rm -rf "$SYNC_TMPDIR"
 
 # ---------------------------------------------------------------------------
 # Final summary

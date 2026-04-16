@@ -6,6 +6,8 @@
 
 [review iter 2]: FAIL — 2 unresolved findings: (1) Gate 1: branch sync + finalizer gate functions missing from loop.sh; (2) Constitution Rule 1: loop.sh still 2373 LOC. Findings 3 and 4 from iter 1 resolved: out-of-scope claims confirmed accurate, TS errors confirmed pre-existing on master.
 
+[plan iter 4]: RESOLVED — iter 2 findings now fixed: (1) `append_plan_task_if_missing` and `check_finalizer_qa_coverage_gate` both present in loop.sh (lines 1489, 1496); `sync_base_branch` present (line 2109); steering reset present (line 2084-2086). (2) loop.sh is now 2363 LOC (≤ 2372 ✓). Remaining gap: 2 Medium test coverage tasks below.
+
 ### Critical (block CI / type-check)
 
 - [x] Remove `aloop/cli/src/commands/process-requests.test.ts` — this file is new to this branch, imports 6 symbols (`formatReviewCommentHistory`, `getDirectorySizeBytes`, `pruneLargeV8CacheDir`, `syncMasterToTrunk`, `syncChildBranches`, `ChildBranchSyncDeps`) that do not exist in `process-requests.ts`, causing 6 TS type errors. `process-requests.ts` is out of scope per SPEC.md; the functions being tested belong to a different issue. Deleting this file removes all 6 errors it introduces. (Note: the remaining 8 errors in `orchestrate.ts` and `process-requests.ts` are pre-existing on master and were NOT introduced by this branch — confirmed via `git diff master -- orchestrate.ts process-requests.ts`; fixing them is out of scope.)
@@ -26,7 +28,7 @@
 
 ### Medium (test coverage for new behaviors)
 
-- [ ] Add tests for branch sync conflict queueing in `aloop/bin/loop_branch_coverage.tests.sh` or a new focused test file — cover: (1) merge conflict → queue file written with name matching `*-PROMPT_merge.md`; (2) merge success → no queue file written; (3) `merge_conflict` log event present in case 1; (4) fetch failure → no crash, best-effort skip. Register corresponding branch IDs: `branch_sync.conflict`, `branch_sync.success`, `branch_sync.fetch_fail`. [qa re-test iter 3: confirmed still absent — coverage JSON has 52 branches, none are branch_sync.*. Acceptance criteria gap.]
+- [x] Add tests for branch sync conflict queueing in `aloop/bin/loop_branch_coverage.tests.sh` or a new focused test file — cover: (1) merge conflict → queue file written with name matching `*-PROMPT_merge.md`; (2) merge success → no queue file written; (3) `merge_conflict` log event present in case 1; (4) fetch failure → no crash, best-effort skip. Register corresponding branch IDs: `branch_sync.conflict`, `branch_sync.success`, `branch_sync.fetch_fail`. [qa re-test iter 3: confirmed still absent — coverage JSON has 52 branches, none are branch_sync.*. Acceptance criteria gap.]
 
 - [ ] Add tests for steering reset of cyclePosition in `aloop/bin/loop_branch_coverage.tests.sh` — cover: (1) after steering queue item executes successfully, `CYCLE_POSITION` is 0; (2) non-steering queue item does NOT reset `CYCLE_POSITION`. Register branch IDs: `queue.steer_reset`, `queue.nonsteer_no_reset`. [qa re-test iter 3: confirmed still absent — no queue.steer_* branches in coverage JSON. Acceptance criteria gap.]
 
