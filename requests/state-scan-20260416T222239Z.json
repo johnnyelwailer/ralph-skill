@@ -1,0 +1,29 @@
+{
+  "scan_at": "2026-04-16T222239Z",
+  "iteration": 467,
+  "active_child": 23,
+  "active_child_pid": 675816,
+  "active_child_state": "running",
+  "active_child_phase": "qa",
+  "active_child_iter": 73,
+  "active_child_updated_at": "2026-04-16T21:22:37Z",
+  "active_child_elapsed_since_update": "~30s",
+  "active_child_claude_pids": [1010429, 1013789, 1014721],
+  "active_child_claude_alive": true,
+  "active_child_death": null,
+  "detected_issue": "opencode_provider_unsupported",
+  "capacity": {
+    "cap": 1,
+    "occupied": 1,
+    "available": 0
+  },
+  "pending_redispatches": 2,
+  "queue_overrides": 0,
+  "provider_status": {
+    "claude": "active",
+    "opencode": "unsupported"
+  },
+  "action": "wait",
+  "human_blocked": [157, 108, 173],
+  "notes": "Scan 467. Child PID 675816 (issue-23) ALIVE at iter=73/qa. Context: iter 62/build (claude) succeeded at 21:21:56Z. Then iters 63-72 all failed rapidly (~3s each) with 'unsupported provider: ' on PROMPT_build_opencode.md — opencode not configured in this environment. After 10 retries, loop advanced to iter 73/PROMPT_qa.md (claude) at 21:22:37Z. Now running QA with 3 Claude PIDs (1010429/1013789/1014721). Pending redispatches: #188/#70 (will dispatch after #23 completes). Human-blocked: #157/#108/#173. Action: wait for QA to complete. Note: opencode build will fail again next cycle — may want to disable PROMPT_build_opencode.md if opencode remains unconfigured."
+}
