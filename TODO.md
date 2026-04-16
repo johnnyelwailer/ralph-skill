@@ -26,9 +26,9 @@
 
 ### Medium (test coverage for new behaviors)
 
-- [ ] Add tests for branch sync conflict queueing in `aloop/bin/loop_branch_coverage.tests.sh` or a new focused test file — cover: (1) merge conflict → queue file written with name matching `*-PROMPT_merge.md`; (2) merge success → no queue file written; (3) `merge_conflict` log event present in case 1; (4) fetch failure → no crash, best-effort skip. Register corresponding branch IDs: `branch_sync.conflict`, `branch_sync.success`, `branch_sync.fetch_fail`.
+- [ ] Add tests for branch sync conflict queueing in `aloop/bin/loop_branch_coverage.tests.sh` or a new focused test file — cover: (1) merge conflict → queue file written with name matching `*-PROMPT_merge.md`; (2) merge success → no queue file written; (3) `merge_conflict` log event present in case 1; (4) fetch failure → no crash, best-effort skip. Register corresponding branch IDs: `branch_sync.conflict`, `branch_sync.success`, `branch_sync.fetch_fail`. [qa re-test iter 3: confirmed still absent — coverage JSON has 52 branches, none are branch_sync.*. Acceptance criteria gap.]
 
-- [ ] Add tests for steering reset of cyclePosition in `aloop/bin/loop_branch_coverage.tests.sh` — cover: (1) after steering queue item executes successfully, `CYCLE_POSITION` is 0; (2) non-steering queue item does NOT reset `CYCLE_POSITION`. Register branch IDs: `queue.steer_reset`, `queue.nonsteer_no_reset`.
+- [ ] Add tests for steering reset of cyclePosition in `aloop/bin/loop_branch_coverage.tests.sh` — cover: (1) after steering queue item executes successfully, `CYCLE_POSITION` is 0; (2) non-steering queue item does NOT reset `CYCLE_POSITION`. Register branch IDs: `queue.steer_reset`, `queue.nonsteer_no_reset`. [qa re-test iter 3: confirmed still absent — no queue.steer_* branches in coverage JSON. Acceptance criteria gap.]
 
 ### Deferred
 

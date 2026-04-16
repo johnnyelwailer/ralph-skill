@@ -450,3 +450,99 @@ Line 1 of README.md:
 ![CI](https://github.com/johnnyelwailer/ralph-skill/actions/workflows/ci.yml/badge.svg)
 ```
 EXIT: PASS
+
+## QA Session — 2026-04-16 (iteration 3)
+
+### Test Environment
+- Binary under test: /tmp/aloop-test-install-J4sWtu/bin/aloop (v1.0.0) — cleaned up post-session
+- Commit: 480100e5
+- Features tested: 5
+
+### Results
+- PASS: loop_finalizer_qa_coverage.tests.sh (4/4) — previously FAIL, now resolved
+- PASS: Branch sync in loop.sh — previously FAIL, now resolved
+- PASS: Steering queue cyclePosition reset — previously FAIL, now resolved
+- PASS: loop.sh line count (2363 LOC ≤ 2372)
+- FAIL: Branch sync automated test coverage — no branch_sync.* branches in coverage JSON
+- FAIL: Steering reset automated test coverage — no queue.steer_* branches in coverage JSON
+
+### Bugs Filed
+None new — existing open medium TODO tasks cover the two test coverage gaps.
+
+### Command Transcript
+
+#### Setup
+```
+ALOOP_BIN=$(npm --prefix aloop/cli run --silent test-install -- --keep 2>/dev/null | tail -1)
+# Binary: /tmp/aloop-test-install-J4sWtu/bin/aloop
+aloop --version  → 1.0.0
+```
+
+#### Test 1: loop_finalizer_qa_coverage.tests.sh (re-test from iter 2 FAIL)
+```
+$ bash aloop/bin/loop_finalizer_qa_coverage.tests.sh
+PASS: finalizer QA gate passes at <=30% untested and 0 fail
+PASS: finalizer QA gate blocks when untested >30%
+PASS: finalizer QA gate blocks when FAIL rows exist
+PASS: finalizer QA gate skips enforcement when QA_COVERAGE.md is missing
+All finalizer QA coverage gate tests passed.
+EXIT: 0
+```
+Result: PASS (4/4) — check_finalizer_qa_coverage_gate and append_plan_task_if_missing now exist.
+
+#### Test 2: loop.sh line count
+```
+$ wc -l aloop/bin/loop.sh
+2363  (≤ 2372 limit)
+EXIT: PASS
+```
+
+#### Test 3: Branch sync in loop.sh (re-test from iter 2 FAIL)
+Extracted sync_base_branch function from loop.sh via awk. Verified:
+- Function exists in loop.sh
+- Uses `git -C "$WORK_DIR" fetch origin "$BASE_BRANCH"` (note: git -C flag, not bare `git fetch`)
+- Uses `git -C "$WORK_DIR" merge "origin/$BASE_BRANCH" --no-edit`
+- On conflict: queues `$SESSION_DIR/queue/$(date +%s)-PROMPT_merge.md` with conflict context
+- Logs `merge_conflict` event via write_log_entry
+- Called at line 2158, before run_queue_if_present at line 2159
+EXIT: PASS
+
+#### Test 4: Steering queue cyclePosition reset (re-test from iter 2 FAIL)
+Extracted run_queue_if_present function from loop.sh. Verified:
+- Prioritizes *-PROMPT_steer.md and *-steering.md queue items
+- After successful steering item: sets CYCLE_POSITION=0 and calls persist_loop_plan_state
+```
+43:            if [[ "$QUEUE_BASENAME" == *-PROMPT_steer.md || "$QUEUE_BASENAME" == *-steering.md ]]; then
+44:                CYCLE_POSITION=0
+45:                persist_loop_plan_state
+```
+EXIT: PASS
+
+#### Test 5: loop_branch_coverage.tests.sh regression check
+```
+$ bash aloop/bin/loop_branch_coverage.tests.sh 2>&1 | tail -3
+Branch coverage summary: 52/52 (100%)
+Coverage report: .../coverage/shell-branch-coverage.json
+Shell branch-coverage harness passed.
+EXIT: 0
+```
+Result: PASS (52/52) — no regressions.
+
+#### Test 6: compile-loop-plan.test.ts
+```
+$ cd aloop/cli && npx tsx --test src/commands/compile-loop-plan.test.ts
+# tests 35 / # pass 35 / # fail 0
+EXIT: PASS
+```
+
+#### Test 7: Automated test coverage gaps
+Coverage JSON branch IDs checked for branch_sync.* and queue.steer_*:
+```python
+branch_sync.* branches present: False
+queue.steer_* branches present: False
+Total branches: 52
+```
+No automated tests for branch sync conflict queueing or steering cyclePosition reset.
+Spec acceptance criteria: "Automated coverage is added/updated in the in-scope test files for...branch-sync conflict branches."
+These match open medium [ ] tasks in TODO.md — no new qa bug filed (already tracked).
+EXIT: FAIL (gap against acceptance criteria, open tasks)
