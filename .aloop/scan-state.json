@@ -1,6 +1,6 @@
 {
-  "scan_at": "2026-04-16T220115Z",
-  "iteration": 481,
+  "scan_at": "2026-04-16T220412Z",
+  "iteration": 482,
   "active_child": 23,
   "active_child_session": "orchestrator-20260321-172932-issue-23-20260416-215759",
   "active_child_pid": 1192896,
@@ -8,7 +8,7 @@
   "active_child_phase": "build",
   "active_child_iter": 1,
   "active_child_updated_at": "2026-04-16T21:58:02Z",
-  "active_child_elapsed_since_update": "~3min",
+  "active_child_elapsed_since_update": "~6min",
   "active_child_claude_alive": true,
   "active_child_death": null,
   "detected_issue": null,
@@ -25,5 +25,5 @@
   },
   "action": "wait",
   "human_blocked": [157, 108, 173],
-  "notes": "Scan 481. New child session for issue-23 (PID 1192896) ALIVE at iter=1/build/claude (~3min). Prior session (PID 675816) hit iter limit 100 at 21:55:53Z — all 19/19 tasks done but review FAIL (Gate 4 dist/index.js dirty + steering-reset coverage gap). New session dispatched at iter 480 with queue override 000-review-fixes.md to address 2 review findings. Multiple claude PIDs active (1193084/1194532/1195575/1214058/1216182/1217501). Pending redispatches after #23: #85/#172 (PRs #311/#211 closed-without-merge) + #188/#70. Human-blocked: #157/#108/#173. PR #313 (issue-46) still open/dirty. Action: wait for issue-23 review-fix cycle to complete."
+  "notes": "Scan 482. issue-23 child (PID 1192896) ALIVE at iter=1/build/claude (~6min). Processing queue override 000-review-fixes.md to fix 2 review findings (Gate 4 dist/index.js dirty + steering-reset coverage gap). Claude PID 1193084 active. Pending redispatches after #23: #85/#172 (PRs #311/#211 closed-without-merge) + #188/#70. Human-blocked: #157/#108/#173. Action: wait for issue-23 review-fix cycle to complete."
 }
