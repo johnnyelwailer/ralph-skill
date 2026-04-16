@@ -1,0 +1,14 @@
+{
+  "scan_at": "2026-04-16T215732Z",
+  "iteration": 480,
+  "action": "dispatch",
+  "target_issue": 23,
+  "target_agent": "claude",
+  "priority": "high",
+  "mode": "resume",
+  "prior_session": "orchestrator-20260321-172932-issue-23-20260416-193150",
+  "prior_iter_limit": 100,
+  "prior_cycle_position": 3,
+  "all_tasks_done": true,
+  "reason": "Issue-23 child PID 675816 stopped at iter limit 100 (phase=build, 21:55:53Z). All 19/19 tasks marked done. cyclePosition=3 (qa). Last review FAIL: Gate 4 dist/index.js dirty + steering-reset coverage gap. Redispatching to continue qa→review cycling until review PASS. Using claude provider (opencode unsupported). Capacity free (0/1 occupied)."
+}

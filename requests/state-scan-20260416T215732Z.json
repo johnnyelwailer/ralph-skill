@@ -1,0 +1,28 @@
+{
+  "scan_at": "2026-04-16T215732Z",
+  "iteration": 480,
+  "active_child": null,
+  "active_child_pid": null,
+  "active_child_state": "dead",
+  "active_child_death": "iter_limit_100",
+  "active_child_death_detail": "issue-23 session orchestrator-20260321-172932-issue-23-20260416-193150 stopped at iter=100/build (21:55:53Z). allTasksMarkedDone=true, cyclePosition=3 (qa). Last review FAIL at iter=88: Gate 4 dist/index.js dirty + coverage FAIL (queue.steer_reset/queue.nonsteer_no_reset). PID 675816 confirmed dead.",
+  "capacity": {
+    "cap": 1,
+    "occupied": 0,
+    "available": 1
+  },
+  "pending_redispatches": ["188", "70"],
+  "queue_overrides": 0,
+  "provider_status": {
+    "claude": "active",
+    "opencode": "unsupported"
+  },
+  "action": "redispatch_23_then_188",
+  "human_blocked": [157, 108, 173],
+  "in_review_prs": [
+    {"issue": 46, "pr": 313, "gh_state": "DIRTY_stale"},
+    {"issue": 85, "pr": 311, "gh_state": "closed-without-merge", "requeue": true},
+    {"issue": 172, "pr": 211, "gh_state": "closed-without-merge", "requeue": true}
+  ],
+  "notes": "Scan 480. Child PID 675816 (issue-23) DEAD — stopped at iter limit 100 in build phase. All tasks done. cyclePosition=3, needs to cycle through qa→review to pass. Redispatching issue-23 (highest priority: most advanced work). Capacity free (0/1). After redispatch, next: #188 or #70 from pending queue. PRs #311/#211 (issues #85/#172) closed-without-merge — those issues revert to Ready for redispatch once capacity allows. PR #313 (issue-46) stale/dirty — may need manual intervention. Human-blocked: #157/#108/#173 unchanged."
+}
