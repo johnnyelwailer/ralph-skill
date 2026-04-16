@@ -1,0 +1,34 @@
+{
+  "scan_at": "2026-04-16T222700Z",
+  "iteration": 475,
+  "active_child": 23,
+  "active_child_pid": 675816,
+  "active_child_state": "running",
+  "active_child_phase": "plan",
+  "active_child_iter": 75,
+  "active_child_updated_at": "2026-04-16T21:40:20Z",
+  "active_child_elapsed_since_update": "~7min",
+  "active_child_claude_pids": [1031686],
+  "active_child_claude_alive": true,
+  "active_child_death": null,
+  "detected_issue": "opencode_provider_unsupported",
+  "capacity": {
+    "cap": 1,
+    "occupied": 1,
+    "available": 0
+  },
+  "pending_redispatches": 2,
+  "queue_overrides": 0,
+  "provider_status": {
+    "claude": "active",
+    "opencode": "unsupported"
+  },
+  "action": "wait",
+  "human_blocked": [157, 108, 173],
+  "in_review_prs": [
+    {"issue": 46, "pr": 313, "git_conflict": false, "gh_state": "DIRTY_stale"},
+    {"issue": 85, "pr": 311, "git_conflict": false},
+    {"issue": 172, "pr": 211, "git_conflict": false}
+  ],
+  "notes": "Scan 475. Child PID 675816 (issue-23) ALIVE at iter=75/plan. Context: iter 73/qa completed at 21:26:15 (branch_sync PASS, 1 FAIL remains — steering reset test coverage gap, tracked as TODO). iter 74/review completed at 21:40:16 with FAIL — 2 findings. iter 75/plan started at 21:40:20Z (Claude PID 1031686 alive). Loop is actively cycling to fix the 2 review findings. Opencode provider still unsupported — PROMPT_build_opencode.md will fail on next build cycle. PR #313 (issue-46) was DIRTY but git shows no actual conflict (master fully contained in branch). GH merge state may be stale. Pending redispatches: #188/#70 (will dispatch after #23 completes). Human-blocked: #157/#108/#173."
+}
