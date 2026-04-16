@@ -1,28 +1,25 @@
 {
-  "scan_at": "2026-04-16T215444Z",
-  "iteration": 479,
-  "active_child": 23,
-  "active_child_pid": 675816,
-  "active_child_state": "running",
-  "active_child_phase": "build",
-  "active_child_iter": 90,
-  "active_child_updated_at": "2026-04-16T21:50:35Z",
-  "active_child_elapsed_since_update": "~4min",
-  "active_child_claude_alive": true,
-  "active_child_death": null,
-  "detected_issue": null,
+  "scan_at": "2026-04-16T22:29:42Z",
+  "iteration": 499,
+  "active_children": [],
   "capacity": {
-    "cap": 1,
-    "occupied": 1,
-    "available": 0
+    "cap": 3,
+    "occupied": 0,
+    "available": 3
   },
-  "pending_redispatches": 2,
-  "queue_overrides": 0,
-  "provider_status": {
-    "claude": "active",
-    "opencode": "cooldown_until_2244Z"
-  },
-  "action": "wait",
-  "human_blocked": [157, 108, 173],
-  "notes": "Scan 479. Child PID 675816 (issue-23) ALIVE at iter=90/build/claude (~4min). Review-fix cycle: iter 88/review FAIL → iter 89/plan → iter 90/build (active). PRs #311/#211 (issues #85/#172) found closed-without-merge; labels already aloop/auto, pending re-dispatch after #23. PR #313 (issue-46) still open/dirty. Pending: #188/#70. Human-blocked: #157/#108/#173."
+  "pending_dispatches": [
+    { "issue": 1, "request_file": "dispatch-issue-1-20260416T221500Z.json", "status": "awaiting_runtime", "age_minutes": 75 },
+    { "issue": 6, "request_file": "dispatch-issue-6-20260416T221500Z.json", "status": "awaiting_runtime", "age_minutes": 75 }
+  ],
+  "stale_requests": [
+    {
+      "file": "epic-decomposition.json",
+      "type": "epic_decomposition",
+      "age_minutes": 92,
+      "note": "Unrecognized request type — runtime does not process this. Stale since session start. Should be removed or replaced with a valid request type."
+    }
+  ],
+  "queue_overrides": [],
+  "action": "wait_for_runtime",
+  "notes": "Scan 499 at 22:29:42Z. Dispatch requests for issues #1 and #6 (wave 1, no dependencies) remain in requests/ since 22:15Z (~75 min). Runtime has not processed them. No active children. Capacity 3/3 available. Stale epic-decomposition.json with unrecognized type persists — runtime will not process it. No new action required — existing dispatch requests cover both wave-1 issues."
 }
