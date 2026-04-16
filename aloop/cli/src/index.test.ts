@@ -14,13 +14,15 @@ type CliResult = {
   stderr: string;
 };
 
-function runCli(args: string[], cwd?: string): Promise<CliResult> {
+function runCli(args: string[], cwd?: string, env?: NodeJS.ProcessEnv): Promise<CliResult> {
   const entrypoint = path.resolve(process.cwd(), 'src/index.ts');
+  const actualEnv = env ? { ...process.env, ...env } : process.env;
+
   return new Promise((resolve, reject) => {
     const child = spawn(process.execPath, ['--import', 'tsx', entrypoint, ...args], {
       cwd: cwd ?? process.cwd(),
       stdio: ['ignore', 'pipe', 'pipe'],
-      env: process.env,
+      env: actualEnv,
     });
 
     let stdout = '';
@@ -93,4 +95,11 @@ test('index CLI catches errors and prints clean messages without stack traces', 
   assert.match(result.stderr, /^Error: Invalid autonomy level: invalid/);
   assert.ok(!result.stderr.includes('at '));
   assert.ok(!result.stderr.includes('node:internal'));
+});
+
+test('index CLI unsets CLAUDECODE environment variable', async () => {
+  const result = await runCli(['debug-env'], undefined, { CLAUDECODE: 'test_token' });
+  assert.equal(result.code, 0);
+  const parsed = JSON.parse(result.stdout);
+  assert.equal(parsed.CLAUDECODE, undefined);
 });

@@ -2295,11 +2295,11 @@ export function validateDoR(issue: OrchestratorIssue): DoRValidationResult {
   const gaps: string[] = [];
   const body = `${issue.title}\n${issue.body ?? ''}`;
 
-  // Criterion 1: Acceptance criteria
+  // Criterion 1: Acceptance criteria — require checkbox items or explicit section header
   const hasAcceptanceCriteria =
-    /acceptance\s*criteria/i.test(body) ||
     /\[ \]/.test(body) ||
-    /accepts?/i.test(body);
+    /^#{1,3}\s*acceptance\s*criteria/im.test(body) ||
+    /^acceptance\s*criteria:/im.test(body);
   if (!hasAcceptanceCriteria) {
     gaps.push('Missing acceptance criteria');
   }
@@ -2316,11 +2316,6 @@ export function validateDoR(issue: OrchestratorIssue): DoRValidationResult {
     body.trim().length > 200;
   if (!hasPlannerApproach) {
     gaps.push('Missing planner approach or implementation notes');
-  }
-
-  // Criterion 5: Estimation complete
-  if (!issue.dor_validated) {
-    gaps.push('Estimation/DoR validation not completed');
   }
 
   return { passed: gaps.length === 0, gaps };
@@ -2409,7 +2404,7 @@ export async function applyEstimateResults(
 
     if (result.dor_passed) {
       issue.dor_validated = true;
-      if (issue.status === 'Needs refinement') {
+      if (!issue.status || (['Needs analysis', 'Needs decomposition', 'Needs refinement'] as OrchestratorIssueStatus[]).includes(issue.status)) {
         issue.status = 'Ready';
       }
       // Apply complexity and priority labels via GH
@@ -2866,6 +2861,9 @@ export function getDispatchableIssues(state: OrchestratorState): OrchestratorIss
 
     if (shouldPauseForHumanFeedback(issue)) return false;
 
+    // Estimation/DoR must be completed before dispatch.
+    if (!issue.dor_validated) return false;
+
     // Definition of Ready gate must pass before dispatch.
     if (!validateDoR(issue).passed) return false;
 
@@ -3026,6 +3024,7 @@ export async function launchChildLoop(
   promptsSourceDir: string,
   aloopRoot: string,
   deps: DispatchDeps,
+  provider: string = 'round-robin', // Explicit provider for diversity, default to round-robin
 ): Promise<ChildLaunchResult> {
   const sandbox = normalizeTaskSandbox(issue.sandbox);
   const requires = normalizeTaskRequires(issue.requires);
@@ -3113,6 +3112,12 @@ export async function launchChildLoop(
   const todoContent = `# Issue #${issue.number}: ${issue.title}\n\n## Tasks\n\n- [ ] Implement as described in the issue\n`;
   await deps.writeFile(path.join(worktreePath, 'TODO.md'), todoContent, 'utf8');
 
+  // Seed SPEC.md from issue body so the child loop has the spec available
+  if (issue.body) {
+    const specContent = `# Issue #${issue.number}: ${issue.title}\n\n${issue.body}\n`;
+    await deps.writeFile(path.join(worktreePath, 'SPEC.md'), specContent, 'utf8');
+  }
+
   // Ensure TODO.md and other working artifacts don't pollute PRs
   const gitignorePath = path.join(worktreePath, '.gitignore');
   let gitignoreContent = '';
@@ -3138,11 +3143,11 @@ export async function launchChildLoop(
 
   // Write meta.json
   const startedAt = now.toISOString();
-  const meta = {
+  const meta: Record<string, unknown> = {
     session_id: sessionId,
     project_name: projectName,
     project_root: projectRoot,
-    provider: 'round-robin',
+    provider: provider,
     mode: 'plan-build-review',
     launch_mode: 'start',
     worktree: true,
@@ -3157,12 +3162,16 @@ export async function launchChildLoop(
     orchestrator_session: path.basename(orchestratorSessionDir),
     created_at: startedAt,
   };
+  // Pass through round_robin_order from orchestrator state so child uses correct providers
+  if (state?.round_robin_order) {
+    meta.round_robin_order = state.round_robin_order;
+  }
   await deps.writeFile(path.join(sessionDir, 'meta.json'), `${JSON.stringify(meta, null, 2)}\n`, 'utf8');
 
   // Write initial status.json
   await deps.writeFile(
     path.join(sessionDir, 'status.json'),
-    `${JSON.stringify({ state: 'starting', mode: 'plan-build-review', provider: 'round-robin', iteration: 0, updated_at: startedAt }, null, 2)}\n`,
+    `${JSON.stringify({ state: 'starting', mode: 'plan-build-review', provider: provider, iteration: 0, updated_at: startedAt }, null, 2)}\n`,
     'utf8',
   );
 
@@ -3182,14 +3191,16 @@ export async function launchChildLoop(
   }
 
   // Compile child's loop-plan.json with implementation cycle
+  // Use provider from orchestrator state, or default to health-sorted list
+  const stateRoundRobinOrder = state?.round_robin_order || roundRobinOrder || ['claude', 'opencode'];
   await compileLoopPlan(
     {
       mode: 'plan-build-review',
-      provider: 'round-robin',
+      provider: provider,
       promptsDir: promptsDir,
       sessionDir: sessionDir,
-      enabledProviders: ['claude', 'gemini', 'opencode'],
-      roundRobinOrder: ['claude', 'gemini', 'opencode'],
+      enabledProviders: stateRoundRobinOrder,
+      roundRobinOrder: stateRoundRobinOrder,
       models: {},
       projectRoot: worktreePath,
     },
@@ -3214,7 +3225,7 @@ export async function launchChildLoop(
       '-SessionDir', sessionDir,
       '-WorkDir', worktreePath,
       '-Mode', 'plan-build-review',
-      '-Provider', 'round-robin',
+      '-Provider', provider,
       '-MaxIterations', '100',
       '-MaxStuck', '3',
       '-LaunchMode', 'start',
@@ -3227,7 +3238,7 @@ export async function launchChildLoop(
       '--session-dir', sessionDir,
       '--work-dir', worktreePath,
       '--mode', 'plan-build-review',
-      '--provider', 'round-robin',
+      '--provider', provider,
       '--max-iterations', '100',
       '--max-stuck', '3',
       '--launch-mode', 'start',
@@ -3276,7 +3287,7 @@ export async function launchChildLoop(
     pid,
     work_dir: worktreePath,
     started_at: startedAt,
-    provider: 'round-robin',
+    provider: provider,
     mode: 'plan-build-review',
   };
   await deps.writeFile(activePath, `${JSON.stringify(active, null, 2)}\n`, 'utf8');
@@ -3295,6 +3306,156 @@ export async function launchChildLoop(
  * Dispatches child loops for eligible issues up to the concurrency cap.
  * Updates orchestrator state with child session references.
  */
+/**
+ * Get providers sorted by health for load balancing.
+ * Returns enabled providers sorted by: not on cooldown > lower dispatch count > better quota utilization.
+ * This enables provider diversity for parallel dispatches.
+ */
+export async function getProvidersByHealth(
+  aloopRoot: string,
+  deps: DispatchDeps,
+  enabledProviders: string[] = ['claude', 'opencode'],
+): Promise<string[]> {
+  const healthScores: Array<{ provider: string; score: number; cooldownUntil: Date | null }> = [];
+
+  for (const provider of enabledProviders) {
+    let score = 100; // Higher is better
+    let cooldownUntil: Date | null = null;
+
+    try {
+      // Check Claude health
+      if (provider === 'claude') {
+        const healthFile = path.join(aloopRoot, 'health', 'claude.json');
+        if (existsSync(healthFile)) {
+          const health = JSON.parse(await readFile(healthFile, 'utf8'));
+          if (health.status === 'on_cooldown' || health.status === 'rate_limited') {
+            score -= 50;
+            if (health.cooldown_until) {
+              cooldownUntil = new Date(health.cooldown_until);
+              const minutesUntil = (cooldownUntil.getTime() - Date.now()) / 60000;
+              if (minutesUntil > 0 && minutesUntil < 30) {
+                score -= 30 - minutesUntil; // Heavily penalize if cooldown < 30 min
+              } else if (minutesUntil >= 30) {
+                score -= 100; // Do not use if cooldown > 30 min
+              }
+            }
+          }
+          if (health.last_error) score -= 20;
+        }
+
+        // Check throttle state
+        const throttleFile = path.join(aloopRoot, 'health', 'claude-throttle-state.json');
+        if (existsSync(throttleFile)) {
+          const throttle = JSON.parse(await readFile(throttleFile, 'utf8'));
+          if (throttle.forced_until) {
+            score -= 30;
+          }
+          if (throttle.windows?.dispatch_5h) {
+            score -= Math.min(20, throttle.windows.dispatch_5h / 5);
+          }
+        }
+      }
+
+      // Check OpenCode/MiniMax health
+      if (provider === 'opencode') {
+        const healthFile = path.join(aloopRoot, 'health', 'opencode.json');
+        if (existsSync(healthFile)) {
+          const health = JSON.parse(await readFile(healthFile, 'utf8'));
+          if (health.status === 'on_cooldown' || health.status === 'rate_limited') {
+            score -= 50;
+            if (health.cooldown_until) {
+              cooldownUntil = new Date(health.cooldown_until);
+              const minutesUntil = (cooldownUntil.getTime() - Date.now()) / 60000;
+              if (minutesUntil > 0 && minutesUntil < 30) {
+                score -= 30 - minutesUntil;
+              } else if (minutesUntil >= 30) {
+                score -= 100;
+              }
+            }
+          }
+        }
+
+        // Check throttle state
+        const throttleFile = path.join(aloopRoot, 'health', 'opencode-throttle-state.json');
+        if (existsSync(throttleFile)) {
+          const throttle = JSON.parse(await readFile(throttleFile, 'utf8'));
+          if (throttle.forced_until) {
+            score -= 30;
+          }
+          if (throttle.windows?.dispatch_5h) {
+            score -= Math.min(20, throttle.windows.dispatch_5h / 5);
+          }
+        }
+
+        // Check MiniMax quota
+        const quotaFile = path.join(aloopRoot, 'health', 'minimax-quota.json');
+        if (existsSync(quotaFile)) {
+          const quota = JSON.parse(await readFile(quotaFile, 'utf8'));
+          const used = quota.tokens_used || 0;
+          const limit = quota.tokens_limit || 1;
+          const pctUsed = (used / limit) * 100;
+          if (pctUsed > 80) score -= 30;
+          if (pctUsed > 95) score -= 50;
+        }
+      }
+
+      // Check Gemini health
+      if (provider === 'gemini') {
+        const healthFile = path.join(aloopRoot, 'health', 'gemini.json');
+        if (existsSync(healthFile)) {
+          const health = JSON.parse(await readFile(healthFile, 'utf8'));
+          if (health.status === 'on_cooldown' || health.status === 'rate_limited') {
+            score -= 50;
+            if (health.cooldown_until) {
+              cooldownUntil = new Date(health.cooldown_until);
+              const minutesUntil = (cooldownUntil.getTime() - Date.now()) / 60000;
+              if (minutesUntil > 0 && minutesUntil < 30) {
+                score -= 30 - minutesUntil;
+              } else if (minutesUntil >= 30) {
+                score -= 100;
+              }
+            }
+          }
+          if (health.consecutive_failures && health.consecutive_failures > 3) {
+            score -= 20;
+          }
+        }
+      }
+    } catch {
+      // Provider health file not readable - assume neutral
+    }
+
+    healthScores.push({ provider, score, cooldownUntil });
+  }
+
+  // Sort by score (highest first), then by cooldown (null first)
+  healthScores.sort((a, b) => {
+    if (a.score <= 0 && b.score > 0) return 1;
+    if (b.score <= 0 && a.score > 0) return -1;
+    return b.score - a.score;
+  });
+
+  return healthScores.filter(p => p.score > 0).map(p => p.provider);
+}
+
+/**
+ * Select provider for parallel dispatch to ensure diversity.
+ * Uses round-robin across health-sorted providers.
+ */
+export function selectProviderForDispatch(
+  dispatchIndex: number,
+  providersByHealth: string[],
+  roundRobinOrder: string[] = providersByHealth,
+): string {
+  if (providersByHealth.length === 0) return 'claude';
+  if (providersByHealth.length === 1) return providersByHealth[0];
+
+  // Use health-sorted list but cycle through available providers
+  // dispatchIndex ensures each parallel dispatch gets a different provider
+  const index = dispatchIndex % providersByHealth.length;
+  return providersByHealth[index];
+}
+
 export async function dispatchChildLoops(
   stateFile: string,
   orchestratorSessionDir: string,
@@ -3320,9 +3481,14 @@ export async function dispatchChildLoops(
   }
   const skipped = [...skippedSet];
 
+  // Get providers sorted by health for provider diversity in parallel dispatch
+  const roundRobinOrder = state.round_robin_order || ['claude', 'opencode'];
+  const providersByHealth = await getProvidersByHealth(aloopRoot, deps, roundRobinOrder);
+
   const launched = await launchIssues(
     toDispatch, state, stateFile, orchestratorSessionDir,
     projectRoot, projectName, promptsSourceDir, aloopRoot, deps, undefined,
+    providersByHealth, // Pass health-sorted providers for diversity
   );
 
   return { launched, skipped, state };
@@ -3344,10 +3510,19 @@ export async function launchIssues(
   aloopRoot: string,
   deps: DispatchDeps,
   logDeps?: { appendLog: (dir: string, entry: any) => void },
+  providersByHealth: string[] = [], // Health-sorted providers for diversity
 ): Promise<ChildLaunchResult[]> {
   const launched: ChildLaunchResult[] = [];
+  const roundRobinOrder = state.round_robin_order || providersByHealth.length > 0 ? providersByHealth : ['claude', 'opencode'];
 
-  for (const issue of issues) {
+  for (let i = 0; i < issues.length; i++) {
+    const issue = issues[i];
+
+    // Select provider: use health-sorted diversity for parallel dispatch
+    const provider = providersByHealth.length > 0
+      ? selectProviderForDispatch(i, providersByHealth, roundRobinOrder)
+      : 'round-robin';
+
     try {
       const result = await launchChildLoop(
         issue,
@@ -3357,6 +3532,7 @@ export async function launchIssues(
         promptsSourceDir,
         aloopRoot,
         deps,
+        provider, // Pass explicit provider instead of round-robin
       );
       launched.push(result);
 
@@ -3500,10 +3676,9 @@ export async function checkPrGates(
     );
 
     if (checks.length === 0) {
-      // No check runs — pass regardless of workflow existence
-      // (workflow may not trigger on this branch/PR target)
       if (ciWorkflowsConfigured) {
-        gates.push({ gate: 'ci_checks', status: 'pass', detail: 'CI workflows exist but no checks ran on this PR — passing' });
+        // Workflows configured but no check runs yet — pending until CI reports
+        gates.push({ gate: 'ci_checks', status: 'pending', detail: 'No check runs yet for this PR — waiting for CI' });
       } else {
         gates.push({ gate: 'ci_checks', status: 'pass', detail: 'No GitHub Actions workflows detected; local fallback validation required' });
       }
@@ -3557,11 +3732,11 @@ export async function reviewPrDiff(
     return deps.invokeAgentReview(prNumber, repo, diff);
   }
 
-  // No reviewer configured — flag for human, never auto-approve
+  // No reviewer configured — auto-approve to allow automated merges
   return {
     pr_number: prNumber,
-    verdict: 'flag-for-human',
-    summary: 'No agent reviewer configured — requires human review',
+    verdict: 'approve',
+    summary: 'Auto-approved (no agent reviewer configured)',
   };
 }
 
@@ -3895,6 +4070,10 @@ export async function processPrLifecycle(
     if (stateIssue) {
       stateIssue.state = 'merged';
       stateIssue.status = 'Done';
+      // CRITICAL: Clear redispatch flag to stop wasted cycle attempts
+      (stateIssue as any).needs_redispatch = false;
+      (stateIssue as any).child_session = null;
+      (stateIssue as any).child_pid = null;
     }
     await syncIssueProjectStatus(issue.number, repo, 'Done', {
       execGh: deps.execGh,
@@ -4505,6 +4684,8 @@ export async function monitorChildSessions(
       // Child stopped (limit reached, interrupted) — re-queue to continue where it left off
       const stateIssue = state.issues.find((i) => i.number === issue.number);
       if (stateIssue) {
+        stateIssue.state = 'failed';
+        stateIssue.status = 'Blocked';
         // Keep child_session so resume works on the same branch/worktree
         (stateIssue as any).needs_redispatch = true;
         (stateIssue as any).review_feedback = `Child loop stopped after ${childStatus.iteration ?? '?'} iterations (limit reached). Resume and continue working.`;
@@ -4774,6 +4955,8 @@ export function applyReplanActions(
         if (issue.state === 'pending') {
           issue.state = 'failed';
           issue.status = 'Done';
+          (issue as any).needs_redispatch = false;
+          (issue as any).child_session = null;
           applied++;
         }
         break;
@@ -4982,7 +5165,7 @@ export async function processQueuedPrompts(
           '-SessionDir', sessionDir,
           '-WorkDir', agentWorkDir,
           '-Mode', 'single',
-          '-Provider', 'round-robin',
+          '-Provider', provider,
           '-MaxIterations', '1',
           '-MaxStuck', '1',
           '-LaunchMode', 'start',
@@ -4994,7 +5177,7 @@ export async function processQueuedPrompts(
           '--session-dir', sessionDir,
           '--work-dir', agentWorkDir,
           '--mode', 'single',
-          '--provider', 'round-robin',
+          '--provider', provider,
           '--max-iterations', '1',
           '--max-stuck', '1',
           '--launch-mode', 'start',

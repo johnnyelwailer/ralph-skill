@@ -1,7 +1,6 @@
-iter=496
-active_child=issue-23 PID=1192896 ALIVE (iter=1/build, ~29min)
-pr_open=issue-46 (completed, awaiting review)
-needs_redispatch=#188 #70 (cap=1 reached)
-blocked_on_human=#157 #108 #173 #177 #176 (and many others)
+iter=497
+active_child=issue-23 PID=1192896 ALIVE (iter=1/build, queue override 000-review-fixes.md, ~38min, claude PID 1193084 running tests)
+pr_open=issue-46 PR#313 (review child PID 2034694 DEAD); issue-172 PR#211
+needs_redispatch=#188 #70 (cap=1 occupied)
+blocked_on_human=#173
 concurrency=1/1
-archived=dispatch-108 (blocked_on_human)
