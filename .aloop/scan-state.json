@@ -1,6 +1,6 @@
 {
-  "scan_at": "2026-04-16T22:29:42Z",
-  "iteration": 499,
+  "scan_at": "2026-04-16T22:30Z",
+  "iteration": 500,
   "active_children": [],
   "capacity": {
     "cap": 3,
@@ -15,11 +15,11 @@
     {
       "file": "epic-decomposition.json",
       "type": "epic_decomposition",
-      "age_minutes": 92,
+      "age_minutes": 95,
       "note": "Unrecognized request type — runtime does not process this. Stale since session start. Should be removed or replaced with a valid request type."
     }
   ],
   "queue_overrides": [],
   "action": "wait_for_runtime",
-  "notes": "Scan 499 at 22:29:42Z. Dispatch requests for issues #1 and #6 (wave 1, no dependencies) remain in requests/ since 22:15Z (~75 min). Runtime has not processed them. No active children. Capacity 3/3 available. Stale epic-decomposition.json with unrecognized type persists — runtime will not process it. No new action required — existing dispatch requests cover both wave-1 issues."
+  "notes": "Scan 500 at 22:30Z. Dispatch requests for issues #1 and #6 (wave 1, no dependencies) remain unprocessed in requests/ since 22:15Z (~75 min). Runtime has not processed them. No active children. Capacity 3/3 available. Stale epic-decomposition.json with unrecognized type persists. No queue overrides. No new action — existing dispatch requests cover both wave-1 issues. Awaiting runtime to process and launch child loops."
 }
