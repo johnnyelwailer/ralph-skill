@@ -1,6 +1,6 @@
 {
-  "scan_at": "2026-04-16T215000Z",
-  "iteration": 5,
+  "scan_at": "2026-04-16T215400Z",
+  "iteration": 6,
   "session": "orchestrator-20260416-213442",
   "active_children": [],
   "capacity": {
@@ -17,5 +17,5 @@
   "queue_overrides": 0,
   "human_blocked": [],
   "action": "waiting_for_process_requests",
-  "notes": "Scan 5. State unchanged from iter 4. Wave 1 sole eligible issue: #1 ('Set up GitHub Actions CI', no deps). 0/3 slots occupied. process-requests daemon is NOT running for session 213442 — dispatch of issue #1 requires human to start it. dispatch-issue-1.json present in requests/. Human action: `aloop process-requests --session-dir /home/pj/.aloop/sessions/orchestrator-20260416-213442 &`"
+  "notes": "Scan 6. State unchanged from iter 5. Wave 1 sole eligible issue: #1 ('Set up GitHub Actions CI', no deps). 0/3 slots occupied. process-requests daemon is NOT running for session 213442 — dispatch of issue #1 requires human to start it. dispatch-issue-1.json present in requests/. Human action: `aloop process-requests --session-dir /home/pj/.aloop/sessions/orchestrator-20260416-213442 &`"
 }
