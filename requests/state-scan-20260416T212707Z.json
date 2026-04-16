@@ -1,0 +1,29 @@
+{
+  "scan_at": "2026-04-16T212707Z",
+  "iteration": 468,
+  "active_child": 23,
+  "active_child_pid": 675816,
+  "active_child_state": "running",
+  "active_child_phase": "qa",
+  "active_child_iter": 73,
+  "active_child_updated_at": "2026-04-16T21:22:37Z",
+  "active_child_elapsed_since_update": "~4.5min",
+  "active_child_claude_pids": [1013789, 1014721],
+  "active_child_claude_alive": true,
+  "active_child_death": null,
+  "detected_issue": "opencode_provider_unsupported",
+  "capacity": {
+    "cap": 1,
+    "occupied": 1,
+    "available": 0
+  },
+  "pending_redispatches": 2,
+  "queue_overrides": 0,
+  "provider_status": {
+    "claude": "active",
+    "opencode": "unsupported"
+  },
+  "action": "wait",
+  "human_blocked": [157, 108, 173],
+  "notes": "Scan 468. Child PID 675816 (issue-23) ALIVE at iter=73/qa (~4.5min in, started 21:22:37Z). Claude PIDs 1013789/1014721 confirmed alive. PID 1010429 (seen in scan 467) no longer visible — may have exited. Context: iters 63-72 all failed with 'unsupported provider: ' on PROMPT_build_opencode.md; after 10 retries loop advanced to QA phase. QA is running cleanly on Claude. Capacity 1/1 occupied. Pending redispatches: #188/#70 (will dispatch after #23 completes). Human-blocked: #157/#108/#173. gh blocked by PATH hardening — cannot query GitHub labels. Action: wait for QA to complete. Note: opencode build will fail again if loop cycles — may want to disable PROMPT_build_opencode.md while opencode remains unconfigured."
+}
