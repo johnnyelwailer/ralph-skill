@@ -1,5 +1,87 @@
 # QA Log
 
+## QA Session — 2026-04-16 (iteration 1, issue-23)
+
+### Test Environment
+- Branch: aloop/issue-23
+- Commit: d45e7abd
+- Binary under test: /tmp/aloop-test-install-H9gu4U/bin/aloop (v1.0.0)
+- Features tested: 5
+
+### Results
+- PASS: Phase prerequisite checks (loop_branch_coverage.tests.sh 52/52)
+- PASS: CLAUDECODE sanitization (sanitize.test.ts 1/1, index.test.ts 5/6 — 1 pre-existing tsx env failure unrelated to sanitization)
+- PASS: compile-loop-plan finalizer section (35/35 tests)
+- PASS: loop.bats arg validation (15/15)
+- FAIL: loop_finalizer_qa_coverage.tests.sh — 4/4 fail: `check_finalizer_qa_coverage_gate` and `append_plan_task_if_missing` don't exist in loop.sh
+- FAIL: Branch sync — not implemented in loop.sh (no git fetch, no merge_conflict event, no conflict queuing)
+
+### Bugs Filed
+- [qa/P1] loop_finalizer_qa_coverage.tests.sh: check_finalizer_qa_coverage_gate and append_plan_task_if_missing command not found
+- [qa/P1] Branch sync not implemented in loop.sh: no pre-iteration git fetch/merge, no merge_conflict log event
+
+### Command Transcript
+
+#### 1. CLI install from source
+```
+npm run test-install -- --keep
+→ Binary: /tmp/aloop-test-install-H9gu4U/bin/aloop
+→ aloop --version: 1.0.0
+EXIT: 0
+```
+
+#### 2. loop.bats (arg validation)
+```
+bats aloop/bin/tests/loop.bats
+→ 1..15, ok 1-15
+EXIT: 0 (PASS)
+```
+
+#### 3. loop_branch_coverage.tests.sh
+```
+bash aloop/bin/loop_branch_coverage.tests.sh
+→ 52/52 PASS (phase_prereq, cycle, provider, queue, advance_cycle_position)
+→ Branch coverage summary: 52/52 (100%)
+EXIT: 0 (PASS)
+```
+
+#### 4. loop_finalizer_qa_coverage.tests.sh
+```
+bash aloop/bin/loop_finalizer_qa_coverage.tests.sh
+→ line 65: check_finalizer_qa_coverage_gate: command not found
+→ FAIL: finalizer QA gate passes at <=30% untested and 0 fail
+→ FAIL: should append untested coverage blocker task
+→ FAIL: gate should return success (skip enforcement) when QA_COVERAGE.md is missing
+→ FAIL: finalizer QA gate skips enforcement when QA_COVERAGE.md is missing
+EXIT: 1 (FAIL)
+```
+Root cause: test file uses `eval "$(extract_func check_finalizer_qa_coverage_gate)"` but that function does not exist in loop.sh.
+
+#### 5. compile-loop-plan tests
+```
+npx tsx --test src/commands/compile-loop-plan.test.ts
+→ 35/35 PASS (includes tests 30-32 for finalizer)
+EXIT: 0 (PASS)
+```
+
+#### 6. CLAUDECODE sanitization
+```
+npx tsx --test src/sanitize.test.ts → 1/1 PASS
+npx tsx --test src/index.test.ts → 5/6 PASS (not ok 5: pre-existing tsx-not-found in temp dir)
+grep unset CLAUDECODE aloop/bin/loop.sh → line 20: unset CLAUDECODE (entry), + env -u CLAUDECODE before each provider
+EXIT: sanitization confirmed
+```
+
+#### 7. Branch sync check
+```
+grep "git fetch\|merge_conflict\|branch_sync\|BASE_BRANCH" aloop/bin/loop.sh → (empty)
+→ No git fetch/merge/conflict-queue code in loop.sh
+Spec requires: pre-iteration git fetch origin <base_branch>, merge, conflict→queue PROMPT_merge.md, log merge_conflict event
+EXIT: MISSING IMPLEMENTATION
+```
+
+---
+
 ## QA Session — 2026-04-13 (iteration 4)
 
 ### Test Environment

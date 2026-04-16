@@ -18,3 +18,12 @@
 | Dashboard type-check (`npm run type-check`) | 2026-04-13 | 0e6ea585 | FAIL | tsc exits code 2: missing Vitest globals in App.coverage.test.ts, ArtifactEntry shape mismatch in App.test.tsx. Bug filed [qa/P1] |
 | CLI tests (`bun run test`) | 2026-04-13 | 0e6ea585 | FAIL | 27 failures out of 922 tests via tsx --test; pre-existing test failures in codebase |
 | Loop script tests (Windows/Pester) | 2026-04-13 | — | never | Requires Windows; skipped this session |
+| Phase prerequisite checks (build/review) | 2026-04-16 | d45e7abd | PASS | loop_branch_coverage.tests.sh 52/52; check_phase_prerequisites forces plan on missing/empty TODO.md, forces build on no commits since lastPlanCommit |
+| CLAUDECODE sanitization (CLI + loop.sh) | 2026-04-16 | d45e7abd | PASS | sanitize.test.ts 1/1 PASS; index.test.ts 5/6 PASS (1 pre-existing tsx-not-found env failure); loop.sh has unset CLAUDECODE at entry + env -u CLAUDECODE before each provider |
+| compile-loop-plan finalizer section | 2026-04-16 | d45e7abd | PASS | 35/35 tests pass; tests 30-32 cover finalizer from pipeline.yml, empty finalizer, no pipeline.yml |
+| loop.bats arg validation | 2026-04-16 | d45e7abd | PASS | 15/15 tests pass |
+| loop_branch_coverage.tests.sh | 2026-04-16 | d45e7abd | PASS | 52/52 branches pass; covers phase prerequisites, cycle resolution, provider health, queue, advance_cycle_position |
+| loop_finalizer_qa_coverage.tests.sh | 2026-04-16 | d45e7abd | FAIL | 4/4 tests FAIL: check_finalizer_qa_coverage_gate and append_plan_task_if_missing functions not found in loop.sh. Bug filed [qa/P1] |
+| Branch sync (pre-iteration git fetch+merge) | 2026-04-16 | d45e7abd | FAIL | Not implemented in loop.sh: no git fetch/merge, no merge_conflict event, no conflict queueing. Bug filed [qa/P1] |
+| Retry/cyclePosition tracking (MAX_PHASE_RETRIES, phase_retry_exhausted) | 2026-04-16 | d45e7abd | PASS | loop.sh has cyclePosition, advance_cycle_position, write_phase_retry_exhausted_entry, MAX_PHASE_RETRIES; no automated branch-coverage tests for these paths |
+| Finalizer events (entered/aborted/completed) | 2026-04-16 | d45e7abd | PASS | loop.sh emits finalizer_entered, finalizer_aborted, finalizer_completed; no automated branch-coverage tests for these paths |
