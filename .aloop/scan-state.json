@@ -1,6 +1,6 @@
 {
-  "scan_at": "2026-04-16T212500Z",
-  "iteration": 2,
+  "scan_at": "2026-04-16T224500Z",
+  "iteration": 3,
   "session": "orchestrator-20260416-211340",
   "active_children": [],
   "capacity": {
@@ -14,6 +14,6 @@
   "blocked_wave3": [6, 8],
   "queue_overrides": 0,
   "human_blocked": [],
-  "action": "dispatch_wave1",
-  "notes": "Scan 2. Fresh session — 12 epics loaded from decompose-epics.md (iter 1). Wave 1 (no deps): #1 Provider Health, #2 Loop Engine, #5 Convention-File Security. All 3 slots available. Dispatching all 3 wave-1 issues. Dispatch requests written to .aloop/output/. Wave 2 (7 issues) blocked on wave 1 merges. Wave 3 (2 issues) blocked on wave 2."
+  "action": "waiting_for_runtime",
+  "notes": "Scan 3. Dispatch requests req-001/002/003 written in iter 2 (~80min ago) still pending in requests/. Runtime has not processed them yet. No active children, no queue overrides. Waiting for runtime to spin up child sessions."
 }
