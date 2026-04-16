@@ -1,0 +1,15 @@
+{
+  "type": "state-scan",
+  "timestamp": "2026-04-16T204500Z",
+  "iteration": 447,
+  "action": "wait",
+  "active_child": 23,
+  "active_child_pid": 675816,
+  "active_child_phase": "build",
+  "active_child_iter": 48,
+  "active_child_claude_pid": 868535,
+  "active_child_claude_alive": true,
+  "elapsed_since_update": "~12min",
+  "human_blocked": [157, 108, 173],
+  "notes": "Child issue-23 PID 675816 ALIVE at iter=48/build, claude 868535 active (~12min). No queue overrides. Awaiting build completion."
+}
