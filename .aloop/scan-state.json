@@ -1,7 +1,7 @@
 {
-  "scan_at": "2026-04-16T212500Z",
-  "iteration": 2,
-  "session": "orchestrator-20260416-211340",
+  "scan_at": "2026-04-16T214200Z",
+  "iteration": 3,
+  "session": "orchestrator-20260416-213442",
   "active_children": [],
   "capacity": {
     "cap": 3,
@@ -9,11 +9,13 @@
     "available": 3
   },
   "wave": 1,
-  "pending_dispatch": [1, 2, 5],
-  "blocked_wave2": [3, 4, 7, 9, 10, 11, 12],
-  "blocked_wave3": [6, 8],
+  "ready_to_dispatch": [1],
+  "blocked_wave2": [2, 7],
+  "blocked_wave3": [3, 5, 6, 8, 9],
+  "blocked_wave4": [4, 10, 11],
+  "blocked_wave5": [12],
   "queue_overrides": 0,
   "human_blocked": [],
-  "action": "dispatch_wave1",
-  "notes": "Scan 2. Fresh session — 12 epics loaded from decompose-epics.md (iter 1). Wave 1 (no deps): #1 Provider Health, #2 Loop Engine, #5 Convention-File Security. All 3 slots available. Dispatching all 3 wave-1 issues. Dispatch requests written to .aloop/output/. Wave 2 (7 issues) blocked on wave 1 merges. Wave 3 (2 issues) blocked on wave 2."
+  "action": "waiting_for_process_requests",
+  "notes": "Scan 3. Correcting iter-2 wave analysis: session 213442 has different issue structure than sibling session 211340. Wave 1 (no deps): only #1 ('Set up GitHub Actions CI'). Issues #2 (depends on #1) and #5 (depends on #2) are NOT wave 1 — prev scan mixed up sessions. process-requests daemon is not running for session 213442; dispatch of issue #1 requires runtime. Human action needed: start process-requests for this session. Sibling orchestrator 211340 (loop PID 980448, iter=19) is running with its own separate issue set (#1 Provider Health, #2 Loop Engine, #5 Convention-File Security all wave 1)."
 }
