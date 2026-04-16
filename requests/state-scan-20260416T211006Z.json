@@ -1,0 +1,28 @@
+{
+  "scan_at": "2026-04-16T211006Z",
+  "iteration": 461,
+  "active_child": 23,
+  "active_child_pid": 675816,
+  "active_child_state": "running",
+  "active_child_phase": "review",
+  "active_child_iter": 60,
+  "active_child_updated_at": "2026-04-16T20:57:37Z",
+  "active_child_elapsed_since_update": "~12min",
+  "active_child_death": null,
+  "detected_issue": null,
+  "capacity": {
+    "cap": 1,
+    "occupied": 1,
+    "available": 0
+  },
+  "pending_redispatches": 0,
+  "queue_overrides": 0,
+  "provider_status": {
+    "claude": "active",
+    "opencode": "unknown"
+  },
+  "current_orchestrator_pid": 968542,
+  "action": "wait",
+  "human_blocked": [157, 108, 173],
+  "notes": "Scan 461. Child PID 675816 (issue-23) ALIVE — advanced from qa→review (iter 60). Claude PID 942496 running; tests active (tsx test PIDs 966774/966785). Updated ~12min ago — review phase can take time with active tests. Capacity occupied (1/1). Queue empty. No aloop/ready or aloop/in-review issues found. Human-blocked: #157/#108/#173. Awaiting child completion before next dispatch."
+}
