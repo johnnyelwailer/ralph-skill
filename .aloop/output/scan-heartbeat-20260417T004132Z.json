@@ -1,0 +1,51 @@
+{
+  "type": "scan_heartbeat",
+  "timestamp": "2026-04-17T00:41:32Z",
+  "session": "orchestrator-20260321-172932",
+  "summary": "issue-23 RUNNING iter 1/build (~18min); cap=1/1 full; issue-70 needs_redispatch (dead child), issue-188 ready — both waiting for cap",
+  "capacity": {
+    "concurrency_cap": 1,
+    "active_slots_used": 1,
+    "available_slots": 0
+  },
+  "running": [
+    {
+      "issue": 23,
+      "session": "orchestrator-20260321-172932-issue-23-20260417-002350",
+      "pid": 3106133,
+      "alive": true,
+      "phase": "build",
+      "iteration": 1,
+      "started_at": "2026-04-17T00:23:51Z",
+      "age_minutes": 18,
+      "note": "Normal — still in iter 1/build, PID alive"
+    }
+  ],
+  "pr_open": [
+    {"issue": 172, "pr": 211},
+    {"issue": 46, "pr": 313},
+    {"issue": 85, "pr": 311},
+    {"issue": 157, "pr": 238},
+    {"issue": 108, "pr": 132}
+  ],
+  "blocked_on_human": [
+    {"issue": 173, "pr": 307}
+  ],
+  "needs_redispatch": [
+    {
+      "issue": 70,
+      "reason": "Status=In progress but all child sessions stopped (last: orchestrator-20260321-172932-issue-70-20260415-174135, state=stopped iter=100 phase=review). Waiting for cap slot."
+    }
+  ],
+  "ready_to_dispatch": [
+    {
+      "issue": 188,
+      "title": "Extract layout components and reduce AppView to <100 LOC shell",
+      "wave": 1,
+      "depends_on": [],
+      "note": "Ready, no blockers. Waiting for cap slot."
+    }
+  ],
+  "actions": [],
+  "queue_overrides": []
+}
