@@ -1,6 +1,6 @@
 {
-  "scan_at": "2026-04-16T23:10Z",
-  "iteration": 510,
+  "scan_at": "2026-04-17T00:04:30Z",
+  "iteration": 514,
   "active_children": [],
   "capacity": {
     "cap": 3,
@@ -8,18 +8,18 @@
     "available": 3
   },
   "pending_dispatches": [
-    { "issue": 1, "request_file": "dispatch-issue-1-20260416T221500Z.json", "status": "awaiting_runtime", "age_minutes": 55 },
-    { "issue": 6, "request_file": "dispatch-issue-6-20260416T221500Z.json", "status": "awaiting_runtime", "age_minutes": 55 }
+    { "issue": 1, "request_file": "dispatch-issue-1-20260416T221500Z.json", "status": "awaiting_runtime", "age_minutes": 117 },
+    { "issue": 6, "request_file": "dispatch-issue-6-20260416T221500Z.json", "status": "awaiting_runtime", "age_minutes": 117 }
   ],
   "stale_requests": [
     {
       "file": "epic-decomposition.json",
       "type": "epic_decomposition",
-      "age_minutes": 55,
+      "age_minutes": 127,
       "note": "Unrecognized request type — runtime does not process this. Stale since session start."
     }
   ],
   "queue_overrides": [],
   "action": "wait_for_runtime",
-  "notes": "Scan 510 at 23:10Z. Dispatch requests for issues #1 and #6 (wave 1, no dependencies) remain unprocessed in requests/ since 22:15Z (~55 min). Runtime has not processed them. No active children. Capacity 3/3 available. Queue is empty. No new action — existing dispatch requests cover both wave-1 issues. Awaiting runtime to process and launch child loops."
+  "notes": "Scan 514 at 00:04Z. Dispatch requests for issues #1 and #6 (wave 1, no dependencies) remain unprocessed in requests/ since 22:07Z (~117 min). No active children. Capacity 3/3 available. Queue is empty. No new action — existing dispatch requests cover both wave-1 issues. Awaiting runtime to process and launch child loops."
 }
