@@ -1,0 +1,68 @@
+{
+  "type": "scan_heartbeat",
+  "timestamp": "2026-04-17T00:42:57Z",
+  "session": "orchestrator-20260321-172932",
+  "active_sessions": {
+    "issue_23": {
+      "pid": 3106133,
+      "alive": true,
+      "loop_pid": 3214740,
+      "loop_alive": true,
+      "claude_pid": 3214743,
+      "claude_alive": true,
+      "session": "orchestrator-20260321-172932-issue-23-20260417-002350",
+      "iter": 2,
+      "phase": "plan",
+      "session_age_minutes": 19,
+      "state": "running",
+      "disposition": "MONITOR — healthy, claude PID 3214743 active at iter=2/plan (~19 min). Issue #23 (XL: Inner Loop Engine) running iteration 2 in plan phase."
+    }
+  },
+  "pr_open": {
+    "issue_172": {
+      "pr_number": 211,
+      "disposition": "AWAITING_REVIEW — PR #211 open, not blocked on human."
+    },
+    "issue_46": {
+      "pr_number": 313,
+      "disposition": "AWAITING_REVIEW — PR #313 open, not blocked on human."
+    }
+  },
+  "blocked_on_human": [
+    {
+      "number": 173,
+      "pr_number": 307,
+      "disposition": "WAITING — blocked on human review/decision for PR #307."
+    }
+  ],
+  "needs_redispatch": [
+    {
+      "number": 188,
+      "title": "Extract layout components and reduce AppView to <100 LOC shell",
+      "complexity_tier": "XL",
+      "disposition": "QUEUE — will dispatch when #23 completes and capacity frees"
+    },
+    {
+      "number": 70,
+      "title": "QA agent: structured coverage matrix and priority selection algorithm",
+      "complexity_tier": "S",
+      "disposition": "QUEUE — will dispatch when #23 completes and capacity frees"
+    }
+  ],
+  "capacity": {
+    "concurrency_cap": 1,
+    "in_progress_count": 1,
+    "available_slots": 0,
+    "note": "At cap — issue #23 plan in progress (iter 2). Hold all dispatches."
+  },
+  "action": "no_dispatch",
+  "reason": "At concurrency cap (1/1). Issue #23 PID 3106133 ALIVE — inner loop PID 3214740 ALIVE, claude PID 3214743 ALIVE at iter=2/plan (~19 min). No dispatch until #23 completes or fails.",
+  "observations": [
+    "Issue #23 (XL: Inner Loop Engine) is healthy — loop.sh running, claude active at iter=2/plan.",
+    "Iteration 1 was a queue_override (completed 00:41:28Z). Iteration 2 started 00:41:31Z in plan phase.",
+    "Issue #188 (XL: Extract layout components) is needs_redispatch — next to dispatch when slot opens.",
+    "Issue #70 (S: QA agent coverage matrix) also needs_redispatch — will follow #188 when capacity allows.",
+    "PR #211 (issue-172: flock locking) and PR #313 (issue-46: agent abstraction) are open awaiting review.",
+    "Issue #173 (PR #307) blocked on human — no action from orchestrator."
+  ]
+}
