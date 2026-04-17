@@ -1,0 +1,75 @@
+{
+  "type": "scan_heartbeat",
+  "timestamp": "2026-04-17T00:29:35Z",
+  "session": "orchestrator-20260321-172932",
+  "active_sessions": {
+    "issue_23": {
+      "pid": 3106133,
+      "alive": true,
+      "claude_pid": 3106329,
+      "claude_alive": true,
+      "session": "orchestrator-20260321-172932-issue-23-20260417-002350",
+      "iter": 1,
+      "phase": "build",
+      "session_age_minutes": 6,
+      "state": "running",
+      "disposition": "MONITOR — healthy. Loop PID 3106133 ALIVE, claude PID 3106329 ALIVE. Iter 1/build (~6 min). Processing review-fixes queue override (resume after 47-iter limit). XL epic — expected to run long."
+    }
+  },
+  "pr_open": {
+    "issue_46": {
+      "pr_number": 313,
+      "blocked_on_human": false,
+      "disposition": "AWAITING_REVIEW — PR #313 open, not blocked on human."
+    },
+    "issue_85": {
+      "pr_number": 311,
+      "blocked_on_human": false,
+      "disposition": "AWAITING_REVIEW — PR #311 open, not blocked on human."
+    },
+    "issue_108": {
+      "pr_number": 132,
+      "blocked_on_human": true,
+      "disposition": "BLOCKED_ON_HUMAN — PR #132 in review, blocked_on_human=true."
+    },
+    "issue_157": {
+      "pr_number": 238,
+      "blocked_on_human": true,
+      "disposition": "BLOCKED_ON_HUMAN — PR #238 in review. Playwright/libatk infra issue."
+    },
+    "issue_172": {
+      "pr_number": 211,
+      "blocked_on_human": false,
+      "disposition": "AWAITING_REVIEW — PR #211 open. flock replacement in loop.sh."
+    },
+    "issue_173": {
+      "pr_number": 307,
+      "blocked_on_human": true,
+      "disposition": "BLOCKED_ON_HUMAN — PR #307, status=Blocked on human."
+    }
+  },
+  "needs_redispatch": [
+    {
+      "number": 70,
+      "title": "QA agent: structured coverage matrix and priority selection algorithm",
+      "complexity_tier": "S",
+      "state": "needs_redispatch",
+      "disposition": "QUEUE — will dispatch when #23 completes and capacity frees. Concurrency cap 1/1."
+    }
+  ],
+  "capacity": {
+    "concurrency_cap": 1,
+    "in_progress_count": 1,
+    "available_slots": 0,
+    "note": "At cap — issue #23 build in progress (iter 1/build, ~6 min, claude PID 3106329 ALIVE). No dispatch until #23 completes or fails."
+  },
+  "action": "no_dispatch",
+  "reason": "At concurrency cap (1/1). Issue #23 child session alive at iter=1/build with claude subprocess active (~6 min). Issue #70 queued for next available slot.",
+  "observations": [
+    "Issue #23 PID 3106133 ALIVE — loop.sh running. Claude PID 3106329 ALIVE. Processing review-fixes queue to continue from previous 47-iter session.",
+    "Issue #70 has state=needs_redispatch but no child_session/pid. Will dispatch when #23 finishes.",
+    "PRs #211, #311, #313 awaiting review (not blocked on human).",
+    "PRs #132 (issue-108), #238 (issue-157), #307 (issue-173) blocked on human — no auto-action.",
+    "80 issues in Ready state, 31 Blocked, 34 Done."
+  ]
+}
