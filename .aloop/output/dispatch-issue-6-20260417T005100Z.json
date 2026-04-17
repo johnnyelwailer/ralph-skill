@@ -1,0 +1,12 @@
+{
+  "type": "dispatch_child",
+  "issue_number": 6,
+  "issue_title": "`aloop start` / `aloop setup` Unified CLI, ZDR & Auto-Monitoring",
+  "wave": 1,
+  "sandbox": "container",
+  "requires": [],
+  "depends_on": [],
+  "requested_at": "2026-04-17T00:51:00Z",
+  "orchestrator_session": "orchestrator-20260416-215811",
+  "notes": "Wave 1 issue, no dependencies. Re-dispatch (iter 527) — prior dispatch files consumed without state update."
+}
