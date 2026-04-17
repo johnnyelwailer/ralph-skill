@@ -154,7 +154,7 @@ function isChildSessionAlive(aloopRoot: string, childSession: string, childPid?:
   }
 
   return false;
-
+}
 
 async function sweepStaleRunningIssueStatuses(aloopRoot: string): Promise<number> {
   const sessionsRoot = path.join(aloopRoot, 'sessions');
@@ -186,7 +186,6 @@ async function sweepStaleRunningIssueStatuses(aloopRoot: string): Promise<number
   }
 
   return fixed;
-}
 }
 
 /**

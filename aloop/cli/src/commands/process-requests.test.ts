@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { existsSync } from 'node:fs';
 import { mkdtemp, mkdir, rm, writeFile, readFile } from 'node:fs/promises';
-import { formatReviewCommentHistory, getDirectorySizeBytes, pruneLargeV8CacheDir, syncMasterToTrunk, syncChildBranches, resolveAdapterConfig, type ChildBranchSyncDeps } from './process-requests.js';
+import { formatReviewCommentHistory, getDirectorySizeBytes, pruneLargeV8CacheDir, syncMasterToTrunk, syncChildBranches, resolveAdapterConfig, processRequestsCommand, type ChildBranchSyncDeps } from './process-requests.js';
 import { processCrResultFiles, type CrResultDeps } from './cr-pipeline.js';
 import type { OrchestratorIssue } from './orchestrate.js';
 
@@ -443,5 +443,54 @@ describe('resolveAdapterConfig', () => {
   it('returns null when both repo arg and meta.repo are absent', () => {
     const result = resolveAdapterConfig({ adapter_type: 'github' }, null);
     assert.equal(result, null);
+  });
+});
+
+// --- sweepStaleRunningIssueStatuses regression test ---
+
+describe('sweepStaleRunningIssueStatuses via processRequestsCommand', () => {
+  it('resets state to stopped for child sessions with running status but no live process', async () => {
+    const homeDir = await mkdtemp(path.join(os.tmpdir(), 'aloop-sweep-'));
+    try {
+      const aloopRoot = path.join(homeDir, '.aloop');
+      const sessionsRoot = path.join(aloopRoot, 'sessions');
+
+      // Create a child session marked as running (no real process backs it)
+      const childSessionId = 'child-20260101-000000-issue-99-20260101-000001';
+      const childSessionDir = path.join(sessionsRoot, childSessionId);
+      await mkdir(childSessionDir, { recursive: true });
+      const statusFile = path.join(childSessionDir, 'status.json');
+      await writeFile(statusFile, JSON.stringify({ state: 'running', updated_at: new Date().toISOString() }), 'utf8');
+
+      // Create the orchestrator session dir with a minimal orchestrator.json
+      const sessionId = 'orchestrator-20260101-000000-main';
+      const sessionDir = path.join(sessionsRoot, sessionId);
+      await mkdir(sessionDir, { recursive: true });
+      const minimalState = {
+        spec_file: 'SPEC.md',
+        trunk_branch: 'agent/trunk',
+        concurrency_cap: 1,
+        current_wave: 1,
+        plan_only: false,
+        issues: [],
+        completed_waves: [],
+        filter_issues: null,
+        filter_label: null,
+        filter_repo: null,
+        budget_cap: null,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+      await writeFile(path.join(sessionDir, 'orchestrator.json'), JSON.stringify(minimalState, null, 2), 'utf8');
+
+      // Run processRequestsCommand — this exercises sweepStaleRunningIssueStatuses
+      await processRequestsCommand({ sessionDir, homeDir });
+
+      // The child session status should have been reset to 'stopped'
+      const updatedStatus = JSON.parse(await readFile(statusFile, 'utf8'));
+      assert.equal(updatedStatus.state, 'stopped', 'stale running child status should be reconciled to stopped');
+    } finally {
+      await rm(homeDir, { recursive: true, force: true });
+    }
   });
 });
