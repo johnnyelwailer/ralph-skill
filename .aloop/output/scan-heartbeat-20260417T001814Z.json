@@ -1,0 +1,46 @@
+{
+  "type": "scan-heartbeat",
+  "iter": 505,
+  "timestamp": "2026-04-17T00:18:14Z",
+  "in_progress": [
+    {
+      "issue": 23,
+      "child_pid": 2178368,
+      "child_alive": true,
+      "session": "orchestrator-20260321-172932-issue-23-20260416-235207",
+      "loop_iteration": 46,
+      "phase": "review",
+      "state": "provider_cooldown",
+      "status_updated_at": "2026-04-16T23:59:56Z",
+      "note": "claude provider in cooldown (915 consecutive failures pre-midnight); cooldown_until=2026-04-17T00:59:52Z; loop alive, waiting. Last commit: 'chore(review): FAIL — 5 findings'."
+    }
+  ],
+  "in_review": [
+    { "issue": 46, "pr": 313 },
+    { "issue": 172, "pr": 211 },
+    { "issue": 157, "pr": 238 },
+    { "issue": 108, "pr": 132 },
+    { "issue": 85, "pr": 311 }
+  ],
+  "blocked_on_human": [
+    { "issue": 173, "pr": 307 }
+  ],
+  "needs_redispatch": [
+    {
+      "issue": 70,
+      "reason": "cap full — concurrency_cap=1, slot occupied by issue-23"
+    }
+  ],
+  "concurrency_cap": 1,
+  "cap_used": 1,
+  "cap_free": 0,
+  "ready_count": 80,
+  "actions": [],
+  "notes": [
+    "Issue-23 child loop (PID 2178368) is alive but in provider cooldown until ~00:59 UTC due to pre-midnight Claude rate limits.",
+    "Post-cooldown expiry (~01:00 UTC), loop should resume iter=46/review automatically.",
+    "Last meaningful work: iter=46 review phase. Latest commits show 'FAIL — 5 findings' — review agent is iterating to fix.",
+    "No new dispatches possible until issue-23 completes or cap is freed.",
+    "Issue-70 needs redispatch as soon as issue-23 slot frees."
+  ]
+}
