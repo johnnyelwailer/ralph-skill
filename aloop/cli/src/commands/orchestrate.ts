@@ -97,6 +97,7 @@ export interface BlockerSignatureEntry {
   count: number;
   first_seen_iteration: number;
   last_seen_iteration: number;
+  attempted_remediations?: string[];
 }
 
 export interface OrchestratorState {
