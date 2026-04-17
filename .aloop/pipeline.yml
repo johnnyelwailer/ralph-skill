@@ -42,6 +42,13 @@ orchestrator_events:
       dor_validated: false
     result_pattern: "estimate-result-{issue_number}.json"
 
+  sub_decompose:
+    prompt: PROMPT_orch_sub_decompose.md
+    batch: 1
+    filter:
+      status: "Needs decomposition"
+    result_pattern: "sub-decomposition-result-{issue_number}.json"
+
   cr_analysis:
     prompt: PROMPT_orch_cr_analysis.md
     batch: 2

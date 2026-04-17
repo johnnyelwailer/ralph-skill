@@ -484,13 +484,13 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
     const queueFiles = existsSync(queueDir) ? await readdir(queueDir) : [];
     const pendingQueue = new Set(
       queueFiles
-        .filter(f => f.startsWith('refine-issue-') || f.startsWith('estimate-issue-'))
-        .map(f => Number(f.replace(/^(refine|estimate)-issue-/, '').replace('.md', ''))),
+        .filter(f => f.startsWith('refine-issue-') || f.startsWith('estimate-issue-') || f.startsWith('sub_decompose-issue-'))
+        .map(f => Number(f.replace(/^(refine|estimate|sub_decompose)-issue-/, '').replace('.md', ''))),
     );
     const pendingResults = new Set(
       allFiles
-        .filter(f => f.match(/^(refine|estimate)-result-\d+\.json$/))
-        .map(f => Number(f.replace(/^(refine|estimate)-result-/, '').replace('.json', ''))),
+        .filter(f => f.match(/^(refine|estimate|sub-decomposition)-result-\d+\.json$/))
+        .map(f => Number(f.replace(/^(refine|estimate|sub-decomposition)-result-/, '').replace('.json', ''))),
     );
 
     // Process orchestrator events from pipeline.yml
