@@ -1,0 +1,35 @@
+{
+  "type": "orchestrator_scan",
+  "generated_at": "2026-04-18T00:15:00Z",
+  "iteration": 524,
+  "state": {
+    "current_wave": 1,
+    "total_issues": 12,
+    "pending_issues": 12,
+    "active_children": 0,
+    "concurrency_cap": 3,
+    "capacity_free": 3
+  },
+  "dispatch_status": {
+    "awaiting_runtime": [
+      {
+        "file": "dispatch-issue-1-20260416T221500Z.json",
+        "issue": 1,
+        "title": "Loop Engine: Phase Retry, Finalizer & Exit Gate",
+        "written_at": "2026-04-16T22:15:00Z",
+        "age_hours": 26
+      },
+      {
+        "file": "dispatch-issue-6-20260416T221500Z.json",
+        "issue": 6,
+        "title": "aloop start / aloop setup Unified CLI, ZDR & Auto-Monitoring",
+        "written_at": "2026-04-16T22:15:00Z",
+        "age_hours": 26
+      }
+    ]
+  },
+  "queue_overrides": [],
+  "new_requests": [],
+  "action_required": "human",
+  "notes": "Dispatch requests for wave 1 issues #1 and #6 have been pending for ~26h. Runtime has not processed any requests. No new requests written — existing dispatch requests remain valid. Human action required to activate runtime processing."
+}
