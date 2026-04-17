@@ -3227,7 +3227,6 @@ export async function launchChildLoop(
       '-Mode', 'plan-build-review',
       '-Provider', provider,
       '-MaxStuck', '3',
-      '-MaxIterations', '999999',
       '-LaunchMode', 'start',
     ];
   } else {
@@ -3240,7 +3239,6 @@ export async function launchChildLoop(
       '--mode', 'plan-build-review',
       '--provider', provider,
       '--max-stuck', '3',
-      '--max-iterations', '999999',
       '--launch-mode', 'start',
     ];
   }

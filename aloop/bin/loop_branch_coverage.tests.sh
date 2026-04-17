@@ -144,6 +144,9 @@ register_branch "branch_sync.success" "sync_base_branch writes no queue file on 
 register_branch "branch_sync.fetch_fail" "sync_base_branch returns 0 without queuing when fetch fails"
 register_branch "queue.steer_reset" "run_queue_if_present resets CYCLE_POSITION to 0 for steering queue items"
 register_branch "queue.nonsteer_no_reset" "run_queue_if_present does not reset CYCLE_POSITION for non-steering queue items"
+register_branch "max_iterations.env_var" "ALOOP_MAX_ITERATIONS env var populates MAX_ITERATIONS before plan file is consulted"
+register_branch "max_iterations.plan_file" "empty MAX_ITERATIONS reads max_iterations value from loop-plan.json"
+register_branch "max_iterations.unset_no_file" "empty MAX_ITERATIONS stays empty (unlimited) when no plan file exists"
 
 RESOLVE_FUNC="$(extract_function resolve_healthy_provider)"
 SETUP_FUNC="$(extract_function setup_gh_block)"
@@ -1169,6 +1172,55 @@ fi
 
 unset -f invoke_provider
 rm -rf "$STEER_TMPDIR"
+
+# ---------------------------------------------------------------------------
+# max_iterations — plan-file reading and env-var branches
+# ---------------------------------------------------------------------------
+
+MAXITER_TMPDIR="$(mktemp -d)"
+
+# max_iterations.env_var — ALOOP_MAX_ITERATIONS env var already populates MAX_ITERATIONS
+_SAVE_ALOOP_MAX="${ALOOP_MAX_ITERATIONS:-}"
+export ALOOP_MAX_ITERATIONS=42
+MAX_ITERATIONS="${ALOOP_MAX_ITERATIONS:-}"
+# Plan-file branch should NOT fire (MAX_ITERATIONS already set)
+[ -z "$MAX_ITERATIONS" ] && [ -f "$MAXITER_TMPDIR/loop-plan.json" ] && \
+    MAX_ITERATIONS=$(python3 -c "import json,sys; d=json.load(open(sys.argv[1])); v=d.get('max_iterations'); print(int(v)) if v is not None else None" "$MAXITER_TMPDIR/loop-plan.json" 2>/dev/null) || true
+if [ "$MAX_ITERATIONS" = "42" ]; then
+    cover_branch "max_iterations.env_var"
+    pass_case "ALOOP_MAX_ITERATIONS env var populates MAX_ITERATIONS (plan file not consulted)"
+else
+    fail_case "ALOOP_MAX_ITERATIONS env var did not populate MAX_ITERATIONS (got '$MAX_ITERATIONS')"
+fi
+if [ -n "$_SAVE_ALOOP_MAX" ]; then ALOOP_MAX_ITERATIONS="$_SAVE_ALOOP_MAX"; else unset ALOOP_MAX_ITERATIONS; fi
+
+# max_iterations.plan_file — empty MAX_ITERATIONS + plan file has value → reads from plan
+MAX_ITERATIONS=""
+cat > "$MAXITER_TMPDIR/loop-plan.json" << 'EOF'
+{"max_iterations": 25, "cycle": []}
+EOF
+[ -z "$MAX_ITERATIONS" ] && [ -f "$MAXITER_TMPDIR/loop-plan.json" ] && \
+    MAX_ITERATIONS=$(python3 -c "import json,sys; d=json.load(open(sys.argv[1])); v=d.get('max_iterations'); print(int(v)) if v is not None else None" "$MAXITER_TMPDIR/loop-plan.json" 2>/dev/null) || true
+if [ "$MAX_ITERATIONS" = "25" ]; then
+    cover_branch "max_iterations.plan_file"
+    pass_case "MAX_ITERATIONS read from loop-plan.json when env var unset"
+else
+    fail_case "MAX_ITERATIONS not read from loop-plan.json (got '$MAX_ITERATIONS')"
+fi
+
+# max_iterations.unset_no_file — empty MAX_ITERATIONS + no plan file → stays empty (unlimited)
+MAX_ITERATIONS=""
+rm -f "$MAXITER_TMPDIR/loop-plan.json"
+[ -z "$MAX_ITERATIONS" ] && [ -f "$MAXITER_TMPDIR/loop-plan.json" ] && \
+    MAX_ITERATIONS=$(python3 -c "import json,sys; d=json.load(open(sys.argv[1])); v=d.get('max_iterations'); print(int(v)) if v is not None else None" "$MAXITER_TMPDIR/loop-plan.json" 2>/dev/null) || true
+if [ -z "$MAX_ITERATIONS" ]; then
+    cover_branch "max_iterations.unset_no_file"
+    pass_case "MAX_ITERATIONS stays empty (unlimited) when env var unset and no plan file"
+else
+    fail_case "MAX_ITERATIONS unexpectedly set when env var unset and no plan file (got '$MAX_ITERATIONS')"
+fi
+
+rm -rf "$MAXITER_TMPDIR"
 
 # ---------------------------------------------------------------------------
 # Final summary

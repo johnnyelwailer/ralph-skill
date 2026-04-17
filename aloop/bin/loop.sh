@@ -99,22 +99,9 @@ esac
 
 mkdir -p "$SESSION_DIR"
 
-# Read max_iterations from loop-plan.json if present and MAX_ITERATIONS not already set via env/arg
-if [ -z "$MAX_ITERATIONS" ] && [ -f "$LOOP_PLAN_FILE" ]; then
-    PLAN_MAX_ITERATIONS=$(python3 - "$LOOP_PLAN_FILE" <<'PY'
-import json, sys
-path = sys.argv[1]
-with open(path, encoding="utf-8") as f:
-    payload = json.load(f)
-max_iter = payload.get("max_iterations")
-if max_iter is not None:
-    print(int(max_iter))
-PY
-)
-    if [ -n "$PLAN_MAX_ITERATIONS" ]; then
-        MAX_ITERATIONS="$PLAN_MAX_ITERATIONS"
-    fi
-fi
+# Read max_iterations from loop-plan.json if not set via env/arg
+[ -z "$MAX_ITERATIONS" ] && [ -f "$SESSION_DIR/loop-plan.json" ] && \
+    MAX_ITERATIONS=$(python3 -c "import json,sys; d=json.load(open(sys.argv[1])); v=d.get('max_iterations'); print(int(v)) if v is not None else None" "$SESSION_DIR/loop-plan.json" 2>/dev/null) || true
 
 # ============================================================================
 # DEVCONTAINER AUTO-ROUTING — detect and route provider calls through container
