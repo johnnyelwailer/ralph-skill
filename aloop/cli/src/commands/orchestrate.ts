@@ -5765,10 +5765,12 @@ export async function runOrchestratorScanPass(
       (i) => !(i.state === 'failed' && i.child_session !== null),
     );
 
-    // Resume stopped children by writing review feedback to their existing queue
+    // Resume stopped children by writing review feedback and relaunching the loop
     for (const issue of stoppedChildRedispatch) {
       const childSession = issue.child_session!;
       const feedback = (issue as any).review_feedback ?? '';
+
+      // Write review feedback to child's queue directory
       if (feedback) {
         const childQueueDir = path.join(deps.aloopRoot, 'sessions', childSession, 'queue');
         await deps.mkdir?.(childQueueDir, { recursive: true });
@@ -5779,6 +5781,64 @@ export async function runOrchestratorScanPass(
           'utf8',
         );
       }
+
+      // Read child's meta.json to get session info for resumption
+      const childMetaPath = path.join(deps.aloopRoot, 'sessions', childSession, 'meta.json');
+      if (deps.existsSync(childMetaPath)) {
+        try {
+          const childMeta = JSON.parse(await deps.readFile(childMetaPath, 'utf8'));
+          const loopBinDir = path.join(deps.aloopRoot, 'bin');
+          const isWindows = deps.dispatchDeps.platform === 'win32';
+          const childSessionDir = path.join(deps.aloopRoot, 'sessions', childSession);
+          const childWorkDir = String(childMeta.work_dir || childMeta.worktree_path || '');
+          const childPromptsDir = String(childMeta.prompts_dir || '');
+          const childProvider = String(childMeta.provider || 'round-robin');
+          const childMode = String(childMeta.mode || 'plan-build-review');
+
+          if (childWorkDir && childPromptsDir) {
+            let command: string;
+            let args: string[];
+            if (isWindows) {
+              command = 'powershell';
+              args = [
+                '-NoProfile', '-File', path.join(loopBinDir, 'loop.ps1'),
+                '-PromptsDir', childPromptsDir,
+                '-SessionDir', childSessionDir,
+                '-WorkDir', childWorkDir,
+                '-Mode', childMode,
+                '-Provider', childProvider,
+                '-MaxIterations', '999999',
+                '-MaxStuck', '3',
+                '-LaunchMode', 'resume',
+              ];
+            } else {
+              command = path.join(loopBinDir, 'loop.sh');
+              args = [
+                '--prompts-dir', childPromptsDir,
+                '--session-dir', childSessionDir,
+                '--work-dir', childWorkDir,
+                '--mode', childMode,
+                '--provider', childProvider,
+                '--max-iterations', '999999',
+                '--max-stuck', '3',
+                '--launch-mode', 'resume',
+              ];
+            }
+
+            const child = deps.dispatchDeps.spawn(command, args, {
+              cwd: childWorkDir,
+              detached: true,
+              stdio: 'ignore',
+              env: { ...deps.dispatchDeps.env },
+              windowsHide: true,
+            });
+            child.unref();
+          }
+        } catch {
+          // If we can't read meta.json or spawn fails, continue with state update
+        }
+      }
+
       issue.state = 'in_progress';
       issue.status = 'In progress';
       (issue as any).needs_redispatch = false;
