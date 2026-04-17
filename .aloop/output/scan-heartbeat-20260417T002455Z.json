@@ -1,0 +1,30 @@
+{
+  "type": "scan-heartbeat",
+  "ts": "2026-04-17T00:24:55Z",
+  "summary": "iter 507 — issue-23 RUNNING iter 1/build (session re-dispatched 00:23 UTC); cap full (1/1); needs_redispatch: issue-70, issue-188 (waiting for issue-23); pr_open: issue-46/#313, issue-172/#211; blocked_on_human: #173/#307, issue-157/#238, issue-108/#132",
+  "active": [
+    {
+      "issue": 23,
+      "title": "Epic: Inner Loop Engine — Phase Control, Retry & Failure",
+      "child_session": "orchestrator-20260321-172932-issue-23-20260417-002350",
+      "session_state": "running",
+      "session_iteration": 1,
+      "session_phase": "build",
+      "session_started_at": "2026-04-17T00:23:51Z"
+    }
+  ],
+  "needs_redispatch": [
+    { "issue": 70, "title": "QA agent: structured coverage matrix and priority selection", "reason": "cap full — waiting for issue-23" },
+    { "issue": 188, "title": "Extract layout components and reduce AppView to <100 LOC shell", "reason": "cap full — waiting for issue-23" }
+  ],
+  "pr_open": [
+    { "issue": 46, "pr": 313 },
+    { "issue": 172, "pr": 211 },
+    { "issue": 85, "pr": 311 },
+    { "issue": 157, "pr": 238, "blocked_on_human": true },
+    { "issue": 108, "pr": 132, "blocked_on_human": true },
+    { "issue": 173, "pr": 307, "blocked_on_human": true }
+  ],
+  "queue_overrides": [],
+  "action": "none — at capacity, issue-23 running"
+}
