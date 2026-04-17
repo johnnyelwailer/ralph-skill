@@ -191,3 +191,41 @@ Per Constitution Rules 12 (one issue, one concern) and 18 (respect file ownershi
 - Gates 6, 7, 8, 9: N/A for shell mechanics changes.
 
 ---
+
+## Review — 2026-04-17 — commit c888c883..6ac5edd1 (iter 4)
+
+**Verdict: FAIL** (5 findings → written to TODO.md as [review] tasks)
+**Scope:** `aloop/bin/loop.sh`, `aloop/bin/loop.ps1`, `aloop/cli/src/commands/orchestrate.ts`, `aloop/bin/loop_branch_coverage.tests.sh`, `TODO.md`
+
+### Prior findings resolved
+
+**Finding 1 (iter 3 — steering reset test coverage): RESOLVED**
+`4c074a78` adds `queue.steer_reset` and `queue.nonsteer_no_reset` branch IDs and test cases to `loop_branch_coverage.tests.sh` (lines 1121–1171). Test logic: creates `10-PROMPT_steer.md`, mocks `invoke_provider` to return 0, calls `run_queue_if_present`, asserts `CYCLE_POSITION == 0`. Matches loop.sh lines 2101-2103. Valid concrete-value assertion.
+
+**Finding 2 (iter 3 — out-of-scope uncommitted changes): RESOLVED**
+`754943cc` reverts start.ts, requests.ts, requests.test.ts, dist/index.js to HEAD. Only TODO.md changed.
+
+### New findings from commit 6ac5edd1
+
+**Finding 1 (Constitution Rule 1 HARD FAIL — loop scripts grew)**
+`loop.sh`: master 2373 LOC → current 2380 LOC (+7 net). `loop.ps1`: master 2273 LOC → current 2430 LOC (+157 net). Constitution Rule 1 is absolute: "Any PR that touches these files must reduce their line count." Commit adds a 17-line python3 heredoc block and changed while condition to loop.sh, and an 18-line block to loop.ps1. Neither script shrank.
+
+**Finding 2 (Gate 1 + Constitution Rules 12/18 — orchestrate.ts out of scope)**
+SPEC.md §Out of Scope: "`orchestrate.ts` must not be modified in this issue." Commit 6ac5edd1 adds `'-MaxIterations', '999999'` to `launchChildLoop` for both Linux (line 3243) and Windows (line 3230) code paths. Two lines added to an explicitly excluded file.
+
+**Finding 3 (Gate 4 bug — loop.ps1 line 103: Test-Path on env var)**
+`if ($MaxIterations -eq 0 -and (Test-Path $env:ALOOP_MAX_ITERATIONS))` — `Test-Path` checks filesystem path existence, not env-var presence. With `ALOOP_MAX_ITERATIONS="50"`, `Test-Path "50"` checks for a file at path "50" — always false. The env-var branch will never execute. Fix: `($null -ne $env:ALOOP_MAX_ITERATIONS -and $env:ALOOP_MAX_ITERATIONS -ne '')`.
+
+**Finding 4 (Gate 4 bug — loop.ps1 line 2423: false limit_reached log)**
+`if ($iteration -ge $MaxIterations)` fires unconditionally when `$MaxIterations = 0` because any `$iteration >= 0`. Every non-limit exit (SIGTERM, budget, user stop) logs `limit_reached(0)`. Fix: guard as `if ($MaxIterations -gt 0 -and $iteration -ge $MaxIterations)`.
+
+**Finding 5 (Gate 3 — no tests for max_iterations code paths)**
+New code in loop.sh lines 103-116 (read from plan file, empty-MAX_ITERATIONS while condition) and loop.ps1 lines 101-115 are untested. No new branch IDs registered in `loop_branch_coverage.tests.sh` for these paths. Three branch scenarios need coverage: (a) unset + no plan file → unlimited, (b) unset + plan file has value → uses plan value, (c) env var set → uses env value.
+
+### Gates not failing
+
+- Gate 2: `queue.steer_reset` test asserts concrete CYCLE_POSITION value (0 vs 5) — not tautological.
+- Gate 6: N/A — shell mechanics, no observable outputs requiring proof.
+- Gates 7, 8, 9: N/A.
+
+---
