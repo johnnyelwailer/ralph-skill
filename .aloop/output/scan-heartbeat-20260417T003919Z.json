@@ -1,0 +1,37 @@
+{
+  "type": "scan-heartbeat",
+  "timestamp": "2026-04-17T00:39:19Z",
+  "summary": "issue-23 RUNNING iter 1/build (00:23 UTC, PID 3106133+claude 3106329, ~16min); pr_open: issue-172/#211, issue-46/#313, issue-85/#311; blocked_on_human: #173/#307; needs_redispatch: issue-70, issue-188 (cap=1, waiting for issue-23)",
+  "running": [
+    {
+      "issue": 23,
+      "session": "orchestrator-20260321-172932-issue-23-20260417-002350",
+      "pid": 3106133,
+      "claude_pid": 3106329,
+      "iteration": 1,
+      "phase": "build",
+      "started_at": "2026-04-17T00:23:51Z",
+      "elapsed_min": 16
+    }
+  ],
+  "pr_open": [
+    { "issue": 172, "pr": 211 },
+    { "issue": 46, "pr": 313 },
+    { "issue": 85, "pr": 311 },
+    { "issue": 157, "pr": 238 },
+    { "issue": 108, "pr": 132 }
+  ],
+  "blocked_on_human": [
+    { "issue": 173, "pr": 307 }
+  ],
+  "needs_redispatch": [
+    { "issue": 188, "reason": "cap full, waiting for issue-23" },
+    { "issue": 70, "reason": "cap full, waiting for issue-23" }
+  ],
+  "cap": 1,
+  "cap_used": 1,
+  "cap_available": 0,
+  "pending_count": 81,
+  "done_count": 34,
+  "action": "none — cap full, issue-23 actively running"
+}
