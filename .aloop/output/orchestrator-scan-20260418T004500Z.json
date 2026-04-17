@@ -1,0 +1,11 @@
+{
+  "type": "orchestrator_scan",
+  "timestamp": "2026-04-18T00:45:00Z",
+  "iteration": 529,
+  "wave": 1,
+  "summary": "Wave 1 issues #1 and #6 remain pending. Multiple prior dispatch requests in requests/ directory unprocessed. Re-dispatching fresh files. All other issues blocked on wave 1 completion.",
+  "dispatchable": [1, 6],
+  "blocked": [2, 3, 4, 7, 8],
+  "future_waves": [5, 9, 10, 11, 12],
+  "note": "Runtime has accumulated dispatch requests in requests/ but state not updating. Continuing to re-dispatch until runtime processes them."
+}
