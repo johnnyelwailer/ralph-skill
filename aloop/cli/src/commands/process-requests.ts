@@ -783,6 +783,7 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
       if (hasOpenPr) {
         issue.state = 'pr_open';
         issue.status = 'In review';
+        (issue as any).needs_redispatch = false;
       } else {
         // No PR but wants redispatch — reset to pending for fresh dispatch
         issue.state = 'pending';
