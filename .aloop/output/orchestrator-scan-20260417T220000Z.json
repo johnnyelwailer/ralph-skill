@@ -1,0 +1,27 @@
+{
+  "type": "orchestrator_scan",
+  "timestamp": "2026-04-17T22:00:00Z",
+  "summary": "Dispatch requests for wave-1 issues #1 and #6 still present in requests/ since ~22:15Z on 2026-04-16 (~24h). No action taken — no duplicates written. Awaiting runtime to process existing requests.",
+  "active_children": 0,
+  "concurrency_cap": 3,
+  "capacity_free": 3,
+  "current_wave": 1,
+  "pending_dispatch": [
+    {
+      "issue": 1,
+      "title": "Loop Engine: Phase Retry, Finalizer & Exit Gate",
+      "request_file": "dispatch-issue-1-20260416T221500Z.json",
+      "status": "awaiting_runtime",
+      "age_minutes": 1425
+    },
+    {
+      "issue": 6,
+      "title": "aloop start / aloop setup Unified CLI, ZDR & Auto-Monitoring",
+      "request_file": "dispatch-issue-6-20260416T221500Z.json",
+      "status": "awaiting_runtime",
+      "age_minutes": 1425
+    }
+  ],
+  "queue_overrides": [],
+  "action": "none — dispatch requests already present, no duplicates written"
+}
