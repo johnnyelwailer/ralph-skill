@@ -1,5 +1,83 @@
 # QA Log
 
+## QA Session — 2026-04-17 (iteration 2)
+
+### Test Environment
+- Binary under test: `/tmp/aloop-test-install-wnkp9e/bin/aloop`
+- Version: 1.0.0
+- Commit: d263e4fd (branch: aloop/issue-26)
+- Temp dir: N/A (unit tests only; loop.sh tested in isolated temp dirs)
+- Features tested: 4
+
+### Target Selection Reasoning
+1. **CLI type-check** (re-test) — was FAIL(9 errors); 2 new commits (cead4460, d263e4fd) claim to fix 3 of the errors
+2. **orchestrate.test.ts** (re-test) — was FAIL(25/346); checking if any of the 4 new commits helped
+3. **loop.sh `--no-task-exit` flag** — newly completed per TODO.md; UNTESTED in QA_COVERAGE.md
+4. **process-requests reconcile stale child sessions** — new fix (bb93b7a3, 5636c230); UNTESTED in QA_COVERAGE.md
+
+### Results
+- FAIL: CLI type-check — still 6 errors (improved from 9, 3 fixed by recent commits; 6 remain)
+- FAIL: orchestrate.test.ts — still 25/346 fail (no change from iter 1)
+- PASS: loop.sh `--no-task-exit` flag — present in script, accepted without error
+- PASS: process-requests reconcile stale child sessions — 21/21 tests pass incl. reconcile test
+
+### Bugs Filed
+(none new — existing [qa/P1] bugs still open, no regressions detected)
+
+### Re-test notes on existing bugs
+- **[qa/P1] launchChildLoop crashes with ReferenceError: state** — still failing at iter 2. Unfixed.
+- **[qa/P1] processQueuedPrompts returns 0 processed items** — still failing at iter 2. Unfixed.
+- **[qa/P1] CLI type-check FAIL: 9 errors** — improved to 6 errors at d263e4fd. 3 fixed (TS2339 round_robin_order×2, TS2367 review). 6 remain (TS2304 state×3, TS2552 roundRobinOrder, TS2304 provider×2). Still open.
+
+### Command Transcript
+
+```
+# Install CLI from source
+cd aloop/cli && npm run test-install -- --keep
+→ SUCCESS; binary at /tmp/aloop-test-install-wnkp9e/bin/aloop; version 1.0.0
+
+# Log binary under test
+/tmp/aloop-test-install-wnkp9e/bin/aloop --version
+→ 1.0.0
+
+# Test 1: CLI type-check (re-test)
+bun run type-check
+EXIT: 2
+src/commands/orchestrate.ts(3167,7): error TS2304: Cannot find name 'state'.
+src/commands/orchestrate.ts(3168,30): error TS2304: Cannot find name 'state'.
+src/commands/orchestrate.ts(3196,32): error TS2304: Cannot find name 'state'.
+src/commands/orchestrate.ts(3196,60): error TS2552: Cannot find name 'roundRobinOrder'. Did you mean 'stateRoundRobinOrder'?
+src/commands/orchestrate.ts(5168,24): error TS2304: Cannot find name 'provider'.
+src/commands/orchestrate.ts(5180,25): error TS2304: Cannot find name 'provider'.
+→ 6 errors (was 9 at iter 1). Previously present TS2339 round_robin_order×2 and TS2367 review are now gone. STILL FAIL.
+
+# Test 2: orchestrate.test.ts (re-test)
+bun test src/commands/orchestrate.test.ts
+→ 321 pass, 25 fail (no change from iter 1)
+Failing: launchChildLoop (14), dispatchChildLoops (7), runOrchestratorScanPass (2), processQueuedPrompts (2)
+STILL FAIL.
+
+# Test 3: loop.sh --no-task-exit flag
+grep -c "no.task.exit\|NO_TASK_EXIT" /tmp/aloop-test-install-wnkp9e/lib/node_modules/aloop-cli/dist/bin/loop.sh
+→ 3 (flag IS present in loop.sh)
+
+# Test flag acceptance
+bash loop.sh --prompts-dir $P --session-dir $S --work-dir $W --mode build --no-task-exit --max-iterations 1
+→ Loop started and ran to iteration limit without any "unknown option" error for --no-task-exit
+EXIT: 0 → PASS (flag accepted)
+
+# Test 4: process-requests reconcile stale child sessions
+bun test src/commands/process-requests.test.ts
+→ 21 pass, 0 fail
+Test output includes: "[process-requests] Reconciled 1 stale running child status files"
+EXIT: 0 → PASS
+
+# Install prefix cleanup
+rm -rf /tmp/aloop-test-install-wnkp9e
+```
+
+---
+
 ## QA Session — 2026-04-17 (iteration 1)
 
 ### Test Environment

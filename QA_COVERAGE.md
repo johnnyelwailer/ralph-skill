@@ -14,13 +14,15 @@
 | Dashboard unit tests (`npm test`) | 2026-04-13 | 0e6ea585 | PASS | 148 tests, 20 test files, all pass via vitest run |
 | Loop bash script tests (from repo root) | 2026-04-13 | 0e6ea585 | PASS | loop.bats (15/15), json_escape, provider_health, branch_coverage all pass; provenance/path_hardening/finalizer have internal FAILs but exit 0 (pre-existing) |
 | Dashboard E2E tests | 2026-04-13 | — | never | Requires Playwright; skipped this session |
-| CLI type-check (`bun run type-check`) | 2026-04-17 | 76205850 | FAIL | 9 errors (was 2): 8 new in orchestrate.ts (TS2304 `state`×3, TS2552 `roundRobinOrder`, TS2339 `round_robin_order`×2, TS2304 `provider`×2) + pre-existing TS2367 in process-requests.ts:532. Bugs filed [qa/P1] |
+| CLI type-check (`bun run type-check`) | 2026-04-17 | d263e4fd | FAIL | 6 errors (improved from 9 at iter 1): TS2339 round_robin_order×2 fixed (d263e4fd), TS2367 review fixed (cead4460). Remaining: TS2304 state×3, TS2552 roundRobinOrder, TS2304 provider×2. Bugs still open [qa/P1] |
 | Dashboard type-check (`npm run type-check`) | 2026-04-13 | 0e6ea585 | FAIL | tsc exits code 2: missing Vitest globals in App.coverage.test.ts, ArtifactEntry shape mismatch in App.test.tsx. Bug filed [qa/P1] |
 | aloop orchestrate --output json lifecycle | 2026-04-17 | 76205850 | PASS | Returns in 99ms with non-null pid; active.json has pid/session_dir/work_dir/mode:orchestrate; --no-task-exit in spawn args; aloop stop kills process and clears active.json |
 | aloop process-requests validation | 2026-04-17 | 76205850 | PASS | Malformed JSON → requests/failed/; unknown type → requests/failed/ with structured log entry (type, id, error); valid schema with missing field → requests/failed/ with validation error |
 | requests.test.ts unit tests | 2026-04-17 | 76205850 | PASS | 82/82 pass including idempotency tests |
 | process-requests.test.ts unit tests | 2026-04-17 | 76205850 | PASS | 21/21 pass |
 | adapter.test.ts unit tests | 2026-04-17 | 76205850 | PASS | 25/25 pass |
-| orchestrate.test.ts unit tests | 2026-04-17 | 76205850 | FAIL | 25/346 fail: launchChildLoop (14 fail — ReferenceError: state not defined), dispatchChildLoops (7 fail), runOrchestratorScanPass (2 fail), processQueuedPrompts (2 fail). Bugs filed [qa/P1] |
+| orchestrate.test.ts unit tests | 2026-04-17 | d263e4fd | FAIL | 25/346 fail (no change from iter 1): launchChildLoop (14), dispatchChildLoops (7), runOrchestratorScanPass (2), processQueuedPrompts (2). Bugs still open [qa/P1] |
 | CLI tests (`bun run test`) | 2026-04-13 | 0e6ea585 | FAIL | 27 failures out of 922 tests via tsx --test; pre-existing test failures in codebase |
 | Loop script tests (Windows/Pester) | 2026-04-13 | — | never | Requires Windows; skipped this session |
+| loop.sh --no-task-exit flag | 2026-04-17 | d263e4fd | PASS | Flag present in loop.sh (3 occurrences of NO_TASK_EXIT); accepted without error when passed to loop.sh |
+| process-requests reconcile stale child sessions | 2026-04-17 | d263e4fd | PASS | process-requests.test.ts 21/21 pass; includes "Reconciled 1 stale running child status files" test |
