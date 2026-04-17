@@ -1,0 +1,12 @@
+{
+  "id": "stale-26-dead-child-20260417T050400Z",
+  "type": "update_issue_state",
+  "priority": "high",
+  "generated_at": "2026-04-17T05:04:00Z",
+  "payload": {
+    "issue_number": 26,
+    "set_needs_redispatch": true,
+    "clear_child_pid": true,
+    "reason": "Child PID 3418178 is no longer running. Session orchestrator-20260321-172932-issue-26-20260417-010219 stopped at 2026-04-17T01:17:35Z after reaching 100-iteration limit (14/19 tasks completed, 5 remaining, no PR opened). Branch aloop/issue-26 has commits ahead of agent/trunk but is not yet PR-ready. Mark needs_redispatch so runtime dispatches a new child loop to complete remaining tasks and open a PR."
+  }
+}
