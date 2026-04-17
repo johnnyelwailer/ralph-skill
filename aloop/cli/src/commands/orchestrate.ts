@@ -3025,7 +3025,9 @@ export async function launchChildLoop(
   promptsSourceDir: string,
   aloopRoot: string,
   deps: DispatchDeps,
-  provider: string = 'round-robin', // Explicit provider for diversity, default to round-robin
+  provider: string = 'round-robin',
+  state?: OrchestratorState,
+  roundRobinOrder?: string[],
 ): Promise<ChildLaunchResult> {
   const sandbox = normalizeTaskSandbox(issue.sandbox);
   const requires = normalizeTaskRequires(issue.requires);
@@ -3227,6 +3229,7 @@ export async function launchChildLoop(
       '-WorkDir', worktreePath,
       '-Mode', 'plan-build-review',
       '-Provider', provider,
+      '-MaxIterations', '999999',
       '-MaxStuck', '3',
       '-LaunchMode', 'start',
     ];
@@ -3239,6 +3242,7 @@ export async function launchChildLoop(
       '--work-dir', worktreePath,
       '--mode', 'plan-build-review',
       '--provider', provider,
+      '--max-iterations', '999999',
       '--max-stuck', '3',
       '--launch-mode', 'start',
     ];
@@ -3531,7 +3535,9 @@ export async function launchIssues(
         promptsSourceDir,
         aloopRoot,
         deps,
-        provider, // Pass explicit provider instead of round-robin
+        provider,
+        state,
+        roundRobinOrder,
       );
       launched.push(result);
 
@@ -5070,6 +5076,7 @@ export async function processQueuedPrompts(
   aloopRoot: string,
   iteration: number,
   deps: ScanLoopDeps,
+  provider: string = 'round-robin',
 ): Promise<{ processed: number; files: string[] }> {
   const queueDir = path.join(sessionDir, 'queue');
   const result = { processed: 0, files: [] as string[] };
@@ -5636,6 +5643,7 @@ export async function runOrchestratorScanPass(
 
     for (const issue of toDispatch) {
       try {
+        const roundRobinOrder = state.round_robin_order || ['claude', 'opencode'];
         const launchResult = await launchChildLoop(
           issue,
           sessionDir,
@@ -5644,6 +5652,9 @@ export async function runOrchestratorScanPass(
           promptsSourceDir,
           aloopRoot,
           deps.dispatchDeps,
+          'round-robin',
+          state,
+          roundRobinOrder,
         );
         const stateIssue = state.issues.find((i) => i.number === issue.number);
         if (stateIssue) {
