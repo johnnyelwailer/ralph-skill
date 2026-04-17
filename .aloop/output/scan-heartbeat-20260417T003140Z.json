@@ -1,0 +1,36 @@
+{
+  "timestamp": "2026-04-17T00:31:40Z",
+  "iteration": 510,
+  "summary": "issue-23 RUNNING iter 1/build (re-dispatched 00:23 UTC, PID 3106133+claude 3106329, ~8min); pr_open: issue-46/#313, issue-172/#211, issue-85/#311, issue-108/#132, issue-157/#238; blocked_on_human: #173/#307; needs_redispatch: issue-70 (cap full, waiting for issue-23)",
+  "running": [
+    {
+      "issue": 23,
+      "title": "Epic: Inner Loop Engine — Phase Control, Retry & Finalizer",
+      "child_session": "orchestrator-20260321-172932-issue-23-20260417-002350",
+      "child_pid": 3106133,
+      "claude_pid": 3106329,
+      "phase": "build",
+      "iteration": 1,
+      "queue_override": "000-review-fixes.md",
+      "redispatched_at": "2026-04-17T00:23:51Z",
+      "elapsed_minutes": 8
+    }
+  ],
+  "pr_open": [
+    { "issue": 46, "pr": 313, "title": "Agents must have zero knowledge of GitHub — local-file abstraction" },
+    { "issue": 172, "pr": 211, "title": "Replace mkdir locking with POSIX flock in loop.sh health file" },
+    { "issue": 85, "pr": 311, "title": "Proof Artifact API: Serve artifact files via /api/artifacts" },
+    { "issue": 108, "pr": 132, "title": "aloop gh start and aloop gh stop — issue-to-loop workflow" },
+    { "issue": 157, "pr": 238, "title": "Reduce AppView.tsx to layout shell and create AppShell, MainContent" }
+  ],
+  "blocked_on_human": [
+    { "issue": 173, "pr": 307, "title": "Add concurrent_cap failure classification with 2-min hard cap" }
+  ],
+  "needs_redispatch": [
+    { "issue": 70, "title": "QA agent: structured coverage matrix and priority selection algorithm", "reason": "cap full, waiting for issue-23" }
+  ],
+  "concurrency_cap": 1,
+  "capacity_used": 1,
+  "capacity_free": 0,
+  "action": "none — capacity full while issue-23 runs"
+}
