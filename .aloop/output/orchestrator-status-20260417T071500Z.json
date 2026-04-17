@@ -1,0 +1,34 @@
+{
+  "timestamp": "2026-04-17T07:15:00Z",
+  "iteration": 50,
+  "wave": 1,
+  "status": "stalled_awaiting_runtime",
+  "summary": "Wave 1 dispatch requests pending runtime processing for 50+ iterations. Sub-spec files exist. Runtime must process req-001/002/003 to unblock.",
+  "pending_requests": [
+    {
+      "file": "req-001-dispatch_child.json",
+      "id": "orch-dispatch-1-20260416T212500Z",
+      "type": "dispatch_child",
+      "issue_number": 1,
+      "sub_spec_exists": true
+    },
+    {
+      "file": "req-002-dispatch_child.json",
+      "id": "orch-dispatch-2-20260416T212500Z",
+      "type": "dispatch_child",
+      "issue_number": 2,
+      "sub_spec_exists": true
+    },
+    {
+      "file": "req-003-dispatch_child.json",
+      "id": "orch-dispatch-5-20260416T212500Z",
+      "type": "dispatch_child",
+      "issue_number": 5,
+      "sub_spec_exists": true
+    }
+  ],
+  "wave_1_issues": [1, 2, 5],
+  "wave_2_issues": [3, 4, 7, 9, 10, 11, 12],
+  "wave_3_issues": [6, 8],
+  "action_required": "Runtime must process requests/req-001/002/003 dispatch_child requests to launch child loops for issues 1, 2, and 5."
+}
