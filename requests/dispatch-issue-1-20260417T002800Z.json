@@ -1,0 +1,7 @@
+{
+  "dispatch_at": "2026-04-17T002800Z",
+  "issue": 1,
+  "priority": "high",
+  "status": "dispatched",
+  "notes": "Wave 1: Issue #1 (Loop Engine Robustness) is ready with no dependencies. No active children. Concurrency cap 3 — capacity available. Dispatching child loop."
+}
