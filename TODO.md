@@ -1,36 +1,26 @@
-# Issue #22: Epic: Set up GitHub Actions CI
+# Issue #26: Epic: Orchestrator Core — Autonomous Lifecycle & Request Processing
 
 ## Tasks
 
-### In Progress
-_(none)_
-
 ### Up Next
 
-- [ ] Fix branch triggers in `ci.yml`: replace `agent/trunk` with `agent/*` wildcard; add `aloop/*` to push triggers (TASK_SPEC: "Workflow supports `agent/*` branch pattern")
-- [ ] Add CLI tests job to `ci.yml`: `bun install` + `bun run test` in `aloop/cli` (TASK_SPEC acceptance criteria #3)
-- [ ] Add CLI type-check job to `ci.yml`: `bun install` + `bun run type-check` in `aloop/cli` (TASK_SPEC acceptance criteria #5)
-- [ ] Add dashboard type-check job to `ci.yml`: `npm ci` + `npm run type-check` in `aloop/cli/dashboard` (TASK_SPEC acceptance criteria #5)
-- [ ] Add loop script tests (Linux) job to `ci.yml`: install bats, run `bats loop.bats` + at least one `loop_*.tests.sh` in `aloop/bin/tests` (TASK_SPEC acceptance criteria #6)
+- [x] **Wire adapter in `process-requests.ts`** — Read `meta.json` to determine adapter type and instantiate `OrchestratorAdapter` via `createAdapter()`; replace direct `spawnSync('gh', ...)` calls in Phase 2 (`createGhIssue`) and Phase 2c (PR creation for completed children) with adapter methods (`adapter.createIssue()`, `adapter.createPr()`). Add test in `process-requests.test.ts` verifying that adapter selection reads from `meta.json` and the default adapter is GitHub. (AC 9, 10, 11)
 
-### Deferred / Out of scope
-
-Optional jobs (not in TASK_SPEC acceptance criteria):
-- Dashboard E2E job (Playwright/Chromium) — optional per TASK_SPEC
-- Loop script tests (Windows/Pester) — optional per TASK_SPEC
-
-Pre-existing CI failures not caused by issue-22 (separate issues):
-- CLI type-check: 2 TypeScript errors in `process-requests.ts` (TS2367, TS2304) — separate issue
-- Dashboard type-check: missing Vitest globals in `App.coverage.test.ts`, `ArtifactEntry` shape mismatch in `App.test.tsx` — separate issue
-- CLI tests (`bun run test`): pre-existing test failures — separate issue
-
-Shell integration test failures — out of scope for CI setup (loop.sh behavior issues, not CI config):
-- `loop_provenance.tests.sh`: assertions fail on provenance trailer injection in agent commits
-- `loop_path_hardening.tests.sh`: Test 5 assertion fails on path hardening behavior in `invoke_provider`
-- `loop_finalizer_qa_coverage.tests.sh`: `check_finalizer_qa_coverage_gate: command not found` (stale function reference)
+- [ ] **Implement Scan Agent Self-Healing & Diagnostics** — In the scan pass (`processRequestsCommand` or a helper), persist blocker fingerprints across iterations in `orchestrator.json`; after configurable threshold `N` (read from state/config, not hardcoded), write `<session>/diagnostics.json` with fingerprint, first/last-seen iteration, and attempted remediations; write `<session>/ALERT.md` for critical blockers needing human action; auto-remediate known recoverable blockers (missing labels via `adapter.ensureLabelExists()`); log unknown request types with `id`, `type`, and `file` path. Add tests in `process-requests.test.ts` covering threshold trigger, ALERT.md creation, and label auto-remediation. (AC 12, 13, 14)
 
 ### Completed
 
-- [x] `.github/workflows/ci.yml` file exists — verified by direct read of branch HEAD
-- [x] Dashboard tests job (`npm test` in `aloop/cli/dashboard`) — present in ci.yml, correct commands
-- [x] README.md CI badge URL contains `actions/workflows/ci.yml/badge.svg` — verified line 1 of README.md
+- [x] `aloop orchestrate` launches detached daemon and returns immediately — `orchestrate.ts` lines 1515–1607 spawn loop.sh with `detached: true`, `child.unref()`, and return
+- [x] Session registered in `active.json` with `pid`, `session_dir`, `work_dir`, `mode: "orchestrate"` — verified in orchestrate.ts resume path and new-session path
+- [x] Loop invocation includes `--no-task-exit` — verified in orchestrate.ts args arrays
+- [x] `aloop stop <session_id>` stops orchestrator and removes from `active.json` — session.mjs `stopSession` sends SIGTERM and removes entry
+- [x] All 10 request types handled with side effects + archive to `requests/processed/` — `processAgentRequests` in requests.ts
+- [x] Malformed/invalid JSON → `requests/failed/` — validation in `processAgentRequests`
+- [x] Idempotency via `processed-ids.json` + operation-specific duplicate protection — implemented and tested in requests.test.ts
+- [x] `EtagCache` loaded before scan pass and saved after — `etagCache.load()` / `etagCache.save()` in processRequestsCommand
+- [x] `OrchestratorAdapter` interface and `GitHubAdapter` implementation in `adapter.ts` — verified
+- [x] GHE URL support in adapter (no hardcoded `github.com`) — adapter uses `--repo` flag from config
+- [x] Tests in `requests.test.ts` for all request types, validation, idempotency — comprehensive suite present
+- [x] Tests in `adapter.test.ts` for GitHubAdapter, createAdapter, GHE URLs — comprehensive suite present
+- [x] Tests in `orchestrate.test.ts` for orchestrate lifecycle, triage, dispatch, PR lifecycle — large suite present
+- [x] Tests in `process-requests.test.ts` for syncChildBranches, syncMasterToTrunk, PR body enrichment — present

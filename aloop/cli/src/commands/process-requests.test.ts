@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { existsSync } from 'node:fs';
 import { mkdtemp, mkdir, rm, writeFile, readFile } from 'node:fs/promises';
-import { formatReviewCommentHistory, getDirectorySizeBytes, pruneLargeV8CacheDir, syncMasterToTrunk, syncChildBranches, type ChildBranchSyncDeps } from './process-requests.js';
+import { formatReviewCommentHistory, getDirectorySizeBytes, pruneLargeV8CacheDir, syncMasterToTrunk, syncChildBranches, resolveAdapterConfig, type ChildBranchSyncDeps } from './process-requests.js';
 import { processCrResultFiles, type CrResultDeps } from './cr-pipeline.js';
 import type { OrchestratorIssue } from './orchestrate.js';
 
@@ -409,5 +409,39 @@ describe('PR body enrichment', () => {
     } finally {
       await rm(root, { recursive: true, force: true });
     }
+  });
+});
+
+// --- Adapter selection tests (AC 9, 10, 11) ---
+
+describe('resolveAdapterConfig', () => {
+  it('returns null when repo is null and meta has no repo', () => {
+    const result = resolveAdapterConfig({}, null);
+    assert.equal(result, null);
+  });
+
+  it('defaults to "github" adapter type when meta has no adapter_type', () => {
+    const result = resolveAdapterConfig({}, 'owner/repo');
+    assert.deepEqual(result, { type: 'github', repo: 'owner/repo' });
+  });
+
+  it('reads adapter_type from meta', () => {
+    const result = resolveAdapterConfig({ adapter_type: 'github' }, 'owner/repo');
+    assert.deepEqual(result, { type: 'github', repo: 'owner/repo' });
+  });
+
+  it('prefers repo arg over meta.repo', () => {
+    const result = resolveAdapterConfig({ repo: 'meta-owner/meta-repo' }, 'arg-owner/arg-repo');
+    assert.deepEqual(result, { type: 'github', repo: 'arg-owner/arg-repo' });
+  });
+
+  it('falls back to meta.repo when repo arg is null', () => {
+    const result = resolveAdapterConfig({ repo: 'meta-owner/meta-repo' }, null);
+    assert.deepEqual(result, { type: 'github', repo: 'meta-owner/meta-repo' });
+  });
+
+  it('returns null when both repo arg and meta.repo are absent', () => {
+    const result = resolveAdapterConfig({ adapter_type: 'github' }, null);
+    assert.equal(result, null);
   });
 });

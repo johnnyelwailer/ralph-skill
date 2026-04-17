@@ -11,6 +11,8 @@ import {
   type DecompositionPlan,
 } from './orchestrate.js';
 import { EtagCache } from '../lib/github-monitor.js';
+import { processAgentRequests } from '../lib/requests.js';
+import { createAdapter, type OrchestratorAdapter } from '../lib/adapter.js';
 
 // --- Orchestrator event system (data-driven from pipeline.yml) ---
 
@@ -114,6 +116,21 @@ export interface ProcessRequestsOptions {
   output?: string;
 }
 
+/**
+ * Resolves the adapter configuration from session metadata and the repo slug.
+ * Returns null if no repo is available (adapter cannot be instantiated without one).
+ * Defaults to the "github" adapter type when `meta.adapter_type` is not set.
+ */
+export function resolveAdapterConfig(
+  meta: Record<string, unknown>,
+  repo: string | null,
+): { type: string; repo: string } | null {
+  const adapterRepo = repo ?? (meta.repo as string | undefined) ?? null;
+  if (!adapterRepo) return null;
+  const adapterType = (meta.adapter_type as string | undefined) ?? 'github';
+  return { type: adapterType, repo: adapterRepo };
+}
+
 function isChildSessionAlive(aloopRoot: string, childSession: string, childPid?: number | null): boolean {
   const marker = path.join(aloopRoot, 'sessions', childSession);
 
@@ -209,6 +226,20 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
     return { stdout: r.stdout ?? '', stderr: r.stderr ?? '' };
   };
 
+  // Adapter — reads type from meta.json; defaults to "github".
+  // No hardcoded github.com host: the repo slug is resolved from session state/meta.
+  let adapter: OrchestratorAdapter | null = null;
+  {
+    const adapterConfig = resolveAdapterConfig(meta, repo);
+    if (adapterConfig) {
+      try {
+        adapter = createAdapter(adapterConfig, execGh);
+      } catch (e) {
+        console.warn(`[process-requests] Could not create adapter: ${e}. Falling back to direct gh calls.`);
+      }
+    }
+  }
+
   // ── Phase 0: Bridge agent output → requests ──
   // Agents write to worktree/.aloop/output/ (inside their sandbox).
   // Runtime moves files to session_dir/requests/ for processing.
@@ -225,6 +256,50 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
         console.log(`[process-requests] Bridged agent output: ${file}`);
       }
     } catch { /* best-effort */ }
+  }
+
+  // ── Process new-style agent requests ({id, type, payload} format) ──
+  {
+    const requestLogFile = path.join(sessionDir, 'log.jsonl');
+    const ghCommandRunner = async (_operation: string, _sid: string, requestPath: string): Promise<{ exitCode: number; output: string }> => {
+      const requestData = JSON.parse(await readFile(requestPath, 'utf8')) as Record<string, unknown>;
+      const type = requestData.type as string;
+      const repoArgs: string[] = repo ? ['--repo', repo] : [];
+      switch (type) {
+        case 'issue-create': {
+          const r = spawnSync('gh', ['issue', 'create', '--title', String(requestData.title ?? ''), '--body', String(requestData.body ?? ''), ...((requestData.labels as string[] | undefined) ?? []).flatMap(l => ['--label', l]), ...repoArgs], { encoding: 'utf8' });
+          return { exitCode: r.status ?? 1, output: r.stdout ?? r.stderr ?? '' };
+        }
+        case 'issue-close': {
+          const r = spawnSync('gh', ['issue', 'close', String(requestData.issue_number ?? ''), ...repoArgs], { encoding: 'utf8' });
+          return { exitCode: r.status ?? 1, output: r.stdout ?? r.stderr ?? '' };
+        }
+        case 'pr-create': {
+          const r = spawnSync('gh', ['pr', 'create', '--title', String(requestData.title ?? ''), '--body', String(requestData.body ?? ''), '--head', String(requestData.head ?? ''), '--base', String(requestData.base ?? 'agent/trunk'), ...repoArgs], { encoding: 'utf8' });
+          return { exitCode: r.status ?? 1, output: r.stdout ?? r.stderr ?? '' };
+        }
+        case 'pr-merge': {
+          const strategy = requestData.strategy as string | undefined;
+          const strategyFlag = strategy === 'squash' ? '--squash' : strategy === 'rebase' ? '--rebase' : '--merge';
+          const r = spawnSync('gh', ['pr', 'merge', String(requestData.pr_number ?? ''), strategyFlag, ...repoArgs], { encoding: 'utf8' });
+          return { exitCode: r.status ?? 1, output: r.stdout ?? r.stderr ?? '' };
+        }
+        case 'issue-comment': {
+          const r = spawnSync('gh', ['issue', 'comment', String(requestData.issue_number ?? ''), '--body', String(requestData.body ?? ''), ...repoArgs], { encoding: 'utf8' });
+          return { exitCode: r.status ?? 1, output: r.stdout ?? r.stderr ?? '' };
+        }
+        default:
+          return { exitCode: 1, output: `Unknown operation: ${type}` };
+      }
+    };
+    await processAgentRequests({
+      workdir: projectRoot,
+      sessionId,
+      aloopDir: aloopRoot,
+      sessionDir,
+      logPath: requestLogFile,
+      ghCommandRunner,
+    });
   }
 
   // ── Phase 1: Apply agent-produced result files ──
@@ -392,7 +467,23 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
   }
 
   // ── Phase 2: Create GH issues for state entries with number=0 ──
-  if (repo) {
+  if (repo && adapter) {
+    for (const issue of state.issues.filter((i: any) => i.number === 0)) {
+      const labels = (issue as any).parent_issue ? ['aloop/auto'] : ['aloop/epic', 'aloop/auto'];
+      try {
+        const ghNum = await adapter.createIssue({ title: issue.title, body: issue.body ?? '', labels });
+        if (ghNum > 0) {
+          issue.number = ghNum;
+          (issue as any).gh_number = ghNum;
+          stateChanged = true;
+          console.log(`[process-requests] Created GH issue #${ghNum}: ${issue.title.substring(0, 50)}`);
+        }
+      } catch (e) {
+        console.error(`[process-requests] Failed to create GH issue "${issue.title}": ${e}`);
+      }
+    }
+  } else if (repo) {
+    // Fallback: adapter not available (e.g. unknown adapter_type in meta.json)
     for (const issue of state.issues.filter((i: any) => i.number === 0)) {
       const labels = (issue as any).parent_issue ? ['aloop/auto'] : ['aloop/epic', 'aloop/auto'];
       const ghNum = await createGhIssue(repo, issue.title, issue.body ?? '', labels, requestsDir);
@@ -513,31 +604,56 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
                 spawnSync('git', ['-C', childWorktree, 'push', 'origin', 'HEAD'], { encoding: 'utf8' });
               }
 
-              // Create PR
-              const prResult = spawnSync('gh', [
-                'pr', 'create',
-                '--repo', repo,
-                '--title', `#${issue.number}: ${issue.title}`,
-                '--body', `Closes #${issue.number}\n\nAutomated PR from child loop session \`${issue.child_session}\`.`,
-                '--head', branch,
-                '--base', trunkBranch,
-              ], { encoding: 'utf8' });
-
-              if (prResult.status === 0 && prResult.stdout) {
-                const urlMatch = prResult.stdout.match(/\/pull\/(\d+)/);
-                const prNum = urlMatch ? parseInt(urlMatch[1], 10) : 0;
-                if (prNum > 0) {
-                  issue.pr_number = prNum;
-                  issue.state = 'pr_open';
-                  issue.status = 'In review';
-                  stateChanged = true;
-                  console.log(`[process-requests] Created PR #${issue.pr_number} for issue #${issue.number}`);
+              // Create PR via adapter (no hardcoded github.com host)
+              const prBody = `Closes #${issue.number}\n\nAutomated PR from child loop session \`${issue.child_session}\`.`;
+              if (adapter) {
+                try {
+                  const prResult = await adapter.createPr({
+                    base: trunkBranch,
+                    head: branch,
+                    title: `#${issue.number}: ${issue.title}`,
+                    body: prBody,
+                  });
+                  if (prResult.number > 0) {
+                    issue.pr_number = prResult.number;
+                    issue.state = 'pr_open';
+                    issue.status = 'In review';
+                    stateChanged = true;
+                    console.log(`[process-requests] Created PR #${issue.pr_number} for issue #${issue.number}`);
+                  }
+                } catch (e) {
+                  const errMsg = String(e);
+                  // Don't spam — only log if it's not "no commits" or "already exists"
+                  if (!errMsg.includes('already exists') && !errMsg.includes('No commits')) {
+                    console.error(`[process-requests] PR create failed for #${issue.number}: ${errMsg.substring(0, 100)}`);
+                  }
                 }
               } else {
-                const err = prResult.stderr?.trim() ?? '';
-                // Don't spam — only log if it's not "no commits" or "already exists"
-                if (!err.includes('already exists') && !err.includes('No commits')) {
-                  console.error(`[process-requests] PR create failed for #${issue.number}: ${err.substring(0, 100)}`);
+                // Fallback: adapter not available
+                const prResult = spawnSync('gh', [
+                  'pr', 'create',
+                  '--repo', repo,
+                  '--title', `#${issue.number}: ${issue.title}`,
+                  '--body', prBody,
+                  '--head', branch,
+                  '--base', trunkBranch,
+                ], { encoding: 'utf8' });
+
+                if (prResult.status === 0 && prResult.stdout) {
+                  const urlMatch = prResult.stdout.match(/\/pull\/(\d+)/);
+                  const prNum = urlMatch ? parseInt(urlMatch[1], 10) : 0;
+                  if (prNum > 0) {
+                    issue.pr_number = prNum;
+                    issue.state = 'pr_open';
+                    issue.status = 'In review';
+                    stateChanged = true;
+                    console.log(`[process-requests] Created PR #${issue.pr_number} for issue #${issue.number}`);
+                  }
+                } else {
+                  const err = prResult.stderr?.trim() ?? '';
+                  if (!err.includes('already exists') && !err.includes('No commits')) {
+                    console.error(`[process-requests] PR create failed for #${issue.number}: ${err.substring(0, 100)}`);
+                  }
                 }
               }
             }
@@ -1067,4 +1183,107 @@ async function updateParentTasklist(repo: string, parentNum: number, issues: any
     try { await unlink(bodyFile); } catch {}
     console.log(`[process-requests] Updated epic #${parentNum} with ${subNums.length} sub-issue tasklist`);
   } catch { /* non-critical */ }
+}
+
+// ── Exported utilities (used by tests and other modules) ──
+
+export interface ChildBranchSyncDeps {
+  existsSync: (p: string) => boolean;
+  readFile: (p: string) => Promise<string>;
+  writeFile: (p: string, data: string) => Promise<void>;
+  mkdir: (p: string, opts?: { recursive?: boolean }) => Promise<void>;
+  spawnSync: (cmd: string, args: string[], opts?: Record<string, unknown>) => { status: number | null; stdout: string; stderr: string };
+}
+
+export async function syncChildBranches(
+  issues: any[],
+  trunkBranch: string,
+  aloopRoot: string,
+  deps: ChildBranchSyncDeps,
+): Promise<boolean> {
+  let changed = false;
+  for (const issue of issues) {
+    if (!issue.child_session) continue;
+    if (issue.state !== 'in_progress' && issue.state !== 'pr_open' && issue.state !== 'review') continue;
+    const childDir = path.join(aloopRoot, 'sessions', issue.child_session);
+    const childWorktree = path.join(childDir, 'worktree');
+    if (!deps.existsSync(childWorktree)) continue;
+
+    const mergeBase = deps.spawnSync('git', ['-C', childWorktree, 'merge-base', 'HEAD', `origin/${trunkBranch}`], { encoding: 'utf8', timeout: 10000 });
+    const remoteHead = deps.spawnSync('git', ['-C', childWorktree, 'rev-parse', `origin/${trunkBranch}`], { encoding: 'utf8', timeout: 10000 });
+    const mbSha = mergeBase.stdout?.trim();
+    const rhSha = remoteHead.stdout?.trim();
+    if (!mbSha || !rhSha || mbSha.length < 7 || rhSha.length < 7) continue;
+    if (mbSha === rhSha) continue;
+
+    const rebaseResult = deps.spawnSync('git', ['-C', childWorktree, 'rebase', `origin/${trunkBranch}`], { encoding: 'utf8' });
+    if (rebaseResult.status === 0) {
+      deps.spawnSync('git', ['-C', childWorktree, 'push', 'origin', 'HEAD', '--force-with-lease'], { encoding: 'utf8' });
+    } else {
+      deps.spawnSync('git', ['-C', childWorktree, 'rebase', '--abort'], { encoding: 'utf8' });
+      const mergeQueueFile = path.join(childDir, 'queue', '000-merge-conflict.md');
+      if (!deps.existsSync(mergeQueueFile)) {
+        const mergePromptPath = path.join(childDir, 'prompts', 'PROMPT_merge.md');
+        let mergePrompt = '# Merge Conflict Resolution';
+        try { mergePrompt = await deps.readFile(mergePromptPath); } catch {}
+        await deps.mkdir(path.join(childDir, 'queue'), { recursive: true });
+        await deps.writeFile(
+          mergeQueueFile,
+          `---\nagent: merge\nreasoning: high\n---\n\n${mergePrompt}\n\n## Conflict\n\nRebase onto \`origin/${trunkBranch}\` failed.\nRun \`git fetch origin ${trunkBranch} && git rebase origin/${trunkBranch}\`, resolve conflicts, then \`git rebase --continue && git push origin HEAD --force-with-lease\`.\n`,
+        );
+        issue.needs_redispatch = true;
+        changed = true;
+      }
+    }
+  }
+  return changed;
+}
+
+export function syncMasterToTrunk(
+  projectRoot: string,
+  aloopRoot: string,
+  trunkBranch: string,
+  deps: { spawnSync: (cmd: string, args: string[], opts?: Record<string, unknown>) => { status: number | null; stdout: string } },
+): void {
+  const mergeBase = deps.spawnSync('git', ['-C', projectRoot, 'merge-base', `origin/master`, `origin/${trunkBranch}`], { encoding: 'utf8', timeout: 10000 });
+  const masterHead = deps.spawnSync('git', ['-C', projectRoot, 'rev-parse', 'origin/master'], { encoding: 'utf8', timeout: 10000 });
+  const mbSha = mergeBase.stdout?.trim();
+  const mhSha = masterHead.stdout?.trim();
+  if (!mbSha || !mhSha || mbSha.length < 7 || mhSha.length < 7 || mbSha === mhSha) return;
+
+  const ffResult = deps.spawnSync('git', ['-C', projectRoot, 'push', 'origin', `origin/master:refs/heads/${trunkBranch}`], { encoding: 'utf8' });
+  if (ffResult.status === 0) return;
+
+  const tmpMerge = path.join(aloopRoot, 'tmp-trunk-merge');
+  deps.spawnSync('git', ['-C', projectRoot, 'worktree', 'add', tmpMerge, trunkBranch], { encoding: 'utf8' });
+  const mergeResult = deps.spawnSync('git', ['-C', tmpMerge, 'merge', 'origin/master', '--no-edit', '-m', 'Merge master into agent/trunk'], { encoding: 'utf8' });
+  if (mergeResult.status === 0) {
+    deps.spawnSync('git', ['-C', tmpMerge, 'push', 'origin', 'HEAD'], { encoding: 'utf8' });
+  } else {
+    deps.spawnSync('git', ['-C', tmpMerge, 'merge', '--abort'], { encoding: 'utf8' });
+  }
+  deps.spawnSync('git', ['-C', projectRoot, 'worktree', 'remove', '--force', tmpMerge], { encoding: 'utf8' });
+  deps.spawnSync('git', ['-C', projectRoot, 'worktree', 'prune'], { encoding: 'utf8' });
+}
+
+export function formatReviewCommentHistory(comments: Array<{ author: string; body: string; createdAt?: string }>): string {
+  return comments.map(c => `**${c.author}** (${c.createdAt ?? 'unknown'}):\n${c.body}`).join('\n\n---\n\n');
+}
+
+export function getDirectorySizeBytes(dirPath: string): number {
+  try {
+    const result = spawnSync('du', ['-sb', dirPath], { encoding: 'utf8' });
+    if (result.status !== 0) return 0;
+    const match = result.stdout.match(/^(\d+)/);
+    return match ? parseInt(match[1], 10) : 0;
+  } catch {
+    return 0;
+  }
+}
+
+export async function pruneLargeV8CacheDir(cacheDir: string, maxBytes: number): Promise<void> {
+  const size = getDirectorySizeBytes(cacheDir);
+  if (size > maxBytes) {
+    spawnSync('rm', ['-rf', cacheDir], { encoding: 'utf8' });
+  }
 }
