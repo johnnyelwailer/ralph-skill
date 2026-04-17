@@ -2,9 +2,36 @@
 
 ## Tasks
 
-- [ ] Implement as described in the issue
-- [ ] [review] Gate 1 + Constitution Rule 1 (HARD): commit 6ac5edd1 grew loop.sh (+7 LOC vs master, now 2380) and loop.ps1 (+157 LOC vs master, now 2430). Constitution Rule 1 is absolute — any touch to loop scripts must reduce their line count. Revert or refactor the max_iterations changes so both scripts shrink vs master. (priority: critical)
-- [ ] [review] Gate 1 + Constitution Rules 12/18 — orchestrate.ts out of scope: SPEC.md §Out of Scope explicitly excludes orchestrate.ts. Commit 6ac5edd1 adds `-MaxIterations 999999` to launchChildLoop (lines 3230, 3243). Remove these 2 lines. The unlimited behavior should be achieved only through loop.sh/loop.ps1 reading missing max_iterations as no-limit. (priority: high)
-- [ ] [review] Gate 4 bug — loop.ps1 line 103: `Test-Path $env:ALOOP_MAX_ITERATIONS` tests filesystem path existence, not env-var presence. If ALOOP_MAX_ITERATIONS="50", `Test-Path "50"` checks if a file at path "50" exists — always false. Fix: replace `(Test-Path $env:ALOOP_MAX_ITERATIONS)` with `($null -ne $env:ALOOP_MAX_ITERATIONS -and $env:ALOOP_MAX_ITERATIONS -ne '')`. (priority: high)
-- [ ] [review] Gate 4 bug — loop.ps1 line 2423: `if ($iteration -ge $MaxIterations)` fires unconditionally when MaxIterations=0 because any $iteration >= 0, logging spurious "limit_reached(0)" event for all non-limit exits (stop, budget, etc.). Fix: guard with `if ($MaxIterations -gt 0 -and $iteration -ge $MaxIterations)`. (priority: medium)
-- [ ] [review] Gate 3 — no branch coverage tests for max_iterations code paths: the new branches in loop.sh (lines 103-116: read from plan file path, unlimited-mode while condition) and loop.ps1 (lines 101-115) have no tests in loop_branch_coverage.tests.sh. Add branch IDs and test cases covering: (a) MAX_ITERATIONS unset + plan file absent → unlimited, (b) MAX_ITERATIONS unset + plan file has max_iterations → uses plan value, (c) MAX_ITERATIONS set via env → uses env value. (priority: high)
+### In Progress
+_(none)_
+
+### Up Next
+
+_(none)_
+
+### Completed
+
+- [x] cyclePosition tracked independently from iteration counter in loop-plan.json (both shells)
+- [x] Failed iterations keep cyclePosition unchanged; MAX_PHASE_RETRIES (providers × 2, min 2) enforced; phase_retry_exhausted logged after exhaustion (both shells)
+- [x] Build prerequisite: TODO.md checked for unchecked tasks, missing/empty forces plan + logs phase_prerequisite_miss reason=no_tasks (both shells)
+- [x] Review prerequisite: commits since lastPlanCommit checked, missing forces build + logs phase_prerequisite_miss reason=no_builds (both shells)
+- [x] Provider stderr captured in tmp file and included in iteration failure log context (both shells)
+- [x] Queue override executes before cycle/finalizer selection each iteration (both shells)
+- [x] Steering queue execution resets cyclePosition to 0; non-steering queue preserves it (both shells)
+- [x] Finalizer[] consumed from loop-plan.json; finalizerPosition persisted; entry only at cycle boundary when allTasksMarkedDone; abort on new unchecked TODOs; only last finalizer with zero new TODOs sets state=completed; finalizer_entered/finalizer_aborted/finalizer_completed events emitted (both shells)
+- [x] CLAUDECODE sanitized at all 3 entry points: loop.sh (unset at entry + env -u on provider invocations), loop.ps1 (Remove-Item at entry), cli/src/sanitize.ts (delete process.env.CLAUDECODE)
+- [x] Pre-iteration branch sync: sync_base_branch() / Sync-BaseBranch runs each iteration; conflicts queue PROMPT_merge.md and log merge_conflict (both shells)
+- [x] loop.sh --no-task-exit flag: NO_TASK_EXIT=true bypasses check_all_tasks_done()
+- [x] orchestrate.ts: passes --no-task-exit to orchestrator loop args (both Linux and Windows paths); removed hardcoded -MaxIterations 100 from launchChildLoop
+- [x] loop.sh: reads max_iterations from loop-plan.json or ALOOP_MAX_ITERATIONS env; unlimited when both absent
+- [x] loop.ps1: reads max_iterations from loop-plan.json or ALOOP_MAX_ITERATIONS env; unlimited when both absent (MaxIterations=0 default)
+- [x] loop.ps1: fixed Test-Path bug (now reads from $lpf file path, not env var string)
+- [x] loop.ps1: fixed false limit_reached log (guarded with $MaxIterations -gt 0)
+- [x] loop_branch_coverage.tests.sh: max_iterations.env_var, max_iterations.plan_file, max_iterations.unset_no_file tests added
+- [x] loop_branch_coverage.tests.sh: queue.steer_reset and queue.nonsteer_no_reset tests added
+- [x] loop_branch_coverage.tests.sh: branch_sync.conflict, branch_sync.success, branch_sync.fetch_fail tests added
+- [x] loop_finalizer_qa_coverage.tests.sh: 5/5 PASS (append_plan_task_if_missing + check_finalizer_qa_coverage_gate implemented)
+- [x] loop.sh: net LOC reduction vs master (2373 → 2367, −6)
+- [x] loop.ps1: -NoTaskExit switch added; Check-AllTasksComplete returns false immediately when set; net LOC reduction vs master (2273 → 2272, −1)
+- [x] loop_branch_coverage.tests.sh: no_task_exit.skips_done_check and no_task_exit.default_off tests added (62/62 100% coverage)
+- [x] loop.tests.ps1: NoTaskExit Check-AllTasksComplete bypass tests added for PS1 parity

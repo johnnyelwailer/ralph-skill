@@ -147,6 +147,8 @@ register_branch "queue.nonsteer_no_reset" "run_queue_if_present does not reset C
 register_branch "max_iterations.env_var" "ALOOP_MAX_ITERATIONS env var populates MAX_ITERATIONS before plan file is consulted"
 register_branch "max_iterations.plan_file" "empty MAX_ITERATIONS reads max_iterations value from loop-plan.json"
 register_branch "max_iterations.unset_no_file" "empty MAX_ITERATIONS stays empty (unlimited) when no plan file exists"
+register_branch "no_task_exit.skips_done_check" "NO_TASK_EXIT=true causes check_all_tasks_complete to return 1 even when all tasks are done"
+register_branch "no_task_exit.default_off" "without NO_TASK_EXIT, all-done TODO.md causes check_all_tasks_complete to return 0"
 
 RESOLVE_FUNC="$(extract_function resolve_healthy_provider)"
 SETUP_FUNC="$(extract_function setup_gh_block)"
@@ -166,6 +168,7 @@ RUN_QUEUE_FUNC="$(extract_function run_queue_if_present)"
 RESOLVE_MODE_FUNC="$(extract_function resolve_iteration_mode)"
 DERIVE_MODE_FUNC="$(extract_function derive_mode_from_prompt_name)"
 SYNC_BRANCH_FUNC="$(extract_function sync_base_branch)"
+CHECK_ALL_TASKS_FUNC="$(extract_function check_all_tasks_complete)"
 
 if [ -z "$RESOLVE_FUNC" ] || [ -z "$SETUP_FUNC" ] || [ -z "$CLEANUP_FUNC" ] || [ -z "$INVOKE_FUNC" ] || [ -z "$WAIT_FUNC" ] || [ -z "$KILL_PROVIDER_FUNC" ]; then
     echo "FAIL: could not extract one or more target functions from $LOOP_SH"
@@ -179,6 +182,11 @@ fi
 
 if [ -z "$SYNC_BRANCH_FUNC" ]; then
     echo "FAIL: could not extract sync_base_branch from $LOOP_SH"
+    exit 1
+fi
+
+if [ -z "$CHECK_ALL_TASKS_FUNC" ]; then
+    echo "FAIL: could not extract check_all_tasks_complete from $LOOP_SH"
     exit 1
 fi
 
@@ -200,6 +208,7 @@ eval "$RUN_QUEUE_FUNC"
 eval "$RESOLVE_MODE_FUNC"
 eval "$DERIVE_MODE_FUNC"
 eval "$SYNC_BRANCH_FUNC"
+eval "$CHECK_ALL_TASKS_FUNC"
 
 ORIGINAL_PATH="$PATH"
 _gh_block_dir=""
@@ -1221,6 +1230,36 @@ else
 fi
 
 rm -rf "$MAXITER_TMPDIR"
+
+# ---------------------------------------------------------------------------
+# no_task_exit — NO_TASK_EXIT bypass of check_all_tasks_complete
+# ---------------------------------------------------------------------------
+
+NOTASKEXIT_TMPDIR="$(mktemp -d)"
+
+# no_task_exit.skips_done_check — NO_TASK_EXIT=true returns 1 even when all tasks checked
+_SAVE_NO_TASK_EXIT="${NO_TASK_EXIT:-false}"
+NO_TASK_EXIT=true
+PLAN_FILE="$NOTASKEXIT_TMPDIR/TODO.md"
+{ echo '- [x] Task A'; echo '- [x] Task B'; } > "$PLAN_FILE"
+if check_all_tasks_complete; then
+    fail_case "check_all_tasks_complete returned 0 despite NO_TASK_EXIT=true"
+else
+    cover_branch "no_task_exit.skips_done_check"
+    pass_case "check_all_tasks_complete returned 1 (skipped) when NO_TASK_EXIT=true"
+fi
+NO_TASK_EXIT="$_SAVE_NO_TASK_EXIT"
+
+# no_task_exit.default_off — without flag, all-done TODO.md returns 0
+NO_TASK_EXIT=false
+if check_all_tasks_complete; then
+    cover_branch "no_task_exit.default_off"
+    pass_case "check_all_tasks_complete returned 0 for all-done TODO.md when NO_TASK_EXIT=false"
+else
+    fail_case "check_all_tasks_complete returned 1 for all-done TODO.md when NO_TASK_EXIT=false"
+fi
+
+rm -rf "$NOTASKEXIT_TMPDIR"
 
 # ---------------------------------------------------------------------------
 # Final summary

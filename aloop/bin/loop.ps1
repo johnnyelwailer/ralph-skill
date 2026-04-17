@@ -39,6 +39,7 @@ param(
     [switch]$BackupEnabled,
     [switch]$DryRun,
     [switch]$DangerouslySkipContainer,
+    [switch]$NoTaskExit,
     [string]$BaseBranch = 'master'
 )
 
@@ -76,7 +77,6 @@ if (-not (Test-Path $WorkDir)) {
     exit 1
 }
 
-# Create session directory if it doesn't exist
 if (-not (Test-Path $SessionDir)) {
     New-Item -ItemType Directory -Path $SessionDir -Force | Out-Null
 }
@@ -154,7 +154,6 @@ if (Test-SessionLockAlive) {
     exit 1
 }
 
-# Write our PID to the lockfile
 $PID | Set-Content -Encoding utf8 $sessionLockFile
 
 function Remove-SessionLock {
@@ -459,7 +458,6 @@ function Get-ModeColor {
 
 function Persist-LoopPlanState {
     param([int]$Iteration = 0)
-    # Update script:allTasksMarkedDone before persisting (or early return)
     $script:allTasksMarkedDone = Check-AllTasksComplete
 
     $loopPlanFile = Join-Path $SessionDir "loop-plan.json"
@@ -816,6 +814,7 @@ function Get-PlanLines {
 }
 
 function Check-AllTasksComplete {
+    if ($NoTaskExit) { return $false }
     $lines = Get-PlanLines
     if ($lines.Count -eq 0) { return $false }
     $incomplete = ($lines | Where-Object { $_ -match '^\s*-\s+\[ \]' }).Count

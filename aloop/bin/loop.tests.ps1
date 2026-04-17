@@ -3924,3 +3924,50 @@ Describe 'loop.ps1 — provider-health primitives' {
         }
     }
 }
+
+Describe 'loop.ps1 — NoTaskExit Check-AllTasksComplete bypass' {
+    BeforeAll {
+        $script:notaskTempRoot = Join-Path ([System.IO.Path]::GetTempPath()) "aloop-notaskexit-ps1-$PID"
+        New-Item -ItemType Directory -Path $script:notaskTempRoot -Force | Out-Null
+
+        $scriptContent = Get-Content (Join-Path $PSScriptRoot 'loop.ps1') -Raw
+        if ($scriptContent -match '(?ms)(^function Get-PlanLines\s*\{.*?^})') {
+            $script:getPlanLinesFuncSource = $Matches[1]
+        } else {
+            throw "Could not extract Get-PlanLines from loop.ps1"
+        }
+        if ($scriptContent -match '(?ms)(^function Check-AllTasksComplete\s*\{.*?^})') {
+            $script:checkAllTasksFuncSource = $Matches[1]
+        } else {
+            throw "Could not extract Check-AllTasksComplete from loop.ps1"
+        }
+    }
+
+    AfterAll {
+        Remove-Item -Recurse -Force $script:notaskTempRoot -ErrorAction SilentlyContinue
+    }
+
+    It 'Check-AllTasksComplete returns false immediately when -NoTaskExit is set' {
+        $planFile = Join-Path $script:notaskTempRoot 'todo-all-done.md'
+        '- [x] Task 1', '- [x] Task 2' | Set-Content $planFile
+
+        $NoTaskExit = [switch]$true
+        . ([scriptblock]::Create($script:getPlanLinesFuncSource))
+        . ([scriptblock]::Create($script:checkAllTasksFuncSource))
+
+        $result = Check-AllTasksComplete
+        $result | Should -Be $false
+    }
+
+    It 'Check-AllTasksComplete returns true for all-done TODO.md when -NoTaskExit is not set' {
+        $planFile = Join-Path $script:notaskTempRoot 'todo-all-done-default.md'
+        '- [x] Task 1', '- [x] Task 2' | Set-Content $planFile
+
+        $NoTaskExit = [switch]$false
+        . ([scriptblock]::Create($script:getPlanLinesFuncSource))
+        . ([scriptblock]::Create($script:checkAllTasksFuncSource))
+
+        $result = Check-AllTasksComplete
+        $result | Should -Be $true
+    }
+}
