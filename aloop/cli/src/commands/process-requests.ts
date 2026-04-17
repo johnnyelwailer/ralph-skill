@@ -1121,6 +1121,56 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
 
   await etagCache.save();
 
+  // Diagnostics: write/clear diagnostics.json and ALERT.md based on persistent blocker signatures
+  try {
+    const diagState: OrchestratorState = JSON.parse(await readFile(stateFile, 'utf8'));
+    const signatures = diagState.blocker_signatures ?? {};
+    const threshold = scanDeps.blockerThreshold ?? 3;
+    const persistentBlockers = Object.entries(signatures).filter(
+      ([, entry]) => entry.count >= threshold,
+    );
+
+    const diagnosticsFile = path.join(sessionDir, 'diagnostics.json');
+    const alertFile = path.join(sessionDir, 'ALERT.md');
+
+    if (persistentBlockers.length > 0) {
+      const diagnostics = persistentBlockers.map(([fp, entry]) => ({
+        blocker_fingerprint: fp,
+        first_seen_iteration: entry.first_seen_iteration,
+        last_seen_iteration: entry.last_seen_iteration,
+        attempted_remediations: entry.attempted_remediations ?? [],
+      }));
+      await writeFile(diagnosticsFile, `${JSON.stringify(diagnostics, null, 2)}\n`, 'utf8');
+
+      const humanBlockers = persistentBlockers.filter(([fp]) => fp.startsWith('blocked_on_human:'));
+      if (humanBlockers.length > 0) {
+        const alertLines = [
+          '# ALERT: Human Action Required',
+          '',
+          'The following issues are blocked and require human intervention:',
+          '',
+        ];
+        for (const [fp, entry] of humanBlockers) {
+          const issueNum = fp.replace('blocked_on_human:', '');
+          const iterationsBlocked = entry.last_seen_iteration - entry.first_seen_iteration + 1;
+          alertLines.push(`## Issue #${issueNum}`);
+          alertLines.push('');
+          alertLines.push(`- **Blocked since:** iteration ${entry.first_seen_iteration}`);
+          alertLines.push(`- **Blocked for:** ${iterationsBlocked} iteration(s)`);
+          alertLines.push(`- **Suggested action:** Review issue #${issueNum} and resolve the blocker, then unblock the issue.`);
+          alertLines.push('');
+        }
+        await writeFile(alertFile, alertLines.join('\n'), 'utf8');
+      } else if (existsSync(alertFile)) {
+        await unlink(alertFile);
+      }
+    } else {
+      // All blockers resolved — clear diagnostics files
+      if (existsSync(diagnosticsFile)) await unlink(diagnosticsFile);
+      if (existsSync(alertFile)) await unlink(alertFile);
+    }
+  } catch { /* best-effort */ }
+
   // Report
   const outputMode = options.output ?? 'text';
   if (outputMode === 'json') {
