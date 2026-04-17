@@ -6,6 +6,12 @@
 
 ### Up Next
 
+- [ ] [qa/P1] launchChildLoop crashes with ReferenceError: `state` not defined at orchestrate.ts:3166: Called `aloop orchestrate` → loop spawns and runs, but `launchChildLoop` inside orchestrate.ts references `state`, `roundRobinOrder`, and `provider` variables that are out of scope (ReferenceError at runtime). TypeScript type-check confirms with TS2304 `state`×3, TS2552 `roundRobinOrder`, TS2339 `round_robin_order`×2, TS2304 `provider`×2. Causes 14+ test failures in orchestrate.test.ts (`launchChildLoop` and `dispatchChildLoops` suites). Likely introduced in recent orchestrate.ts edits. Tested at iter 1. (priority: high)
+
+- [ ] [qa/P1] processQueuedPrompts returns 0 processed items (expect 1): Two orchestrate.test.ts tests fail with `0 !== 1` at result.processed — "uses sessionDir as work-dir for spec-consistency-check.md" and "uses projectRoot as work-dir for non-consistency queue files". Function returns no processed count when items are queued. Tested at iter 1. (priority: high)
+
+- [ ] [qa/P1] CLI type-check FAIL (9 errors, up from 2): `bun run type-check` exits code 2 with 9 errors — 8 new in orchestrate.ts (TS2304/TS2552/TS2339 for undefined variables `state`, `roundRobinOrder`, `round_robin_order`, `provider`) plus the pre-existing TS2367 in process-requests.ts:532. Situation worsened from previous QA session. Tested at iter 1. (priority: high)
+
 - [x] **[priority: critical] Fix syntax bug: `isChildSessionAlive` missing closing `}` in `process-requests.ts`**
 
   In `aloop/cli/src/commands/process-requests.ts` at line ~156, the `isChildSessionAlive` function

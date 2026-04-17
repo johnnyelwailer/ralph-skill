@@ -1,5 +1,91 @@
 # QA Log
 
+## QA Session — 2026-04-17 (iteration 1)
+
+### Test Environment
+- Binary under test: `/tmp/aloop-test-install-KdRIsr/bin/aloop`
+- Version: 1.0.0
+- Commit: 76205850 (branch: aloop/issue-26)
+- Temp project dir: `/tmp/qa-test-orchestrate-2gPXDe`
+- Features tested: 5
+
+### Target Selection Reasoning
+All orchestrator lifecycle features (Issue #26 scope) were UNTESTED in QA_COVERAGE.md. Selected:
+1. CLI type-check — previously FAIL, re-testing to see if improved
+2. aloop orchestrate --output json — P1 UNTESTED spec AC
+3. aloop process-requests validation/routing — P1 UNTESTED spec AC
+4. Request idempotency — P1 UNTESTED (verified via unit tests)
+5. orchestrate.test.ts unit test suite — P1 UNTESTED
+
+### Results
+- PASS: aloop orchestrate lifecycle (pid, active.json, stop, --no-task-exit)
+- PASS: aloop process-requests validation (malformed→failed/, unknown type→failed/ + structured log)
+- PASS: requests.test.ts (82/82), process-requests.test.ts (21/21), adapter.test.ts (25/25)
+- FAIL: CLI type-check (9 errors, up from 2 previous session)
+- FAIL: orchestrate.test.ts (25/346 fail — launchChildLoop, dispatchChildLoops, processQueuedPrompts)
+
+### Bugs Filed
+- [qa/P1] launchChildLoop crashes with ReferenceError: `state` not defined at orchestrate.ts:3166
+- [qa/P1] processQueuedPrompts returns 0 processed items (expect 1) — 2 test failures
+- [qa/P1] CLI type-check FAIL: 9 errors (8 new in orchestrate.ts + 1 pre-existing in process-requests.ts)
+
+### Command Transcript
+
+```
+# Install CLI from source
+npm --prefix aloop/cli run test-install -- --keep
+→ SUCCESS; binary at /tmp/aloop-test-install-KdRIsr/bin/aloop; version 1.0.0
+
+# CLI type-check
+bun run type-check
+EXIT: 2
+src/commands/orchestrate.ts(3166,7): error TS2304: Cannot find name 'state'.
+src/commands/orchestrate.ts(3167,30): error TS2304: Cannot find name 'state'.
+src/commands/orchestrate.ts(3195,32): error TS2304: Cannot find name 'state'.
+src/commands/orchestrate.ts(3195,60): error TS2552: Cannot find name 'roundRobinOrder'. Did you mean 'stateRoundRobinOrder'?
+src/commands/orchestrate.ts(3483,33): error TS2339: Property 'round_robin_order' does not exist on type 'OrchestratorState'.
+src/commands/orchestrate.ts(3514,33): error TS2339: Property 'round_robin_order' does not exist on type 'OrchestratorState'.
+src/commands/orchestrate.ts(5166,24): error TS2304: Cannot find name 'provider'.
+src/commands/orchestrate.ts(5178,25): error TS2304: Cannot find name 'provider'.
+src/commands/process-requests.ts(532,71): error TS2367: This comparison appears to be unintentional...
+
+# aloop orchestrate --output json (daemon mode)
+cd /tmp/qa-test-orchestrate-2gPXDe
+aloop orchestrate --output json --home-dir /tmp/qa-home-orch-full2-5158
+EXIT: 0, ELAPSED: 99ms
+pid: 5202 (non-null — PASS)
+active.json: { "pid": 5202, "session_dir": "...", "work_dir": "...", "mode": "orchestrate" } — PASS
+spawn args: ...--no-task-exit (PASS); --max-iterations 999999 (large sentinel for "unlimited")
+
+# aloop stop
+aloop stop orchestrator-20260417-073110 --home-dir /tmp/qa-home-orch-full2-5158
+EXIT: 0; "Session stopped."; process 5202 gone; active.json = {} — PASS
+
+# process-requests — malformed JSON
+echo '{not valid json' > requests/malformed-001.json
+aloop process-requests --session-dir SESSION --home-dir HOME
+EXIT: 0; malformed-001.json → requests/failed/ — PASS
+
+# process-requests — unknown type
+{"id":"req-x","type":"unknown_type_xyz","payload":{}} → requests/invalid.json
+aloop process-requests...
+EXIT: 0; invalid.json → requests/failed/
+log.jsonl: {"event":"gh_request_failed","type":"unknown_type_xyz","id":"req-x","error":"Validation failed..."} — PASS
+
+# Unit tests
+bun test src/lib/requests.test.ts → 82 pass, 0 fail (PASS)
+bun test src/commands/process-requests.test.ts → 21 pass, 0 fail (PASS)
+bun test src/lib/adapter.test.ts → 25 pass, 0 fail (PASS)
+bun test src/commands/orchestrate.test.ts → 321 pass, 25 fail (FAIL)
+Failures:
+  launchChildLoop: ReferenceError: state is not defined at orchestrate.ts:3166 (14 tests)
+  dispatchChildLoops: cascading from launchChildLoop (7 tests)
+  runOrchestratorScanPass: cascading (2 tests)
+  processQueuedPrompts: result.processed=0, expected 1 (2 tests)
+```
+
+---
+
 ## QA Session — 2026-04-13 (iteration 4)
 
 ### Test Environment
