@@ -1,0 +1,51 @@
+{
+  "scan_time": "2026-04-17T00:07:00Z",
+  "iter": 501,
+  "wave": 1,
+  "concurrency_cap": 1,
+  "cap_used": 1,
+  "cap_available": 0,
+  "queue_overrides": [],
+
+  "active_children": [
+    {
+      "issue": 23,
+      "session": "orchestrator-20260321-172932-issue-23-20260416-235207",
+      "loop_pid": 2178368,
+      "claude_pid": 1193084,
+      "status": "ALIVE",
+      "phase": "review",
+      "iteration": 46,
+      "elapsed_min": 10,
+      "stuck_count": 0
+    }
+  ],
+
+  "stale_in_progress": [
+    {
+      "issue": 70,
+      "title": "QA agent: structured coverage matrix and priority selection algorithm",
+      "last_session": "orchestrator-20260321-172932-issue-70-20260415-174135",
+      "last_stopped": "2026-04-15T17:51:08Z",
+      "stop_reason": "max_iterations_100",
+      "note": "Marked In progress in orchestrator.json but no active child. Needs redispatch when cap frees up."
+    }
+  ],
+
+  "prs_in_review": [
+    { "issue": 46,  "pr": 313, "title": "Agents must have zero knowledge of GitHub — local-file abstraction" },
+    { "issue": 172, "pr": 211, "title": "Replace mkdir locking with POSIX flock in loop.sh health file access" },
+    { "issue": 157, "pr": 238, "title": "Reduce AppView.tsx to layout shell and create AppShell, MainPanel, Doc" },
+    { "issue": 108, "pr": 132, "title": "aloop gh start and aloop gh stop — issue-to-loop workflow" },
+    { "issue": 85,  "pr": 311, "title": "Proof Artifact API: Serve artifact files via /api/artifacts endpoint" }
+  ],
+
+  "blocked_on_human": [
+    { "issue": 173, "pr": 307, "title": "Add concurrent_cap failure classification with 2-min hard cap in both" }
+  ],
+
+  "dispatch_action": "none",
+  "dispatch_reason": "Concurrency cap (1) is full — issue-23 child alive at iter=46/review. No redispatch until cap frees.",
+
+  "summary": "iter=501; issue-23 child ALIVE (iter=46/review, ~10min, PID=2178368); cap=1/1 FULL; pr_open: issue-46/#313, issue-172/#211, issue-157/#238, issue-108/#132, issue-85/#311; blocked_on_human: #173/#307; stale_in_progress: issue-70 (stopped Apr15, needs redispatch when cap frees)"
+}
