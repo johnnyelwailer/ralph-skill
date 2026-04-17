@@ -5772,9 +5772,10 @@ export async function runOrchestratorScanPass(
       if (feedback) {
         const childQueueDir = path.join(deps.aloopRoot, 'sessions', childSession, 'queue');
         await deps.mkdir?.(childQueueDir, { recursive: true });
+        const prRef = issue.pr_number != null ? `#${issue.pr_number}` : `#${issue.number}`;
         await deps.writeFile(
           path.join(childQueueDir, '000-review-fixes.md'),
-          `---\nagent: build\nreasoning: high\n---\n\n# Review Feedback — Fix Required\n\nThe orchestrator review agent requested changes on PR #${issue.pr_number}.\n\n## Feedback\n\n${feedback}\n\n## Instructions\n\nFix the issues described above, commit, and push.\nDo NOT add TODO.md, STEERING.md, TASK_SPEC.md, or other working artifacts to the commit.\n`,
+          `---\nagent: build\nreasoning: high\n---\n\n# Review Feedback — Fix Required\n\nThe orchestrator review agent requested changes on PR ${prRef}.\n\n## Feedback\n\n${feedback}\n\n## Instructions\n\nFix the issues described above, commit, and push.\nDo NOT add TODO.md, STEERING.md, TASK_SPEC.md, or other working artifacts to the commit.\n`,
           'utf8',
         );
       }
@@ -5813,9 +5814,10 @@ export async function runOrchestratorScanPass(
           if (feedback) {
             const childQueueDir = path.join(deps.aloopRoot, 'sessions', launch.session_id, 'queue');
             await deps.mkdir?.(childQueueDir, { recursive: true });
+            const prRef = issue.pr_number != null ? `#${issue.pr_number}` : `#${issue.number}`;
             await deps.writeFile(
               path.join(childQueueDir, '000-review-fixes.md'),
-              `---\nagent: build\nreasoning: high\n---\n\n# Review Feedback — Fix Required\n\nThe orchestrator review agent requested changes on PR #${issue.pr_number}.\n\n## Feedback\n\n${feedback}\n\n## Instructions\n\nFix the issues described above, commit, and push.\nDo NOT add TODO.md, STEERING.md, TASK_SPEC.md, or other working artifacts to the commit.\n`,
+              `---\nagent: build\nreasoning: high\n---\n\n# Review Feedback — Fix Required\n\nThe orchestrator review agent requested changes on PR ${prRef}.\n\n## Feedback\n\n${feedback}\n\n## Instructions\n\nFix the issues described above, commit, and push.\nDo NOT add TODO.md, STEERING.md, TASK_SPEC.md, or other working artifacts to the commit.\n`,
               'utf8',
             );
           }
