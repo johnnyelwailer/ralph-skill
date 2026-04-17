@@ -249,6 +249,147 @@ test('startCommandWithDeps bootstraps in-place session and registers active map'
   assert.equal(active[result.session_id].work_dir, fixture.projectRoot);
 });
 
+test('startCommandWithDeps rejects --max-iterations 0 instead of silently defaulting', async () => {
+  const fixture = await setupWorkspace('aloop-start-max-iterations-zero-');
+  await writeFile(
+    fixture.discovery.setup.config_path,
+    [
+      "provider: 'codex'",
+      "mode: 'plan-build'",
+      'on_start:',
+      "  monitor: 'none'",
+      '  auto_open: false',
+      '',
+    ].join('\n'),
+    'utf8',
+  );
+
+  await assert.rejects(
+    () =>
+      startCommandWithDeps(
+        { homeDir: fixture.homeDir, projectRoot: fixture.projectRoot, inPlace: true, maxIterations: '0' },
+        {
+          discoverWorkspace: async () => fixture.discovery,
+          readFile,
+          writeFile,
+          mkdir,
+          cp: async (src, dest) => {
+            await mkdir(dest, { recursive: true });
+            const content = await readFile(path.join(src, 'PROMPT_plan.md'), 'utf8');
+            await writeFile(path.join(dest, 'PROMPT_plan.md'), content, 'utf8');
+          },
+          existsSync,
+          spawn: (() => ({ pid: 4242, unref() {} }) as any) as any,
+          spawnSync: (() => ({ status: 0, stdout: '', stderr: '' }) as any) as any,
+          platform: 'linux',
+          nodePath: '/usr/bin/node',
+          aloopPath: '/usr/local/bin/aloop',
+          env: process.env,
+          now: () => new Date('2026-03-01T12:34:56.000Z'),
+        },
+      ),
+    /Invalid --max-iterations value: 0/i,
+  );
+});
+
+test('startCommandWithDeps accepts opencode provider with OpenRouter model path', async () => {
+  const fixture = await setupWorkspace('aloop-start-opencode-openrouter-');
+  await writeFile(
+    fixture.discovery.setup.config_path,
+    [
+      "provider: 'opencode'",
+      "mode: 'build'",
+      'enabled_providers:',
+      "  - 'opencode'",
+      'models:',
+      "  opencode: 'openrouter/anthropic/claude-sonnet-4.6'",
+      'on_start:',
+      "  monitor: 'none'",
+      '  auto_open: false',
+      '',
+    ].join('\n'),
+    'utf8',
+  );
+
+  const launchCalls: SpawnRecord[] = [];
+  const result = await startCommandWithDeps(
+    { homeDir: fixture.homeDir, projectRoot: fixture.projectRoot, inPlace: true },
+    {
+      discoverWorkspace: async () => fixture.discovery,
+      readFile,
+      writeFile,
+      mkdir,
+      cp: async (src, dest) => {
+        await mkdir(dest, { recursive: true });
+        await writeFile(path.join(dest, 'PROMPT_build.md'), await readFile(path.join(src, 'PROMPT_build.md'), 'utf8'), 'utf8');
+      },
+      existsSync,
+      spawn: ((command: string, args?: readonly string[]) => {
+        launchCalls.push({ command, args: [...(args ?? [])] });
+        return { pid: 4245, unref() {} } as any;
+      }) as any,
+      spawnSync: (() => ({ status: 0, stdout: '', stderr: '' }) as any) as any,
+      platform: 'linux',
+      nodePath: '/usr/bin/node',
+      aloopPath: '/usr/local/bin/aloop',
+      env: process.env,
+      now: () => new Date('2026-03-01T12:34:56.000Z'),
+    },
+  );
+
+  assert.equal(result.provider, 'opencode');
+  assert.equal(launchCalls.length, 1);
+  assert.equal(launchCalls[0].args.includes('--provider'), true);
+  assert.equal(launchCalls[0].args.includes('opencode'), true);
+
+  const prompt = await readFile(path.join(result.prompts_dir, 'PROMPT_build.md'), 'utf8');
+  assert.match(prompt, /provider:\s+opencode/);
+  assert.match(prompt, /model:\s+openrouter\/anthropic\/claude-sonnet-4\.6/);
+});
+
+test('startCommandWithDeps rejects invalid OpenRouter model path', async () => {
+  const fixture = await setupWorkspace('aloop-start-opencode-openrouter-invalid-');
+  await writeFile(
+    fixture.discovery.setup.config_path,
+    [
+      "provider: 'opencode'",
+      "mode: 'build'",
+      'enabled_providers:',
+      "  - 'opencode'",
+      'models:',
+      "  opencode: 'openrouter/anthropic/claude/sonnet'",
+      'on_start:',
+      "  monitor: 'none'",
+      '  auto_open: false',
+      '',
+    ].join('\n'),
+    'utf8',
+  );
+
+  await assert.rejects(
+    () =>
+      startCommandWithDeps(
+        { homeDir: fixture.homeDir, projectRoot: fixture.projectRoot, inPlace: true },
+        {
+          discoverWorkspace: async () => fixture.discovery,
+          readFile,
+          writeFile,
+          mkdir,
+          cp: async () => undefined,
+          existsSync,
+          spawn: (() => ({ pid: 1, unref() {} }) as any) as any,
+          spawnSync: (() => ({ status: 0, stdout: '', stderr: '' }) as any) as any,
+          platform: 'linux',
+          nodePath: '/usr/bin/node',
+          aloopPath: '/usr/local/bin/aloop',
+          env: process.env,
+          now: () => new Date('2026-03-01T12:34:56.000Z'),
+        },
+      ),
+    /Invalid OpenRouter model path/i,
+  );
+});
+
 test('startCommandWithDeps accepts legacy config mode loop as plan-build-review', async () => {
   const fixture = await setupWorkspace('aloop-start-legacy-loop-mode-');
   await writeFile(
@@ -1678,6 +1819,71 @@ test('Branch Coverage: config parsing with null retry models and empty string ro
     }
   );
   assert.ok(result.provider === 'claude');
+});
+
+test('startCommandWithDeps parses cost_routing and openrouter_models for opencode', async () => {
+  const fixture = await setupWorkspace('aloop-start-cost-routing-opencode-');
+  fixture.discovery.providers.installed = ['opencode', 'claude'];
+  fixture.discovery.providers.default_provider = 'opencode';
+  await writeFile(path.join(fixture.homeDir, '.aloop', 'config.yml'), "openrouter_models:\n  - 'xiaomi/mimo-v2-pro'\n  - 'anthropic/claude-opus-4.6'\n", 'utf8');
+  await writeFile(
+    fixture.discovery.setup.config_path,
+    [
+      "provider: 'opencode'",
+      "mode: 'plan-build-review'",
+      'enabled_providers:',
+      "  - 'opencode'",
+      'models:',
+      "  opencode: 'opencode-default'",
+      'cost_routing:',
+      "  plan: 'prefer_cheap'",
+      "  build: 'prefer_capable'",
+      'on_start:',
+      "  monitor: 'none'",
+      '  auto_open: false',
+      '',
+    ].join('\n'),
+    'utf8',
+  );
+
+  const result = await startCommandWithDeps(
+    { homeDir: fixture.homeDir, projectRoot: fixture.projectRoot, inPlace: true },
+    {
+      discoverWorkspace: async () => fixture.discovery,
+      readFile,
+      writeFile,
+      mkdir,
+      cp: async (src, dest) => {
+        await mkdir(dest, { recursive: true });
+        const copyIfExists = async (name: string) => {
+          const srcPath = path.join(src, name);
+          if (existsSync(srcPath)) {
+            await writeFile(path.join(dest, name), await readFile(srcPath, 'utf8'), 'utf8');
+          }
+        };
+        await copyIfExists('PROMPT_plan.md');
+        await copyIfExists('PROMPT_build.md');
+        await copyIfExists('PROMPT_review.md');
+      },
+      existsSync,
+      spawn: (() => ({ pid: 4242, unref() {} }) as any) as any,
+      spawnSync: (() => ({ status: 0, stdout: '', stderr: '' }) as any) as any,
+      platform: 'linux',
+      nodePath: '/usr/bin/node',
+      aloopPath: '/usr/local/bin/aloop',
+      env: process.env,
+      now: () => new Date('2026-03-01T12:34:56.000Z'),
+    },
+  );
+
+  assert.equal(result.provider, 'opencode');
+  const planPrompt = await readFile(path.join(result.prompts_dir, 'PROMPT_plan.md'), 'utf8');
+  const buildPrompt = await readFile(path.join(result.prompts_dir, 'PROMPT_build.md'), 'utf8');
+  const reviewPrompt = await readFile(path.join(result.prompts_dir, 'PROMPT_review.md'), 'utf8');
+  assert.match(planPrompt, /model:\s+openrouter\/xiaomi\/mimo-v2-pro/);
+  assert.match(buildPrompt, /model:\s+openrouter\/anthropic\/claude-opus-4\.6/);
+  // default review routing is prefer_capable
+  assert.match(reviewPrompt, /model:\s+openrouter\/anthropic\/claude-opus-4\.6/);
 });
 
 test('Branch Coverage: orchestrate mode throws', async () => {

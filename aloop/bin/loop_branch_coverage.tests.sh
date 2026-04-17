@@ -139,6 +139,16 @@ register_branch "phase_prereq.build.todo_has_unchecked" "check_phase_prerequisit
 register_branch "phase_prereq.plan_passthrough" "check_phase_prerequisites passes through plan phase unchanged"
 register_branch "phase_prereq.review.no_builds" "check_phase_prerequisites forces build when no commits since last plan"
 register_branch "phase_prereq.review.has_builds" "check_phase_prerequisites allows review when commits exist"
+register_branch "branch_sync.conflict" "sync_base_branch queues PROMPT_merge.md and logs merge_conflict on conflict"
+register_branch "branch_sync.success" "sync_base_branch writes no queue file on clean merge"
+register_branch "branch_sync.fetch_fail" "sync_base_branch returns 0 without queuing when fetch fails"
+register_branch "queue.steer_reset" "run_queue_if_present resets CYCLE_POSITION to 0 for steering queue items"
+register_branch "queue.nonsteer_no_reset" "run_queue_if_present does not reset CYCLE_POSITION for non-steering queue items"
+register_branch "max_iterations.env_var" "ALOOP_MAX_ITERATIONS env var populates MAX_ITERATIONS before plan file is consulted"
+register_branch "max_iterations.plan_file" "empty MAX_ITERATIONS reads max_iterations value from loop-plan.json"
+register_branch "max_iterations.unset_no_file" "empty MAX_ITERATIONS stays empty (unlimited) when no plan file exists"
+register_branch "no_task_exit.skips_done_check" "NO_TASK_EXIT=true causes check_all_tasks_complete to return 1 even when all tasks are done"
+register_branch "no_task_exit.default_off" "without NO_TASK_EXIT, all-done TODO.md causes check_all_tasks_complete to return 0"
 
 RESOLVE_FUNC="$(extract_function resolve_healthy_provider)"
 SETUP_FUNC="$(extract_function setup_gh_block)"
@@ -157,6 +167,8 @@ WAIT_FOR_REQUESTS_FUNC="$(extract_function wait_for_requests)"
 RUN_QUEUE_FUNC="$(extract_function run_queue_if_present)"
 RESOLVE_MODE_FUNC="$(extract_function resolve_iteration_mode)"
 DERIVE_MODE_FUNC="$(extract_function derive_mode_from_prompt_name)"
+SYNC_BRANCH_FUNC="$(extract_function sync_base_branch)"
+CHECK_ALL_TASKS_FUNC="$(extract_function check_all_tasks_complete)"
 
 if [ -z "$RESOLVE_FUNC" ] || [ -z "$SETUP_FUNC" ] || [ -z "$CLEANUP_FUNC" ] || [ -z "$INVOKE_FUNC" ] || [ -z "$WAIT_FUNC" ] || [ -z "$KILL_PROVIDER_FUNC" ]; then
     echo "FAIL: could not extract one or more target functions from $LOOP_SH"
@@ -165,6 +177,16 @@ fi
 
 if [ -z "$CYCLE_RESOLVE_FUNC" ] || [ -z "$CHECK_PHASE_PREREQ_FUNC" ] || [ -z "$CHECK_HAS_BUILDS_FUNC" ] || [ -z "$FRONTMATTER_FUNC" ] || [ -z "$DURATION_FUNC" ] || [ -z "$EXEC_CONTROLS_FUNC" ] || [ -z "$ADVANCE_FUNC" ] || [ -z "$WAIT_FOR_REQUESTS_FUNC" ] || [ -z "$RUN_QUEUE_FUNC" ] || [ -z "$RESOLVE_MODE_FUNC" ] || [ -z "$DERIVE_MODE_FUNC" ]; then
     echo "FAIL: could not extract cycle/frontmatter/duration/exec-controls/advance/requests/queue functions from $LOOP_SH"
+    exit 1
+fi
+
+if [ -z "$SYNC_BRANCH_FUNC" ]; then
+    echo "FAIL: could not extract sync_base_branch from $LOOP_SH"
+    exit 1
+fi
+
+if [ -z "$CHECK_ALL_TASKS_FUNC" ]; then
+    echo "FAIL: could not extract check_all_tasks_complete from $LOOP_SH"
     exit 1
 fi
 
@@ -185,6 +207,8 @@ eval "$WAIT_FOR_REQUESTS_FUNC"
 eval "$RUN_QUEUE_FUNC"
 eval "$RESOLVE_MODE_FUNC"
 eval "$DERIVE_MODE_FUNC"
+eval "$SYNC_BRANCH_FUNC"
+eval "$CHECK_ALL_TASKS_FUNC"
 
 ORIGINAL_PATH="$PATH"
 _gh_block_dir=""
@@ -217,6 +241,7 @@ write_log_entry() {
 write_status() { :; }
 update_provider_health_on_success() { :; }
 update_provider_health_on_failure() { :; }
+persist_loop_plan_state() { :; }
 
 declare -A STATUS_BY_PROVIDER=()
 declare -A COOLDOWN_BY_PROVIDER=()
@@ -1033,6 +1058,208 @@ else
 fi
 
 rm -rf "$QUEUE_TMPDIR"
+
+# ---------------------------------------------------------------------------
+# Branch sync branches (sync_base_branch)
+# ---------------------------------------------------------------------------
+
+SYNC_TMPDIR="$(mktemp -d)"
+SESSION_DIR="$SYNC_TMPDIR"
+WORK_DIR="$SYNC_TMPDIR"
+BASE_BRANCH="master"
+
+MOCK_FETCH_RC=0
+MOCK_MERGE_RC=0
+MOCK_MERGE_OUT=""
+MOCK_DIFF_OUT=""
+
+git() {
+    shift 2  # drop "-C" and the path argument
+    case "$1" in
+        fetch) return "$MOCK_FETCH_RC" ;;
+        merge) echo "$MOCK_MERGE_OUT"; return "$MOCK_MERGE_RC" ;;
+        diff)  echo "$MOCK_DIFF_OUT"; return 0 ;;
+    esac
+    return 0
+}
+
+# branch_sync.conflict — conflict queues PROMPT_merge.md and logs merge_conflict
+: > "$COVERAGE_LOG_FILE"
+rm -rf "$SESSION_DIR/queue"
+MOCK_FETCH_RC=0
+MOCK_MERGE_RC=1
+MOCK_MERGE_OUT="CONFLICT (content): Merge conflict in file.txt"
+MOCK_DIFF_OUT="file.txt"
+sync_base_branch
+queue_file=$(find "$SESSION_DIR/queue" -name '*-PROMPT_merge.md' 2>/dev/null | head -n1)
+if [ -n "$queue_file" ] && contains_log "merge_conflict"; then
+    cover_branch "branch_sync.conflict"
+    pass_case "sync_base_branch queues PROMPT_merge.md and logs merge_conflict on conflict"
+else
+    fail_case "sync_base_branch conflict branch failed (queue=$queue_file)"
+fi
+
+# branch_sync.success — clean merge, no queue file written
+: > "$COVERAGE_LOG_FILE"
+rm -rf "$SESSION_DIR/queue"
+MOCK_FETCH_RC=0
+MOCK_MERGE_RC=0
+MOCK_MERGE_OUT="Already up to date."
+MOCK_DIFF_OUT=""
+sync_base_branch
+queue_file=$(find "$SESSION_DIR/queue" -name '*-PROMPT_merge.md' 2>/dev/null | head -n1)
+if [ -z "$queue_file" ] && ! contains_log "merge_conflict"; then
+    cover_branch "branch_sync.success"
+    pass_case "sync_base_branch success path writes no queue file"
+else
+    fail_case "sync_base_branch success path unexpectedly queued a file or logged conflict"
+fi
+
+# branch_sync.fetch_fail — fetch failure returns 0 without queuing anything
+: > "$COVERAGE_LOG_FILE"
+rm -rf "$SESSION_DIR/queue"
+MOCK_FETCH_RC=1
+MOCK_MERGE_RC=0
+sync_base_branch
+rc=$?
+queue_file=$(find "$SESSION_DIR/queue" -name '*-PROMPT_merge.md' 2>/dev/null | head -n1)
+if [ "$rc" -eq 0 ] && [ -z "$queue_file" ]; then
+    cover_branch "branch_sync.fetch_fail"
+    pass_case "sync_base_branch returns 0 and queues nothing when fetch fails"
+else
+    fail_case "sync_base_branch fetch_fail branch failed (rc=$rc queue=$queue_file)"
+fi
+
+unset -f git
+rm -rf "$SYNC_TMPDIR"
+
+# ---------------------------------------------------------------------------
+# Steering cyclePosition reset branches (run_queue_if_present)
+# ---------------------------------------------------------------------------
+
+STEER_TMPDIR="$(mktemp -d)"
+SESSION_DIR="$STEER_TMPDIR"
+WORK_DIR="$STEER_TMPDIR/work"
+mkdir -p "$WORK_DIR"
+mkdir -p "$SESSION_DIR/queue"
+: > "$COVERAGE_LOG_FILE"
+
+# Mock invoke_provider to always succeed so we test the success branch
+invoke_provider() { return 0; }
+
+# queue.steer_reset — steering item resets CYCLE_POSITION to 0 after success
+CYCLE_POSITION=5
+cat > "$SESSION_DIR/queue/10-PROMPT_steer.md" << 'EOF'
+Test steering prompt
+EOF
+if run_queue_if_present "claude"; then
+    if [ "$CYCLE_POSITION" -eq 0 ]; then
+        cover_branch "queue.steer_reset"
+        pass_case "run_queue_if_present resets CYCLE_POSITION to 0 after steering item"
+    else
+        fail_case "run_queue_if_present did not reset CYCLE_POSITION (got $CYCLE_POSITION, expected 0)"
+    fi
+else
+    fail_case "run_queue_if_present failed for steering item"
+fi
+
+# queue.nonsteer_no_reset — non-steering item does not reset CYCLE_POSITION
+CYCLE_POSITION=3
+cat > "$SESSION_DIR/queue/20-build.md" << 'EOF'
+Test non-steering prompt
+EOF
+if run_queue_if_present "claude"; then
+    if [ "$CYCLE_POSITION" -eq 3 ]; then
+        cover_branch "queue.nonsteer_no_reset"
+        pass_case "run_queue_if_present does not reset CYCLE_POSITION for non-steering item"
+    else
+        fail_case "run_queue_if_present unexpectedly reset CYCLE_POSITION (got $CYCLE_POSITION, expected 3)"
+    fi
+else
+    fail_case "run_queue_if_present failed for non-steering item"
+fi
+
+unset -f invoke_provider
+rm -rf "$STEER_TMPDIR"
+
+# ---------------------------------------------------------------------------
+# max_iterations — plan-file reading and env-var branches
+# ---------------------------------------------------------------------------
+
+MAXITER_TMPDIR="$(mktemp -d)"
+
+# max_iterations.env_var — ALOOP_MAX_ITERATIONS env var already populates MAX_ITERATIONS
+_SAVE_ALOOP_MAX="${ALOOP_MAX_ITERATIONS:-}"
+export ALOOP_MAX_ITERATIONS=42
+MAX_ITERATIONS="${ALOOP_MAX_ITERATIONS:-}"
+# Plan-file branch should NOT fire (MAX_ITERATIONS already set)
+[ -z "$MAX_ITERATIONS" ] && [ -f "$MAXITER_TMPDIR/loop-plan.json" ] && \
+    MAX_ITERATIONS=$(python3 -c "import json,sys; d=json.load(open(sys.argv[1])); v=d.get('max_iterations'); print(int(v)) if v is not None else None" "$MAXITER_TMPDIR/loop-plan.json" 2>/dev/null) || true
+if [ "$MAX_ITERATIONS" = "42" ]; then
+    cover_branch "max_iterations.env_var"
+    pass_case "ALOOP_MAX_ITERATIONS env var populates MAX_ITERATIONS (plan file not consulted)"
+else
+    fail_case "ALOOP_MAX_ITERATIONS env var did not populate MAX_ITERATIONS (got '$MAX_ITERATIONS')"
+fi
+if [ -n "$_SAVE_ALOOP_MAX" ]; then ALOOP_MAX_ITERATIONS="$_SAVE_ALOOP_MAX"; else unset ALOOP_MAX_ITERATIONS; fi
+
+# max_iterations.plan_file — empty MAX_ITERATIONS + plan file has value → reads from plan
+MAX_ITERATIONS=""
+cat > "$MAXITER_TMPDIR/loop-plan.json" << 'EOF'
+{"max_iterations": 25, "cycle": []}
+EOF
+[ -z "$MAX_ITERATIONS" ] && [ -f "$MAXITER_TMPDIR/loop-plan.json" ] && \
+    MAX_ITERATIONS=$(python3 -c "import json,sys; d=json.load(open(sys.argv[1])); v=d.get('max_iterations'); print(int(v)) if v is not None else None" "$MAXITER_TMPDIR/loop-plan.json" 2>/dev/null) || true
+if [ "$MAX_ITERATIONS" = "25" ]; then
+    cover_branch "max_iterations.plan_file"
+    pass_case "MAX_ITERATIONS read from loop-plan.json when env var unset"
+else
+    fail_case "MAX_ITERATIONS not read from loop-plan.json (got '$MAX_ITERATIONS')"
+fi
+
+# max_iterations.unset_no_file — empty MAX_ITERATIONS + no plan file → stays empty (unlimited)
+MAX_ITERATIONS=""
+rm -f "$MAXITER_TMPDIR/loop-plan.json"
+[ -z "$MAX_ITERATIONS" ] && [ -f "$MAXITER_TMPDIR/loop-plan.json" ] && \
+    MAX_ITERATIONS=$(python3 -c "import json,sys; d=json.load(open(sys.argv[1])); v=d.get('max_iterations'); print(int(v)) if v is not None else None" "$MAXITER_TMPDIR/loop-plan.json" 2>/dev/null) || true
+if [ -z "$MAX_ITERATIONS" ]; then
+    cover_branch "max_iterations.unset_no_file"
+    pass_case "MAX_ITERATIONS stays empty (unlimited) when env var unset and no plan file"
+else
+    fail_case "MAX_ITERATIONS unexpectedly set when env var unset and no plan file (got '$MAX_ITERATIONS')"
+fi
+
+rm -rf "$MAXITER_TMPDIR"
+
+# ---------------------------------------------------------------------------
+# no_task_exit — NO_TASK_EXIT bypass of check_all_tasks_complete
+# ---------------------------------------------------------------------------
+
+NOTASKEXIT_TMPDIR="$(mktemp -d)"
+
+# no_task_exit.skips_done_check — NO_TASK_EXIT=true returns 1 even when all tasks checked
+_SAVE_NO_TASK_EXIT="${NO_TASK_EXIT:-false}"
+NO_TASK_EXIT=true
+PLAN_FILE="$NOTASKEXIT_TMPDIR/TODO.md"
+{ echo '- [x] Task A'; echo '- [x] Task B'; } > "$PLAN_FILE"
+if check_all_tasks_complete; then
+    fail_case "check_all_tasks_complete returned 0 despite NO_TASK_EXIT=true"
+else
+    cover_branch "no_task_exit.skips_done_check"
+    pass_case "check_all_tasks_complete returned 1 (skipped) when NO_TASK_EXIT=true"
+fi
+NO_TASK_EXIT="$_SAVE_NO_TASK_EXIT"
+
+# no_task_exit.default_off — without flag, all-done TODO.md returns 0
+NO_TASK_EXIT=false
+if check_all_tasks_complete; then
+    cover_branch "no_task_exit.default_off"
+    pass_case "check_all_tasks_complete returned 0 for all-done TODO.md when NO_TASK_EXIT=false"
+else
+    fail_case "check_all_tasks_complete returned 1 for all-done TODO.md when NO_TASK_EXIT=false"
+fi
+
+rm -rf "$NOTASKEXIT_TMPDIR"
 
 # ---------------------------------------------------------------------------
 # Final summary

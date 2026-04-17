@@ -649,8 +649,8 @@ describe('applyDecompositionPlan', () => {
     await applyDecompositionPlan(plan, baseState(), '/sessions/orch-1', 'owner/repo', deps);
 
     assert.equal(calls.length, 2);
-    assert.deepStrictEqual(calls[0].labels, ['aloop', 'aloop/wave-1']);
-    assert.deepStrictEqual(calls[1].labels, ['aloop', 'aloop/wave-2']);
+    assert.deepStrictEqual(calls[0].labels, ['aloop', 'aloop/wave-1', 'wave/1']);
+    assert.deepStrictEqual(calls[1].labels, ['aloop', 'aloop/wave-2', 'wave/2']);
     assert.equal(calls[0].title, 'Wave1');
     assert.equal(calls[1].title, 'Wave2');
   });
@@ -740,7 +740,7 @@ describe('orchestrateCommandWithDeps with --plan', () => {
     const queueFiles = Object.keys(mockDeps._writtenFiles).filter((p) => p.includes('/queue/sub-decompose-issue-'));
     assert.equal(queueFiles.length, 2, 'Should write sub-decompose queue prompts for each epic');
     const queueContent = mockDeps._writtenFiles[queueFiles[0]];
-    assert.match(queueContent, /orch_estimate/, 'Queue override should reference orch_estimate agent');
+    assert.match(queueContent, /orch_sub_decompose/, 'Queue override should reference orch_sub_decompose agent');
   });
 
   it('applies estimate-results.json when present', async () => {
@@ -1817,6 +1817,7 @@ describe('validateDoR', () => {
     const issue = makeIssue({
       title: 'Add login form',
       body: '## Approach\n\nUse react-hook-form with zod validation. Implement form state management and integrate with the auth API endpoint for authentication flow.',
+      dor_validated: false,
     });
     const result = validateDoR(issue);
     assert.equal(result.passed, false);
@@ -1827,6 +1828,7 @@ describe('validateDoR', () => {
     const issue = makeIssue({
       title: 'Add login form',
       body: '## Approach\n\nUse react-hook-form. Blocked by aloop/spec-question regarding auth method.\n\n## Acceptance Criteria\n- [ ] Form renders with email field',
+      dor_validated: false,
     });
     const result = validateDoR(issue);
     assert.equal(result.passed, false);
@@ -1837,6 +1839,7 @@ describe('validateDoR', () => {
     const issue = makeIssue({
       title: 'Add login form',
       body: '## Acceptance Criteria\n- [ ] Form renders with email field',
+      dor_validated: false,
     });
     const result = validateDoR(issue);
     assert.equal(result.passed, false);
@@ -1847,6 +1850,7 @@ describe('validateDoR', () => {
     const issue = makeIssue({
       title: 'Fix bug',
       body: 'Fix the null pointer exception.\n\nAcceptance Criteria:\n- [ ] Crash is prevented for null input.\n\nImplementation approach: add a null check before dereferencing the input parameter.',
+      dor_validated: false,
     });
     const result = validateDoR(issue);
     assert.equal(result.passed, true);
@@ -1856,6 +1860,7 @@ describe('validateDoR', () => {
     const issue = makeIssue({
       title: 'Todo',
       body: 'Something',
+      dor_validated: false,
     });
     const result = validateDoR(issue);
     assert.equal(result.passed, false);
@@ -2344,7 +2349,7 @@ describe('launchChildLoop', () => {
   it('creates worktree with correct branch name', async () => {
     const deps = createMockDispatchDeps();
     await launchChildLoop(issue, '/sessions/orch-1', '/project', 'myapp', '/project/.aloop/prompts', '/home/.aloop', deps);
-    const gitCall = deps._spawnSyncCalls.find((c) => c.command === 'git');
+    const gitCall = deps._spawnSyncCalls.find((c) => c.command === 'git' && c.args.includes('worktree') && c.args.includes('add'));
     assert.ok(gitCall, 'git worktree add should be called');
     assert.ok(gitCall.args.includes('-b'));
     assert.ok(gitCall.args.includes('aloop/issue-42'));
@@ -2719,10 +2724,10 @@ describe('checkPrGates', () => {
         if (args.includes('mergeable,mergeStateStatus')) {
           return { stdout: JSON.stringify({ mergeable: 'MERGEABLE' }), stderr: '' };
         }
-        if (args.includes('checks')) {
-          return { stdout: JSON.stringify([
-            { name: 'build', state: 'IN_PROGRESS', conclusion: '' },
-          ]), stderr: '' };
+        if (args.includes('statusCheckRollup')) {
+          return { stdout: JSON.stringify({ statusCheckRollup: [
+            { name: 'build', status: 'IN_PROGRESS', conclusion: '' },
+          ]}), stderr: '' };
         }
         return { stdout: '', stderr: '' };
       },
@@ -2738,11 +2743,11 @@ describe('checkPrGates', () => {
         if (args.includes('mergeable,mergeStateStatus')) {
           return { stdout: JSON.stringify({ mergeable: 'MERGEABLE' }), stderr: '' };
         }
-        if (args.includes('checks')) {
-          return { stdout: JSON.stringify([
-            { name: 'build', state: 'COMPLETED', conclusion: 'SUCCESS' },
-            { name: 'lint', state: 'COMPLETED', conclusion: 'FAILURE' },
-          ]), stderr: '' };
+        if (args.includes('statusCheckRollup')) {
+          return { stdout: JSON.stringify({ statusCheckRollup: [
+            { name: 'build', status: 'COMPLETED', conclusion: 'SUCCESS' },
+            { name: 'lint', status: 'COMPLETED', conclusion: 'FAILURE' },
+          ]}), stderr: '' };
         }
         return { stdout: '', stderr: '' };
       },
@@ -2761,8 +2766,8 @@ describe('checkPrGates', () => {
         if (args.includes('mergeable,mergeStateStatus')) {
           return { stdout: JSON.stringify({ mergeable: 'MERGEABLE' }), stderr: '' };
         }
-        if (args.includes('checks')) {
-          return { stdout: JSON.stringify([]), stderr: '' };
+        if (args.includes('statusCheckRollup')) {
+          return { stdout: JSON.stringify({ statusCheckRollup: [] }), stderr: '' };
         }
         return { stdout: '', stderr: '' };
       },
@@ -2800,15 +2805,16 @@ describe('checkPrGates', () => {
         if (args.includes('mergeable,mergeStateStatus')) {
           throw new Error('gh API error');
         }
-        if (args.includes('checks')) {
-          return { stdout: JSON.stringify([]), stderr: '' };
+        if (args.includes('statusCheckRollup')) {
+          return { stdout: JSON.stringify({ statusCheckRollup: [] }), stderr: '' };
         }
         return { stdout: '', stderr: '' };
       },
     });
     const result = await checkPrGates(100, 'owner/repo', deps);
     assert.equal(result.mergeable, false);
-    assert.equal(result.gates[0].status, 'fail');
+    // API error on merge check is handled gracefully (skipped, not fail) to avoid blocking PRs on transient errors
+    assert.equal(result.gates[0].status, 'pass');
   });
 
   it('treats SKIPPED and NEUTRAL checks as passing', async () => {
@@ -2856,13 +2862,14 @@ describe('reviewPrDiff', () => {
     assert.ok(result.summary.includes('needs fixes'));
   });
 
-  it('flags for human when diff fetch fails', async () => {
+  it('returns pending when diff fetch fails (will retry)', async () => {
     const deps = createMockPrDeps({
       execGh: async () => { throw new Error('Not found'); },
     });
     const result = await reviewPrDiff(100, 'owner/repo', deps);
-    assert.equal(result.verdict, 'flag-for-human');
-    assert.ok(result.summary.includes('Failed to fetch PR diff'));
+    // API errors return pending (retry next pass) rather than flag-for-human
+    assert.equal(result.verdict, 'pending');
+    assert.ok(result.summary.includes('fetch failed'));
   });
 });
 
@@ -2911,12 +2918,12 @@ describe('processPrLifecycle', () => {
       execGh: async (args) => {
         ghCalls.push(args);
         if (args.includes('mergeable,mergeStateStatus')) {
-          return { stdout: JSON.stringify({ mergeable: 'MERGEABLE' }), stderr: '' };
+          return { stdout: JSON.stringify({ mergeable: 'MERGEABLE', mergeStateStatus: 'CLEAN' }), stderr: '' };
         }
-        if (args.includes('checks')) {
-          return { stdout: JSON.stringify([
-            { name: 'build', state: 'COMPLETED', conclusion: 'SUCCESS' },
-          ]), stderr: '' };
+        if (args.includes('statusCheckRollup')) {
+          return { stdout: JSON.stringify({ statusCheckRollup: [
+            { name: 'build', status: 'COMPLETED', conclusion: 'SUCCESS' },
+          ]}), stderr: '' };
         }
         if (args.includes('diff')) {
           return { stdout: 'diff content', stderr: '' };
@@ -2936,12 +2943,12 @@ describe('processPrLifecycle', () => {
     const deps = createMockPrDeps({
       execGh: async (args) => {
         if (args.includes('mergeable,mergeStateStatus')) {
-          return { stdout: JSON.stringify({ mergeable: 'MERGEABLE' }), stderr: '' };
+          return { stdout: JSON.stringify({ mergeable: 'MERGEABLE', mergeStateStatus: 'CLEAN' }), stderr: '' };
         }
-        if (args.includes('checks')) {
-          return { stdout: JSON.stringify([
-            { name: 'build', state: 'IN_PROGRESS', conclusion: '' },
-          ]), stderr: '' };
+        if (args.includes('statusCheckRollup')) {
+          return { stdout: JSON.stringify({ statusCheckRollup: [
+            { name: 'build', status: 'IN_PROGRESS', conclusion: '' },
+          ]}), stderr: '' };
         }
         return { stdout: '', stderr: '' };
       },
@@ -2976,10 +2983,10 @@ describe('processPrLifecycle', () => {
     const deps = createMockPrDeps({
       execGh: async (args) => {
         if (args.includes('mergeable,mergeStateStatus')) {
-          return { stdout: JSON.stringify({ mergeable: 'CONFLICTING' }), stderr: '' };
+          return { stdout: JSON.stringify({ mergeable: 'CONFLICTING', mergeStateStatus: 'DIRTY' }), stderr: '' };
         }
-        if (args.includes('checks')) {
-          return { stdout: JSON.stringify([]), stderr: '' };
+        if (args.includes('statusCheckRollup')) {
+          return { stdout: JSON.stringify({ statusCheckRollup: [] }), stderr: '' };
         }
         return { stdout: '', stderr: '' };
       },
@@ -3082,12 +3089,12 @@ describe('processPrLifecycle', () => {
       execGh: async (args) => {
         ghCalls.push(args);
         if (args.includes('mergeable,mergeStateStatus')) {
-          return { stdout: JSON.stringify({ mergeable: 'MERGEABLE' }), stderr: '' };
+          return { stdout: JSON.stringify({ mergeable: 'MERGEABLE', mergeStateStatus: 'CLEAN' }), stderr: '' };
         }
-        if (args.includes('checks')) {
-          return { stdout: JSON.stringify([
-            { name: 'build', state: 'COMPLETED', conclusion: 'FAILURE' },
-          ]), stderr: '' };
+        if (args.includes('statusCheckRollup')) {
+          return { stdout: JSON.stringify({ statusCheckRollup: [
+            { name: 'build', status: 'COMPLETED', conclusion: 'FAILURE' },
+          ]}), stderr: '' };
         }
         return { stdout: '', stderr: '' };
       },
@@ -3138,10 +3145,10 @@ describe('processPrLifecycle', () => {
     const deps = createMockPrDeps({
       execGh: async (args) => {
         if (args.includes('mergeable,mergeStateStatus')) {
-          return { stdout: JSON.stringify({ mergeable: 'MERGEABLE' }), stderr: '' };
+          return { stdout: JSON.stringify({ mergeable: 'MERGEABLE', mergeStateStatus: 'CLEAN' }), stderr: '' };
         }
-        if (args.includes('checks')) {
-          return { stdout: JSON.stringify([{ name: 'ci', state: 'COMPLETED', conclusion: 'SUCCESS' }]), stderr: '' };
+        if (args.includes('statusCheckRollup')) {
+          return { stdout: JSON.stringify({ statusCheckRollup: [{ name: 'ci', status: 'COMPLETED', conclusion: 'SUCCESS' }] }), stderr: '' };
         }
         if (args.includes('diff')) {
           return { stdout: 'diff', stderr: '' };
@@ -3167,10 +3174,10 @@ describe('processPrLifecycle', () => {
       execGh: async (args) => {
         ghCalls.push(args);
         if (args.includes('mergeable,mergeStateStatus')) {
-          return { stdout: JSON.stringify({ mergeable: 'MERGEABLE' }), stderr: '' };
+          return { stdout: JSON.stringify({ mergeable: 'MERGEABLE', mergeStateStatus: 'CLEAN' }), stderr: '' };
         }
-        if (args.includes('checks')) {
-          return { stdout: JSON.stringify([]), stderr: '' };
+        if (args.includes('statusCheckRollup')) {
+          return { stdout: JSON.stringify({ statusCheckRollup: [{ name: 'ci', status: 'COMPLETED', conclusion: 'SUCCESS' }] }), stderr: '' };
         }
         if (args.includes('diff')) {
           return { stdout: 'diff', stderr: '' };
@@ -3691,14 +3698,14 @@ describe('queueGapAnalysisForIssues', () => {
     const productContent = writtenFiles['/queue/gap-analysis-product.md'];
     assert.match(productContent, /orch_product_analyst/);
     assert.match(productContent, /# Product Prompt/);
-    assert.match(productContent, /# Spec content here/);
+    assert.match(productContent, /SPEC\.md/);
     assert.match(productContent, /Issue #10: Auth/);
     assert.match(productContent, /Implement auth/);
 
     const archContent = writtenFiles['/queue/gap-analysis-architecture.md'];
     assert.match(archContent, /orch_arch_analyst/);
     assert.match(archContent, /# Arch Prompt/);
-    assert.match(archContent, /# Spec content here/);
+    assert.match(archContent, /SPEC\.md/);
   });
 
   it('returns 0 when no issues need analysis', async () => {
@@ -3758,7 +3765,7 @@ describe('epic and sub-issue decomposition helpers', () => {
     assert.ok(content);
     assert.match(content, /orch_decompose/);
     assert.match(content, /# Decompose prompt/);
-    assert.match(content, /# Spec body/);
+    assert.match(content, /SPEC\.md/);
   });
 
   it('writes sub-issue decomposition request for Needs decomposition targets only', async () => {
@@ -4370,7 +4377,7 @@ describe('runOrchestratorScanPass', () => {
 
     const result = await runOrchestratorScanPass(
       '/state.json', '/session', '/project', 'myapp', '/prompts', '/home/.aloop',
-      'owner/repo', 1, deps,
+      'owner/repo', 5, deps,
     );
 
     assert.equal(result.triage.processed_issues, 1);
@@ -5331,10 +5338,9 @@ describe('orchestrateCommandWithDeps multi-file spec', () => {
     const decomposeFile = Object.keys(writtenFiles).find((k) => k.includes('decompose-epics.md'));
     assert.ok(decomposeFile, 'decompose-epics.md should be queued');
     const content = writtenFiles[decomposeFile];
-    assert.ok(content.includes('Master Spec'), 'should include master spec content');
-    assert.ok(content.includes('Auth Slice'), 'should include auth slice content');
-    assert.ok(content.includes('<!-- spec: SPEC.md -->'), 'should include spec file header for master');
-    assert.ok(content.includes('<!-- spec: auth.md -->'), 'should include spec file header for auth');
+    assert.ok(content.includes('SPEC.md'), 'should reference master spec file');
+    assert.ok(content.includes('auth.md'), 'should reference auth spec file');
+    assert.ok(content.includes('orch_decompose'), 'should include decompose agent frontmatter');
   });
 });
 
@@ -5998,5 +6004,371 @@ describe('runOrchestratorScanPass with replan', () => {
     );
 
     assert.equal(result.replan, null);
+  });
+});
+
+// --- Label enrichment tests (Issue #131) ---
+
+describe('applyDecompositionPlan label enrichment', () => {
+  function baseState(): OrchestratorState {
+    return {
+      spec_file: 'SPEC.md',
+      trunk_branch: 'agent/trunk',
+      concurrency_cap: 3,
+      current_wave: 0,
+      plan_only: false,
+      issues: [],
+      completed_waves: [],
+      filter_issues: null,
+      filter_label: null,
+      filter_repo: null,
+      budget_cap: null,
+      created_at: '2026-03-09T10:30:00.000Z',
+      updated_at: '2026-03-09T10:30:00.000Z',
+    };
+  }
+
+  function baseDeps(): OrchestrateDeps {
+    return {
+      existsSync: () => true,
+      readFile: async () => '',
+      writeFile: async () => {},
+      mkdir: async () => undefined,
+      now: () => new Date('2026-03-09T11:00:00Z'),
+    };
+  }
+
+  it('includes wave/N label alongside aloop/wave-N at creation', async () => {
+    const calls: { labels: string[] }[] = [];
+    const deps: OrchestrateDeps = {
+      ...baseDeps(),
+      execGhIssueCreate: async (_repo, _sid, _title, _body, labels) => {
+        calls.push({ labels });
+        return calls.length;
+      },
+    };
+    const plan: DecompositionPlan = {
+      issues: [
+        planIssue(1, 'Wave1 Task', [], ['aloop/cli/src/commands/start.ts']),
+        planIssue(2, 'Wave2 Task', [1], ['aloop/bin/loop.sh']),
+      ],
+    };
+    await applyDecompositionPlan(plan, baseState(), '/sessions/orch-1', 'owner/repo', deps);
+
+    assert.equal(calls.length, 2);
+    // Wave 1 issue: has aloop, aloop/wave-1, wave/1
+    assert.ok(calls[0].labels.includes('aloop'));
+    assert.ok(calls[0].labels.includes('aloop/wave-1'));
+    assert.ok(calls[0].labels.includes('wave/1'));
+    // Wave 2 issue: has aloop, aloop/wave-2, wave/2
+    assert.ok(calls[1].labels.includes('aloop'));
+    assert.ok(calls[1].labels.includes('aloop/wave-2'));
+    assert.ok(calls[1].labels.includes('wave/2'));
+  });
+
+  it('includes component labels derived from file_hints', async () => {
+    const calls: { labels: string[] }[] = [];
+    const deps: OrchestrateDeps = {
+      ...baseDeps(),
+      execGhIssueCreate: async (_repo, _sid, _title, _body, labels) => {
+        calls.push({ labels });
+        return calls.length;
+      },
+    };
+    const plan: DecompositionPlan = {
+      issues: [
+        planIssue(1, 'Dashboard task', [], ['aloop/cli/dashboard/src/App.tsx']),
+        planIssue(2, 'Loop task', [], ['aloop/bin/loop.sh']),
+        planIssue(3, 'Orchestrator task', [], ['aloop/cli/src/commands/orchestrate.ts']),
+      ],
+    };
+    await applyDecompositionPlan(plan, baseState(), '/sessions/orch-1', 'owner/repo', deps);
+
+    assert.ok(calls[0].labels.includes('component/dashboard'));
+    assert.ok(calls[1].labels.includes('component/loop'));
+    assert.ok(calls[2].labels.includes('component/orchestrator'));
+  });
+
+  it('preserves aloop/epic and aloop/auto alongside new labels', async () => {
+    const calls: { labels: string[] }[] = [];
+    const deps: OrchestrateDeps = {
+      ...baseDeps(),
+      execGhIssueCreate: async (_repo, _sid, _title, _body, labels) => {
+        calls.push({ labels });
+        return calls.length;
+      },
+    };
+    const plan: DecompositionPlan = {
+      issues: [planIssue(1, 'Task', [], ['aloop/cli/src/lib/plan.ts'])],
+    };
+    await applyDecompositionPlan(plan, baseState(), '/sessions/orch-1', 'owner/repo', deps);
+
+    // aloop label is always present
+    assert.ok(calls[0].labels.includes('aloop'));
+    // wave labels are present
+    assert.ok(calls[0].labels.includes('aloop/wave-1'));
+    assert.ok(calls[0].labels.includes('wave/1'));
+    // component label is present
+    assert.ok(calls[0].labels.includes('component/cli'));
+  });
+
+  it('does not add component labels when file_hints is empty', async () => {
+    const calls: { labels: string[] }[] = [];
+    const deps: OrchestrateDeps = {
+      ...baseDeps(),
+      execGhIssueCreate: async (_repo, _sid, _title, _body, labels) => {
+        calls.push({ labels });
+        return calls.length;
+      },
+    };
+    const plan: DecompositionPlan = {
+      issues: [planIssue(1, 'Task no hints', [])],
+    };
+    await applyDecompositionPlan(plan, baseState(), '/sessions/orch-1', 'owner/repo', deps);
+
+    assert.ok(calls[0].labels.includes('wave/1'));
+    assert.ok(!calls[0].labels.some(l => l.startsWith('component/')));
+  });
+
+  it('includes "Depends on #X, #Y" in issue body when dependencies exist (AC 6)', async () => {
+    const calls: { body: string }[] = [];
+    const deps: OrchestrateDeps = {
+      ...baseDeps(),
+      execGhIssueCreate: async (_repo, _sid, _title, body, _labels) => {
+        calls.push({ body });
+        return calls.length;
+      },
+    };
+    const plan: DecompositionPlan = {
+      issues: [
+        planIssue(1, 'First task', []),
+        planIssue(2, 'Second task', [1]),
+      ],
+    };
+    await applyDecompositionPlan(plan, baseState(), '/sessions/orch-1', 'owner/repo', deps);
+
+    assert.equal(calls.length, 2);
+    assert.ok(!calls[0].body.includes('Depends on'), 'First issue should not have Depends on');
+    assert.ok(calls[1].body.includes('Depends on #1'), 'Second issue should reference Depends on #1');
+  });
+
+  it('includes multiple dependency references in issue body', async () => {
+    const calls: { body: string }[] = [];
+    const deps: OrchestrateDeps = {
+      ...baseDeps(),
+      execGhIssueCreate: async (_repo, _sid, _title, body, _labels) => {
+        calls.push({ body });
+        return calls.length;
+      },
+    };
+    const plan: DecompositionPlan = {
+      issues: [
+        planIssue(1, 'A', []),
+        planIssue(2, 'B', []),
+        planIssue(3, 'C', [1, 2]),
+      ],
+    };
+    await applyDecompositionPlan(plan, baseState(), '/sessions/orch-1', 'owner/repo', deps);
+
+    assert.ok(calls[2].body.includes('Depends on #1, #2'), 'Third issue should reference both dependencies');
+  });
+
+  it('does not duplicate Depends on if body already contains it', async () => {
+    const calls: { body: string }[] = [];
+    const deps: OrchestrateDeps = {
+      ...baseDeps(),
+      execGhIssueCreate: async (_repo, _sid, _title, body, _labels) => {
+        calls.push({ body });
+        return calls.length;
+      },
+    };
+    const plan: DecompositionPlan = {
+      issues: [
+        { id: 1, title: 'A', body: 'Body A', depends_on: [], file_hints: [] },
+        { id: 2, title: 'B', body: 'Body B\n\nDepends on #1', depends_on: [1], file_hints: [] },
+      ],
+    };
+    await applyDecompositionPlan(plan, baseState(), '/sessions/orch-1', 'owner/repo', deps);
+
+    const count = (calls[1].body.match(/Depends on/g) || []).length;
+    assert.equal(count, 1, 'Should not duplicate Depends on text');
+  });
+
+  it('stores enriched body in state when dependencies exist', async () => {
+    const calls: unknown[] = [];
+    const deps: OrchestrateDeps = {
+      ...baseDeps(),
+      execGhIssueCreate: async (_repo, _sid, _title, _body, _labels) => { calls.push(1); return calls.length; },
+    };
+    const plan: DecompositionPlan = {
+      issues: [
+        planIssue(1, 'A', []),
+        planIssue(2, 'B', [1]),
+      ],
+    };
+    const result = await applyDecompositionPlan(plan, baseState(), '/sessions/orch-1', 'owner/repo', deps);
+
+    assert.ok(!result.issues[0].body!.includes('Depends on'));
+    assert.ok(result.issues[1].body!.includes('Depends on #1'));
+  });
+
+});
+describe('applyEstimateResults label enrichment', () => {
+  it('applies complexity label via execGh when DoR passes', async () => {
+    const ghCalls: string[][] = [];
+    const state = makeState({
+      issues: [
+        makeIssue({ number: 1, wave: 1, status: 'Needs refinement', dor_validated: false }),
+      ],
+    });
+    const results: EstimateResult[] = [
+      { issue_number: 1, dor_passed: true, complexity_tier: 'M' },
+    ];
+    await applyEstimateResults(state, results, {
+      execGh: async (args) => { ghCalls.push(args); return { stdout: '', stderr: '' }; },
+      repo: 'owner/repo',
+    });
+
+    const labelCall = ghCalls.find(c => c.includes('--add-label') && c.includes('complexity/M'));
+    assert.ok(labelCall, 'Should call execGh to add complexity/M label');
+    assert.ok(labelCall.includes('issue'));
+    assert.ok(labelCall.includes('edit'));
+    assert.ok(labelCall.includes('1'));
+    assert.ok(labelCall.includes('--repo'));
+    assert.ok(labelCall.includes('owner/repo'));
+  });
+
+  it('applies priority label via execGh when present in result', async () => {
+    const ghCalls: string[][] = [];
+    const state = makeState({
+      issues: [
+        makeIssue({ number: 2, wave: 1, status: 'Needs refinement', dor_validated: false }),
+      ],
+    });
+    const results: EstimateResult[] = [
+      { issue_number: 2, dor_passed: true, priority: 'P1' },
+    ];
+    await applyEstimateResults(state, results, {
+      execGh: async (args) => { ghCalls.push(args); return { stdout: '', stderr: '' }; },
+      repo: 'owner/repo',
+    });
+
+    const labelCall = ghCalls.find(c => c.includes('--add-label') && c.includes('P1'));
+    assert.ok(labelCall, 'Should call execGh to add P1 label');
+  });
+
+  it('applies both complexity and priority labels together', async () => {
+    const ghCalls: string[][] = [];
+    const state = makeState({
+      issues: [
+        makeIssue({ number: 3, wave: 1, status: 'Needs refinement', dor_validated: false }),
+      ],
+    });
+    const results: EstimateResult[] = [
+      { issue_number: 3, dor_passed: true, complexity_tier: 'L', priority: 'P0' },
+    ];
+    await applyEstimateResults(state, results, {
+      execGh: async (args) => { ghCalls.push(args); return { stdout: '', stderr: '' }; },
+      repo: 'owner/repo',
+    });
+
+    const labelCall = ghCalls.find(c => c.includes('--add-label') && c.includes('complexity/L'));
+    assert.ok(labelCall, 'Should add complexity/L label');
+    assert.ok(labelCall.includes('P0'), 'Should also add P0 label');
+  });
+
+  it('does not add priority label when absent from result', async () => {
+    const ghCalls: string[][] = [];
+    const state = makeState({
+      issues: [
+        makeIssue({ number: 4, wave: 1, status: 'Needs refinement', dor_validated: false }),
+      ],
+    });
+    const results: EstimateResult[] = [
+      { issue_number: 4, dor_passed: true, complexity_tier: 'S' },
+    ];
+    await applyEstimateResults(state, results, {
+      execGh: async (args) => { ghCalls.push(args); return { stdout: '', stderr: '' }; },
+      repo: 'owner/repo',
+    });
+
+    const labelCall = ghCalls.find(c => c.includes('--add-label'));
+    assert.ok(labelCall, 'Should add complexity/S label');
+    assert.ok(!labelCall.includes('P0'));
+    assert.ok(!labelCall.includes('P1'));
+    assert.ok(!labelCall.includes('P2'));
+  });
+
+  it('does not add labels when complexity_tier and priority are both absent', async () => {
+    const ghCalls: string[][] = [];
+    const state = makeState({
+      issues: [
+        makeIssue({ number: 5, wave: 1, status: 'Needs refinement', dor_validated: false }),
+      ],
+    });
+    const results: EstimateResult[] = [
+      { issue_number: 5, dor_passed: true },
+    ];
+    await applyEstimateResults(state, results, {
+      execGh: async (args) => { ghCalls.push(args); return { stdout: '', stderr: '' }; },
+      repo: 'owner/repo',
+    });
+
+    const labelCall = ghCalls.find(c => c.includes('--add-label'));
+    assert.equal(labelCall, undefined, 'Should not call execGh for labels when no labels to add');
+  });
+
+  it('does not add labels when execGh is not provided', async () => {
+    const state = makeState({
+      issues: [
+        makeIssue({ number: 6, wave: 1, status: 'Needs refinement', dor_validated: false }),
+      ],
+    });
+    const results: EstimateResult[] = [
+      { issue_number: 6, dor_passed: true, complexity_tier: 'XL', priority: 'P2' },
+    ];
+    // Should not throw
+    const outcome = await applyEstimateResults(state, results);
+    assert.deepStrictEqual(outcome.updated, [6]);
+  });
+});
+
+// --- Prompt content verification tests (ACs 9-10) ---
+
+describe('prompt content verification', () => {
+  it('orchestrator review prompt rejects unverified acceptance criteria (AC 9)', async () => {
+    const { readFile } = await import('node:fs/promises');
+    const reviewPrompt = await readFile(
+      new URL('../../../templates/PROMPT_orch_review.md', import.meta.url),
+      'utf8',
+    );
+    assert.ok(
+      reviewPrompt.includes('NOT verified'),
+      'Review prompt must mention NOT verified criteria',
+    );
+    assert.ok(
+      reviewPrompt.includes('request-changes'),
+      'Review prompt must request-changes on unverified criteria',
+    );
+  });
+
+  it('child review instructions include PR_DESCRIPTION.md generation (AC 10)', async () => {
+    const { readFile } = await import('node:fs/promises');
+    const reviewInstructions = await readFile(
+      new URL('../../../templates/instructions/review.md', import.meta.url),
+      'utf8',
+    );
+    assert.ok(
+      reviewInstructions.includes('PR_DESCRIPTION.md'),
+      'Review instructions must mention PR_DESCRIPTION.md',
+    );
+    assert.ok(
+      reviewInstructions.includes('## Summary'),
+      'PR_DESCRIPTION.md format must include Summary section',
+    );
+    assert.ok(
+      reviewInstructions.includes('## Verification'),
+      'PR_DESCRIPTION.md format must include Verification section',
+    );
   });
 });

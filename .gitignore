@@ -28,6 +28,7 @@ STEERING.md
 TASK_SPEC.md
 QA_LOG.md
 QA_COVERAGE.md
+RESEARCH.md
 
 # Misc
 .env
@@ -40,3 +41,13 @@ aloop/cli/dashboard/test-results/
 *-verification.txt
 *.tgz
 .mcp.json
+
+# Proof screenshots (ephemeral test artifacts)
+proof-artifacts/
+
+# Opencode fixture binaries
+aloop/cli/dashboard/e2e/fixtures/home/.cache/
+aloop/cli/dashboard/e2e/fixtures/home/.local/
+
+# Aloop working artifacts (not for PR)
+RESEARCH.md

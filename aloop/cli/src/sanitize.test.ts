@@ -2,6 +2,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const cliRoot = path.resolve(__dirname, '..');
 
 type CliResult = {
   code: number | null;
@@ -10,9 +14,10 @@ type CliResult = {
 };
 
 function runCli(args: string[], envOverrides: Record<string, string>): Promise<CliResult> {
-  const entrypoint = path.resolve(process.cwd(), 'src/index.ts');
+  const entrypoint = path.resolve(__dirname, 'index.ts');
   return new Promise((resolve, reject) => {
     const child = spawn(process.execPath, ['--import', 'tsx', entrypoint, ...args], {
+      cwd: cliRoot,
       stdio: ['ignore', 'pipe', 'pipe'],
       env: { ...process.env, ...envOverrides },
     });

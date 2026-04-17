@@ -178,6 +178,30 @@ test('steer fails when no active sessions', async () => {
   assert.match(output.error, /No active sessions/);
 });
 
+test('steer rejects empty instruction', async () => {
+  const { homeDir } = await setupHome('steer-empty-instruction-');
+
+  const logs: string[] = [];
+  const origLog = console.log;
+  console.log = (msg: string) => logs.push(msg);
+
+  const origExit = process.exit;
+  let exitCode: number | undefined;
+  process.exit = ((code: number) => { exitCode = code; }) as never;
+
+  try {
+    await steerCommand('   ', { homeDir, output: 'json' });
+  } finally {
+    console.log = origLog;
+    process.exit = origExit;
+  }
+
+  assert.equal(exitCode, 1);
+  const output = JSON.parse(logs[0]);
+  assert.equal(output.success, false);
+  assert.match(output.error, /non-empty string/);
+});
+
 test('steer rejects when STEERING.md exists without --overwrite', async () => {
   const { homeDir, workdir } = await setupHome('steer-conflict-');
 

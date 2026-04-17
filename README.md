@@ -8,16 +8,16 @@ Aloop runs autonomous AI coding agents in two modes: a **single-session loop** f
 
 ### Loop Mode (`aloop start`)
 
-A single autonomous coding session. The agent cycles through three phases until all tasks are done:
+A single autonomous coding session. The default cycle is an 8-step sequence that repeats until all tasks are done:
 
 1. **Plan** — Gap analysis between spec and code, outputs prioritized `TODO.md`
-2. **Build** — Picks one task, implements, validates (types/tests/lint), commits
-3. **Review** — Audits the build against 9 quality gates, writes fix tasks or approves
+2. **Build** (×5) — Picks one task per step, implements, validates (types/tests/lint), commits
+3. **QA** — Tests features as a real user (never reads source code), files bugs
+4. **Review** — Audits the build against 9 quality gates, writes fix tasks or approves
 
-Additional agents run between cycles:
-- **Proof** — Captures screenshots, API responses, test output as evidence
-- **Steer** — Applies live direction changes from the dashboard mid-flight
-- **QA** — Tests features as a real user (never reads source code)
+Between iterations the loop checks for **steering overrides** — live direction changes sent from the dashboard or CLI (`aloop steer`).
+
+A **Proof** agent template is available for capturing screenshots, API responses, and test output as evidence. It can be invoked via the orchestrator or queued manually but is not part of the default loop cycle.
 
 Each iteration gets fresh context. The loop handles stuck detection, provider failover, and worktree isolation automatically.
 
@@ -29,7 +29,7 @@ aloop start --provider claude
 aloop start --provider round-robin
 
 # Resume a stopped session
-aloop start --launch-mode resume --session-dir ~/.aloop/sessions/<id>
+aloop start --launch resume <session-id>
 ```
 
 ### Orchestrator Mode (`aloop orchestrate`)
@@ -98,9 +98,32 @@ Five AI coding agents supported — use one, or round-robin across multiple:
 | OpenAI Codex | `codex` | `--dangerously-bypass-approvals-and-sandbox` |
 | GitHub Copilot | `copilot` | `--yolo` |
 | Gemini CLI | `gemini` | `--yolo` |
-| OpenCode | `opencode` | `run --dir <workdir>` |
+| OpenCode | `opencode` | `run` |
 
 **Round-robin mode** cycles providers each iteration — e.g., Claude plans, Codex builds, Gemini reviews, OpenCode builds.
+
+### Shipped Agents (OpenCode)
+
+When OpenCode is enabled, `aloop setup` installs three specialist agents to `.opencode/agents/`. Invoke them directly with `opencode run --agent <name>`:
+
+| Agent | Description | Model |
+|-------|-------------|-------|
+| `code-critic` | Deep code review for subtle bugs and security issues | `anthropic/claude-sonnet-4` (reasoning: xhigh) |
+| `error-analyst` | Parses error logs and stack traces to suggest fixes | `google/gemini-3.1-flash-lite-preview` (reasoning: medium) |
+| `vision-reviewer` | Analyzes screenshots for layout and visual issues | `google/gemini-3.1-flash-lite-preview` (reasoning: medium) |
+
+```bash
+# Run the code critic on your working directory
+opencode run --agent code-critic
+
+# Analyze error output
+opencode run --agent error-analyst
+
+# Review a screenshot for layout issues
+opencode run --agent vision-reviewer
+```
+
+These agents run as read-only subagents (no write/edit access) via OpenRouter. Customize them by editing the markdown files in `.opencode/agents/`.
 
 Provider health is tracked automatically. Failed providers enter cooldown with exponential backoff and are skipped until recovery. Auth failures use longer cooldowns (10min → 30min → 1hr) but still auto-retry.
 
@@ -145,28 +168,32 @@ The installer deploys skill files to each harness directory and the Aloop runtim
 
 | Command | Purpose |
 |---------|---------|
+| `aloop setup` | Interactive project configuration and scaffolding |
 | `aloop start` | Launch a single-session loop |
 | `aloop orchestrate` | Multi-issue decomposition and parallel dispatch |
 | `aloop dashboard` | Real-time monitoring UI |
-| `aloop status` | List active sessions and provider health |
+| `aloop status` | Show active sessions and provider health |
+| `aloop active` | List active sessions |
 | `aloop stop <id>` | Stop a running session |
-| `aloop setup` | Interactive project configuration |
-| `aloop steer` | Send live instruction to a running loop |
+| `aloop steer <msg>` | Send live instruction to a running loop |
 | `aloop gh <op>` | Policy-enforced GitHub operations |
-| `aloop discover` | Auto-detect project specs and validation |
-| `aloop update` | Refresh runtime from repo |
+| `aloop discover` | Auto-detect project specs, languages, and validation |
+| `aloop scaffold` | Scaffold project workdir and prompt templates |
 | `aloop devcontainer` | Generate .devcontainer config |
+| `aloop devcontainer-verify` | Verify devcontainer builds and passes checks |
+| `aloop update` | Refresh ~/.aloop runtime from repo checkout |
 
 ### Slash commands (Claude Code / Codex / Copilot)
 
 ```
-/aloop:setup       Configure Aloop for the current project
-/aloop:start       Launch a loop
-/aloop:status      Check running sessions
-/aloop:dashboard   Launch the dashboard
-/aloop:stop        Stop a loop
-/aloop:steer       Send a steering instruction
-/aloop:orchestrate Launch multi-issue orchestration
+/aloop:setup          Configure Aloop for the current project
+/aloop:start          Launch a loop
+/aloop:stop           Stop a running loop
+/aloop:status         Check running sessions
+/aloop:steer          Send a steering instruction
+/aloop:dashboard      Launch the dashboard
+/aloop:orchestrate    Launch multi-issue orchestration
+/aloop:devcontainer   Generate devcontainer config
 ```
 
 ## Architecture
@@ -185,9 +212,13 @@ The installer deploys skill files to each harness directory and the Aloop runtim
     PROMPT_plan.md              # Plan agent template
     PROMPT_build.md             # Build agent template
     PROMPT_review.md            # Review agent (9 gates)
-    PROMPT_proof.md             # Proof agent template
+    PROMPT_qa.md                # QA agent (black-box user testing)
+    PROMPT_proof.md             # Proof agent (evidence capture)
     PROMPT_steer.md             # Steering agent template
     PROMPT_setup.md             # Setup/discovery agent
+    PROMPT_docs.md              # Documentation sync agent
+    PROMPT_single.md            # Single-shot mode agent
+    PROMPT_orch_*.md            # Orchestrator agent templates (decompose, review, replan, etc.)
     conventions/                # Code quality, testing, git conventions
   sessions/<session-id>/
     meta.json                   # Session metadata

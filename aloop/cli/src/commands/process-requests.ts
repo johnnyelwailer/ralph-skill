@@ -114,6 +114,64 @@ export interface ProcessRequestsOptions {
   output?: string;
 }
 
+function isChildSessionAlive(aloopRoot: string, childSession: string, childPid?: number | null): boolean {
+  const marker = path.join(aloopRoot, 'sessions', childSession);
+
+  if (typeof childPid === 'number' && childPid > 0 && existsSync(`/proc/${childPid}`)) {
+    const cmdlinePath = `/proc/${childPid}/cmdline`;
+    try {
+      const cmdline = readFileSync(cmdlinePath, 'utf8').replace(/\u0000/g, ' ');
+      if (cmdline.includes(marker)) return true;
+    } catch {
+      // Fall through to marker-based scan.
+    }
+  }
+
+  try {
+    const ps = spawnSync('ps', ['-eo', 'pid=,args='], { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] });
+    if (ps.status === 0 && ps.stdout) {
+      return ps.stdout.split('\n').some((line) => line.includes(marker));
+    }
+  } catch {
+    // Fall through.
+  }
+
+  return false;
+
+
+async function sweepStaleRunningIssueStatuses(aloopRoot: string): Promise<number> {
+  const sessionsRoot = path.join(aloopRoot, 'sessions');
+  let fixed = 0;
+  let entries: string[] = [];
+  try {
+    entries = await readdir(sessionsRoot);
+  } catch {
+    return 0;
+  }
+
+  for (const sid of entries) {
+    if (!sid.includes('-issue-')) continue;
+    const statusFile = path.join(sessionsRoot, sid, 'status.json');
+    if (!existsSync(statusFile)) continue;
+
+    try {
+      const status = JSON.parse(await readFile(statusFile, 'utf8'));
+      if (status.state !== 'running') continue;
+      if (isChildSessionAlive(aloopRoot, sid, null)) continue;
+      status.state = 'stopped';
+      status.updated_at = new Date().toISOString();
+      await writeFile(statusFile, `${JSON.stringify(status, null, 2)}
+`, 'utf8');
+      fixed++;
+    } catch {
+      // best-effort
+    }
+  }
+
+  return fixed;
+}
+}
+
 /**
  * One-shot command called by loop.sh between iterations for orchestrator sessions.
  *
@@ -489,7 +547,7 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
     }
   }
 
-  // ── Phase 2d: Detect dead children — reset to Ready if PID is gone ──
+  // ── Phase 2d: Reconcile child-session liveness (PID + command marker) ──
   for (const issue of state.issues) {
     if (issue.state !== 'in_progress') continue;
     if (!issue.child_session) {
@@ -500,7 +558,8 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
       continue;
     }
     const childPid = (issue as any).child_pid;
-    if (childPid && !existsSync(`/proc/${childPid}`)) {
+    const alive = isChildSessionAlive(aloopRoot, issue.child_session, childPid);
+    if (!alive) {
       // PID dead — check child status.json for completion
       const childStatusFile = path.join(aloopRoot, 'sessions', issue.child_session, 'status.json');
       let childState = 'unknown';
@@ -536,6 +595,63 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
         stateChanged = true;
         console.log(`[process-requests] Dead child for #${issue.number} (${childState}) — reset to Ready`);
       }
+
+      // Best-effort: if child status still says running, mark it stopped to avoid stale global counts.
+      if (existsSync(childStatusFile) && childState === 'running') {
+        try {
+          const cs = JSON.parse(await readFile(childStatusFile, 'utf8'));
+          cs.state = 'stopped';
+          cs.updated_at = new Date().toISOString();
+          await writeFile(childStatusFile, `${JSON.stringify(cs, null, 2)}
+`, 'utf8');
+        } catch {
+          // best-effort
+        }
+      }
+    }
+  }
+
+  // ── Phase 2d.1: Enforce live child concurrency cap ──
+  {
+    const cap = Math.max(1, Number((state as any).concurrency_cap ?? 1));
+    const live: Array<{ issue: any; updatedAtMs: number }> = [];
+
+    for (const issue of state.issues) {
+      if (issue.state !== 'in_progress' || !issue.child_session) continue;
+      if (!isChildSessionAlive(aloopRoot, issue.child_session, (issue as any).child_pid)) continue;
+
+      let updatedAtMs = 0;
+      const childStatusFile = path.join(aloopRoot, 'sessions', issue.child_session, 'status.json');
+      if (existsSync(childStatusFile)) {
+        try {
+          const cs = JSON.parse(await readFile(childStatusFile, 'utf8'));
+          const t = Date.parse(cs.updated_at ?? '');
+          if (!Number.isNaN(t)) updatedAtMs = t;
+        } catch {
+          // best-effort
+        }
+      }
+      live.push({ issue, updatedAtMs });
+    }
+
+    if (live.length > cap) {
+      live.sort((a, b) => b.updatedAtMs - a.updatedAtMs);
+      const overflow = live.slice(cap);
+      for (const item of overflow) {
+        const issue = item.issue;
+        const pid = (issue as any).child_pid;
+        if (typeof pid === 'number' && pid > 0) {
+          try { spawnSync('kill', ['-TERM', String(pid)], { encoding: 'utf8' }); } catch { /* best-effort */ }
+          try { spawnSync('kill', ['-KILL', String(pid)], { encoding: 'utf8' }); } catch { /* best-effort */ }
+        }
+        issue.child_session = null;
+        (issue as any).child_pid = null;
+        (issue as any).needs_redispatch = true;
+        issue.state = 'pending';
+        issue.status = 'Ready';
+        stateChanged = true;
+      }
+      console.log(`[process-requests] Concurrency reconciliation: capped live children ${live.length} -> ${cap}`);
     }
   }
 
@@ -567,7 +683,7 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
       // Clear stale child session if the child is dead
       if (issue.child_session) {
         const childPid = (issue as any).child_pid;
-        if (!childPid || !existsSync(`/proc/${childPid}`)) {
+        if (!isChildSessionAlive(aloopRoot, issue.child_session, childPid)) {
           issue.child_session = null;
           (issue as any).child_pid = null;
         }
@@ -581,7 +697,7 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
       // No PR (may or may not have child session) — reset to pending for fresh attempt.
       // Clear dead child session if present.
       const childPid = (issue as any).child_pid;
-      if (issue.child_session && (!childPid || !existsSync(`/proc/${childPid}`))) {
+      if (issue.child_session && !isChildSessionAlive(aloopRoot, issue.child_session, childPid)) {
         issue.child_session = null;
         (issue as any).child_pid = null;
       }
@@ -696,6 +812,14 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
       }
     } catch { /* best-effort */ }
   }
+
+  // ── Phase 2g: Sweep stale child session status files (best-effort) ──
+  try {
+    const fixed = await sweepStaleRunningIssueStatuses(aloopRoot);
+    if (fixed > 0) {
+      console.log(`[process-requests] Reconciled ${fixed} stale running child status files`);
+    }
+  } catch { /* best-effort */ }
 
   // ── Phase 3: Persist state + clean active.json ──
   if (stateChanged) {

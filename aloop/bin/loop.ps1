@@ -1,16 +1,7 @@
-﻿#!/usr/bin/env pwsh
-# Aloop Loop — Generic Multi-Provider Autonomous Coding Loop
-# Usage: loop.ps1 -PromptsDir <path> -SessionDir <path> -WorkDir <path> [-Mode plan-build-review] [-Provider claude] [-MaxIterations 50]
-#
-# Modes:
-#   plan               - planning only (gap analysis, update TODO)
-#   build              - building only (implement tasks from TODO)
-#   review             - review only (audit last build against quality gates)
-#   plan-build         - alternating: plan -> build -> plan -> build -> ...
-#   plan-build-review  - full cycle: plan -> build x5 -> qa -> review -> ... (DEFAULT)
-#
-# Providers:
-#   claude, codex, gemini, copilot, round-robin
+#!/usr/bin/env pwsh
+# Aloop Loop — Multi-Provider Autonomous Coding Loop
+# Usage: loop.ps1 -PromptsDir <path> -SessionDir <path> -WorkDir <path> [options]
+# Modes: plan|build|review|plan-build|plan-build-review; Providers: claude,codex,gemini,copilot,round-robin
 
 param(
     [Parameter(Mandatory)]
@@ -37,7 +28,7 @@ param(
     [string]$CopilotModel = 'gpt-5.3-codex',
     [string]$CopilotRetryModel = 'claude-sonnet-4.6',
 
-    [int]$MaxIterations = 50,
+    [int]$MaxIterations = 0,  # 0 means no limit (read from loop-plan.json if not set via arg/env)
     [int]$MaxStuck = 3,
 
     [int]$ProviderTimeoutSec = $(if ($env:ALOOP_PROVIDER_TIMEOUT) { [int]$env:ALOOP_PROVIDER_TIMEOUT } else { 10800 }),
@@ -47,19 +38,16 @@ param(
 
     [switch]$BackupEnabled,
     [switch]$DryRun,
-    [switch]$DangerouslySkipContainer
+    [switch]$DangerouslySkipContainer,
+    [switch]$NoTaskExit,
+    [string]$BaseBranch = 'master'
 )
 
 $ErrorActionPreference = 'Stop'
 
-# Defense in depth: clear CLAUDECODE from the process environment at script entry.
-if (Test-Path Env:CLAUDECODE) {
-    Remove-Item Env:CLAUDECODE -ErrorAction SilentlyContinue
-}
+Remove-Item Env:CLAUDECODE -ErrorAction SilentlyContinue  # clear at script entry
 
-# ============================================================================
 # PATH NORMALIZATION — tolerate POSIX-style paths from Git Bash / MSYS
-# ============================================================================
 
 function ConvertTo-NativePath {
     param([string]$Value)
@@ -77,9 +65,7 @@ $SessionDir = ConvertTo-NativePath $SessionDir
 $WorkDir    = ConvertTo-NativePath $WorkDir
 $sessionId  = Split-Path -Leaf $SessionDir
 
-# ============================================================================
 # VALIDATION
-# ============================================================================
 
 if (-not (Test-Path $PromptsDir)) {
     Write-Error "Prompts directory not found: $PromptsDir"
@@ -91,14 +77,17 @@ if (-not (Test-Path $WorkDir)) {
     exit 1
 }
 
-# Create session directory if it doesn't exist
 if (-not (Test-Path $SessionDir)) {
     New-Item -ItemType Directory -Path $SessionDir -Force | Out-Null
 }
 
-# ============================================================================
+$lpf = Join-Path $SessionDir 'loop-plan.json'
+if ($MaxIterations -eq 0 -and -not [string]::IsNullOrEmpty($env:ALOOP_MAX_ITERATIONS)) { $MaxIterations = [int]$env:ALOOP_MAX_ITERATIONS }
+if ($MaxIterations -eq 0 -and (Test-Path $lpf)) {
+    try { $pj = Get-Content $lpf -Raw | ConvertFrom-Json; if ($null -ne $pj.max_iterations) { $MaxIterations = [int]$pj.max_iterations } } catch { }
+}
+
 # DEVCONTAINER AUTO-ROUTING — detect and route provider calls through container
-# ============================================================================
 
 $script:useDevcontainer = $false
 $devcontainerJsonPath = Join-Path $WorkDir '.devcontainer' 'devcontainer.json'
@@ -147,9 +136,7 @@ function Initialize-DevcontainerRouting {
 
 Initialize-DevcontainerRouting
 
-# ============================================================================
 # SESSION LOCKING — prevent multiple loops on same session files
-# ============================================================================
 
 $sessionLockFile = Join-Path $SessionDir "session.lock"
 
@@ -167,7 +154,6 @@ if (Test-SessionLockAlive) {
     exit 1
 }
 
-# Write our PID to the lockfile
 $PID | Set-Content -Encoding utf8 $sessionLockFile
 
 function Remove-SessionLock {
@@ -179,9 +165,7 @@ function Remove-SessionLock {
     }
 }
 
-# ============================================================================
 # PROVIDER PROCESS TRACKING — kill hung/zombie provider on timeout or exit
-# ============================================================================
 
 $script:activeProviderProcess = $null
 
@@ -199,9 +183,7 @@ function Stop-ActiveProvider {
     }
 }
 
-# ============================================================================
 # HELPER FUNCTIONS
-# ============================================================================
 
 function Normalize-ProviderList {
     param([string[]]$RawProviders)
@@ -283,17 +265,13 @@ function Check-PhasePrerequisites {
             $uncheckedCount = @(Get-Content $PlanFile | Where-Object { $_ -match '^\s*-\s+\[ \]' }).Count
             if ($null -ne $uncheckedCount -and $uncheckedCount -eq 0) {
                 $actualPhase = 'plan'
-                Write-LogEntry -Event "phase_prerequisite_miss" -Data @{
-                    requested = "build"; actual = "plan"; reason = "no_tasks"
-                }
+                Write-LogEntry -Event "phase_prerequisite_miss" -Data @{ requested="build"; actual="plan"; reason="no_tasks" }
                 Write-Warning "No unchecked tasks in TODO.md — forcing plan phase"
             }
         } else {
             # TODO.md missing or unreadable — treat as zero tasks, force plan
             $actualPhase = 'plan'
-            Write-LogEntry -Event "phase_prerequisite_miss" -Data @{
-                requested = "build"; actual = "plan"; reason = "no_tasks"
-            }
+            Write-LogEntry -Event "phase_prerequisite_miss" -Data @{ requested="build"; actual="plan"; reason="no_tasks" }
             Write-Warning "TODO.md not found — forcing plan phase"
         }
     }
@@ -303,9 +281,7 @@ function Check-PhasePrerequisites {
         if (-not [string]::IsNullOrWhiteSpace($WorkDir) -and (Test-Path (Join-Path $WorkDir ".git"))) {
             if (-not (Check-HasBuildsToReview)) {
                 $actualPhase = 'build'
-                Write-LogEntry -Event "phase_prerequisite_miss" -Data @{
-                    requested = "review"; actual = "build"; reason = "no_builds"
-                }
+                Write-LogEntry -Event "phase_prerequisite_miss" -Data @{ requested="review"; actual="build"; reason="no_builds" }
                 Write-Warning "No builds since last plan — forcing build phase"
             }
         }
@@ -482,7 +458,6 @@ function Get-ModeColor {
 
 function Persist-LoopPlanState {
     param([int]$Iteration = 0)
-    # Update script:allTasksMarkedDone before persisting (or early return)
     $script:allTasksMarkedDone = Check-AllTasksComplete
 
     $loopPlanFile = Join-Path $SessionDir "loop-plan.json"
@@ -828,9 +803,7 @@ function Show-AgentSummary {
     }
 }
 
-# ============================================================================
 # PLAN FILE HELPERS
-# ============================================================================
 
 $planFile = Join-Path $WorkDir "TODO.md"
 $artifactsDir = Join-Path $SessionDir "artifacts"
@@ -841,6 +814,7 @@ function Get-PlanLines {
 }
 
 function Check-AllTasksComplete {
+    if ($NoTaskExit) { return $false }
     $lines = Get-PlanLines
     if ($lines.Count -eq 0) { return $false }
     $incomplete = ($lines | Where-Object { $_ -match '^\s*-\s+\[ \]' }).Count
@@ -849,6 +823,35 @@ function Check-AllTasksComplete {
         return ($completed -gt 0)
     }
     return $false
+}
+
+function Append-PlanTaskIfMissing {
+    param([string]$t)
+    if ([string]::IsNullOrWhiteSpace($t) -or -not (Test-Path $planFile)) { return }
+    $c = Get-Content $planFile -Raw -ErrorAction SilentlyContinue
+    if (-not $c -or -not $c.Contains($t)) { Add-Content $planFile "`n- [ ] $t" -Encoding utf8 }
+}
+
+function Check-FinalizerQaCoverageGate {
+    $script:finalizerQaGateReason = $script:finalizerQaGateMessage = ""
+    $script:finalizerQaTotal = $script:finalizerQaUntested = $script:finalizerQaFail = 0
+    $cf = Join-Path $WorkDir "QA_COVERAGE.md"
+    if (-not (Test-Path $cf)) { $script:finalizerQaGateReason="qa_coverage_missing"; $script:finalizerQaGateMessage="QA_COVERAGE.md is missing — skipping enforcement"; return $true }
+    $total=$untested=$fail=0; $fails=@()
+    foreach ($l in (Get-Content $cf -ErrorAction SilentlyContinue)) {
+        if ($l -notmatch '^\|') { continue }
+        $c=$l -split '\|'; if ($c.Count -lt 6) { continue }
+        $feat=$c[1].Trim(); $st=$c[5].Trim().ToUpper()
+        if ([string]::IsNullOrWhiteSpace($feat) -or $feat -eq 'Feature' -or $st -notin @('PASS','FAIL','UNTESTED')) { continue }
+        $total++; if ($st -eq 'UNTESTED') { $untested++ }; if ($st -eq 'FAIL') { $fail++; $fails+=$feat }
+    }
+    $script:finalizerQaTotal=$total; $script:finalizerQaUntested=$untested; $script:finalizerQaFail=$fail
+    if ($total -le 0) { $script:finalizerQaGateReason="qa_coverage_unparseable"; $script:finalizerQaGateMessage="QA_COVERAGE.md did not contain parseable PASS/FAIL/UNTESTED rows"; Append-PlanTaskIfMissing "[qa/P1] [finalizer-qa-gate] Fix QA_COVERAGE.md table format so finalizer can enforce coverage"; return $false }
+    $pct=[int]($untested*100/$total); $blocked=$false
+    if ($fail -gt 0) { $blocked=$true; foreach ($fi in $fails) { Append-PlanTaskIfMissing "[qa/P1] [finalizer-qa-gate] Resolve FAIL coverage item: $fi" } }
+    if ($pct -gt 30) { $blocked=$true; Append-PlanTaskIfMissing "[qa/P1] [finalizer-qa-gate] Reduce UNTESTED QA coverage to <=30% (currently $untested/$total, $pct%)" }
+    if ($blocked) { $script:finalizerQaGateReason="qa_coverage_blocked"; $script:finalizerQaGateMessage="QA coverage gate blocked exit (UNTESTED=$untested/$total, FAIL=$fail)"; return $false }
+    $script:finalizerQaGateReason="qa_coverage_pass"; $script:finalizerQaGateMessage="QA coverage gate passed (UNTESTED=$untested/$total, FAIL=$fail)"; return $true
 }
 
 function Get-CurrentTask {
@@ -874,9 +877,7 @@ function Resolve-PromptPlaceholders {
     return $resolved
 }
 
-# ============================================================================
 # STUCK DETECTION
-# ============================================================================
 
 $stuckState = @{ LastTask = ""; StuckCount = 0 }
 $script:allTasksMarkedDone = $false
@@ -926,7 +927,7 @@ function Register-IterationFailure {
         [string]$ErrorText
     )
     if (-not ($Mode -in @('plan-build', 'plan-build-review'))) { return }
-    if (-not ($IterationMode -in @('plan', 'build', 'qa', 'review'))) { return }
+    if (-not ($IterationMode -in @('plan', 'build', 'qa', 'review', 'spec-gap', 'docs'))) { return }
 
     # Use per-prompt max_retries (from frontmatter) when set, else global default
     $effectiveRetries = if ($script:effectiveMaxRetries) { $script:effectiveMaxRetries } else { $script:maxPhaseRetries }
@@ -998,9 +999,7 @@ function Skip-StuckTask {
     Set-Content -Encoding utf8 $planFile $lines
 }
 
-# ============================================================================
 # SESSION STATE
-# ============================================================================
 
 $statusFile = Join-Path $SessionDir "status.json"
 $logFile = Join-Path $SessionDir "log.jsonl"
@@ -1154,9 +1153,7 @@ function Extract-OpenCodeUsage {
     }
 }
 
-# ============================================================================
 # PROVIDER HEALTH PRIMITIVES
-# ============================================================================
 
 $providerHealthDir = if ($env:ALOOP_HEALTH_DIR) { $env:ALOOP_HEALTH_DIR } else { Join-Path (Join-Path $HOME '.aloop') 'health' }
 $healthLockRetryDelaysMs = @(50, 100, 150, 200, 250)
@@ -1252,13 +1249,12 @@ function Get-ProviderHealthState {
 
     $state = New-ProviderHealthState
     if ($parsed.PSObject.Properties.Name -contains 'status') { $state.status = [string]$parsed.status }
-    if ($parsed.PSObject.Properties.Name -contains 'last_success') { $state.last_success = $parsed.last_success }
-    if ($parsed.PSObject.Properties.Name -contains 'last_failure') { $state.last_failure = $parsed.last_failure }
+    if ($parsed.PSObject.Properties.Name -contains 'last_success') { $ls=$parsed.last_success; $state.last_success=if($ls -is [datetime]){[DateTimeOffset]::new($ls.ToUniversalTime(),[TimeSpan]::Zero).ToString('o')}else{[string]$ls} }
+    if ($parsed.PSObject.Properties.Name -contains 'last_failure') { $lf=$parsed.last_failure; $state.last_failure=if($lf -is [datetime]){[DateTimeOffset]::new($lf.ToUniversalTime(),[TimeSpan]::Zero).ToString('o')}else{[string]$lf} }
     if ($parsed.PSObject.Properties.Name -contains 'failure_reason') { $state.failure_reason = $parsed.failure_reason }
     if ($parsed.PSObject.Properties.Name -contains 'consecutive_failures') { $state.consecutive_failures = [int]$parsed.consecutive_failures }
     if ($parsed.PSObject.Properties.Name -contains 'cooldown_until') {
         $cu = $parsed.cooldown_until
-        # ConvertFrom-Json may auto-convert ISO 8601 strings to DateTime objects; normalise back to ISO string
         if ($cu -is [datetime]) {
             $state.cooldown_until = [DateTimeOffset]::new($cu.ToUniversalTime(), [TimeSpan]::Zero).ToString('o')
         } else {
@@ -1409,10 +1405,7 @@ function Resolve-HealthyProvider {
                 $degradedCount++
                 $degradedReason = if ([string]::IsNullOrWhiteSpace($health.failure_reason)) { 'unknown' } else { $health.failure_reason }
                 $allDegradedReasons += ("{0}:{1}" -f $p, $degradedReason)
-                Write-LogEntry -Event 'provider_skipped_degraded' -Data @{
-                    provider = $p
-                    reason   = $degradedReason
-                }
+                Write-LogEntry -Event 'provider_skipped_degraded' -Data @{ provider=$p; reason=$degradedReason }
                 continue
             }
             if ($health.status -eq 'cooldown' -and $health.cooldown_until) {
@@ -1441,28 +1434,20 @@ function Resolve-HealthyProvider {
         $sleepSecs = 60
         $providersCsv = ($RoundRobinProviders -join ',')
         if ($degradedCount -eq $count) {
-            Write-LogEntry -Event 'all_providers_degraded' -Data @{
-                providers = $providersCsv
-                reasons   = ($allDegradedReasons -join ',')
-            }
+            Write-LogEntry -Event 'all_providers_degraded' -Data @{ providers=$providersCsv; reasons=($allDegradedReasons -join ',') }
             Write-Warning "All providers are degraded. Fix auth/quota issues (for example, rerun provider login) and retry."
         }
         if ($null -ne $earliestCooldown) {
             $remaining = ($earliestCooldown - [DateTimeOffset]::UtcNow).TotalSeconds
             $sleepSecs = if ($remaining -gt 1) { [Math]::Ceiling($remaining) } else { 1 }
         }
-        Write-LogEntry -Event 'all_providers_unavailable' -Data @{
-            providers     = $providersCsv
-            sleep_seconds = $sleepSecs
-        }
+        Write-LogEntry -Event 'all_providers_unavailable' -Data @{ providers=$providersCsv; sleep_seconds=$sleepSecs }
         Write-Warning "All providers unavailable. Sleeping ${sleepSecs}s until cooldown expires..."
         Start-Sleep -Seconds $sleepSecs
     }
 }
 
-# ============================================================================
 # PROVENANCE COMMIT TRAILERS
-# ============================================================================
 
 function Setup-ProvenanceHook {
     $hooksDir = Join-Path $WorkDir '.git' 'hooks'
@@ -1496,9 +1481,7 @@ fi
     try { & chmod +x $hookPath 2>$null } catch { }
 }
 
-# ============================================================================
 # REMOTE BACKUP
-# ============================================================================
 
 function Setup-RemoteBackup {
     if (-not $BackupEnabled) {
@@ -1593,9 +1576,7 @@ function Convert-RemoteToWebUrl {
     return $trimmed
 }
 
-# ============================================================================
 # ITERATION SUMMARY
-# ============================================================================
 
 function Print-IterationSummary {
     param(
@@ -1651,9 +1632,7 @@ function Print-IterationSummary {
     }
 }
 
-# ============================================================================
 # REPORT GENERATION
-# ============================================================================
 
 function Generate-Report {
     param(
@@ -1734,9 +1713,7 @@ $recentCommits
     Write-Host "Report saved to $reportFile" -ForegroundColor Cyan
 }
 
-# ============================================================================
 # MAIN
-# ============================================================================
 
 $RoundRobinProviders = Normalize-ProviderList -RawProviders $RoundRobinProviders
 if ($Provider -eq 'round-robin') {
@@ -1860,9 +1837,7 @@ function Refresh-ProvidersFromMeta {
 
 $iteration = 0
 
-# ============================================================================
 # LAUNCH MODE — start / restart / resume
-# ============================================================================
 
 if ($LaunchMode -eq 'resume') {
     $statusFile = Join-Path $SessionDir "status.json"
@@ -1946,6 +1921,21 @@ function Wait-ForRequests {
     }
 }
 
+function Sync-BaseBranch {
+    try {
+        git -C $WorkDir fetch origin $BaseBranch 2>&1 | Out-Null; if ($LASTEXITCODE -ne 0) { return }
+        $mo = git -C $WorkDir merge "origin/$BaseBranch" --no-edit 2>&1
+        if ($LASTEXITCODE -ne 0) {
+            $cf = git -C $WorkDir diff --name-only --diff-filter=U 2>&1
+            if ($cf) {
+                $qd = Join-Path $SessionDir "queue"; if (-not (Test-Path $qd)) { New-Item -ItemType Directory -Path $qd | Out-Null }
+                "# Merge Conflict`n`nBase branch: $BaseBranch`n`nConflicting files:`n$cf`n`nMerge output:`n$mo" | Set-Content (Join-Path $qd "$([int][DateTimeOffset]::Now.ToUnixTimeSeconds())-PROMPT_merge.md") -Encoding UTF8
+                Write-LogEntry -Event "merge_conflict" -Data @{ base_branch=$BaseBranch; conflicted_files="$cf" }
+            }
+        }
+    } catch { }
+}
+
 function Run-QueueIfPresent {
     param([string]$IterationProvider)
     # Check queue/ folder for override prompts (takes priority over cycle)
@@ -2002,6 +1992,7 @@ function Run-QueueIfPresent {
             }
             Show-AgentSummary -ProviderName $queueIterProvider -ProviderOutput $providerOutput
             Update-ProviderHealthOnSuccess -ProviderName $queueIterProvider
+            if ($queueBasename -like "*-PROMPT_steer.md" -or $queueBasename -like "*-steering.md") { $script:cyclePosition=0; Persist-LoopPlanState -Iteration $iteration }
             if ($queueIterMode -eq 'plan') {
                 try {
                     $script:lastPlanCommit = (git rev-parse HEAD | Out-String).Trim()
@@ -2036,7 +2027,7 @@ function Run-QueueIfPresent {
 }
 
 try {
-    while (-not $cancelled -and $iteration -lt $MaxIterations) {
+    while (-not $cancelled -and ($MaxIterations -eq 0 -or $iteration -lt $MaxIterations)) {
         $iteration++
         $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
         $iterationStart = [int][DateTimeOffset]::Now.ToUnixTimeSeconds()
@@ -2046,6 +2037,7 @@ try {
         }
         $iterationProvider = Resolve-IterationProvider -IterationNumber $iteration
 
+        Sync-BaseBranch
         if (Run-QueueIfPresent -IterationProvider $iterationProvider) {
             continue
         }
@@ -2053,6 +2045,13 @@ try {
         # Finalizer mode: run finalizer prompts instead of normal cycle
         if ($script:finalizerMode) {
             if ($script:finalizerPosition -ge $script:finalizerLength) {
+                $qaCoveragePassed = Check-FinalizerQaCoverageGate
+                Write-LogEntry -Event "finalizer_qa_coverage_check" -Data @{ iteration=$iteration; passed=[bool]$qaCoveragePassed; reason=[string]$script:finalizerQaGateReason; message=[string]$script:finalizerQaGateMessage; qa_total=[int]$script:finalizerQaTotal; qa_untested=[int]$script:finalizerQaUntested; qa_fail=[int]$script:finalizerQaFail }
+                if (-not $qaCoveragePassed) {
+                    $script:finalizerMode=$false; $script:finalizerPosition=0; $script:allTasksMarkedDone=$false; Persist-LoopPlanState -Iteration $iteration
+                    Write-LogEntry -Event "finalizer_aborted" -Data @{ iteration=$iteration; reason=[string]$script:finalizerQaGateReason; qa_total=[int]$script:finalizerQaTotal; qa_untested=[int]$script:finalizerQaUntested; qa_fail=[int]$script:finalizerQaFail }
+                    Write-Host "[Finalizer aborted — $($script:finalizerQaGateMessage)]" -ForegroundColor Yellow; continue
+                }
                 Write-LogEntry -Event "finalizer_completed" -Data @{ iteration = $iteration }
                 Write-Host "[Finalizer sequence completed — all tasks done]" -ForegroundColor Green
                 Write-Status -Iteration $iteration -Phase "finalizer" -CurrentProvider $iterationProvider -StuckCount 0 -State 'completed'
@@ -2263,7 +2262,7 @@ try {
     }
 }
 
-if ($iteration -ge $MaxIterations) {
+if ($MaxIterations -gt 0 -and $iteration -ge $MaxIterations) {
     Write-Host "`nReached iteration limit ($MaxIterations)" -ForegroundColor Yellow
     Write-Status -Iteration $iteration -Phase (Resolve-IterationMode -IterationNumber $iteration) -CurrentProvider (Resolve-IterationProvider -IterationNumber $iteration) -StuckCount $stuckState.StuckCount -State 'stopped'
     Write-LogEntry -Event "limit_reached" -Data @{ iteration = $iteration; limit = $MaxIterations }
