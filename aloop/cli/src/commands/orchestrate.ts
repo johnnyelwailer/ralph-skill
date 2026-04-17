@@ -52,7 +52,7 @@ export interface DecompositionPlan {
   issues: DecompositionPlanIssue[];
 }
 
-export type OrchestratorIssueState = 'pending' | 'in_progress' | 'pr_open' | 'merged' | 'failed';
+export type OrchestratorIssueState = 'pending' | 'in_progress' | 'pr_open' | 'review' | 'merged' | 'failed';
 export type AutonomyLevel = 'cautious' | 'balanced' | 'autonomous';
 export type SpecQuestionRisk = 'low' | 'medium' | 'high';
 export type SpecQuestionResolutionAction = 'wait_for_user' | 'auto_resolve';
