@@ -1,0 +1,15 @@
+{
+  "type": "orchestrator_scan",
+  "generated_at": "2026-04-17T00:00:00Z",
+  "iteration": 511,
+  "wave": 1,
+  "active_children": 0,
+  "concurrency_cap": 3,
+  "free_slots": 3,
+  "pending_dispatch_requests": [
+    "dispatch-issue-1-20260416T221500Z.json",
+    "dispatch-issue-6-20260416T221500Z.json"
+  ],
+  "status": "awaiting_runtime",
+  "notes": "Scan 511. Dispatch requests for issues #1 (Loop Engine: Phase Retry, Finalizer & Exit Gate) and #6 (aloop start/setup Unified CLI, ZDR & Auto-Monitoring) remain unprocessed since 22:15Z on 2026-04-16 (~110 min). These are the only wave-1 issues; both have no dependencies and should dispatch immediately once runtime processes the requests. No queue overrides present. No active children. 3/3 capacity slots free. No new requests needed — waiting for runtime to process existing dispatch-issue-1 and dispatch-issue-6 requests."
+}
