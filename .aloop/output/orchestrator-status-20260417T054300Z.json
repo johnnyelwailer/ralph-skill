@@ -1,0 +1,19 @@
+{
+  "timestamp": "2026-04-17T05:43:00Z",
+  "iteration": 49,
+  "wave": 1,
+  "status": "stalled",
+  "stall_reason": "runtime_not_processing_requests",
+  "stall_iterations": 49,
+  "pending_requests": [
+    "req-001-dispatch_child.json",
+    "req-002-dispatch_child.json",
+    "req-003-dispatch_child.json"
+  ],
+  "issues": {
+    "wave_1_pending": [1, 2, 5],
+    "wave_2_blocked": [3, 4, 7, 9, 10, 11, 12],
+    "wave_3_blocked": [6, 8]
+  },
+  "action_required": "Restart runtime process-requests.ts to consume pending dispatch_child requests"
+}
