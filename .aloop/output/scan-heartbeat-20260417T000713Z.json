@@ -1,0 +1,39 @@
+{
+  "type": "scan-heartbeat",
+  "iter": 502,
+  "timestamp": "2026-04-17T00:07:13Z",
+  "in_progress": [
+    {
+      "issue": 23,
+      "child_pid": 2178368,
+      "child_alive": true,
+      "session": "orchestrator-20260321-172932-issue-23-20260416-235207",
+      "loop_iteration": 46,
+      "phase": "review",
+      "state": "running",
+      "status_updated_at": "2026-04-16T23:59:56Z",
+      "note": "claude PID 1193084 running (from prior session dispatch, still active); loop.sh subprocess running branch coverage tests"
+    }
+  ],
+  "in_review": [
+    { "issue": 46, "pr": 313, "child_pid": 2034694, "child_alive": false },
+    { "issue": 172, "pr": 211 },
+    { "issue": 157, "pr": 238 },
+    { "issue": 108, "pr": 132 },
+    { "issue": 85, "pr": 311 }
+  ],
+  "blocked_on_human": [
+    { "issue": 173, "pr": 307 }
+  ],
+  "needs_redispatch": [
+    {
+      "issue": 70,
+      "reason": "In progress but child_pid=null; state=needs_redispatch; waiting for cap to free (concurrency_cap=1, issue-23 active)"
+    }
+  ],
+  "concurrency_cap": 1,
+  "cap_used": 1,
+  "cap_free": 0,
+  "ready_count": 80,
+  "actions": []
+}
