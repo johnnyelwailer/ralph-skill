@@ -1,6 +1,6 @@
 {
-  "scan_at": "2026-04-17T021500Z",
-  "iteration": 18,
+  "scan_at": "2026-04-17T040000Z",
+  "iteration": 31,
   "session": "orchestrator-20260416-211340",
   "active_children": [],
   "capacity": {
@@ -15,5 +15,5 @@
   "queue_overrides": 0,
   "human_blocked": [],
   "action": "waiting_for_runtime",
-  "notes": "Scan 18. Dispatch requests req-001/002/003 for wave-1 issues #1/#2/#5 remain unprocessed in requests/. Sub-spec files confirmed present in .aloop/output/. No active children, 3/3 slots available. Runtime is not consuming dispatch_child requests — persistent stall across 18 iterations. Requires human investigation of the runtime process-requests pipeline."
+  "notes": "Scan 31. Dispatch requests req-001/002/003 for wave-1 issues #1/#2/#5 remain unprocessed in requests/. Sub-spec files confirmed present in .aloop/output/. No active children, 3/3 slots available. Runtime is not consuming dispatch_child requests — persistent stall across 31 iterations. Requires human investigation of the runtime process-requests pipeline."
 }
