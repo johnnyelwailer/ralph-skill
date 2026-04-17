@@ -1,0 +1,7 @@
+{
+  "dispatch_at": "2026-04-17T002700Z",
+  "issue": 1,
+  "priority": "high",
+  "status": "dispatched",
+  "notes": "Wave 1, issue #1 ready with no dependencies. Dispatching child loop for Epic: Loop Engine Robustness — Finalizer, Retry-Same-Phase, Provider Health, CLAUDECODE."
+}
