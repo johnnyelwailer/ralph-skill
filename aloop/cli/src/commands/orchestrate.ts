@@ -93,6 +93,12 @@ export interface OrchestratorIssue {
   ci_failure_summary?: string;
 }
 
+export interface BlockerSignatureEntry {
+  count: number;
+  first_seen_iteration: number;
+  last_seen_iteration: number;
+}
+
 export interface OrchestratorState {
   spec_file: string;
   spec_files?: string[];
@@ -113,6 +119,7 @@ export interface OrchestratorState {
   trunk_pr_number?: number | null;
   gh_project_number?: number;
   round_robin_order?: string[];
+  blocker_signatures?: Record<string, BlockerSignatureEntry>;
   created_at: string;
   updated_at: string;
 }
@@ -2897,6 +2904,77 @@ export function countActiveChildren(state: OrchestratorState): number {
 }
 
 /**
+ * Collect active blocker fingerprints from current state.
+ *
+ * Three blocker categories:
+ *   - blocked_on_human:{issue} — issue.blocked_on_human === true
+ *   - dep_blocked:{issue}      — pending issue with at least one unresolved dependency
+ *   - capability_blocked:{issue}:{sorted_missing} — missing host capability
+ */
+export function collectActiveBlockerFingerprints(
+  state: OrchestratorState,
+  capabilityBlocked: Array<{ issue: OrchestratorIssue; missing: string[] }>,
+): Set<string> {
+  const fingerprints = new Set<string>();
+  const issueByNumber = new Map<number, OrchestratorIssue>();
+  for (const issue of state.issues) {
+    issueByNumber.set(issue.number, issue);
+  }
+  for (const issue of state.issues) {
+    if (issue.blocked_on_human) {
+      fingerprints.add(`blocked_on_human:${issue.number}`);
+    }
+    if (issue.state === 'pending' && issue.depends_on.length > 0) {
+      const hasUnresolvedDep = issue.depends_on.some((depNum) => {
+        const dep = issueByNumber.get(depNum);
+        return !dep || dep.state !== 'merged';
+      });
+      if (hasUnresolvedDep) {
+        fingerprints.add(`dep_blocked:${issue.number}`);
+      }
+    }
+  }
+  for (const { issue, missing } of capabilityBlocked) {
+    const sortedMissing = [...missing].sort().join(',');
+    fingerprints.add(`capability_blocked:${issue.number}:${sortedMissing}`);
+  }
+  return fingerprints;
+}
+
+/**
+ * Update blocker_signatures on the state in-place:
+ *   - Increment count and update last_seen_iteration for active fingerprints
+ *   - Remove entries whose blocker has resolved (no longer in activeFingerprints)
+ */
+export function updateBlockerSignatures(
+  state: OrchestratorState,
+  activeFingerprints: Set<string>,
+  iteration: number,
+): void {
+  if (!state.blocker_signatures) {
+    state.blocker_signatures = {};
+  }
+  for (const fp of activeFingerprints) {
+    const existing = state.blocker_signatures[fp];
+    if (existing) {
+      existing.count++;
+      existing.last_seen_iteration = iteration;
+    } else {
+      state.blocker_signatures[fp] = {
+        count: 1,
+        first_seen_iteration: iteration,
+        last_seen_iteration: iteration,
+      };
+    }
+  }
+  for (const fp of Object.keys(state.blocker_signatures)) {
+    if (!activeFingerprints.has(fp)) {
+      delete state.blocker_signatures[fp];
+    }
+  }
+}
+
+/**
  * Returns the number of child loops that can be launched without exceeding the concurrency cap.
  */
 export function availableSlots(state: OrchestratorState): number {
@@ -4749,6 +4827,7 @@ export interface ScanLoopDeps {
   sleep?: (ms: number) => Promise<void>;
   signalStop?: () => boolean;
   etagCache?: EtagCache;
+  blockerThreshold?: number;
 }
 
 export interface SpecChangeReplanResult {
@@ -5606,6 +5685,9 @@ export async function runOrchestratorScanPass(
     );
   }
 
+  // Accumulate capability-blocked issues from phase 2 for blocker signature tracking.
+  let capabilityBlockedIssues: Array<{ issue: OrchestratorIssue; missing: string[] }> = [];
+
   // 2. Dispatch child loops for ready issues
   if (deps.dispatchDeps && !state.plan_only) {
     // Focus mode: prefer redispatch over fresh work.
@@ -5626,6 +5708,7 @@ export async function runOrchestratorScanPass(
     } else {
       const dispatchable = getDispatchableIssues(state);
       const capabilityResult = filterByHostCapabilities(dispatchable, deps.dispatchDeps);
+      capabilityBlockedIssues = capabilityResult.blocked;
       const eligible = filterByFileOwnership(capabilityResult.eligible, state);
       toDispatch = eligible.slice(0, Math.max(0, slots - pendingRedispatches));
 
@@ -5938,6 +6021,12 @@ export async function runOrchestratorScanPass(
   // 7. Check external stop signal
   if (deps.signalStop?.()) {
     result.shouldStop = true;
+  }
+
+  // 7.5. Update blocker signature counters
+  {
+    const activeFingerprints = collectActiveBlockerFingerprints(state, capabilityBlockedIssues);
+    updateBlockerSignatures(state, activeFingerprints, iteration);
   }
 
   // 8. Persist state

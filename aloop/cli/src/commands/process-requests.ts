@@ -1001,6 +1001,7 @@ export async function processRequestsCommand(options: ProcessRequestsOptions): P
     appendLog,
     etagCache,
     aloopRoot,
+    blockerThreshold: (meta.blocker_threshold as number | undefined) ?? 3,
     prLifecycleDeps: {
       execGh,
       readFile: (p: string, enc: BufferEncoding) => readFile(p, enc),
