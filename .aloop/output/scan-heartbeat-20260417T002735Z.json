@@ -1,0 +1,38 @@
+{
+  "scan_time": "2026-04-17T00:27:35Z",
+  "iteration": 508,
+  "summary": "issue-23 child session RUNNING iter 1/build (re-dispatched 00:23 UTC, PID 3106133 ALIVE, ~4min); pr_open: issue-46/#313, issue-172/#211, issue-85/#311, issue-108/#132; blocked_on_human: #173/#307, issue-157/#238; needs_redispatch: issue-70 (cap full, waiting for issue-23)",
+  "active_sessions": [
+    {
+      "issue": 23,
+      "session_id": "orchestrator-20260321-172932-issue-23-20260417-002350",
+      "pid": 3106133,
+      "pid_alive": true,
+      "iteration": 1,
+      "phase": "build",
+      "state": "running",
+      "started_at": "2026-04-17T00:23:50Z",
+      "status_updated_at": "2026-04-17T00:23:51Z"
+    }
+  ],
+  "prs_in_review": [
+    { "issue": 46, "pr": 313, "note": "session completed, awaiting review" },
+    { "issue": 172, "pr": 211, "note": "POSIX flock locking" },
+    { "issue": 85, "pr": 311, "note": "Proof Artifact API" },
+    { "issue": 108, "pr": 132, "note": "blocked_on_human=true; persistent rebase failures" },
+    { "issue": 157, "pr": 238, "note": "blocked_on_human=true; Playwright infra block" }
+  ],
+  "blocked_on_human": [
+    { "issue": 173, "pr": 307, "reason": "Issue body corrupted with false Implementation Status. Human must edit issue body and redispatch." }
+  ],
+  "needs_redispatch": [
+    { "issue": 70, "reason": "cap full (1/1, issue-23 holds slot); will dispatch when issue-23 finishes" }
+  ],
+  "capacity": {
+    "cap": 1,
+    "used": 1,
+    "holder": "issue-23"
+  },
+  "actions_taken": [],
+  "next_action": "Wait for issue-23 to complete; then redispatch issue-70"
+}
