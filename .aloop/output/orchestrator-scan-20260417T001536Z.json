@@ -1,0 +1,30 @@
+{
+  "type": "orchestrator_scan",
+  "timestamp": "2026-04-17T00:15:36Z",
+  "current_wave": 1,
+  "active_children": 0,
+  "capacity_free": 3,
+  "summary": "Wave 1 has 2 dispatchable issues (#1, #6) with no dependencies. Capacity 3/3 free. Requesting dispatch.",
+  "dispatch_requests": [
+    {
+      "type": "dispatch_child",
+      "issue_number": 1,
+      "issue_title": "Loop Engine: Phase Retry, Finalizer & Exit Gate",
+      "wave": 1,
+      "depends_on": [],
+      "sandbox": "container",
+      "reason": "Wave 1 issue, no dependencies, all capacity free"
+    },
+    {
+      "type": "dispatch_child",
+      "issue_number": 6,
+      "issue_title": "`aloop start` / `aloop setup` Unified CLI, ZDR & Auto-Monitoring",
+      "wave": 1,
+      "depends_on": [],
+      "sandbox": "container",
+      "reason": "Wave 1 issue, no dependencies, all capacity free"
+    }
+  ],
+  "blocked_issues": [],
+  "notes": "Wave 2 issues (#2, #3, #4, #7, #8) depend on #1; #7 depends on #6. Wave 3+ await wave 2 completion. No queue overrides present."
+}
