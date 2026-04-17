@@ -112,6 +112,7 @@ export interface OrchestratorState {
   auto_merge_to_main?: boolean;
   trunk_pr_number?: number | null;
   gh_project_number?: number;
+  round_robin_order?: string[];
   created_at: string;
   updated_at: string;
 }

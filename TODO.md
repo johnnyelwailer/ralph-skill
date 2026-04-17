@@ -8,7 +8,7 @@
 
 - [x] Fix `OrchestratorIssueState` — add `'review'` to the union type in `orchestrate.ts:55` (fixes TS2367 in `process-requests.ts:532` and `:1206` where `issue.state !== 'review'` is compared against a type that doesn't include `'review'`; two identical guards in process-requests rely on this state value)
 
-- [ ] Fix `OrchestratorState` interface — add `round_robin_order?: string[]` property (fixes TS2339 at `orchestrate.ts:3483` and `:3514` where `state.round_robin_order` is accessed in `dispatchChildLoops` and `launchIssues`)
+- [x] Fix `OrchestratorState` interface — add `round_robin_order?: string[]` property (fixes TS2339 at `orchestrate.ts:3483` and `:3514` where `state.round_robin_order` is accessed in `dispatchChildLoops` and `launchIssues`)
 
 - [ ] Fix `launchChildLoop` — remove undefined `state` variable references; the function signature at `orchestrate.ts:3019` does not receive `state` as a parameter but lines 3166–3168 and 3195 access `state?.round_robin_order` and `roundRobinOrder` (also undefined in that scope). Fix: add `roundRobinOrder?: string[]` as an explicit parameter and replace `state?.round_robin_order || roundRobinOrder` with just `roundRobinOrder`. Update call sites in `launchIssues` to pass the value. This is the root cause of the 14 `launchChildLoop` test failures and 7 cascading `dispatchChildLoops` failures (ReferenceError: state is not defined).
 
