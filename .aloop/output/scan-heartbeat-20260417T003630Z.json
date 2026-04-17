@@ -1,0 +1,37 @@
+{
+  "timestamp": "2026-04-17T00:36:30Z",
+  "iteration": 512,
+  "running": [
+    {
+      "issue": 23,
+      "title": "Epic: Inner Loop Engine — Phase Control, Retry & Finalizer",
+      "session": "orchestrator-20260321-172932-issue-23-20260417-002350",
+      "loop_pid": 3106133,
+      "claude_pid": 3106329,
+      "pids_alive": true,
+      "started_at": "2026-04-17T00:23:51Z",
+      "elapsed_min": 12.6,
+      "phase": "iter 1/build",
+      "stuck_count": 0
+    }
+  ],
+  "pr_open": [
+    { "issue": 172, "pr": 211, "title": "Replace mkdir locking with POSIX flock in loop.sh health file" },
+    { "issue": 157, "pr": 238, "title": "Reduce AppView.tsx to layout shell and create AppShell, MainContent" },
+    { "issue": 85, "pr": 311, "title": "Proof Artifact API" },
+    { "issue": 46, "pr": 313, "title": "Epic sub-issue (merge conflict noted)" },
+    { "issue": 108, "pr": 132, "title": "Awaiting human review" }
+  ],
+  "blocked_on_human": [
+    { "issue": 173, "pr": 307, "reason": "Issue body corrupted with false Implementation Status section — needs human edit, then redispatch" }
+  ],
+  "needs_redispatch": [
+    { "issue": 70, "title": "QA agent: structured coverage matrix — waiting for #23 slot" },
+    { "issue": 188, "title": "Extract layout components and reduce AppView to <100 LOC (XL) — waiting for #23 slot" }
+  ],
+  "concurrency_cap": 1,
+  "cap_available": 0,
+  "queue_overrides": [],
+  "actions_taken": [],
+  "notes": "No actions taken — cap=1 occupied by #23 (running normally, 12.6 min into iter 1/build). Next candidates after #23: #70 then #188."
+}
