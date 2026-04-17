@@ -45,7 +45,6 @@ LAUNCH_MODE="start"
 PROVIDER_TIMEOUT="${ALOOP_PROVIDER_TIMEOUT:-10800}"
 PROVIDER_HEALTH_DIR="${ALOOP_HEALTH_DIR:-$HOME/.aloop/health}"
 HEALTH_LOCK_RETRY_DELAYS=(0.05 0.10 0.15 0.20 0.25)
-HEALTH_LOCK_STALE_SECONDS=30
 SESSION_ID=""
 
 # ============================================================================
@@ -886,48 +885,25 @@ acquire_provider_health_lock() {
     local lock_dir="${path}.lock"
     local retries=${#HEALTH_LOCK_RETRY_DELAYS[@]}
     local i
-
     for ((i=0; i<retries; i++)); do
         if mkdir "$lock_dir" 2>/dev/null; then
-            printf '%s
-' "$$" > "$lock_dir/pid" 2>/dev/null || true
-            date -u +%Y-%m-%dT%H:%M:%SZ > "$lock_dir/created_at" 2>/dev/null || true
             echo "$lock_dir"
             return 0
         fi
-
-        # Stale lock recovery: remove orphaned or old lock dirs.
-        if [ -d "$lock_dir" ]; then
-            local owner_pid lock_mtime now_epoch age
-            owner_pid=""
-            lock_mtime=""
-            now_epoch=$(date -u +%s)
-
-            if [ -f "$lock_dir/pid" ]; then
-                owner_pid=$(cat "$lock_dir/pid" 2>/dev/null || true)
-            fi
-            lock_mtime=$(stat -c %Y "$lock_dir" 2>/dev/null || true)
-            age=0
-            if [ -n "$lock_mtime" ]; then
-                age=$((now_epoch - lock_mtime))
-            fi
-
-            if { [ -n "$owner_pid" ] && ! kill -0 "$owner_pid" 2>/dev/null; } || [ "$age" -gt "$HEALTH_LOCK_STALE_SECONDS" ]; then
-                rm -rf "$lock_dir" 2>/dev/null || true
-            fi
-        fi
-
         sleep "${HEALTH_LOCK_RETRY_DELAYS[$i]}"
     done
-
-    write_log_entry "health_lock_failed"         "provider" "$provider_name"         "operation" "$operation_name"         "path" "$path"         "retries" "$retries"
+    write_log_entry "health_lock_failed" \
+        "provider" "$provider_name" \
+        "operation" "$operation_name" \
+        "path" "$path" \
+        "retries" "$retries"
     return 1
 }
 
 release_provider_health_lock() {
     local lock_dir="$1"
     if [ -n "$lock_dir" ] && [ -d "$lock_dir" ]; then
-        rm -rf "$lock_dir" 2>/dev/null || true
+        rmdir "$lock_dir" 2>/dev/null || true
     fi
 }
 
@@ -1081,50 +1057,32 @@ update_provider_health_on_success() {
     fi
 }
 
-
-extract_explicit_cooldown_until() {
-    local text="$1"
-    local iso
-    iso=$(printf '%s' "$text" | grep -Eo '20[0-9]{2}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z' | head -n 1)
-    if [ -n "$iso" ]; then
-        echo "$iso"
-        return 0
-    fi
-    return 1
-}
-
 update_provider_health_on_failure() {
     local provider_name="$1"
     local error_text="$2"
     if ! get_provider_health_state "$provider_name"; then
         return
     fi
-    local reason failures now_epoch now cooldown_secs new_status cooldown_until explicit_cooldown
+    local reason failures now_epoch now cooldown_secs new_status cooldown_until
     reason=$(classify_provider_failure "$error_text")
     failures=$((HEALTH_CONSECUTIVE_FAILURES + 1))
     now_epoch=$(date -u +%s)
     now=$(date -u +%Y-%m-%dT%H:%M:%SZ)
     cooldown_until=""
-    explicit_cooldown=$(extract_explicit_cooldown_until "$error_text" || true)
 
     if [ "$reason" = "auth" ]; then
         new_status="degraded"
     else
-        if [ -n "$explicit_cooldown" ]; then
-            new_status="cooldown"
-            cooldown_until="$explicit_cooldown"
+        if [ "$reason" = "concurrent_cap" ]; then
+            cooldown_secs=120
         else
-            if [ "$reason" = "concurrent_cap" ]; then
-                cooldown_secs=120
-            else
-                cooldown_secs=$(get_provider_cooldown_seconds "$failures")
-            fi
-            if [ "$cooldown_secs" -gt 0 ]; then
-                new_status="cooldown"
-                cooldown_until=$(date -u -d "@$((now_epoch + cooldown_secs))" +%Y-%m-%dT%H:%M:%SZ)
-            else
-                new_status="$HEALTH_STATUS"
-            fi
+            cooldown_secs=$(get_provider_cooldown_seconds "$failures")
+        fi
+        if [ "$cooldown_secs" -gt 0 ]; then
+            new_status="cooldown"
+            cooldown_until=$(date -u -d "@$((now_epoch + cooldown_secs))" +%Y-%m-%dT%H:%M:%SZ)
+        else
+            new_status="$HEALTH_STATUS"
         fi
     fi
 
@@ -1341,9 +1299,7 @@ invoke_provider() {
     local prompt_content=$2
     local model_override="${3:-}"
     local tmp_stderr
-    local tmp_stdout
     tmp_stderr=$(mktemp)
-    tmp_stdout=$(mktemp)
 
     # PATH hardening: prepend gh-blocking shim directory so gh resolves to a
     # non-functional wrapper while provider binaries in the same directories
@@ -1368,7 +1324,7 @@ invoke_provider() {
             local claude_model="${model_override:-$CLAUDE_MODEL}"
             LAST_PROVIDER_MODEL="$claude_model"
             {
-                echo "$prompt_content" | env -u CLAUDECODE "${DC_EXEC[@]}" claude --model "$claude_model" --dangerously-skip-permissions --print 2> >(tee "$tmp_stderr" -a "$LOG_FILE.raw" >&2) | tee "$tmp_stdout" -a "$LOG_FILE.raw"
+                echo "$prompt_content" | env -u CLAUDECODE "${DC_EXEC[@]}" claude --model "$claude_model" --dangerously-skip-permissions --print 2> >(tee "$tmp_stderr" -a "$LOG_FILE.raw" >&2) | tee -a "$LOG_FILE.raw"
                 exit ${PIPESTATUS[1]}
             } &
             ACTIVE_PROVIDER_PID=$!
@@ -1379,7 +1335,7 @@ invoke_provider() {
                 echo "claude timed out after ${EFFECTIVE_TIMEOUT:-$PROVIDER_TIMEOUT} seconds" >&2
                 invoke_rc=1
             elif [ "$exit_code" -ne 0 ]; then
-                LAST_PROVIDER_ERROR="claude exited with code $exit_code. Stderr: $(cat "$tmp_stderr") Stdout: $(cat "$tmp_stdout")"
+                LAST_PROVIDER_ERROR="claude exited with code $exit_code. Stderr: $(cat "$tmp_stderr")"
                 echo "claude exited with code $exit_code" >&2
                 invoke_rc=$exit_code
             else
@@ -1540,7 +1496,7 @@ invoke_provider() {
     if [ -n "$copilot_output_file" ]; then
         rm -f "$copilot_output_file"
     fi
-    rm -f "$tmp_stderr" "$tmp_stdout"
+    rm -f "$tmp_stderr"
     return "$invoke_rc"
 }
 
