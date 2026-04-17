@@ -292,7 +292,7 @@ export interface RequestProcessorOptions {
 }
 
 export async function processAgentRequests(options: RequestProcessorOptions): Promise<void> {
-  const requestsDir = path.join(options.aloopDir, 'requests');
+  const requestsDir = path.join(options.sessionDir, 'requests');
   if (!existsSync(requestsDir)) return;
   const processedIdsPath = path.join(requestsDir, 'processed-ids.json');
   const processedIds = await loadProcessedRequestIds(processedIdsPath);
@@ -498,7 +498,7 @@ async function handleCreateIssues(request: CreateIssuesRequest, fileName: string
       continue;
     }
 
-    const tempRequestPath = path.join(options.aloopDir, 'requests', `_tmp_${request.id}_${issueIndex}.json`);
+    const tempRequestPath = path.join(options.sessionDir, 'requests', `_tmp_${request.id}_${issueIndex}.json`);
     await fs.writeFile(tempRequestPath, JSON.stringify({
       type: 'issue-create',
       title: issueReq.title,
@@ -591,7 +591,7 @@ async function handleUpdateIssue(request: UpdateIssueRequest, fileName: string, 
   const args = ['issue', 'edit', String(request.payload.number)];
   if (request.payload.body_file) {
     const body = await fs.readFile(path.join(options.workdir, request.payload.body_file), 'utf8');
-    const tempBodyPath = path.join(options.aloopDir, 'requests', `_tmp_body_${request.id}.md`);
+    const tempBodyPath = path.join(options.sessionDir, 'requests', `_tmp_body_${request.id}.md`);
     await fs.writeFile(tempBodyPath, body);
     args.push('--body-file', tempBodyPath);
     const spawn = options.spawnSync || spawnSync;
@@ -637,7 +637,7 @@ async function handleCloseIssue(request: CloseIssueRequest, fileName: string, op
     return;
   }
 
-  const tempRequestPath = path.join(options.aloopDir, 'requests', `_tmp_${request.id}.json`);
+  const tempRequestPath = path.join(options.sessionDir, 'requests', `_tmp_${request.id}.json`);
   await fs.writeFile(tempRequestPath, JSON.stringify({
     type: 'issue-close',
     issue_number: request.payload.number,
@@ -698,7 +698,7 @@ async function handleCreatePr(request: CreatePrRequest, fileName: string, option
     return;
   }
 
-  const tempRequestPath = path.join(options.aloopDir, 'requests', `_tmp_${request.id}.json`);
+  const tempRequestPath = path.join(options.sessionDir, 'requests', `_tmp_${request.id}.json`);
   await fs.writeFile(tempRequestPath, JSON.stringify({
     type: 'pr-create',
     head: request.payload.head,
@@ -786,7 +786,7 @@ async function handleMergePr(request: MergePrRequest, fileName: string, options:
     return;
   }
 
-  const tempRequestPath = path.join(options.aloopDir, 'requests', `_tmp_${request.id}.json`);
+  const tempRequestPath = path.join(options.sessionDir, 'requests', `_tmp_${request.id}.json`);
   await fs.writeFile(tempRequestPath, JSON.stringify({
     type: 'pr-merge',
     pr_number: request.payload.number,
@@ -1003,7 +1003,7 @@ async function handlePostComment(request: PostCommentRequest, fileName: string, 
     ? body
     : `${body.replace(/\s*$/, '')}\n\n${requestIdMarker}`;
 
-  const tempRequestPath = path.join(options.aloopDir, 'requests', `_tmp_${request.id}.json`);
+  const tempRequestPath = path.join(options.sessionDir, 'requests', `_tmp_${request.id}.json`);
   await fs.writeFile(tempRequestPath, JSON.stringify({
     type: 'issue-comment',
     issue_number: request.payload.issue_number,

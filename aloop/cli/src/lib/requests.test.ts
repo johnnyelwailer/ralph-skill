@@ -17,13 +17,14 @@ async function setupTestEnv() {
   const aloopDir = path.join(workdir, '.aloop');
   await fs.mkdir(aloopDir, { recursive: true });
   
-  const requestsDir = path.join(aloopDir, 'requests');
-  await fs.mkdir(requestsDir, { recursive: true });
-  
   const sessionId = 'test-session';
   const sessionDir = path.join(aloopDir, 'sessions', sessionId);
   await fs.mkdir(sessionDir, { recursive: true });
   await fs.mkdir(path.join(sessionDir, 'queue'), { recursive: true });
+
+  // Requests live in sessionDir/requests (spec: <session>/requests/)
+  const requestsDir = path.join(sessionDir, 'requests');
+  await fs.mkdir(requestsDir, { recursive: true });
   
   const logPath = path.join(sessionDir, 'log.jsonl');
   
