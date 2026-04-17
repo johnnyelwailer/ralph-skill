@@ -72,3 +72,41 @@ No proof manifests found. ci.yml is a config file — CI workflow proof would re
 All prior [review] tasks resolved.
 
 ---
+
+## Review — 2026-04-17 — commit d0a300bf..18179b5a
+
+**Verdict: FAIL** (1 new finding → written to TODO.md as [review] task; 2 pre-existing open bugs still blocking)
+**Scope:** `aloop/cli/src/commands/orchestrate.ts`, `aloop/cli/src/commands/process-requests.ts`, `aloop/cli/src/lib/requests.ts`, `aloop/bin/loop.sh`, `aloop/bin/loop.ps1`, `README.md`
+
+### Constitution Rule 1 + Gate 1: FAIL
+
+Commits `777a4fba`, `2bdd235c`, `32f56f0d` — merged in from `agent/trunk` via merge commit `416beb5b` — added substantial new code to `loop.sh`:
+
+- `777a4fba`: Added `HEALTH_LOCK_STALE_SECONDS=30` variable, stale lock recovery block (~25 lines) inside `acquire_provider_health_lock()`, changed `rmdir` to `rm -rf` in `release_provider_health_lock()`
+- `2bdd235c`: Added `extract_explicit_cooldown_until()` function (~12 lines) and explicit-cooldown branch in `update_provider_health_on_failure()`
+- `32f56f0d`: Added `tmp_stdout` tempfile, stdout pipe in `invoke_provider()` for claude, appended stdout to `LAST_PROVIDER_ERROR`
+
+Net result: `loop.sh` grew from 2329 to 2373 lines (+44). Constitution Rule 1 is explicit: "Nothing may be added to loop.sh or loop.ps1. Any PR that touches these files must reduce their line count." The `write_log_entry "health_lock_failed"` multi-line call was also compressed to a single 185-char line (line 923) — a readability regression that appears intended to partially offset additions but does not bring the file back under the pre-change count.
+
+These three behaviors (cooldown timestamp parsing, stale lock recovery, provider stdout capture) belong in the runtime (`orchestrate.ts` or `process-requests.ts`) if they are needed at all.
+
+`loop.ps1` MaxIterations=0 change and the loop condition change from `100e3b44` are in-scope (orchestrator needs unlimited iterations) and do not add new functions or logic — conditionally acceptable if loop.sh additions are reverted.
+
+### Gate 5: FAIL (pre-existing open bugs — not new findings)
+
+- `npm run type-check` FAILS with 6 errors at `orchestrate.ts:3167,3168,3196` (undefined `state`/`roundRobinOrder` in `launchChildLoop`) and `orchestrate.ts:5168,5180` (undefined `provider` in `processQueuedPrompts`). These were documented in QA iteration 1 and remain open in TODO "Up Next".
+- `orchestrate.test.ts`: 25/346 failures — `launchChildLoop` (14), `dispatchChildLoops` (7), `runOrchestratorScanPass` (2), `processQueuedPrompts` (2). Same root cause as type errors above.
+- These are tracked as open TODO items, not new findings — but they block the PR.
+
+### What was correctly done
+
+- `cead4460`: `'review'` added to `OrchestratorIssueState` union type — correct fix for TS2367.
+- `d263e4fd`: `round_robin_order?: string[]` added to `OrchestratorState` interface — correct fix for TS2339.
+- `5636c230`/`bb93b7a3`: Resume stopped child sessions by transitioning state to `in_progress` — correctly implemented; tested in process-requests.test.ts (21/21 PASS).
+- `8c2b6b78`: OrchestratorAdapter wired in `process-requests.ts` for issue/PR creation with fallback to direct `execGh` — correct pattern.
+- `cffd3444`: Request file paths use `sessionDir/requests/` consistently — correct.
+- `76205850`: Missing closing brace in `isChildSessionAlive` — correct.
+- `README.md`: Loop cycle description, `--launch-mode resume` → `--launch resume`, OpenCode model IDs — accurate and helpful.
+- Gates 2, 3, 6, 7, 8, 9: Pass for the correctly-scoped changes above.
+
+---

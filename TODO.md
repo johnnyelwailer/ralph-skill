@@ -4,6 +4,8 @@
 
 ### In Progress
 
+- [ ] [review] Constitution Rule 1 FAIL: revert loop.sh additions from commits `777a4fba`, `2bdd235c`, `32f56f0d` — these three commits merged in from `agent/trunk` added `extract_explicit_cooldown_until()` (new function), stale lock recovery in `acquire_provider_health_lock()`, and `tmp_stdout` capture in `invoke_provider()`, growing loop.sh by 44 lines (2329→2373). Per Constitution Rule 1: "Nothing may be added to loop.sh or loop.ps1." These behaviors belong in the runtime if needed at all. Also revert the `write_log_entry "health_lock_failed"` argument compression (line 923) back to the multi-line form it had before — it was minified to partially offset the growth but makes the call unreadable. (priority: high)
+
 ### Up Next
 
 - [x] Fix `OrchestratorIssueState` — add `'review'` to the union type in `orchestrate.ts:55` (fixes TS2367 in `process-requests.ts:532` and `:1206` where `issue.state !== 'review'` is compared against a type that doesn't include `'review'`; two identical guards in process-requests rely on this state value)
