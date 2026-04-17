@@ -3308,7 +3308,6 @@ export async function launchChildLoop(
       '-WorkDir', worktreePath,
       '-Mode', 'plan-build-review',
       '-Provider', provider,
-      '-MaxIterations', '999999',
       '-MaxStuck', '3',
       '-LaunchMode', 'start',
     ];
@@ -3321,7 +3320,6 @@ export async function launchChildLoop(
       '--work-dir', worktreePath,
       '--mode', 'plan-build-review',
       '--provider', provider,
-      '--max-iterations', '999999',
       '--max-stuck', '3',
       '--launch-mode', 'start',
     ];
@@ -3335,7 +3333,8 @@ export async function launchChildLoop(
       ...deps.env,
       ALOOP_TASK_SANDBOX: sandbox,
       ALOOP_TASK_REQUIRES: requires.join(','),
-      NODE_COMPILE_CACHE: path.join(sessionDir, '.v8-cache'), // Per-session cache, cleaned up with session
+      NODE_COMPILE_CACHE: path.join(sessionDir, '.v8-cache'),
+      ALOOP_MAX_ITERATIONS: '',
     },
     windowsHide: true,
   });
@@ -5891,7 +5890,6 @@ export async function runOrchestratorScanPass(
                 '-WorkDir', childWorkDir,
                 '-Mode', childMode,
                 '-Provider', childProvider,
-                '-MaxIterations', '999999',
                 '-MaxStuck', '3',
                 '-LaunchMode', 'resume',
               ];
@@ -5903,7 +5901,6 @@ export async function runOrchestratorScanPass(
                 '--work-dir', childWorkDir,
                 '--mode', childMode,
                 '--provider', childProvider,
-                '--max-iterations', '999999',
                 '--max-stuck', '3',
                 '--launch-mode', 'resume',
               ];
@@ -5913,7 +5910,10 @@ export async function runOrchestratorScanPass(
               cwd: childWorkDir,
               detached: true,
               stdio: 'ignore',
-              env: { ...deps.dispatchDeps.env },
+              env: {
+                ...deps.dispatchDeps.env,
+                ALOOP_MAX_ITERATIONS: '',
+              },
               windowsHide: true,
             });
             child.unref();
