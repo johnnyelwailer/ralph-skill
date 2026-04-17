@@ -1,29 +1,24 @@
 {
-  "scan_at": "2026-04-16T222543Z",
-  "iteration": 494,
-  "active_child": 23,
-  "active_child_session": "orchestrator-20260321-172932-issue-23-20260416-215759",
-  "active_child_pid": 1192896,
-  "active_child_state": "running",
-  "active_child_phase": "build",
-  "active_child_iter": 1,
-  "active_child_updated_at": "2026-04-16T21:58:02Z",
-  "active_child_elapsed_since_update": "~27min",
-  "active_child_claude_alive": true,
-  "active_child_death": null,
-  "detected_issue": null,
+  "scan_at": "2026-04-17T002800Z",
+  "iteration": 330,
+  "active_children": 0,
   "capacity": {
-    "cap": 1,
-    "occupied": 1,
-    "available": 0
+    "cap": 3,
+    "occupied": 0,
+    "available": 3
   },
-  "pending_redispatches": 2,
+  "wave": 1,
+  "pending_dispatch": [1],
+  "dispatch_request_present": true,
+  "dispatch_request_file": "requests/dispatch-issue-1.json",
+  "dispatch_request_age_note": "Written at 2026-04-16T22:50:00Z; awaiting runtime processing",
+  "pending_waves": {
+    "wave2": [2, 5, 6, 7, 10],
+    "wave3": [3, 4, 8, 11],
+    "wave4": [9, 12]
+  },
+  "human_blocked": [],
   "queue_overrides": 0,
-  "provider_status": {
-    "claude": "active",
-    "opencode": "cooldown"
-  },
-  "action": "wait",
-  "human_blocked": [157, 108, 173],
-  "notes": "Scan 494. issue-23 child (PID 1192896) ALIVE at iter=1/build/claude (~27min). Claude at 0.6% CPU. Uncommitted SPEC.md+TODO.md in child worktree. Queue override 000-review-fixes.md active. Last commit 4c074a78 adds steer_reset/nonsteer_no_reset coverage (fixes prior review FAIL). Gate 4 dist/index.js rebuild still pending. Pending after #23: #188/#70. Human-blocked: #157/#108/#173. Action: wait."
+  "action": "wait_for_runtime",
+  "notes": "Iter 330. dispatch-issue-1.json present in requests/ since 2026-04-16T22:50:00Z — runtime has not yet processed it. Issue #1 (Loop Engine Robustness) is wave 1, dor_validated=true, no child_session yet. No active children. Waiting for runtime to pick up dispatch. No new actions needed this scan."
 }
