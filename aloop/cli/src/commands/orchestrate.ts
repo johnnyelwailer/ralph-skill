@@ -4729,6 +4729,7 @@ export interface ScanLoopDeps {
   existsSync: (path: string) => boolean;
   readFile: (path: string, encoding: BufferEncoding) => Promise<string>;
   writeFile: (path: string, data: string, encoding: BufferEncoding) => Promise<void>;
+  mkdir?: (path: string, options?: { recursive?: boolean }) => Promise<string | undefined>;
   readdir?: (path: string) => Promise<string[]>;
   unlink?: (path: string) => Promise<void>;
   now: () => Date;
@@ -5754,16 +5755,19 @@ export async function runOrchestratorScanPass(
 
     // Resume stopped children by writing review feedback to their existing queue
     for (const issue of stoppedChildRedispatch) {
+      const childSession = issue.child_session!;
       const feedback = (issue as any).review_feedback ?? '';
       if (feedback) {
-        const childQueueDir = path.join(deps.aloopRoot, 'sessions', issue.child_session, 'queue');
-        await deps.mkdir(childQueueDir, { recursive: true });
+        const childQueueDir = path.join(deps.aloopRoot, 'sessions', childSession, 'queue');
+        await deps.mkdir?.(childQueueDir, { recursive: true });
         await deps.writeFile(
           path.join(childQueueDir, '000-review-fixes.md'),
           `---\nagent: build\nreasoning: high\n---\n\n# Review Feedback — Fix Required\n\nThe orchestrator review agent requested changes on PR #${issue.pr_number}.\n\n## Feedback\n\n${feedback}\n\n## Instructions\n\nFix the issues described above, commit, and push.\nDo NOT add TODO.md, STEERING.md, TASK_SPEC.md, or other working artifacts to the commit.\n`,
           'utf8',
         );
       }
+      issue.state = 'in_progress';
+      issue.status = 'In progress';
       (issue as any).needs_redispatch = false;
       (issue as any).review_feedback = undefined;
       deps.appendLog(sessionDir, {
@@ -5771,7 +5775,7 @@ export async function runOrchestratorScanPass(
         event: 'child_redispatched_for_review',
         iteration,
         issue_number: issue.number,
-        child_session: issue.child_session,
+        child_session: childSession,
       });
     }
 
@@ -5796,7 +5800,7 @@ export async function runOrchestratorScanPass(
           const feedback = (issue as any).review_feedback ?? '';
           if (feedback) {
             const childQueueDir = path.join(deps.aloopRoot, 'sessions', launch.session_id, 'queue');
-            await deps.mkdir(childQueueDir, { recursive: true });
+            await deps.mkdir?.(childQueueDir, { recursive: true });
             await deps.writeFile(
               path.join(childQueueDir, '000-review-fixes.md'),
               `---\nagent: build\nreasoning: high\n---\n\n# Review Feedback — Fix Required\n\nThe orchestrator review agent requested changes on PR #${issue.pr_number}.\n\n## Feedback\n\n${feedback}\n\n## Instructions\n\nFix the issues described above, commit, and push.\nDo NOT add TODO.md, STEERING.md, TASK_SPEC.md, or other working artifacts to the commit.\n`,
