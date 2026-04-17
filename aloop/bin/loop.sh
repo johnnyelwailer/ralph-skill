@@ -2158,7 +2158,7 @@ trap 'cleanup "interrupted" "stopped"; exit 130' INT
 trap 'kill_active_provider; remove_session_lock' EXIT
 
 ITERATION=0
-while [ "$ITERATION" -lt "$MAX_ITERATIONS" ]; do
+while [[ -z "$MAX_ITERATIONS" ]] || [[ "$ITERATION" -lt "$MAX_ITERATIONS" ]]; do
     ITERATION=$((ITERATION + 1))
     ITERATION_START=$(date +%s)
     ITERATION_START_ISO=$(date -u +%Y-%m-%dT%H:%M:%SZ)

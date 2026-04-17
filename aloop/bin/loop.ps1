@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env pwsh
+#!/usr/bin/env pwsh
 # Aloop Loop — Generic Multi-Provider Autonomous Coding Loop
 # Usage: loop.ps1 -PromptsDir <path> -SessionDir <path> -WorkDir <path> [-Mode plan-build-review] [-Provider claude] [-MaxIterations 50]
 #
@@ -37,7 +37,7 @@ param(
     [string]$CopilotModel = 'gpt-5.3-codex',
     [string]$CopilotRetryModel = 'claude-sonnet-4.6',
 
-    [int]$MaxIterations = 50,
+    [int]$MaxIterations = 0,
     [int]$MaxStuck = 3,
 
     [int]$ProviderTimeoutSec = $(if ($env:ALOOP_PROVIDER_TIMEOUT) { [int]$env:ALOOP_PROVIDER_TIMEOUT } else { 10800 }),
@@ -2126,7 +2126,7 @@ function Run-QueueIfPresent {
 }
 
 try {
-    while (-not $cancelled -and $iteration -lt $MaxIterations) {
+    while (-not $cancelled -and ($MaxIterations -eq 0 -or $iteration -lt $MaxIterations)) {
         $iteration++
         $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
         $iterationStart = [int][DateTimeOffset]::Now.ToUnixTimeSeconds()
