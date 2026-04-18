@@ -1,17 +1,22 @@
 import { realpathSync } from "node:fs";
 import { basename, resolve } from "node:path";
 import type { Database } from "bun:sqlite";
+import {
+  ProjectAlreadyRegisteredError,
+  ProjectNotFoundError,
+  type CreateProjectInput,
+  type Project,
+  type ProjectFilter,
+  type ProjectStatus,
+} from "./project-types.ts";
 
-export type ProjectStatus = "setup_pending" | "ready" | "archived";
-
-export type Project = {
-  readonly id: string;
-  readonly absPath: string;
-  readonly name: string;
-  readonly status: ProjectStatus;
-  readonly addedAt: string;
-  readonly lastActiveAt: string | null;
-  readonly updatedAt: string;
+export {
+  ProjectAlreadyRegisteredError,
+  ProjectNotFoundError,
+  type CreateProjectInput,
+  type Project,
+  type ProjectFilter,
+  type ProjectStatus,
 };
 
 type ProjectRow = {
@@ -53,18 +58,6 @@ export function canonicalizeProjectPath(p: string): string {
     return abs.replace(/\/+$/, "");
   }
 }
-
-export type ProjectFilter = {
-  readonly status?: ProjectStatus;
-  readonly absPath?: string;
-};
-
-export type CreateProjectInput = {
-  readonly absPath: string;
-  readonly name?: string;
-  readonly id?: string; // optional override, mainly for tests
-  readonly now?: string;
-};
 
 export class ProjectRegistry {
   constructor(private readonly db: Database) {}
@@ -189,19 +182,5 @@ export class ProjectRegistry {
     const p = this.getByPath(absPath);
     if (!p) throw new Error(`project not found by path after create: ${absPath}`);
     return p;
-  }
-}
-
-export class ProjectNotFoundError extends Error {
-  readonly code = "project_not_found";
-  constructor(readonly id: string) {
-    super(`project not found: ${id}`);
-  }
-}
-
-export class ProjectAlreadyRegisteredError extends Error {
-  readonly code = "project_already_registered";
-  constructor(readonly absPath: string) {
-    super(`project already registered at path: ${absPath}`);
   }
 }
