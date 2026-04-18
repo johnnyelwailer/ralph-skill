@@ -1,117 +1,167 @@
 # Architecture
 
-> **Reference document.** Invariants and contracts consumed by agents at runtime. Work items live in GitHub issues; hard rules live in CONSTITUTION.md.
+> **Reference document.** The layers, boundaries, and seams of the `next` aloop runtime. Hard rules live in CONSTITUTION.md. Work items live in GitHub issues.
 >
-> Sources: SPEC.md §Architecture, §Inner Loop vs Runtime, §Cross-Platform (lines ~12-101) (pre-decomposition, 2026-04-18).
+> Sources: SPEC.md §Architecture, §Inner Loop vs Runtime, §Cross-Platform; `daemon.md`, `api.md`, `pipeline.md`, `provider-contract.md`, `issue-tracker.md`.
 
 ## Table of contents
 
-- Layered architecture
-- Cross-platform compatibility
-- Inner Loop vs Runtime (boundary contract)
-- Inner Loop responsibilities
-- Inner Loop does NOT
-- Aloop Runtime (shared base)
-- Dashboard (uses runtime + adds UI)
-- Orchestrator (uses runtime + adds issue management)
-- Communication contract
+- One-line summary
+- Layers
+- The one boundary: the API
+- Daemon responsibilities
+- Shim responsibilities
+- Client responsibilities
+- Adapter surfaces
+- Cross-platform
+- Trust boundaries
+- What the architecture rules out
 
 ---
 
-## Layered architecture
+## One-line summary
 
-Aloop is an autonomous coding agent orchestrator that runs configurable agent pipelines with multi-provider support (Claude, Codex, Gemini, Copilot, OpenCode), a real-time dashboard, GitHub integration, and a parallel orchestrator for complex multi-issue projects. It operates in two modes: **loop** (single-track iterative development) and **orchestrator** (fan-out via GitHub issues with wave scheduling and concurrent child loops).
+A single long-running local daemon (`aloopd`) owns all state and scheduling. Every client — CLI, dashboard, bot, script, loop shim — talks to it over a versioned HTTP+SSE API. Providers, issue trackers, and worker runtimes are adapters behind typed interfaces, swappable without touching core.
 
-Constraints:
-- **TypeScript / Bun** — CLI source is TypeScript, built with Bun into a bundled `dist/index.js`
-- **Config stays YAML** — shell-friendly for loop.sh/loop.ps1 parsing
-- **Runtime state stays JSON** — active.json, status.json, session state, loop-plan.json
+## Layers
 
-| Layer | Runs where | Tech | Deps |
-|-------|-----------|------|------|
-| `aloop` CLI (discover, scaffold, resolve) | Developer machine | TypeScript / Bun (bundled `dist/index.js`) | Bun |
-| Loop scripts (execute compiled pipeline from `loop-plan.json`) | Anywhere — containers, sandboxes, CI | `loop.ps1` / `loop.sh` | Shell + git + provider CLI |
+```
+┌──────────────────────────────────────────────────────────────┐
+│  Clients                                                      │
+│    aloop CLI · Dashboard (React) · Telegram bot · scripts     │
+│    loop.sh / loop.ps1 shim (≤150 LOC each)                    │
+└──────────────────────────────────────────────────────────────┘
+              │ HTTP + SSE  (v1 API, localhost)
+              ▼
+┌──────────────────────────────────────────────────────────────┐
+│  aloopd  (daemon, Bun TypeScript)                             │
+│                                                               │
+│    HTTP server · SSE hub · event bus                          │
+│    Session runner · workflow state machine · compile step     │
+│    Scheduler (permits: system / quota / burn-rate / concurrency)│
+│    Watchdog + reconcile jobs                                  │
+│    Project registry · overrides store                         │
+│                                                               │
+│    Adapter interfaces:                                        │
+│      ProviderAdapter    (5 impls: opencode, copilot, codex,   │
+│                           gemini, claude)                     │
+│      IssueTrackerAdapter (2 impls: github, builtin)           │
+│      WorkerAdapter       (1 impl: in-proc; future: remote)    │
+│      ProjectAdapter      (1 impl: local-fs; future: remote-clone)│
+│      StateStore          (1 impl: SQLite; future: Postgres)   │
+│      EventStore          (1 impl: JSONL; future: JSONL + S3)  │
+└──────────────────────────────────────────────────────────────┘
+              │ filesystem (worktrees, logs) + subprocess (CLIs)
+              ▼
+┌──────────────────────────────────────────────────────────────┐
+│  Provider CLIs       Worktrees & git         Tracker APIs     │
+│  (opencode, claude,  (per-session isolated)  (gh, builtin     │
+│   codex, gemini,                              filesystem, …)  │
+│   copilot)                                                    │
+└──────────────────────────────────────────────────────────────┘
+```
 
-## Cross-platform compatibility
+The layers are cleanly separated by the API at top and typed adapter interfaces at bottom. There is no supplementary control plane, no sidecar, no second runtime.
 
-- PowerShell 5.1 requires careful string interpolation — avoid `($var text)` pattern (causes parse failures); use `$($var)` subexpression syntax instead
-- `.editorconfig` must enforce `end_of_line = crlf` for `*.ps1` files
-- `install.ps1` must normalize line endings when copying loop scripts to `~/.aloop/bin/`
-- Agents should use Write tool (full file) instead of Edit for `.ps1` files if line-ending corruption is detected
-- Path format must match target script expectations: POSIX paths for bash, Windows-native paths for PowerShell
-- `aloop start` must detect the current shell and convert paths to the target script's expected format
+## The one boundary: the API
 
----
+Every action against aloop — starting a session, listing sessions, steering, setting overrides, acquiring a permit, streaming events — is an HTTP call against the daemon. The loop shim is an API client. The CLI is an API client. The dashboard is an API client.
 
-## Inner Loop vs Runtime (boundary contract)
+This is the load-bearing decision:
 
-The inner loop (`loop.sh` / `loop.ps1`) and the aloop runtime (`aloop` CLI, TS/Bun) are **separate programs** with a strict boundary. The inner loop may run inside a container where the aloop CLI is not available.
+- **Any client that exists today, any client that exists tomorrow, uses the same contract.** New surface = new endpoint = everyone gets it.
+- **Moving to distributed deployment is a deployment change, not a rewrite.** The API is already the only boundary. (See `daemon.md` §Forward-compat: distribution seams.)
+- **There are no side channels.** No "drop a file here," no "write to this magic directory." Agents interact through `aloop-agent submit`, which itself is an API client.
 
-## Inner Loop responsibilities
+## Daemon responsibilities
 
-The loop has exactly **three concepts**: cycle, finalizer, and queue.
+`aloopd` is the single process that owns:
 
-- **Queue** — check `queue/` folder for override prompts before anything else (queue always takes priority)
-- **Cycle** — read `loop-plan.json`, pick prompt at `cyclePosition % cycle.length`. Repeats while tasks remain.
-- **Finalizer** — when all TODO.md tasks are done at cycle boundary, switch to `finalizer[]` array in `loop-plan.json`. Process sequentially with its own `finalizerPosition`. If any finalizer agent creates new TODOs → abort finalizer, reset `finalizerPosition` to 0, resume cycle. If finalizer completes with no new TODOs → set `state: completed`, exit.
-- Parse frontmatter from prompt files (provider, model, agent, reasoning, trigger) — same parser for cycle, finalizer, and queue prompts. **`trigger:` is parsed and logged but never acted upon by the loop.**
-- Invoke provider CLIs directly (claude, opencode, codex, gemini, copilot)
-- Write `status.json` and `log.jsonl` after each iteration
-- Update `cyclePosition`/`finalizerPosition` and `iteration` in `loop-plan.json`
-- Delete consumed queue files after agent completes
-- Wait for pending `requests/*.json` to be processed by runtime before next iteration (with timeout)
-- Iteration counting and status tracking
-- Read `TODO.md` to detect `allTasksMarkedDone` (mechanical checkbox count, not agent-emitted)
-- Hot-reload provider list from `meta.json` each iteration (for round-robin fallback when frontmatter provider is unavailable)
-- Track and kill child processes (provider timeout, cleanup on exit)
-- Sanitize environment (`CLAUDECODE`, `PATH` hardening)
+- **Sessions** — standalone, orchestrator, child. State machine, lifecycle, parent-child relationships (see `daemon.md` §Session kinds).
+- **Scheduler** — the only gate between "a turn is wanted" and "a turn is started." Composes gates for concurrency, system resources, per-provider quota, burn rate, and live overrides.
+- **Event bus** — aggregates events from all sessions into per-session JSONL and the global SSE stream. Every state change publishes.
+- **Compile step** — translates `pipeline.yml` into `loop-plan.json`. The **only** YAML reader in the system.
+- **Watchdog / reconcile** — stuck detection, provider quota refresh, permit expiry sweep, orphan cleanup, burn-rate tracking, crash recovery. All internal to the daemon; no external cron.
+- **Project registry** — N unrelated repos served by one daemon instance.
+- **Adapter orchestration** — invokes `ProviderAdapter` for turns, `IssueTrackerAdapter` for decomposition/review/merge, `WorkerAdapter` for turn execution.
 
-## Inner Loop does NOT
+Full detail in `daemon.md`.
 
-- Parse pipeline YAML config
-- Evaluate transition rules (`onFailure`, escalation ladders)
-- Resolve triggers (loop parses `trigger:` but never acts on it — that's the runtime's job)
-- Talk to GitHub API or any external service
-- Know about other child loops or the orchestrator
-- Run the dashboard or any HTTP server
-- Process requests (it writes them; the runtime processes them)
-- Decide what work to do next (cycle/finalizer order and queue contents are controlled externally)
+## Shim responsibilities
 
-## Aloop Runtime (shared base — `aloop/cli/src/lib/runtime.ts`)
+`loop.sh` and `loop.ps1` are API clients, not business logic. Hard budget: ≤150 LOC each. What they do:
 
-The runtime is a **shared library** used by both the dashboard and the orchestrator. It is NOT the dashboard — the dashboard imports it. The runtime handles all intelligence that the loop script cannot:
+1. Acquire a local session lock.
+2. Ask the daemon for the next prompt to execute (`GET /v1/sessions/:id/next`).
+3. Invoke the resolved provider CLI with the prompt body.
+4. Post turn events as they happen (`POST /v1/sessions/:id/events`, batched).
+5. Write turn result + usage chunks.
+6. Release lock and exit.
 
-- Compile pipeline YAML into `loop-plan.json` (cycle + finalizer arrays of prompt filenames)
-- Generate prompt files with frontmatter from pipeline config
-- Rewrite `loop-plan.json` on permanent mutations (cycle changes, position adjustments)
-- **Trigger resolution** — scan prompt catalog for `trigger:` frontmatter, resolve chains, write matching prompts to `queue/`
-- **Steering** — detect STEERING.md, queue steer + follow-up plan
-- **Stuck detection** — detect N consecutive failures, queue debug agent
-- Process `requests/*.json` from agents — execute side effects (GitHub API, child dispatch, PR ops)
-- Queue follow-up prompts into `queue/` after processing requests (response baked into prompt)
-- Manage sessions (create, resume, stop, cleanup, lockfiles)
-- Monitor provider health (cross-session)
-- GitHub operations (`aloop gh` subcommands)
+They **do not** parse YAML, do not resolve triggers, do not talk to GitHub, do not manage the queue, do not own any state. If logic beyond "get next thing; run it; report results" creeps in, it belongs in the daemon.
 
-## Dashboard (uses runtime + adds UI)
+CONSTITUTION rule: the shim must shrink, never grow. Any change that would push it over 150 LOC is rejected and routed into the daemon instead.
 
-- Imports and calls `runtime.monitorSessionState()` on file changes
-- Serves HTTP API + WebSocket for dashboard UI
-- Pure observability + user steering interface
-- **NOT essential** — loop works without it. Runtime features (trigger resolution, steering) work through other entry points too.
-- **Dashboard lifecycle rules:**
-  - Orchestrator-dispatched child loops MUST NOT start a dashboard (`--no-dashboard` flag). Dashboards are for human observation; headless children don't need them.
-  - `aloop start` checks for an existing dashboard (via `meta.json` dashboard_port) and reuses it if still responding. Only starts a new instance if none is running.
-  - `aloop dashboard` (explicit) always starts a new instance regardless.
+## Client responsibilities
 
-## Orchestrator (uses runtime + adds issue management)
+All other clients (CLI, dashboard, bots) translate user intent into API calls. They:
 
-- Imports runtime for trigger resolution, queue management, session lifecycle
-- Adds: spec decomposition, issue tracking, wave scheduling, child loop dispatch, PR gating, replan
-- Runs as `aloop orchestrate` — separate process from dashboard
+- Render state they get from `GET /v1/...` endpoints.
+- Subscribe to SSE streams for live updates (`GET /v1/events`, `GET /v1/sessions/:id/events`, `GET /v1/sessions/:id/turns/:turn_id/chunks`).
+- Never persist their own state for things the daemon owns. Client-local state is limited to UI prefs, auth tokens, etc.
 
-## Communication contract
+This keeps the system honest: if the CLI can do X, the dashboard can do X, because X is an API endpoint. If the dashboard needs Y that no one else has, the API is missing an endpoint — fix the API, not the dashboard.
 
-- **Runtime → Inner Loop**: `loop-plan.json` (cycle + finalizer), `meta.json` (providers), `queue/*.md` (overrides with frontmatter)
-- **Inner Loop → Runtime**: `status.json` (current state), `log.jsonl` (history), `requests/*.json` (side-effect requests)
-- **Prompt files** (shared): frontmatter carries agent config (provider, model, reasoning, trigger); body is the prompt. Same format for cycle, finalizer, and queue prompts.
+## Adapter surfaces
+
+Six typed interfaces enclose everything external to the daemon core:
+
+| Adapter | Interface file / spec | V1 implementations | Purpose |
+|---|---|---|---|
+| **ProviderAdapter** | `provider-contract.md` | opencode, copilot, codex, gemini, claude | One per AI provider; runs turns; emits agent chunks |
+| **IssueTrackerAdapter** | `issue-tracker.md` | github, builtin | Generic issue/change-set surface; GH is one instance |
+| **WorkerAdapter** | in-daemon (seam) | in-proc | Runs turns in the daemon's process today; remote worker tomorrow |
+| **ProjectAdapter** | in-daemon (seam) | local-fs | Worktree operations on local filesystem today; remote clone tomorrow |
+| **StateStore** | in-daemon (seam) | sqlite | Queryable current-state; Postgres tomorrow |
+| **EventStore** | in-daemon (seam) | jsonl | Authoritative append-only event log; JSONL + S3 tomorrow |
+
+Each interface has exactly the implementations v1 needs, plus a deliberate seam for future growth. No interface has zero implementations ("abstractions without users"). No interface has an implementation that isn't actually used.
+
+## Cross-platform
+
+Single source of truth for loop shims is their own script. Daemon is platform-agnostic (Bun). The shim scripts differ in syntax (bash vs PowerShell) but their behavior is identical — both call the same API endpoints with the same semantics.
+
+Operational notes:
+
+- PowerShell 5.1: avoid `($var text)`; use `$($var)`.
+- `.editorconfig` enforces `end_of_line = crlf` for `*.ps1`.
+- `install.ps1` normalizes line endings when placing `loop.ps1` into `~/.aloop/bin/`.
+- Windows path format is passed to scripts in Windows-native form; bash path format in POSIX.
+- `aloop start` detects the current shell and invokes the correct shim — CLI is the one piece that knows the difference.
+
+## Trust boundaries
+
+The system has one outer boundary and several internal ones:
+
+- **Clients ↔ Daemon**: HTTP request/response, with auth (localhost unauthenticated by default; bearer token when tunneled). Requests are rate-limited per client.
+- **Daemon ↔ Agents (via `aloop-agent`)**: agents run inside a provider process with an `AUTH_HANDLE` env variable scoped to a single session. Agents cannot issue calls outside that scope.
+- **Daemon ↔ Providers**: daemon spawns provider CLIs as child processes with sanitized environments (`CLAUDECODE`, `PATH`, secrets). Providers receive only the prompt body and declared tool definitions.
+- **Daemon ↔ Tracker**: the adapter authenticates to the tracker with credentials supplied in project config (`gh` CLI, env token). Daemon policy restricts allowed operations per role (see `security.md` `aloop gh` table, now generalized across adapters).
+- **Daemon ↔ Filesystem**: worktrees live under `~/.aloop/state/sessions/<id>/worktree/`. A session cannot read outside its own worktree except through well-defined read-only references (the project's repo root, config files).
+
+Agents are the least trusted principal. The daemon is the trust anchor.
+
+## What the architecture rules out
+
+Explicit non-goals — decisions that must not drift back in:
+
+- **No business logic in the shim.** If shrinking requires moving logic, move it.
+- **No YAML parsing outside the compile step.** Shims and session runner use `loop-plan.json`.
+- **No direct tracker calls from agents.** Always `aloop-agent submit` → daemon → adapter.
+- **No expressions in pipeline YAML.** Keywords (`onFailure: retry`, `trigger: merge_conflict`) are data; evaluation is daemon code.
+- **No second runtime process.** Orchestrators run as workflows in the same daemon, not separate binaries.
+- **No in-process state that outlives a request.** Session state is SQLite + JSONL, not daemon memory.
+- **No concurrency that bypasses the scheduler.** Every turn goes through the permit protocol, even for standalone single-session runs.
+- **No "aloop gh" treated specially.** GitHub is one adapter among potentially many; `security.md`'s policy table applies to all tracker adapters uniformly.
+
+These rules are not preferences. They are the architecture's load-bearing invariants; the rebuild exists to restore them.
