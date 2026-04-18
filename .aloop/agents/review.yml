@@ -1,4 +1,0 @@
-agent: review
-prompt: PROMPT_review.md
-reasoning:
-  effort: xhigh
