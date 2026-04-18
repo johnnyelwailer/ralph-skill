@@ -8,10 +8,12 @@ The constitution is law. Specs describe the system; this document constrains it.
 
 ## I. Trust & Boundary
 
-1. **Agents are untrusted.** `aloopd` (the daemon) is the single trust anchor. Agents never call tracker APIs, provider APIs, network endpoints, tracker CLIs (`gh`, `glab`, etc.), or the `aloop` CLI directly. They express intent through `aloop-agent submit` / `aloop-agent todo`; the daemon decides what gets executed and under what policy.
-2. **Every action flows through the v1 API.** CLI, dashboard, shims, bots, scripts are all API clients. There are no privileged paths, no side channels, no "drop a file and hope." If the dashboard can do X, every other client can do X, because X is an endpoint.
-3. **Policy is hardcoded in the daemon, not in config.** The `aloop gh` / tracker-adapter policy tables live in source. A config file cannot relax them. There is no "dev mode" that bypasses policy.
-4. **Agents run in scoped sandboxes.** The daemon sanitizes the provider CLI's environment (`CLAUDECODE`, `PATH`, secrets) before spawning. Agents see only their session's worktree, their `AUTH_HANDLE`, and their declared tools.
+1. **Aloop is autonomous by default.** No attended / supervised / tier-switch modes. The orchestrator decomposes, dispatches, reviews, merges, and self-heals without waiting for human approval. Humans intervene through five always-available channels — steer, stop, edit Epic/Story, edit Task, comment on Epic/Story — none of which pause the loop.
+2. **Agents are untrusted.** `aloopd` (the daemon) is the single trust anchor. Agents never call tracker APIs, provider APIs, network endpoints, tracker CLIs (`gh`, `glab`, etc.), or the `aloop` CLI directly. They express intent through `aloop-agent submit` / `aloop-agent todo`; the daemon decides what gets executed and under what policy.
+3. **Every action flows through the v1 API.** CLI, dashboard, shims, bots, scripts are all API clients. There are no privileged paths, no side channels, no "drop a file and hope." If the dashboard can do X, every other client can do X, because X is an endpoint.
+4. **Policy is hardcoded in the daemon, not in config.** The `aloop gh` / tracker-adapter policy tables live in source. A config file cannot relax them. There is no "dev mode" that bypasses policy.
+5. **Agents run in scoped sandboxes.** The daemon sanitizes the provider CLI's environment (`CLAUDECODE`, `PATH`, secrets) before spawning. Agents see only their session's worktree, their `AUTH_HANDLE`, and their declared tools.
+6. **Humans always win.** A session is always stoppable, an Epic/Story is always editable, a comment on an Epic/Story is always read. Nothing an agent does — and no configuration choice — can strip these channels.
 
 ## II. Architecture
 

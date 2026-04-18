@@ -224,6 +224,7 @@ Orchestrator pipelines use a different catalog. Each still obeys the universal c
 | `orch_review` | `review_result` | Change-set review, outputs verdict + inline comments |
 | `orch_resolver` | — (queues merge_conflict into child) | Decides rebase / recreate / abandon for conflicted change sets |
 | `orch_diagnose` | `diagnose_result` | Intelligent self-healing: observes anomaly events, returns a structured action for the daemon |
+| `orch_conversation` | `conversation_result` | Handles human comments on Epics/Stories (reply, edit work item, re-decompose, pause, inject into child, file follow-up) |
 
 ## Subagent catalog
 

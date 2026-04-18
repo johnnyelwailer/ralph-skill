@@ -256,7 +256,7 @@ tracker:
 
 ## Task tracking
 
-**Default: tasks live in the daemon.** Every child session has its own task list in the daemon's task store, manipulated by `aloop-agent todo`. Task state is:
+**v1 scope: tasks live in the daemon, not the tracker.** Tracker mirroring is deferred to v2 — the capability flag stays in the interface for forward-compat, but no adapter ships an implementation in v1. The default (and only) path for v1 is the daemon's task store, manipulated by `aloop-agent todo`. Task state is:
 
 - Added by plan, review, spec-gap, or any agent with `todo add` permission.
 - Completed by build, qa, or the agent whose role matches the task's `for`.
@@ -264,9 +264,9 @@ tracker:
 - Survives worktree operations (task store is in session state dir, not worktree).
 - Exposed by `aloop-agent todo list --format md` as a TODO.md-compatible rendering for agents that read/write it.
 
-Tasks are NOT tracker entities by default. The pre-rebuild practice of parsing `TODO.md` markdown for completion detection is retired — completion is a structured API call.
+Tasks are NOT tracker entities. The pre-rebuild practice of parsing `TODO.md` markdown for completion detection is retired — completion is a structured API call.
 
-**Optional: mirror tasks to the tracker.** If `capabilities.tracks_tasks.mirror_supported = true` and the project enables it, the adapter reflects the task list externally. Three mirror shapes:
+**v2 and beyond — opt-in mirroring.** The adapter interface exposes `mirrorTasks` / `readMirroredTasks` and the `tracks_tasks` capability block. No v1 adapter implements them; the shape is documented here as forward-compat. Projects that need stakeholder visibility into task-level progress should wait for v2 or use the dashboard instead. Three mirror shapes:
 
 | Shape | Where tasks appear | Trade-offs |
 |---|---|---|
@@ -285,19 +285,7 @@ tracker:
     max_tasks: 50                     # hard cap to prevent runaway
 ```
 
-The daemon pushes task-state changes to the adapter in batches (every 30s by default, or on session close). This never blocks the child session; mirror failures log and do not halt work.
-
-**When to enable mirroring:**
-
-- Team projects where stakeholders watch progress in the tracker UI.
-- Projects with long-running stories where task history matters.
-- Compliance/audit contexts.
-
-**When not to:**
-
-- Solo or experimental work — noise outweighs benefit.
-- High-frequency TDD loops — task churn produces tracker spam.
-- Adapters whose `mirror_shape` options all feel wrong for the project.
+When an adapter ships with mirror support, the daemon will push task-state changes in batches (default: every 30s, or on session close) so it never blocks the child session; mirror failures log and do not halt work.
 
 ## Built-in adapter (no external deps)
 
@@ -340,7 +328,7 @@ Each work-item file:
 - Zero external deps. `git`, a filesystem, and aloop itself.
 - Committed to the repo. Work-item state is versioned alongside code — reviewable, blame-able, revertable.
 - Deterministic IDs (monotonic `NNNN`).
-- `events.jsonl` is an append-only audit log — every mutation (create, label, assign, close) writes a line. Replays to any point in history.
+- `events.jsonl` is an append-only audit log — every mutation (create, label, assign, close) writes a line using the same envelope as the daemon event bus (`timestamp`, `kind`, payload) so tooling is reusable. Replays to any point in history.
 - Change sets are branch-based: one branch per change set, merged via `git` under the daemon's policy.
 - Native hierarchy: `links.parent`/`links.children` — `capabilities.hierarchy.native = true` (our own first-class support).
 - Task mirroring: `sub_children` shape supported, but default off because the builtin's strength is simplicity.
@@ -354,7 +342,7 @@ Each work-item file:
 
 ### Migration
 
-`aloop tracker migrate --from builtin --to github` (future) reads the built-in store, creates matching issues and sub-issues in GitHub, and rewrites `aloop/config.yml`.
+Graduating a project from `builtin` to `github` (or any other tracker) is a future concern — a one-shot migration utility that walks the built-in store, creates matching items in the target tracker, and rewrites `aloop/config.yml`. The interface is deliberately unnamed here; when the need is real, we specify it.
 
 ## GitHub adapter (native sub-issues)
 
@@ -386,7 +374,9 @@ cross_repo_allowed:      false      # same-org only (restricted in adapter for s
 
 Subscribe to the **`sub_issues`** event (not `issues` — GitHub does not fire `issues` for sub-issue changes). Actions: `sub_issue_added`, `sub_issue_removed`, `parent_issue_added`, `parent_issue_removed`. Payload carries `parent_issue_id`, `parent_issue`, `parent_issue_repo`, `sub_issue_id`, `sub_issue`.
 
-The GitHub adapter consumes webhooks through `aloopd`'s public webhook endpoint (when configured). Without webhook configuration, the adapter polls `listChildren` on Epics with `polling.enabled: true`. Webhook delivery + polling reconciliation is the recommended setup.
+The GitHub adapter consumes webhooks through `aloopd`'s public webhook endpoint (when configured). Without webhook configuration, the adapter polls `listChildren` on Epics with `polling.enabled: true`.
+
+**Reconciliation window.** When webhooks are configured but may drop, a periodic poll (default: every hour) diffs the current tracker state against the last-seen snapshot. Missed changes are emitted as synthetic `tracker.event` entries with `source: "poll_reconcile"`. The reconciliation window is configurable per project; default 1h balances freshness against rate-limit pressure.
 
 ### Secondary rate limits
 
@@ -500,7 +490,7 @@ Event kinds the orchestrator listens for:
 
 - `work_item.created`, `work_item.updated`, `work_item.closed`, `work_item.reopened`
 - `hierarchy.child_added`, `hierarchy.child_removed`, `hierarchy.parent_added`, `hierarchy.parent_removed`
-- `comment.created`, `comment.updated`
+- `comment.created`, `comment.updated` — **human comments are first-class orchestrator input** (see `orchestrator.md` §Epic/Story conversations). Adapter populates `data.source` as `"human"` for comments authored by users and `"aloop"` for comments authored by the orchestrator; the `user_comment` trigger in orchestrator workflows filters to `source=human` to avoid self-reaction loops.
 - `change_set.opened`, `change_set.updated`, `change_set.closed`, `change_set.merged`, `change_set.conflict`
 - `change_set.review_submitted`, `change_set.review_thread_resolved`
 

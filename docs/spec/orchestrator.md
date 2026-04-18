@@ -259,14 +259,45 @@ Common triggers:
 | `change_set.review_submitted` (external reviewer) | `pr_review_needed` | run full review prompt, act on verdict |
 | `merge_conflict_pr` | `merge_conflict_pr` | queue `PROMPT_orch_resolver.md` on the child's queue |
 
-## Autonomy levels
+## Autonomy and human intervention
 
-Per project, via `aloop/config.yml`. The level is chosen during setup (see `setup.md` §Autonomy levels as setup output) based on interview answers and project maturity; it can be changed later by editing the project config.
+**Aloop is autonomous by default.** There are no attended / supervised / tier-switch modes. The orchestrator proceeds end-to-end: decompose, dispatch, review, merge, diagnose — without pausing for approval. The whole point is that you can go to sleep and come back to merged work.
 
-- **`attended`** — orchestrator halts before decompose, before dispatch, and before merge; human approves each.
-- **`supervised`** — orchestrator proceeds through decompose and dispatch autonomously; halts before each merge for human review.
-- **`autonomous`** — orchestrator proceeds end-to-end; human intervenes only on diagnose outputs that require it (`file_followup_issue`, threshold raises, hard stops).
-- **`fully_autonomous`** — same as `autonomous` plus raising thresholds without asking. Not recommended for production projects until the system has weeks of clean runs.
+Humans intervene through **five channels**, any time, without stopping the loop:
+
+1. **Steer** a session — `POST /v1/sessions/:id/steer`. Queues a prompt into the session's own queue; picked up on the next turn. The session does not stop; it takes the instruction into account.
+2. **Stop** a session — `DELETE /v1/sessions/:id?mode=graceful|force`. Graceful finishes the current turn, force kills the provider. Orchestrator stop cascades to children.
+3. **Edit an Epic / Story** — in the tracker directly (GitHub UI) or via `aloop tracker ...` CLI. The orchestrator reads the current state on every scan; changes take effect on the next refinement or dispatch decision.
+4. **Edit a Task** — `aloop-agent todo` from a shell attached to the session's worktree, or via the dashboard. Tasks are session-internal; the session picks up the change on the next turn.
+5. **Comment on an Epic or Story** — first-class interaction channel (see §Epic/Story conversations). The orchestrator reads human comments on tracked items and decides what to do about them.
+
+The daemon enforces that humans always have these channels available; nothing an agent does can strip them. A runaway session is always stoppable; a wrong decomposition is always editable; a misunderstood scope is always steerable.
+
+## Epic/Story conversations
+
+Humans can comment on any Epic or Story in the tracker. Those comments are first-class input to the orchestrator — not noise to ignore.
+
+**Flow:**
+
+1. A human leaves a comment on an Epic or Story via the tracker UI (GitHub issue comment, GitLab issue comment, built-in tracker append).
+2. The `TrackerAdapter` emits a `comment.created` event on the bus. The event payload includes the comment body, the author, the work item ref, and `source: "human"` (derived from the author — the adapter filters out comments authored by the aloop identity itself to avoid self-reaction loops).
+3. The orchestrator workflow's `triggers.user_comment` maps to `PROMPT_orch_conversation.md`. The daemon queues it into the orchestrator's own queue.
+4. On next turn, the conversation prompt runs. Inputs: the comment, the full Epic/Story body, all prior comments (human and orchestrator), current abstract status, linked Stories and change sets.
+5. The prompt emits `conversation_result` with a structured action:
+   - **`reply`** — post a comment back via `adapter.addComment`. The orchestrator identity authors it; adapter stamps metadata so future events don't trigger re-reaction.
+   - **`edit_work_item`** — update title / body / labels / status. Goes through `adapter.updateWorkItem` under policy.
+   - **`refine_again`** — move the work item back to `needs_refinement` and re-queue `PROMPT_orch_refine.md`.
+   - **`decompose_again`** — for Epics: move back to `refined` and re-queue `PROMPT_orch_sub_decompose.md` to re-split.
+   - **`pause_dispatch_for <work_item>`** — do not dispatch children for this item until a further signal.
+   - **`inject_into_child <session_id> <instruction>`** — queue a steer into a running child session linked to this work item.
+   - **`file_followup <draft>`** — create a new Epic or Story.
+   - **`no_action`** — comment was informational; record and continue.
+
+Every action is policy-gated. The conversation prompt cannot directly edit history, delete comments, or merge change sets — it expresses intent; the daemon decides what is permitted for the orchestrator role.
+
+**Infinite-loop prevention:** orchestrator-authored comments are flagged by metadata at create time; the `user_comment` trigger filters them out. Human → orchestrator → human → orchestrator conversations are fine and expected; orchestrator → orchestrator is not.
+
+**Why this matters:** the comment channel is how humans actually steer long-running work. "This Epic is too big — split it into three" or "Story 42 is blocked on an external decision, pause it for a week" or "You got the API shape wrong, use X instead." Without this, humans have to edit the work item body (which agents may overwrite) or intervene procedurally (which breaks the autonomous promise). With it, conversations live alongside the work, visible to everyone, and the orchestrator listens.
 
 Autonomy level is a daemon-enforced policy, not a prompt-level suggestion. It gates merge authority, threshold-change authority, and dispatch without refinement.
 

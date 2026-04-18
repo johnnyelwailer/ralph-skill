@@ -59,6 +59,20 @@ A bad day on aloop (and how it handles it):
 
 Beyond v1: remote/distributed deployment (control plane + worker fleet), additional tracker adapters (GitLab, Linear), additional provider adapters, richer dashboard, Telegram bot, public dashboard with tunnel auth.
 
+## Autonomy and human control
+
+There are **no autonomy tiers**. Aloop is autonomous end-to-end by default: decompose → refine → dispatch → build → review → merge → diagnose, without waiting for approval. The product only makes sense at that level — anything less is Claude Code with extra steps.
+
+Humans always have five intervention channels, available at any time without stopping the loop:
+
+1. **Steer** — push an instruction into a running session's queue.
+2. **Stop** — end a session (graceful or force).
+3. **Edit Epic / Story** — change scope, re-label, re-order; orchestrator reads on next scan.
+4. **Edit Task** — add, remove, reprioritize tasks inside a child session's `aloop-agent todo` store.
+5. **Comment on Epic / Story** — first-class input. The orchestrator reads human comments, responds, takes action (reply, edit scope, re-decompose, pause dispatch, inject steering into a child, file a follow-up).
+
+The autonomous loop and the human channels run concurrently. If you walk away, the loop runs. If you come back, the loop doesn't know the difference — your edits and comments land as events, just like everything else.
+
 ## Principles that go beyond the code
 
 - **The loop must shrink.** Any growth in the shim is a design failure routed into the daemon instead.
