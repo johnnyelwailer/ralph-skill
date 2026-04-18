@@ -17,6 +17,10 @@ out/
 *.swp
 *.swo
 
+# Tool-local state (Claude Code IDE, opencode CLI, etc.)
+.claude/
+.opencode/
+
 # OS
 .DS_Store
 Thumbs.db
