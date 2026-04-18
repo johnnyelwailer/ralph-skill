@@ -1,10 +1,12 @@
-import { buildHealth } from "../routes/health.ts";
+import { handleDaemon } from "../routes/daemon.ts";
 import { handleProjects } from "../routes/projects.ts";
+import type { ConfigStore } from "../config/store.ts";
 import type { ProjectRegistry } from "../state/projects.ts";
 
 export type RouterDeps = {
   readonly startedAt: number;
   readonly registry: ProjectRegistry;
+  readonly config: ConfigStore;
 };
 
 /**
@@ -18,13 +20,8 @@ export function makeFetchHandler(
     const url = new URL(req.url);
     const pathname = url.pathname;
 
-    if (req.method === "GET" && pathname === "/v1/daemon/health") {
-      const body = buildHealth(deps.startedAt);
-      return new Response(JSON.stringify(body), {
-        status: 200,
-        headers: { "content-type": "application/json" },
-      });
-    }
+    const daemonResponse = handleDaemon(req, deps, pathname);
+    if (daemonResponse) return daemonResponse;
 
     if (req.method === "GET" && pathname === "/v1/events/echo") {
       // SSE echo scaffold — proves the transport works. Real event bus is M2+.

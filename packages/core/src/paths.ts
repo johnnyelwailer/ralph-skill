@@ -7,6 +7,8 @@ export type DaemonPaths = {
   socketFile: string;
   stateDir: string;
   logFile: string;
+  daemonConfigFile: string;
+  overridesFile: string;
 };
 
 export function resolveDaemonPaths(env: Record<string, string | undefined> = process.env): DaemonPaths {
@@ -17,5 +19,7 @@ export function resolveDaemonPaths(env: Record<string, string | undefined> = pro
     socketFile: join(home, "aloopd.sock"),
     stateDir: join(home, "state"),
     logFile: join(home, "state", "aloopd.log"),
+    daemonConfigFile: join(home, "daemon.yml"),
+    overridesFile: join(home, "overrides.yml"),
   };
 }
