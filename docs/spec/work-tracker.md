@@ -476,12 +476,25 @@ Orchestrator prompts produce tracker-agnostic structured output. The adapter lay
       "estimated_complexity": "M",
       "metadata": {
         "spec_refs": ["docs/spec/api.md#scheduler"],
-        "environment_requirements": { "requires_vision": false }
+        "environment_requirements": { "requires_vision": false },
+        "file_scope": {
+          "owned": ["packages/core/src/scheduler/**", "packages/core/tests/scheduler/**"],
+          "conflict_hint": ["packages/core/src/state/sqlite.ts"]
+        }
       }
     }
   ]
 }
 ```
+
+**`file_scope` is a first-class Story field** (not just metadata ornament) and the scheduler's Epic/Story dispatch gate uses it:
+
+- `owned` — glob patterns the Story is authorized to modify. The refine agent must populate this before a Story becomes `dor_validated`.
+- `conflict_hint` — glob patterns the Story may read and possibly touch transiently but does not own; schedulers serialize Stories that share a `conflict_hint` file.
+- **Dispatch gate:** the scheduler denies dispatching a Story if any currently-in-flight Story's `owned` set overlaps with this Story's `owned` or with this Story's `conflict_hint`. Overlap detection is glob intersection on the committed Story list.
+- **Consequence for decomposition:** the `orch_sub_decompose` prompt is required to produce disjoint `owned` sets across sibling Stories. When the orchestrator cannot cleanly split file ownership, it produces fewer Stories with broader scope (slower) rather than many Stories with overlapping ownership (merge conflicts).
+
+This is the enforcement layer behind the research's repeated finding that parallel children on shared trunk are safe **only** when work is on disjoint files. See `docs/research/agent-systems-2026.md` §4 and §7.
 
 ### `refine_result`, `estimate_result`, `review_result`
 
