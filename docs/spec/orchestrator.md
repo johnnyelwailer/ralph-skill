@@ -155,7 +155,9 @@ For each refined Epic, produce **Stories** — the unit a child session will pic
 
 ### Story refinement (`PROMPT_orch_refine.md` with story scope)
 
-For each Story, validate definition-of-ready (tests named, files in scope identified, external contracts referenced, environment requirements declared). Emits `refine_result` with `abstract_status: dor_validated`. Only `dor_validated` Stories are dispatchable.
+For each Story, validate definition-of-ready (tests named, files in scope identified including `file_scope.owned`, external contracts referenced, environment requirements declared) AND **select the workflow** the child session will run (per `workflows.md` §Selection logic). Emits `refine_result` with `abstract_status: dor_validated` and `metadata.workflow` set. Only `dor_validated` Stories with a valid `workflow` are dispatchable.
+
+Workflow selection follows the deterministic priority: explicit override → label match → file-scope pattern → complexity tier → default. The selection trace is recorded in `metadata.workflow_selection_trace` for audit. Humans can override via comment on the Story (handled by `orch_conversation`).
 
 Tasks are **not** produced by the orchestrator. Tasks are generated inside a Story's child session by the plan agent, tracked via `aloop-agent todo`, and consumed by build/qa/review. Mirroring tasks to the tracker is an optional per-project feature (see `work-tracker.md` §Task tracking).
 
@@ -172,7 +174,7 @@ The dispatcher is a prompt (`PROMPT_orch_dispatch.md` or similar) that:
    - Wave gate — higher waves wait until lower waves' critical paths are merged.
    - Scheduler permit for the child session can be acquired (concurrency, system, quota, burn-rate gates all pass).
    - Override policy permits a provider for this Story's chain.
-3. Emits `dispatch_result` — a list of `{story_ref, workflow, provider_chain}` tuples.
+3. Emits `dispatch_result` — a list of `{story_ref, workflow, provider_chain}` tuples. `workflow` is read from the Story's `metadata.workflow` (set by `orch_refine`); the dispatcher validates the workflow exists, is permitted by project config (`workflow.forbid` list), and matches the Story's `file_scope` patterns. Mismatches return the Story to `refined` with a re-route note.
 4. Daemon processes the submit: for each tuple, `POST /v1/sessions` with `kind: child`, `parent_session_id: orch.id`, `workflow: <workflow>`, `provider_chain: <chain>`, `issue: <story_ref>`.
 5. Daemon creates the child's worktree (branch `aloop/issue-<story_key>`, based on `agent/trunk`) and starts the child's session runner.
 
