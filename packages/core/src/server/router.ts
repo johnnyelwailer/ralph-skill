@@ -1,15 +1,20 @@
 import { buildHealth } from "../routes/health.ts";
+import { handleProjects } from "../routes/projects.ts";
+import type { ProjectRegistry } from "../state/projects.ts";
 
 export type RouterDeps = {
-  startedAt: number;
+  readonly startedAt: number;
+  readonly registry: ProjectRegistry;
 };
 
 /**
  * Route handler shared by HTTP and Unix socket transports. Returns a Response
  * for the given Request; transport-agnostic.
  */
-export function makeFetchHandler(deps: RouterDeps): (req: Request) => Response | Promise<Response> {
-  return (req: Request) => {
+export function makeFetchHandler(
+  deps: RouterDeps,
+): (req: Request) => Response | Promise<Response> {
+  return async (req: Request) => {
     const url = new URL(req.url);
     const pathname = url.pathname;
 
@@ -33,9 +38,13 @@ export function makeFetchHandler(deps: RouterDeps): (req: Request) => Response |
       });
     }
 
+    const projectsResponse = await handleProjects(req, { registry: deps.registry }, pathname);
+    if (projectsResponse) return projectsResponse;
+
     return new Response(
       JSON.stringify({
         error: {
+          _v: 1,
           code: "not_found",
           message: `No route: ${req.method} ${pathname}`,
         },

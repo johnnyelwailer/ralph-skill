@@ -1,9 +1,9 @@
-import { makeFetchHandler } from "./router.ts";
+import { makeFetchHandler, type RouterDeps } from "./router.ts";
 
 export type StartHttpOptions = {
   hostname?: string;
   port: number;
-  startedAt: number;
+  deps: RouterDeps;
 };
 
 export type RunningHttp = {
@@ -15,7 +15,7 @@ export type RunningHttp = {
 
 export function startHttp(opts: StartHttpOptions): RunningHttp {
   const hostname = opts.hostname ?? "127.0.0.1";
-  const fetch = makeFetchHandler({ startedAt: opts.startedAt });
+  const fetch = makeFetchHandler(opts.deps);
 
   const server = Bun.serve({ hostname, port: opts.port, fetch });
 

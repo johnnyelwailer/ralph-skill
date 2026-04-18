@@ -1,9 +1,9 @@
 import { existsSync, unlinkSync } from "node:fs";
-import { makeFetchHandler } from "./router.ts";
+import { makeFetchHandler, type RouterDeps } from "./router.ts";
 
 export type StartSocketOptions = {
   path: string;
-  startedAt: number;
+  deps: RouterDeps;
 };
 
 export type RunningSocket = {
@@ -22,7 +22,7 @@ export function startSocket(opts: StartSocketOptions): RunningSocket {
     }
   }
 
-  const fetch = makeFetchHandler({ startedAt: opts.startedAt });
+  const fetch = makeFetchHandler(opts.deps);
   const server = Bun.serve({ unix: opts.path, fetch });
 
   return {
