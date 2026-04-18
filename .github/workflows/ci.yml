@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [master, agent/trunk, next]
+    branches: [master, next]
   pull_request:
-    branches: [master, agent/trunk, next]
+    branches: [master, next]
 
 jobs:
   aloopd-core:
@@ -26,22 +26,3 @@ jobs:
 
       - name: Test
         run: bun test
-
-  dashboard-tests:
-    name: Dashboard Unit Tests
-    runs-on: ubuntu-latest
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-
-      - name: Install dashboard dependencies
-        working-directory: aloop/cli/dashboard
-        run: npm ci
-
-      - name: Run dashboard unit tests
-        working-directory: aloop/cli/dashboard
-        run: npm test

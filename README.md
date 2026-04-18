@@ -1,228 +1,61 @@
-![CI](https://github.com/johnnyelwailer/ralph-skill/actions/workflows/ci.yml/badge.svg)
+# aloop
 
-# Aloop — Autonomous AI Development System
+> Self-hosted, multi-provider autonomous development harness that turns a spec into merged code without continuous human supervision.
 
-Aloop runs autonomous AI coding agents in two modes: a **single-session loop** for focused tasks, and a **multi-session orchestrator** that decomposes specs into GitHub issues and dispatches parallel loops. Built on Geoffrey Huntley's autonomous coding methodology with plan-build-review cycles, multi-provider round-robin, backpressure validation, and a real-time dashboard.
+**Status:** rebuild in progress on branch `next`. Pre-rebuild code lived under `aloop/` on `master`; it is retired. The new architecture is a single daemon (`aloopd`) with a typed API, a scheduler-with-permits, tracker-agnostic Epic/Story/Task work items, and a workflow catalog per Story type.
 
-## Two Modes of Operation
+## Where to start
 
-### Loop Mode (`aloop start`)
+- **[VISION.md](VISION.md)** — the product: who it's for, what it does, why it exists.
+- **[CONSTITUTION.md](CONSTITUTION.md)** — non-negotiable invariants. Read before contributing.
+- **[DELIVERY_PLAN.md](DELIVERY_PLAN.md)** — twelve milestones from spec to shipped v1.
+- **[docs/spec/](docs/spec/)** — 20 reference docs covering architecture, daemon, API, pipeline, providers, trackers, orchestrator, agents, security, workflows, metrics, self-improvement, learning, setup, devcontainer.
+- **[docs/research/](docs/research/)** — outside research that informed the rebuild (Karpathy AutoResearch, Anthropic, Cognition, OpenHands, etc.).
 
-A single autonomous coding session. The agent cycles through three phases until all tasks are done:
-
-1. **Plan** — Gap analysis between spec and code, outputs prioritized `TODO.md`
-2. **Build** — Picks one task, implements, validates (types/tests/lint), commits
-3. **Review** — Audits the build against 9 quality gates, writes fix tasks or approves
-
-Additional agents run between cycles:
-- **Proof** — Captures screenshots, API responses, test output as evidence
-- **Steer** — Applies live direction changes from the dashboard mid-flight
-- **QA** — Tests features as a real user (never reads source code)
-
-Each iteration gets fresh context. The loop handles stuck detection, provider failover, and worktree isolation automatically.
-
-```bash
-# Single provider
-aloop start --provider claude
-
-# Round-robin across providers
-aloop start --provider round-robin
-
-# Resume a stopped session
-aloop start --launch-mode resume --session-dir ~/.aloop/sessions/<id>
-```
-
-### Orchestrator Mode (`aloop orchestrate`)
-
-A coordination layer that breaks a spec into GitHub issues with dependency graphs, then dispatches parallel child loops — each in its own git worktree.
-
-1. **Decompose** — Reads one or more spec files (including globs), creates GitHub issues with labels and dependency edges
-2. **Dispatch** — Launches child loops per issue, respecting concurrency caps and wave ordering
-3. **PR lifecycle** — Squash-merges completed PRs, rebases on conflict, runs agent review gates
-4. **Budget tracking** — Aggregates cost across child sessions, pauses at 80% of cap
-
-```bash
-# Full orchestration from multiple spec files
-aloop orchestrate --spec "SPEC.md specs/*.md" --concurrency 3 --budget 50.00
-
-# Plan only (create issues, don't dispatch)
-aloop orchestrate --spec "SPEC.md specs/*.md" --plan-only
-
-# Dispatch specific issues
-aloop orchestrate --issues 42,43,44 --concurrency 2
-```
-
-The orchestrator enforces role-based GitHub policies — child loops can create PRs and comment, but only the orchestrator can merge PRs and close issues.
-
-## Dashboard
-
-Real-time monitoring UI with SSE updates. Runs as a local web server.
-
-```bash
-aloop dashboard
-aloop dashboard --port 3000 --session-dir ~/.aloop/sessions/<id>
-```
-
-- Session sidebar with hierarchy (repo > project > issue > session)
-- Live activity log with phase transitions, provider info, and commit history
-- Document viewer for TODO.md, SPEC.md, RESEARCH.md, REVIEW_LOG.md
-- Proof artifact gallery (screenshots, test output, layout assertions)
-- **Live steering** — send instructions to the running loop from the dashboard
-- **Stop controls** — graceful (SIGTERM) or force (SIGKILL)
-
-## Quality Gates
-
-The review agent enforces 9 gates on every build iteration:
-
-| Gate | What it checks |
-|------|---------------|
-| 1. Spec Compliance | Code matches spec intent, not just TODO wording |
-| 2. Test Depth | No shallow assertions (`toBeDefined`, `toBeTruthy`) — concrete values only |
-| 3. Coverage | ≥80% branch on touched files, ≥90% on new modules |
-| 4. Code Quality | No dead code, no copy-paste, no over-engineering |
-| 5. Integration Sanity | All existing tests pass, validation commands succeed |
-| 6. Proof Verification | Evidence matches changes, screenshots consistent with spec |
-| 7. Layout Verification | Playwright bounding-box checks for CSS/layout changes |
-| 8. Version Compliance | Installed versions match VERSIONS.md declarations |
-| 9. Documentation Freshness | README/docs reflect actual commands, flags, and behavior |
-
-Failed gates produce `[review]` fix tasks that the next build iteration picks up before any new work.
-
-## Providers
-
-Five AI coding agents supported — use one, or round-robin across multiple:
-
-| Provider | CLI | Autonomous flag |
-|----------|-----|-----------------|
-| Claude Code | `claude` | `--dangerously-skip-permissions --print` |
-| OpenAI Codex | `codex` | `--dangerously-bypass-approvals-and-sandbox` |
-| GitHub Copilot | `copilot` | `--yolo` |
-| Gemini CLI | `gemini` | `--yolo` |
-| OpenCode | `opencode` | `run --dir <workdir>` |
-
-**Round-robin mode** cycles providers each iteration — e.g., Claude plans, Codex builds, Gemini reviews, OpenCode builds.
-
-Provider health is tracked automatically. Failed providers enter cooldown with exponential backoff and are skipped until recovery. Auth failures use longer cooldowns (10min → 30min → 1hr) but still auto-retry.
-
-## Prerequisites
-
-| Requirement | Minimum | Notes |
-|-------------|---------|-------|
-| **Git** | any recent | Commits, branches, worktree isolation |
-| **Node.js + npm** | 22 LTS | CLI runtime and provider CLI installs |
-| **Bash** or **PowerShell 7** | — | `loop.sh` (macOS/Linux) or `loop.ps1` (all platforms) |
-| **At least one provider CLI** | — | See provider table above |
-
-### Installing Provider CLIs
-
-```bash
-npm install -g @anthropic-ai/claude-code    # Claude Code
-npm install -g @openai/codex                 # OpenAI Codex
-npm install -g @google/gemini-cli            # Gemini CLI
-npm install -g @github/copilot              # GitHub Copilot
-# OpenCode — see https://opencode.ai for install instructions
-```
-
-## Installation
-
-```powershell
-# Interactive — detects missing CLIs, choose harnesses to install
-./install.ps1
-
-# Install everything without prompting
-./install.ps1 -All
-
-# Force overwrite existing files
-./install.ps1 -Force
-
-# Preview what would be installed
-./install.ps1 -DryRun
-```
-
-The installer deploys skill files to each harness directory and the Aloop runtime to `~/.aloop/`.
-
-## CLI Commands
-
-| Command | Purpose |
-|---------|---------|
-| `aloop start` | Launch a single-session loop |
-| `aloop orchestrate` | Multi-issue decomposition and parallel dispatch |
-| `aloop dashboard` | Real-time monitoring UI |
-| `aloop status` | List active sessions and provider health |
-| `aloop stop <id>` | Stop a running session |
-| `aloop setup` | Interactive project configuration |
-| `aloop steer` | Send live instruction to a running loop |
-| `aloop gh <op>` | Policy-enforced GitHub operations |
-| `aloop discover` | Auto-detect project specs and validation |
-| `aloop update` | Refresh runtime from repo |
-| `aloop devcontainer` | Generate .devcontainer config |
-
-### Slash commands (Claude Code / Codex / Copilot)
+## Repo layout
 
 ```
-/aloop:setup       Configure Aloop for the current project
-/aloop:start       Launch a loop
-/aloop:status      Check running sessions
-/aloop:dashboard   Launch the dashboard
-/aloop:stop        Stop a loop
-/aloop:steer       Send a steering instruction
-/aloop:orchestrate Launch multi-issue orchestration
+packages/
+  core/                   @aloop/core — the daemon (aloopd)
+docs/
+  spec/                   reference docs (invariants, contracts)
+  research/               external research notes
+  DESIGN_BRIEF.md         dashboard visual design (for M11)
+VISION.md                 product vision
+CONSTITUTION.md           non-negotiable invariants
+DELIVERY_PLAN.md          v1 milestones
 ```
-
-## Architecture
-
-```
-~/.aloop/
-  config.yml                    # Global defaults (providers, models)
-  active.json                   # Currently running sessions
-  health/<provider>.json        # Per-provider health state
-  bin/
-    loop.sh                     # Bash loop harness
-    loop.ps1                    # PowerShell loop harness
-  cli/
-    aloop.mjs                   # CLI entry point
-  templates/
-    PROMPT_plan.md              # Plan agent template
-    PROMPT_build.md             # Build agent template
-    PROMPT_review.md            # Review agent (9 gates)
-    PROMPT_proof.md             # Proof agent template
-    PROMPT_steer.md             # Steering agent template
-    PROMPT_setup.md             # Setup/discovery agent
-    conventions/                # Code quality, testing, git conventions
-  sessions/<session-id>/
-    meta.json                   # Session metadata
-    status.json                 # Current state (iteration, phase, provider)
-    log.jsonl                   # Structured event log
-    orchestrator.json           # Orchestrator state (issues, waves, PRs)
-    prompts/                    # Copied prompt templates
-    artifacts/iter-<N>/         # Proof artifacts per iteration
-    worktree/                   # Isolated git worktree
-    steering-history/           # Archived steering instructions
-
-<project>/
-  SPEC.md                       # Project specification (contract)
-  VERSIONS.md                   # Dependency version table (enforced)
-  TODO.md                       # Task plan (regenerated each plan cycle)
-  RESEARCH.md                   # External knowledge log (append-only)
-  REVIEW_LOG.md                 # Review findings log (append-only)
-  docs/conventions/             # Project-specific conventions
-```
-
-## Key Features
-
-- **Two modes**: Single-session loop for focused work, orchestrator for spec-to-ship parallelism
-- **5 providers**: Claude, Codex, Gemini, Copilot, OpenCode — single or round-robin
-- **9 review gates**: Spec compliance, test depth, coverage, code quality, integration, proof, layout, version compliance, documentation freshness
-- **Live steering**: Change direction mid-flight without stopping the loop
-- **Real-time dashboard**: SSE-powered UI with activity log, docs, proof gallery, and steering controls
-- **GitHub integration**: Issue decomposition, PR lifecycle, squash-merge, conflict rebase, agent review
-- **Budget tracking**: Cost aggregation across child sessions with configurable caps
-- **Provider health**: Automatic cooldown and failover on provider errors
-- **Worktree isolation**: Each session runs on its own git branch
-- **Backpressure validation**: Types, tests, and lint gate every commit
-- **Stuck detection**: Auto-skip tasks after N consecutive failures
-- **Persistent logs**: RESEARCH.md and REVIEW_LOG.md survive TODO regenerations
 
 ## Development
 
-This repo is the development/source location. Edit files here, then run `install.ps1` to deploy, or `aloop update` to refresh the runtime.
+Requires [Bun](https://bun.sh) ≥ 1.3.
+
+```bash
+bun install
+bun test                         # run all package tests
+bun x tsc -p packages/core/tsconfig.json   # typecheck
+```
+
+Run the daemon locally:
+
+```bash
+ALOOP_HOME=/tmp/aloop ALOOP_PORT=7777 bun run packages/core/bin/aloopd.ts
+curl http://127.0.0.1:7777/v1/daemon/health
+```
+
+## Current milestone
+
+**M1 — daemon skeleton + health.** HTTP + unix socket, `GET /v1/daemon/health`, SSE scaffold, singleton PID lock, graceful shutdown. 17 tests green. Commit `a329ab23a`.
+
+Next: **M2 — state store + event log + drift detection** (SQLite via `bun:sqlite`, JSONL per session, projector, Welford, CUSUM, replay).
+
+## Contributing
+
+- Read CONSTITUTION.md first.
+- Every change ships with a test (§V.19 — TDD mandatory).
+- No change may touch the oracle layer (spec, constitution, orchestrator prompts, metric definitions). See `docs/spec/self-improvement.md` §IX.
+- Work items are tracked via GitHub issues labeled `delivery/M<N>` per `DELIVERY_PLAN.md`.
+
+## License
+
+TBD.
