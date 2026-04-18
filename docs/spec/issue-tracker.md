@@ -2,22 +2,25 @@
 
 > **Reference document.** The generic issue-tracking contract. GitHub is the first-class shipped adapter. The contract is tracker-agnostic; any project can swap adapters — or run with no external tracker at all using the built-in file-based store. Hard rules live in CONSTITUTION.md. Work items live in GitHub issues.
 >
-> Sources: CR #46 (agents must have zero knowledge of GitHub), CR #130 (investigator agent), CR #134 (inline PR review), CR #192 (comment-driven PR lifecycle), CR #169 (change request workflow), SPEC.md §`aloop gh` (moved to `security.md` as policy table), §Parallel Orchestrator decomposition.
+> Sources: CR #46 (agents must have zero knowledge of GitHub), CR #130 (investigator agent), CR #134 (inline PR review), CR #192 (comment-driven PR lifecycle), CR #169 (change request workflow), SPEC.md §`aloop gh` (moved to `security.md` as policy table), §Parallel Orchestrator decomposition; GitHub sub-issues API (GA 2025-04-09).
 
 ## Table of contents
 
 - Why an abstraction
 - Trust boundary
+- Hierarchy: Epic → Story → Task
 - Adapter interface
 - Generic data shapes
 - Abstract status and label mapping
+- Task tracking
 - Built-in adapter (no external deps)
-- GitHub adapter
+- GitHub adapter (native sub-issues)
 - Orchestrator-facing contract (generic decomposition schema)
 - Events
 - Configuration
 - Multi-project
 - Future adapters
+- Invariants
 
 ---
 
@@ -25,9 +28,9 @@
 
 The orchestrator's job is to break a spec into tracked work items, dispatch loops against them, merge their changes, and react to review feedback. Those concepts exist in GitHub, GitLab, Linear, Jira, self-hosted Gitea, Forgejo, and inside any plain-text project that just wants a queue. Hardcoding GitHub forces aloop users into one platform; embedding `gh` CLI calls throughout the orchestrator makes the code brittle to upstream changes and impossible to use offline.
 
-Aloop isolates the tracker behind a single `IssueTrackerAdapter` interface. Orchestrator prompts and workflows speak in terms of generic **issues** and **change sets** — the adapter translates to the tracker's native concepts (GitHub "issue" + "PR", GitLab "issue" + "MR", Linear "issue" + "Git branch link", built-in "issue" + "change set").
+Aloop isolates the tracker behind a single `IssueTrackerAdapter` interface. Orchestrator prompts and workflows speak in terms of generic **epics**, **stories**, **tasks**, and **change sets** — the adapter translates to the tracker's native concepts.
 
-**The contract is:**
+The contract is:
 
 - One adapter per tracker.
 - One active adapter per project (selectable in `aloop/config.yml`).
@@ -38,12 +41,32 @@ Aloop isolates the tracker behind a single `IssueTrackerAdapter` interface. Orch
 
 Same boundary as all other aloop side effects. Agents do not call `gh`, `glab`, Linear API, or any tracker CLI. Agents **express intent** through `aloop-agent submit --type <decompose|refine|estimate|review|...>`; the daemon routes that intent to the active `IssueTrackerAdapter`, which executes the operation under a policy that the daemon enforces.
 
-Restated:
-
 - Agent → `aloop-agent submit` → daemon → adapter → tracker API
 - Agent → *never directly* → tracker API
 
 Policy enforcement (allow-list of operations, rate limiting, identity) lives in the daemon, not the adapter. Adapters are dumb executors of already-vetted commands.
+
+## Hierarchy: Epic → Story → Task
+
+Aloop models work at three levels. Only the first two are tracked externally; the third is session-internal by default.
+
+| Level | What it is | Who creates it | Who executes it |
+|---|---|---|---|
+| **Epic** | Top-level vertical slice of the spec. "Add user authentication." Shippable increment. | Orchestrator's `decompose` phase | Decomposes into Stories |
+| **Story** | One coherent implementation unit under an Epic. "Implement signup form + API endpoint." The unit a child session works. | Orchestrator's `sub_decompose` phase | One child session (kind=child) per Story |
+| **Task** | A single TODO inside the child session's worktree. "Write the signup form tests." Mechanical, short-lived, per-iteration. | Plan agent inside the child session | Build agent in the same session |
+
+**Epic and Story are tracker entities** — always, via the adapter. In GitHub, Epic is an issue and Story is a sub-issue. In the builtin adapter, Epic is a parent-level issue file and Story is a child-level issue file with a `links.parent` back-pointer. In future GitLab/Linear/etc. adapters, Epic and Story use the tracker's native hierarchy features.
+
+**Tasks are session-internal.** They live in the daemon's task store (the `aloop-agent todo` system — see `pipeline.md` §Agent contract), survive worktree operations, and are routed between agents (plan → build, review → build, etc.) via `from`/`for` fields. Tasks are per-Story; each Story's child session has its own independent task list.
+
+**Optional**: adapters can mirror tasks externally. See §Task tracking.
+
+Why this split:
+
+- Epic and Story are human-reviewable, long-lived, permission-scoped — they belong in the tracker humans already use.
+- Tasks are generated and mutated dozens of times per Story. Syncing them to the tracker would produce noise (issue spam, webhook storms) and slow the loop. Keep them session-local by default.
+- The runtime already has to track tasks for routing and completion detection — integrating that with the tracker is an optional convenience, not a requirement.
 
 ## Adapter interface
 
@@ -61,6 +84,14 @@ interface IssueTrackerAdapter {
   listComments(ref: IssueRef): AsyncIterable<Comment>;
   listLinkedChangeSets(ref: IssueRef): AsyncIterable<ChangeSetRef>;
 
+  // Hierarchy
+  getParent(ref: IssueRef): Promise<IssueRef | null>;
+  listSubIssues(ref: IssueRef): AsyncIterable<Issue>;
+  addSubIssue(parent: IssueRef, child: IssueRef, opts?: { replaceParent?: boolean }): Promise<void>;
+  removeSubIssue(parent: IssueRef, child: IssueRef): Promise<void>;
+  reorderSubIssue(parent: IssueRef, child: IssueRef, after?: IssueRef, before?: IssueRef): Promise<void>;
+  subIssuesSummary(ref: IssueRef): Promise<{ total: number; completed: number }>;
+
   // Issue mutations
   createIssue(draft: IssueDraft): Promise<IssueRef>;
   updateIssue(ref: IssueRef, patch: IssuePatch): Promise<void>;
@@ -77,30 +108,48 @@ interface IssueTrackerAdapter {
   listChangeSets?(filter: ChangeSetFilter): AsyncIterable<ChangeSet>;
   addChangeSetComment?(ref: ChangeSetRef, body: string, position?: LinePosition): Promise<CommentRef>;
   resolveChangeSetThread?(ref: CommentRef): Promise<void>;
-  updateChangeSetBranch?(ref: ChangeSetRef): Promise<void>;   // rebase/merge base
+  updateChangeSetBranch?(ref: ChangeSetRef): Promise<void>;
   mergeChangeSet?(ref: ChangeSetRef, mode: MergeMode): Promise<MergeResult>;
   closeChangeSet?(ref: ChangeSetRef): Promise<void>;
+
+  // Task mirroring — optional capability (see §Task tracking)
+  mirrorTasks?(story: IssueRef, tasks: TaskSnapshot[]): Promise<void>;
+  readMirroredTasks?(story: IssueRef): AsyncIterable<TaskSnapshot>;
 
   // Events — optional capability
   subscribe?(filter: TrackerEventFilter): AsyncGenerator<TrackerEvent>;
 }
 ```
 
-Capabilities are explicit so the orchestrator workflow can skip steps the adapter can't perform:
+Capabilities declare what the adapter can do and how:
 
 ```ts
 type TrackerCapabilities = {
-  issues:              true;                     // always; adapter wouldn't exist without
-  labels:              boolean;
-  comments:            boolean;
-  assignees:           boolean;
-  change_sets:         boolean;                  // PR/MR/branch-based change review
-  change_set_reviews:  boolean;                  // inline review comments, thread resolution
-  subscribe_events:    boolean;                  // live event stream
-  parent_child_links:  boolean;                  // issue A blocks/is-blocked-by B
-  milestones:          boolean;
-  projects_boards:     boolean;                  // board/project metadata
-  max_body_bytes:      number;
+  issues:                 true;
+  labels:                 boolean;
+  comments:               boolean;
+  assignees:              boolean;
+  change_sets:            boolean;
+  change_set_reviews:     boolean;
+  subscribe_events:       boolean;
+
+  hierarchy: {
+    native_sub_issues:    boolean;   // tracker has a first-class sub-issue API
+    max_depth:            number;    // 8 for GitHub, N for others
+    max_children_per_parent: number; // 100 for GitHub
+    single_parent_only:   boolean;   // true for GitHub
+    cross_repo_allowed:   boolean;   // false for GitHub (same-org only)
+  };
+
+  tracks_tasks: {
+    mirror_supported:     boolean;   // adapter can mirror session tasks
+    mirror_shape:         "checkboxes_in_body" | "sub_sub_issues" | "projects_board" | "none";
+    max_tasks_per_story:  number | null;
+  };
+
+  milestones:             boolean;
+  projects_boards:        boolean;
+  max_body_bytes:         number;
 };
 ```
 
@@ -108,17 +157,20 @@ type TrackerCapabilities = {
 
 ```ts
 type IssueRef = {
-  adapter: string;                 // "github" | "builtin" | ...
-  key: string;                     // tracker-native id — GH: "123", Linear: "ABC-42", builtin: "0007"
-  url?: string;                    // canonical link, if any
+  adapter: string;
+  key: string;         // tracker-native id — GH "123", Linear "ABC-42", builtin "0007"
+  url?: string;
 };
+
+type IssueKind = "epic" | "story" | "task_mirror" | "other";
 
 type Issue = {
   ref: IssueRef;
+  kind: IssueKind;
   title: string;
   body: string;
-  state: "open" | "closed";        // canonical
-  status?: string;                 // tracker-native status when richer than open/closed
+  state: "open" | "closed";
+  status?: string;
   labels: string[];
   assignees: string[];
   created_at: string;
@@ -126,64 +178,35 @@ type Issue = {
   closed_at?: string;
   links: {
     parent?: IssueRef;
+    sub_issues?: IssueRef[];
     blocks?: IssueRef[];
     blocked_by?: IssueRef[];
     change_sets?: ChangeSetRef[];
   };
-  metadata: Record<string, unknown>;   // tracker-specific (milestone, projects, custom fields)
+  metadata: Record<string, unknown>;
 };
 
 type IssueDraft = {
+  kind: IssueKind;
   title: string;
   body: string;
   labels?: string[];
   assignees?: string[];
-  parent?: IssueRef;
+  parent?: IssueRef;     // for kind=story, the Epic's ref
   metadata?: Record<string, unknown>;
 };
 
 type IssuePatch = Partial<Pick<Issue, "title" | "body" | "state" | "status" | "labels" | "assignees">>;
 
-type ChangeSetRef = {
-  adapter: string;
-  key: string;                     // GH PR number, GL MR iid, builtin changeset id
-  url?: string;
-};
-
-type ChangeSet = {
-  ref: ChangeSetRef;
-  issue?: IssueRef;
-  title: string;
-  body: string;
-  state: "draft" | "open" | "merged" | "closed";
-  head_branch: string;
-  base_branch: string;
-  head_sha: string;
-  mergeable: "yes" | "no" | "unknown";
-  mergeable_state: string;
-  reviews: Review[];
-  created_at: string;
-  updated_at: string;
-};
-
-type Review = {
-  reviewer: string;
-  verdict: "approved" | "changes_requested" | "commented" | "dismissed";
-  body: string;
-  created_at: string;
-  threads: ReviewThread[];
-};
-
-type ReviewThread = {
-  id: string;
-  path: string;
-  line: number;
-  resolved: boolean;
-  comments: Comment[];
-};
+// ChangeSet, Review, ReviewThread, Comment — unchanged from v1 draft.
 ```
 
-Generic comment / event shapes are analogous. See `api.md` for how these are surfaced to clients over SSE.
+`kind` is aloop-level vocabulary; adapters map it to tracker-native semantics. For GitHub:
+
+- `kind: epic` → plain issue, no parent.
+- `kind: story` → plain issue with `parent` set, exposed via the sub-issue API on the Epic.
+- `kind: task_mirror` → sub-issue of a Story (only when adapter mirrors tasks as sub-sub-issues).
+- `kind: other` → any issue not created by aloop (pre-existing work, human-filed requests).
 
 ## Abstract status and label mapping
 
@@ -211,9 +234,55 @@ issue_tracker:
     autodispatch:       aloop/auto
 ```
 
-- **status_map** tells the daemon how to infer abstract status from tracker-native state + metadata, and how to set tracker-native state when transitioning an abstract status.
-- **label_map** insulates prompt templates from platform-specific label naming. Prompts say "priority_critical"; the adapter writes `aloop/priority-critical`.
+- **status_map** tells the adapter how to infer abstract status from tracker-native state + metadata, and how to set tracker-native state when transitioning.
+- **label_map** insulates prompt templates from platform-specific label naming. Prompts say "priority_critical"; adapter writes `aloop/priority-critical`.
+- The `epic` label is a fallback marker when the adapter lacks native sub-issues (GitLab, older Linear plans) — otherwise `kind` is enough.
 - Orchestrator workflows use abstract names exclusively.
+
+## Task tracking
+
+**Default: tasks live in the daemon.** Every child session has its own task list in the daemon's task store, manipulated by `aloop-agent todo`. Task state is:
+
+- Added by plan, review, spec-gap, or any agent with `todo add` permission.
+- Completed by build, qa, or the agent whose role matches the task's `for`.
+- Routed: `from` is creator role, `for` is intended executor.
+- Survives worktree operations (task store is in session state dir, not worktree).
+- Exposed by `aloop-agent todo list --format md` as a TODO.md-compatible rendering for agents that read/write it.
+
+Tasks are NOT tracker entities by default. The pre-rebuild practice of parsing `TODO.md` markdown for completion detection is retired — completion is a structured API call.
+
+**Optional: mirror tasks to the tracker.** If `capabilities.tracks_tasks.mirror_supported = true` and the project enables it, the adapter reflects the task list externally. Three mirror shapes:
+
+| Shape | Where tasks appear | Trade-offs |
+|---|---|---|
+| `checkboxes_in_body` | A fenced section in the Story's issue body | Cheap, atomic update, human-readable. Loses individual history. |
+| `sub_sub_issues` | Each task is a sub-issue of the Story | Rich history, per-task comments, respects `max_depth`. Noisy (issue count, webhooks). Not all trackers support it. |
+| `projects_board` | Each task is a card on a project board linked to the Story | Clean separation from issues, good for visualization. Board must exist; tasks lose repo-local context. |
+
+Mirror policy per project:
+
+```yaml
+issue_tracker:
+  mirror_tasks:
+    enabled: false                    # default off
+    shape: checkboxes_in_body         # when enabled
+    include_completed: false          # show only pending
+    max_tasks: 50                     # hard cap to prevent runaway
+```
+
+The daemon pushes task-state changes to the adapter in batches (every 30s by default, or on session close). This never blocks the child session; mirror failures log and do not halt work.
+
+**When to enable mirroring:**
+
+- Team projects where stakeholders watch progress in the tracker UI.
+- Projects with long-running stories where task history matters.
+- Compliance/audit contexts.
+
+**When not to:**
+
+- Solo or experimental work — noise outweighs benefit.
+- High-frequency TDD loops — task churn produces tracker spam.
+- Adapters whose `mirror_shape` options all feel wrong for the project.
 
 ## Built-in adapter (no external deps)
 
@@ -221,27 +290,29 @@ For projects that don't want an external tracker — solo, air-gapped, or just a
 
 ```
 <project>/.aloop/issues/
-  0001-add-setup-skill.json
-  0002-scheduler-permit-protocol.json
-  0003-burn-rate-gate.json
+  0001-add-setup-skill.json              # Epic
+  0002-scheduler-permit-protocol.json    # Epic
+  0003-burn-rate-gate.json               # Story, parent: 0002
+  0004-permit-persistence.json           # Story, parent: 0002
   changesets/
-    0001-add-setup-skill.json
-  events.jsonl                     # append-only audit log of all mutations
+    0003-burn-rate-gate.json
+  events.jsonl
 ```
 
 Each issue file:
 
 ```json
 {
-  "ref": { "adapter": "builtin", "key": "0001" },
-  "title": "Add setup skill",
+  "ref": { "adapter": "builtin", "key": "0003" },
+  "kind": "story",
+  "title": "Burn-rate gate",
   "body": "...",
   "state": "open",
   "status": "needs_refinement",
   "labels": ["aloop/priority-high"],
   "assignees": [],
   "links": {
-    "blocks": [{ "adapter": "builtin", "key": "0002" }]
+    "parent": { "adapter": "builtin", "key": "0002" }
   },
   "metadata": { "refined": false, "dor_validated": false },
   "created_at": "...",
@@ -253,10 +324,12 @@ Each issue file:
 
 - Zero external deps. `git`, a filesystem, and aloop itself.
 - Committed to the repo. Issue state is versioned alongside code — reviewable, blame-able, revertable.
-- Deterministic IDs (monotonic `NNNN`). No network collisions because there is no network.
+- Deterministic IDs (monotonic `NNNN`).
 - `events.jsonl` is an append-only audit log — every mutation (create, label, assign, close) writes a line. Replays to any point in history.
-- Change sets in the built-in tracker are branch-based: one branch per change set, merged via `git` under the daemon's policy.
-- No real-time subscribe support (or implemented as `fs.watch`). `capabilities.subscribe_events` reflects that.
+- Change sets are branch-based: one branch per change set, merged via `git` under the daemon's policy.
+- Native hierarchy: `links.parent`/`links.sub_issues` — capabilities.hierarchy.native_sub_issues = true (our own first-class support).
+- Task mirroring: `sub_sub_issues` shape supported, but default off because the builtin's strength is simplicity.
+- No real-time subscribe (or implemented via `fs.watch`).
 
 ### When to pick builtin
 
@@ -266,65 +339,131 @@ Each issue file:
 
 ### Migration
 
-`aloop issues migrate --from builtin --to github` (future) reads the built-in store, creates matching GitHub issues, and rewrites `aloop/config.yml`. Canonical way to "graduate" a project to a hosted tracker.
+`aloop issues migrate --from builtin --to github` (future) reads the built-in store, creates matching issues and sub-issues in GitHub, and rewrites `aloop/config.yml`.
 
-## GitHub adapter
+## GitHub adapter (native sub-issues)
 
-Primary shipped adapter. Wraps the `gh` CLI and the GitHub GraphQL/REST APIs. Policies defined in `security.md` §"`aloop gh` policy table" apply — the adapter is the place those policies are enforced.
+Primary shipped adapter. Uses GitHub's native sub-issue API (GA 2025-04-09) for the Epic → Story hierarchy.
 
-Notable mappings:
+### Hierarchy implementation
 
-- `ChangeSet` ↔ GitHub PR
-- `ReviewThread` ↔ GitHub review comment thread (GraphQL `PullRequestReviewThread`, resolve via `resolveReviewThread`)
-- `Issue.metadata.milestone`, `Issue.metadata.projects` ↔ GH-specific
-- `mergeChangeSet(mode: "squash" | "merge" | "rebase")` ↔ `gh pr merge --squash|--merge|--rebase`
+`capabilities.hierarchy`:
 
-Auth: `gh auth status`. Adapter refuses to run if `gh` is not logged in; daemon surfaces the error.
+```
+native_sub_issues:       true
+max_depth:               8
+max_children_per_parent: 100
+single_parent_only:      true       # GitHub enforces one parent per issue
+cross_repo_allowed:      false      # same-org only (cross-repo within org is allowed by GitHub but we restrict same-repo for adapter simplicity; see Configuration)
+```
 
-Rate limits: adapter caches GraphQL pagination keys, backs off on 429 with the same failure classification as the provider health FSM (see `provider-contract.md`). All GH calls carry a `requestor` identity — the daemon's audit log knows which session made which call.
+### API usage
 
-CR #192 (comment-driven PR lifecycle) and CR #134 (inline review) are adapter concerns: both are implemented inside the GitHub adapter using `addChangeSetComment` with `position` and `resolveChangeSetThread`.
+- **Reads**: GraphQL. One round-trip for `parent`, `subIssues`, `subIssuesSummary`, plus any other issue fields we want. Fewer REST calls, lower rate-limit pressure.
+  - Fields on `Issue`: `parent`, `subIssues(first/last/after/before)`, `subIssuesSummary { total, completed, percentCompleted }`.
+- **Writes**: REST. Simpler payloads; integer IDs already in hand after issue creation.
+  - `POST /repos/{owner}/{repo}/issues/{parent_number}/sub_issues` with `{ sub_issue_id, replace_parent? }`.
+  - `DELETE /repos/{owner}/{repo}/issues/{parent_number}/sub_issue` (singular `/sub_issue` — watch the path) with `{ sub_issue_id }`.
+  - `PATCH /repos/{owner}/{repo}/issues/{parent_number}/sub_issues/priority` with `{ sub_issue_id, after_id | before_id }`.
+- **Mutations** (GraphQL) available but not preferred for normal writes: `addSubIssue`, `removeSubIssue`, `reprioritizeSubIssue`. `addSubIssue` uniquely accepts `subIssueUrl` — useful when composing cross-repo references before the local ID is known.
+
+### Webhooks
+
+Subscribe to the **`sub_issues`** event (not `issues` — GitHub does not fire `issues` for sub-issue changes). Actions: `sub_issue_added`, `sub_issue_removed`, `parent_issue_added`, `parent_issue_removed`. Payload carries `parent_issue_id`, `parent_issue`, `parent_issue_repo`, `sub_issue_id`, `sub_issue`.
+
+The GitHub adapter consumes webhooks through `aloopd`'s public webhook endpoint (when configured). Without webhook configuration, the adapter polls `listSubIssues` on Epics with `polling.enabled: true`. Webhook delivery + same-poller reconciliation is the recommended setup.
+
+### Secondary rate limits
+
+`POST /sub_issues` and `DELETE /sub_issue` carry explicit secondary rate-limit warnings. The adapter:
+
+- Batches small operations when possible (multiple children added to an Epic in quick succession are queued and dispatched with backoff).
+- Retries on 403 with `Retry-After` honored.
+- Validates `max_depth` (8) and `max_children_per_parent` (100) client-side before POST to avoid 422s.
+
+### `gh` CLI
+
+`gh` has no native `sub-issue` command as of this writing, and `gh issue view --json` does NOT expose `parent` or `subIssues`. The adapter uses `gh api` (REST) and `gh api graphql` (GraphQL) directly. We do not depend on community extensions.
+
+### Auth, scopes
+
+- Classic PAT: `repo` scope.
+- Fine-grained PAT or GitHub App: **Issues: read & write** on the repo.
+- Adapter refuses to start without a working `gh auth status` or `GITHUB_TOKEN` env var; daemon surfaces the failure to the user.
+
+### Policies
+
+Same boundary as `security.md` §"`aloop gh` policy table" — now generalized: every tracker operation passes through a per-role allow-list (`review` role cannot call `createIssue`; `decompose` role cannot call `mergeChangeSet`; etc.). Policies are daemon-enforced, not adapter-enforced.
+
+CR #192 (comment-driven PR lifecycle) and CR #134 (inline review) are adapter concerns: both use `addChangeSetComment` with `position` for line-specific threads and `resolveChangeSetThread` for thread closure.
 
 ## Orchestrator-facing contract (generic decomposition schema)
 
-Orchestrator prompts must produce tracker-agnostic structured output. The daemon's adapter layer converts them into tracker-native issues/change-sets.
+Orchestrator prompts produce tracker-agnostic structured output. The adapter layer translates into tracker-native operations.
 
-### `decompose_result` (generic)
+### `decompose_result` (Epics)
 
 ```json
 {
   "type": "decompose_result",
+  "level": "epic",
   "issues": [
     {
-      "slug": "scheduler-permit-protocol",
-      "title": "Design scheduler permit protocol",
+      "kind": "epic",
+      "slug": "scheduler-and-permits",
+      "title": "Scheduler and permit gateway",
       "body": "...",
       "labels": ["priority_critical"],
+      "abstract_status": "needs_refinement",
+      "dependencies": [],
+      "metadata": { "spec_refs": ["docs/spec/daemon.md"] }
+    }
+  ]
+}
+```
+
+### `sub_decompose_result` (Stories under an Epic)
+
+```json
+{
+  "type": "sub_decompose_result",
+  "level": "story",
+  "parent": { "slug": "scheduler-and-permits" },
+  "issues": [
+    {
+      "kind": "story",
+      "slug": "permit-protocol-design",
+      "title": "Design scheduler permit protocol",
+      "body": "...",
+      "labels": ["priority_high"],
       "abstract_status": "needs_refinement",
       "dependencies": [],
       "wave": 1,
       "estimated_complexity": "M",
       "metadata": {
-        "spec_refs": ["docs/spec/daemon.md", "docs/spec/api.md"]
+        "spec_refs": ["docs/spec/api.md#scheduler"],
+        "environment_requirements": { "requires_vision": false }
       }
     }
   ]
 }
 ```
 
-- `slug` is the stable key the orchestrator uses internally; the adapter may or may not surface it (GH: put in issue body footer; builtin: use as the id basis).
-- `labels` are abstract names; resolved via `label_map`.
-- `abstract_status` is resolved via `status_map`.
-- `dependencies` are slugs referring to other issues in the same decompose result; the daemon links them via `parent_child_links` capability (if available) after creation.
-- No GitHub URLs, labels with `aloop/` prefixes, milestones, or `gh`-specific fields appear in orchestrator prompts or results.
-
 ### `refine_result`, `estimate_result`, `review_result`
 
-Analogous abstract shapes. See `pipeline.md` §Agent contract for the full list, and `agents.md` for each prompt's contract. Adapters map these to tracker-native operations (for GH: update issue body, add labels, post comments with metadata fences).
+Analogous abstract shapes. `slug` stays stable across refinements; `ref` (adapter, key) is assigned by the adapter after creation. Tasks are NOT in `decompose_result` / `sub_decompose_result` — they are generated inside the child session by the plan phase.
+
+### Identity
+
+- `slug` is the stable key the orchestrator uses before an issue exists in the tracker.
+- After `adapter.createIssue` returns, the daemon stores `{slug → ref}` mapping.
+- Subsequent orchestrator prompts reference issues by `slug`; daemon resolves to `ref` when calling the adapter.
+
+No tracker URLs, tracker-specific labels, `aloop/` prefixes, milestones, or `gh`-specific fields appear in orchestrator prompts or results.
 
 ## Events
 
-The adapter may subscribe to tracker events (issue opened, PR comment, review submitted, merge completed). Events are normalized to a single shape and published on the daemon bus:
+The adapter normalizes tracker events into a single shape and publishes on the daemon bus:
 
 ```json
 {
@@ -342,7 +481,13 @@ The adapter may subscribe to tracker events (issue opened, PR comment, review su
 }
 ```
 
-Orchestrator workflows subscribe to `tracker.event` with project filtering and queue prompts accordingly (PR review arrived → `triggers.pr_review_needed` → `PROMPT_orch_review.md`).
+Event kinds the orchestrator listens for:
+
+- `issue.created`, `issue.updated`, `issue.closed`, `issue.reopened`
+- `sub_issue.added`, `sub_issue.removed`, `parent_issue.added`, `parent_issue.removed`
+- `comment.created`, `comment.updated`
+- `change_set.opened`, `change_set.updated`, `change_set.closed`, `change_set.merged`, `change_set.conflict`
+- `change_set.review_submitted`, `change_set.review_thread_resolved`
 
 Adapters without subscribe capability can be polled by a daemon-side adapter-agnostic poller (interval configured per project). Events produced by polling carry `source: "poll"` in metadata.
 
@@ -356,14 +501,20 @@ issue_tracker:
   config:
     repo: owner/repo-name
     default_base_branch: master
-    auth_method: gh-cli              # or env:GITHUB_TOKEN
+    auth_method: gh-cli
     rate_limit:
       max_requests_per_minute: 60
-  status_map: { ... }                # as above
-  label_map:  { ... }                # as above
+    webhook:
+      enabled: true
+      secret_env: GITHUB_WEBHOOK_SECRET
+  status_map: { ... }
+  label_map:  { ... }
   polling:
     enabled: true
-    interval: 60s                    # for adapters without subscribe capability
+    interval: 60s
+  mirror_tasks:
+    enabled: false
+    shape: checkboxes_in_body
 ```
 
 Switch to builtin:
@@ -375,33 +526,33 @@ issue_tracker:
     root: .aloop/issues
 ```
 
-Daemon validates the config on project registration — missing required fields fail loud.
+Daemon validates on project registration; missing required fields fail loud.
 
 ## Multi-project
 
 Each project has its own tracker configuration. The daemon holds N live adapters, one per project. Adapters are not shared across projects even if they point at the same remote tracker.
 
-A session's `project_id` determines which adapter is used for its tracker operations. There is no "global" issue tracker at the daemon level.
+A session's `project_id` determines which adapter is used. There is no "global" issue tracker at the daemon level.
 
 ## Future adapters
 
 Out of scope for v1, supported by the interface:
 
-- **GitLab** — issues + merge requests. Nearly 1:1 with GitHub.
-- **Linear** — issues + connected branches + cycles. `change_sets: false`; PR-style review not part of the Linear model. Orchestrator workflows that require change set review would skip those phases.
-- **Gitea / Forgejo** — self-hosted, similar to GitHub.
-- **Jira** — issues only; change sets via linked Bitbucket/GitHub (mixed adapter via composition).
+- **GitLab** — issues + merge requests + epics. `native_sub_issues: true` via GitLab epics (premium tier) or parent-link fallback.
+- **Linear** — issues + projects + cycles. Uses Linear's parent/sub-issue hierarchy; `change_sets: false` (Linear model is branch-linked, not review-based in-product).
+- **Gitea / Forgejo** — self-hosted, similar to GitHub but no native sub-issues yet (as of 2026) — falls back to parent-link metadata.
+- **Jira** — issues + epics. Change sets via linked Bitbucket/GitHub (composite adapter possible).
 - **Plain-text** — `.aloop/issues/*.md` with YAML frontmatter; a thin variant of `builtin` for teams that want human-readable files under git.
 
 Adding an adapter = implement the interface, declare capabilities, register with the daemon. No changes to orchestrator prompts or core daemon code.
 
----
-
 ## Invariants
 
 1. **No agent ever calls a tracker API.** Adapters run daemon-side under policy.
-2. **Orchestrator prompts are tracker-agnostic.** Structured outputs carry abstract statuses, abstract labels, and slug-based dependencies.
+2. **Orchestrator prompts are tracker-agnostic.** Generic data shapes only; `slug` identifiers across phases.
 3. **The adapter is the only code that knows the tracker's names for things.**
 4. **Status and label vocabulary come from project config.** Adding or renaming vocabulary is a config change, not a code change.
 5. **GitHub is a shipped adapter, not a default assumption.** Removing the GH adapter from `aloop/config.yml` must not break the daemon, the loop, or the orchestrator — it shifts the project to whichever adapter is configured (or to builtin).
-6. **The builtin adapter has feature parity with GH for the orchestrator's minimum viable flow** (decompose → refine → dispatch → review → close).
+6. **The builtin adapter has feature parity with GH for the orchestrator's minimum viable flow** (decompose Epic → sub-decompose Stories → dispatch child sessions → review → merge → close).
+7. **Epic and Story always live in the tracker.** Task tracking is session-internal by default; tracker mirroring is opt-in.
+8. **Native hierarchy APIs are preferred over parent-link metadata** when the tracker offers them (GitHub sub-issues API is the canonical example).

@@ -76,16 +76,25 @@ Practical consequences:
 
 ## Inputs, outputs, and the tracker abstraction
 
-The orchestrator never speaks to GitHub, GitLab, Linear, or any tracker directly. It speaks in the abstract vocabulary defined by `issue-tracker.md`: `Issue`, `ChangeSet`, `Comment`, `Review`, abstract labels (`priority_critical`, `change_request`, `epic`), abstract statuses (`needs_refinement`, `refined`, `in_progress`, `in_review`, `done`).
+The orchestrator never speaks to GitHub, GitLab, Linear, or any tracker directly. It speaks in the abstract vocabulary defined by `issue-tracker.md`: `Issue` (with `kind: epic | story | task_mirror | other`), `ChangeSet`, `Comment`, `Review`, abstract labels (`priority_critical`, `change_request`, `epic`), abstract statuses (`needs_refinement`, `refined`, `in_progress`, `in_review`, `done`).
 
-The daemon's `IssueTrackerAdapter` (GitHub, builtin, or future GitLab/Linear/etc.) translates these into tracker-native operations.
+The hierarchy is **Epic → Story → Task**:
+
+- **Epic** is a top-level tracked issue (`kind: epic`) — a shippable increment.
+- **Story** is a sub-issue of an Epic (`kind: story`) — dispatched to exactly one child session.
+- **Task** is session-internal work (`aloop-agent todo`) generated during a Story's child session by the plan agent, consumed by build/qa/review agents. Tasks are **not** tracked externally by default.
+
+Where the tracker supports native sub-issue APIs (GitHub as of 2025-04-09, GA), the adapter uses them. Where it doesn't, the adapter falls back to `links.parent` metadata. Orchestrator prompts never see the difference.
+
+The daemon's `IssueTrackerAdapter` (GitHub, builtin, or future GitLab/Linear/etc.) translates abstract vocabulary into tracker-native operations.
 
 **Orchestrator prompt outputs** are all tracker-agnostic JSON submitted via `aloop-agent submit`:
 
 | Submit type | Meaning | Tracker-side effect |
 |---|---|---|
-| `decompose_result` | List of proposed issues with dependencies, waves, slugs | Adapter creates issues, applies labels, sets parent/child links |
-| `refine_result` | Issue with scope tightened, constraints added, DoR fields set | Adapter updates issue body and status metadata |
+| `decompose_result` | List of Epics with dependencies, waves, slugs | Adapter creates top-level issues with `kind: epic` |
+| `sub_decompose_result` | List of Stories under one Epic | Adapter creates issues with `kind: story` and links as sub-issues of the Epic |
+| `refine_result` | Epic or Story with scope tightened, constraints added, DoR fields set | Adapter updates issue body and status metadata |
 | `estimate_result` | Complexity tier + dependency graph adjustments | Adapter updates metadata / labels |
 | `review_result` | Verdict + per-file findings + thread locations | Adapter posts change-set comments and resolves threads |
 | `merge_request` | Approved change set ready to merge | Daemon (not adapter) calls `mergeChangeSet` per policy |
@@ -124,27 +133,29 @@ The state machine is encoded in `orchestrator.yaml` as cycle + triggers, not in 
 
 ## Refinement pipeline
 
-Four phases, each a separate prompt. Each phase emits a tracker-agnostic submit type.
+Five phases, each a separate prompt. Each phase emits a tracker-agnostic submit type. The pipeline produces the Epic → Story structure; Tasks come later, inside each Story's child session.
 
 ### Global spec analysis (`PROMPT_orch_product_analyst.md` or similar)
 
-Runs once per session (or when spec files change). Input: the project's spec files (paths from `aloop/config.yml`). Output: high-level theme map, out-of-scope list, major dependencies.
+Runs once per session (or when spec files change). Input: the project's spec files (paths from `aloop/config.yml`). Output: high-level theme map, out-of-scope list, major dependencies. No tracker side effect.
 
 ### Epic decomposition (`PROMPT_orch_decompose.md`)
 
-Breaks the spec into **epics** — coarse vertical slices, each representing a shippable increment. Emits `decompose_result` with `abstract_status: needs_refinement`. Adapter creates parent-level issues.
+Breaks the spec into **Epics** — coarse vertical slices, each representing a shippable increment. Emits `decompose_result` with `kind: epic` and `abstract_status: needs_refinement`. Adapter creates top-level issues.
 
 ### Epic refinement (`PROMPT_orch_refine.md`)
 
-For each epic, tighten scope and acceptance criteria, list out-of-scope items, identify constraints. Emits `refine_result` with `abstract_status: refined`. Adapter updates issue body.
+For each Epic, tighten scope and acceptance criteria, list out-of-scope items, identify constraints. Emits `refine_result` with `abstract_status: refined`. Adapter updates the issue body.
 
-### Sub-issue decomposition (`PROMPT_orch_sub_decompose.md`)
+### Story decomposition (`PROMPT_orch_sub_decompose.md`)
 
-For each refined epic, produce sub-issues — the unit a child session will pick up. Each sub-issue carries `dependencies` (other sub-issues) and optionally a `wave` index. Emits a `decompose_result` whose issues are linked as children of the epic.
+For each refined Epic, produce **Stories** — the unit a child session will pick up. Each Story carries `dependencies` (slugs of other Stories, potentially in other Epics), optional `wave` index, and `estimated_complexity` tier. Emits `sub_decompose_result` with the parent Epic's slug and an array of `kind: story` issues. Adapter creates each Story as a sub-issue of the Epic — via the tracker's native sub-issue API where available (GitHub's `POST /repos/{owner}/{repo}/issues/{epic_number}/sub_issues`), via `links.parent` metadata otherwise.
 
-### Sub-issue refinement (`PROMPT_orch_refine.md` with child scope)
+### Story refinement (`PROMPT_orch_refine.md` with story scope)
 
-For each sub-issue, validate definition-of-ready (tests named, files in scope identified, external contracts referenced). Emits `refine_result` with `abstract_status: dor_validated`. Only `dor_validated` issues are dispatchable.
+For each Story, validate definition-of-ready (tests named, files in scope identified, external contracts referenced, environment requirements declared). Emits `refine_result` with `abstract_status: dor_validated`. Only `dor_validated` Stories are dispatchable.
+
+Tasks are **not** produced by the orchestrator. Tasks are generated inside a Story's child session by the plan agent, tracked via `aloop-agent todo`, and consumed by build/qa/review. Mirroring tasks to the tracker is an optional per-project feature (see `issue-tracker.md` §Task tracking).
 
 Throughout: **agents see no tracker specifics.** All tracker writes happen daemon-side through the adapter.
 
@@ -152,15 +163,16 @@ Throughout: **agents see no tracker specifics.** All tracker writes happen daemo
 
 The dispatcher is a prompt (`PROMPT_orch_dispatch.md` or similar) that:
 
-1. Reads tracker state via `aloop-agent tracker list --status dor_validated --wave current`.
-2. For each dispatchable issue, checks:
-   - Dependencies satisfied (all blocking issues `done`).
+1. Reads tracker state via `aloop-agent tracker list --kind story --status dor_validated --wave current`.
+2. For each dispatchable Story, checks:
+   - Parent Epic is `refined` (or `dor_validated`).
+   - Dependencies satisfied (all blocking Stories `done`, possibly across Epics).
    - Wave gate — higher waves wait until lower waves' critical paths are merged.
    - Scheduler permit for the child session can be acquired (concurrency, system, quota, burn-rate gates all pass).
-   - Override policy permits a provider for this issue's chain.
-3. Emits `dispatch_result` — a list of `{issue_ref, workflow, provider_chain}` tuples.
-4. Daemon processes the submit: for each tuple, `POST /v1/sessions` with `kind: child`, `parent_session_id: orch.id`, `workflow: <workflow>`, `provider_chain: <chain>`, `issue: <ref>`.
-5. Daemon creates the child's worktree (branch `aloop/issue-<key>`, based on `agent/trunk`) and starts the child's session runner.
+   - Override policy permits a provider for this Story's chain.
+3. Emits `dispatch_result` — a list of `{story_ref, workflow, provider_chain}` tuples.
+4. Daemon processes the submit: for each tuple, `POST /v1/sessions` with `kind: child`, `parent_session_id: orch.id`, `workflow: <workflow>`, `provider_chain: <chain>`, `issue: <story_ref>`.
+5. Daemon creates the child's worktree (branch `aloop/issue-<story_key>`, based on `agent/trunk`) and starts the child's session runner.
 
 The dispatcher does not spawn processes. It submits intent. The daemon does the work.
 
