@@ -3,7 +3,7 @@ import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { acquireLock, releaseLock } from "../src/daemon/lock.ts";
+import { acquireLock, releaseLock } from "./lock.ts";
 
 describe("acquireLock / releaseLock", () => {
   let dir: string;

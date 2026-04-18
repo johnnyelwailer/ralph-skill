@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { resolveDaemonPaths } from "../src/paths.ts";
+import { resolveDaemonPaths } from "./paths.ts";
 
 describe("resolveDaemonPaths", () => {
   test("defaults to ~/.aloop when ALOOP_HOME is unset", () => {

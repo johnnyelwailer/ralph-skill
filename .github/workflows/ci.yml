@@ -25,7 +25,7 @@ jobs:
         run: bun x tsc -p packages/core/tsconfig.json
 
       - name: Test
-        run: bun test packages/core/tests
+        run: bun test
 
   dashboard-tests:
     name: Dashboard Unit Tests

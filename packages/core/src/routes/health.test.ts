@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { buildHealth } from "../src/routes/health.ts";
-import { VERSION } from "../src/version.ts";
+import { buildHealth } from "./health.ts";
+import { VERSION } from "../version.ts";
 
 describe("buildHealth", () => {
   test("returns canonical v1 shape", () => {

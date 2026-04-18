@@ -11,7 +11,7 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "test": "bun test tests",
+    "test": "bun test",
     "start": "bun run bin/aloopd.ts"
   },
   "devDependencies": {

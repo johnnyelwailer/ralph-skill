@@ -2,9 +2,9 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { startDaemon, type RunningDaemon } from "../src/daemon/start.ts";
-import { resolveDaemonPaths } from "../src/paths.ts";
-import { VERSION } from "../src/version.ts";
+import { startDaemon, type RunningDaemon } from "./start.ts";
+import { resolveDaemonPaths } from "../paths.ts";
+import { VERSION } from "../version.ts";
 
 describe("daemon integration", () => {
   let home: string;
