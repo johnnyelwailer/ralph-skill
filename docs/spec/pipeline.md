@@ -231,6 +231,7 @@ Variables resolved at two stages:
 
 The compile step is the **only** place where pipeline YAML gets interpreted. It runs:
 
+- During **setup verification** (Phase 4) — the first compile is a readiness gate; if `pipeline.yml` cannot be compiled, the project is not marked `ready`. See `setup.md`.
 - On `aloop start` (and child dispatch)
 - On file-watcher-detected change to `pipeline.yml`
 - On explicit `POST /v1/sessions/:id/recompile`

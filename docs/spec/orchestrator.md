@@ -261,7 +261,7 @@ Common triggers:
 
 ## Autonomy levels
 
-Per project, via `aloop/config.yml`:
+Per project, via `aloop/config.yml`. The level is chosen during setup (see `setup.md` §Autonomy levels as setup output) based on interview answers and project maturity; it can be changed later by editing the project config.
 
 - **`attended`** — orchestrator halts before decompose, before dispatch, and before merge; human approves each.
 - **`supervised`** — orchestrator proceeds through decompose and dispatch autonomously; halts before each merge for human review.

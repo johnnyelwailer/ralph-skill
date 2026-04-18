@@ -77,7 +77,7 @@ interface TrackerAdapter {
   readonly id: "github" | "gitlab" | "linear" | "builtin" | string;
   readonly capabilities: TrackerCapabilities;
 
-  // Connection
+  // Connection — called as part of the setup readiness gate (see setup.md §Verification)
   ping(): Promise<TrackerHealth>;
 
   // Work item queries

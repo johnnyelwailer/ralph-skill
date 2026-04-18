@@ -55,6 +55,9 @@ No forking per session in v1. Every session runs on the daemon's event loop with
       log.jsonl                 authoritative event history
       worktree/                 git worktree (for standalone/child sessions)
       artifacts/                proof artifacts per iteration
+    setup_runs/<id>/
+      log.jsonl                 authoritative event history for a setup run
+      scratch/                  interview answers, discovery output, draft configs
 ```
 
 **Split of responsibility:**
@@ -72,6 +75,7 @@ The daemon serves N unrelated repositories on one host.
 - `id` — uuid
 - `abs_path` — canonicalized absolute path (unique key)
 - `name` — defaults to basename of `abs_path`
+- `status` — `setup_pending` | `ready` | `archived`. Setup is the only writer of the transition to `ready` (see `setup.md` §Verification); sessions may only start against `ready` projects.
 - `added_at`, `last_active_at`
 
 **Per-project config** at `<abs_path>/.aloop/config.yml` — pipeline, provider chain, validation commands, safety rules. Daemon reads on session start; does not cache across sessions unless a file watcher invalidates.

@@ -402,6 +402,25 @@ PUT /v1/scheduler/limits
 
 Hot-reloadable. Takes effect on the next permit request.
 
+## Setup
+
+Setup is a resumable, verified flow for onboarding a project. See `setup.md` for the phases and contract.
+
+```
+POST   /v1/setup/runs                        start a setup run for a project (or greenfield)
+                                             body: { abs_path, mode?, non_interactive?, flags? }
+GET    /v1/setup/runs                        list runs (active, completed, failed)
+GET    /v1/setup/runs/:id                    current phase, progress, findings, pending prompts
+POST   /v1/setup/runs/:id/answer             body: { question_id, value } — supply interview answer
+POST   /v1/setup/runs/:id/approve-scaffold   user approves generated files before they land
+POST   /v1/setup/runs/:id/resume             continue an interrupted run
+DELETE /v1/setup/runs/:id                    abort (does not unregister project if already registered)
+GET    /v1/setup/runs/:id/events             SSE: setup events (discovery.*, interview.*,
+                                             generation.*, verification.*, completion.*)
+```
+
+On successful `verification` phase, the daemon transitions the project's `status` from `setup_pending` to `ready` and emits `setup.completed`.
+
 ## Daemon
 
 ```
