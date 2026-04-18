@@ -68,7 +68,7 @@ Why this split:
 
 - Epic and Story are human-reviewable, long-lived, permission-scoped — they belong in the tracker humans already use.
 - Tasks are generated and mutated dozens of times per Story. Syncing them to the tracker would produce noise (issue spam, webhook storms) and slow the loop. Keep them session-local by default.
-- The runtime already has to track tasks for routing and completion detection — integrating that with the tracker is an optional convenience, not a requirement.
+- The daemon already has to track tasks for routing and completion detection — integrating that with the tracker is an optional convenience, not a requirement.
 
 ## Adapter interface
 

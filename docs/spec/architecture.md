@@ -1,6 +1,6 @@
 # Architecture
 
-> **Reference document.** The layers, boundaries, and seams of the `next` aloop runtime. Hard rules live in CONSTITUTION.md. Work items live in GitHub issues.
+> **Reference document.** The layers, boundaries, and seams of the `aloopd` daemon. Hard rules live in CONSTITUTION.md. Work items live in GitHub issues.
 >
 > Sources: SPEC.md §Architecture, §Inner Loop vs Runtime, §Cross-Platform; `daemon.md`, `api.md`, `pipeline.md`, `provider-contract.md`, `work-tracker.md`.
 
@@ -80,7 +80,7 @@ This is the load-bearing decision:
 - **Sessions** — standalone, orchestrator, child. State machine, lifecycle, parent-child relationships (see `daemon.md` §Session kinds).
 - **Scheduler** — the only gate between "a turn is wanted" and "a turn is started." Composes gates for concurrency, system resources, per-provider quota, burn rate, and live overrides.
 - **Event bus** — aggregates events from all sessions into per-session JSONL and the global SSE stream. Every state change publishes.
-- **Compile step** — translates `pipeline.yml` into `loop-plan.json`. The **only** YAML reader in the system.
+- **Compile step** — translates `pipeline.yml` into `loop-plan.json`. See `pipeline.md` §Compile step for the canonical description (single YAML reader in the system).
 - **Watchdog / reconcile** — stuck detection, provider quota refresh, permit expiry sweep, orphan cleanup, burn-rate tracking, crash recovery. All internal to the daemon; no external cron.
 - **Project registry** — N unrelated repos served by one daemon instance.
 - **Adapter orchestration** — invokes `ProviderAdapter` for turns, `TrackerAdapter` for decomposition/review/merge, `WorkerAdapter` for turn execution.
@@ -146,7 +146,7 @@ The system has one outer boundary and several internal ones:
 - **Clients ↔ Daemon**: HTTP request/response, with auth (localhost unauthenticated by default; bearer token when tunneled). Requests are rate-limited per client.
 - **Daemon ↔ Agents (via `aloop-agent`)**: agents run inside a provider process with an `AUTH_HANDLE` env variable scoped to a single session. Agents cannot issue calls outside that scope.
 - **Daemon ↔ Providers**: daemon spawns provider CLIs as child processes with sanitized environments (`CLAUDECODE`, `PATH`, secrets). Providers receive only the prompt body and declared tool definitions.
-- **Daemon ↔ Tracker**: the adapter authenticates to the tracker with credentials supplied in project config (`gh` CLI, env token). Daemon policy restricts allowed operations per role (see `security.md` `aloop gh` table, now generalized across adapters).
+- **Daemon ↔ Tracker**: the adapter authenticates to the tracker with credentials supplied in project config (`gh` CLI, env token). Daemon policy restricts allowed operations per role (see `security.md` §Tracker adapter policy for the hardcoded table; GitHub is the shipped example and future adapters follow the same role-based allow-list pattern).
 - **Daemon ↔ Filesystem**: worktrees live under `~/.aloop/state/sessions/<id>/worktree/`. A session cannot read outside its own worktree except through well-defined read-only references (the project's repo root, config files).
 
 Agents are the least trusted principal. The daemon is the trust anchor.

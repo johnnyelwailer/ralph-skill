@@ -213,7 +213,7 @@ Subagents are provider-specific (opencode's `task` tool, Claude Code's `Agent` t
 
 ## The setup runtime (daemon side)
 
-Everything skill-initiated lands here eventually. The runtime view treats setup as a long-running, resumable, event-producing workflow that happens to be interactive at two points (Phase 2 interview, Phase 5 confirmation) and autonomous everywhere else.
+Everything skill-initiated lands here eventually. The daemon-side view treats setup as a long-running, resumable, event-producing workflow that happens to be interactive at two points (Phase 2 interview, Phase 5 confirmation) and autonomous everywhere else.
 
 **Project registration:**
 

@@ -114,7 +114,7 @@ triggers:
 }
 ```
 
-Flat arrays of filenames. All logic lived in the compile step; the runtime just reads positions.
+Flat arrays of filenames. All logic lived in the compile step; the session runner just reads positions.
 
 ## Prompt file format (frontmatter + body)
 
@@ -306,7 +306,7 @@ The pipeline is mutable at runtime through two mechanisms:
 
 ### Override queue
 
-`<session>/queue/` holds files in the same frontmatter format as cycle prompts. The runner checks this dir before the cycle.
+`<session>/queue/` holds files in the same frontmatter format as cycle prompts. The session runner checks this dir before the cycle.
 
 Writers:
 - **User** via `POST /v1/sessions/:id/steer` → CLI, dashboard, or bot
@@ -384,7 +384,7 @@ Task shape:
 }
 ```
 
-Tasks are routed messages. `from` is the creator role; `for` is the intended executor role. The runner's cycle hands work to the agent whose role matches the next pending task's `for`, when the workflow uses role-routing (otherwise any agent handles any task).
+Tasks are routed messages. `from` is the creator role; `for` is the intended executor role. The session runner's cycle hands work to the agent whose role matches the next pending task's `for`, when the workflow uses role-routing (otherwise any agent handles any task).
 
 ### Permissions (role-based)
 
@@ -460,7 +460,7 @@ A child loop is a session of kind `child` running a workflow like `plan-build-re
 - Has its own worktree (daemon creates it on session start).
 - Has its own `loop-plan.json` compiled from the chosen workflow.
 - Uses `aloop-agent` for all output.
-- Cannot create grandchildren (API-enforced).
+- Cannot create grandchildren (see `api.md` §Sessions §Create).
 
 Working files (`TODO.md`, `TASK_SPEC.md`, `RESEARCH.md`, `REVIEW_LOG.md`) are tracked via `aloop-agent`'s task store and per-session state directories — surviving worktree clobbers by design (CR #283 root cause eliminated).
 

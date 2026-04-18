@@ -72,7 +72,7 @@ Practical consequences:
 
 - The orchestrator uses the same scheduler, the same provider adapters, the same event bus, the same compile step, the same `aloop-agent` CLI, the same HTTP API.
 - Its "brain" is the collection of prompts referenced by `orchestrator.yaml` (see `pipeline.md` §Orchestrator as a workflow). The brain is data, not code.
-- It creates children via `POST /v1/sessions` with `kind: child` and `parent_session_id: self.id`. The API enforces "no grandchildren."
+- It creates children via `POST /v1/sessions` with `kind: child` and `parent_session_id: self.id`. Nesting is capped at one level (see `api.md` §Sessions §Create for the canonical "no grandchildren" rule).
 - It observes children via `GET /v1/events?parent=<self.id>` (SSE). Self-healing is a *workflow* that subscribes to events and queues diagnose prompts — not a daemon-side daemon.
 - It has no worktree, or it uses project root read-only. Its work is API calls, not file edits.
 
@@ -131,7 +131,7 @@ At any point:
               → queue triggers.<name> → diagnose or specialized prompt
 ```
 
-The state machine is encoded in `orchestrator.yaml` as cycle + triggers, not in code. The session runner executes it mechanically. The daemon's scheduler permit gate applies to every orchestrator turn just like any other.
+The state machine is encoded in `orchestrator.yaml` as cycle + triggers, not in code. The session runner executes it mechanically. Every orchestrator turn goes through the scheduler like any other turn (see `daemon.md` §Scheduler authority).
 
 ## Refinement pipeline
 

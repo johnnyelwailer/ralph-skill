@@ -100,7 +100,7 @@ Three kinds, one table, same API.
 |---|---|---|---|---|
 | `standalone` | yes | no | no | plan-build-review, single, etc. |
 | `orchestrator` | no (or read-only project root) | no | yes | orchestrator.yaml |
-| `child` | yes | yes (link to orchestrator) | no (no grandchildren) | plan-build-review, review-only, etc. |
+| `child` | yes | yes (link to orchestrator) | no (nesting cap, `api.md`) | plan-build-review, review-only, etc. |
 
 **Session row (SQLite `sessions` table):**
 - `id`, `project_id`, `kind`, `parent_session_id`
@@ -112,7 +112,7 @@ Three kinds, one table, same API.
 - `cost_usd`, `tokens_in`, `tokens_out`, `commits` — running aggregates updated from events
 
 **Parent/child:**
-- Orchestrator creates a child via the same API — `POST /v1/sessions` with `parent_session_id` set. Nesting is enforced (no grandchildren) server-side.
+- Orchestrator creates a child via the same API — `POST /v1/sessions` with `parent_session_id` set. Nesting cap is API-enforced; see `api.md` §Sessions §Create.
 - Orchestrator **observes** its children's events by subscribing to `/v1/events?parent=<id>` over SSE. Self-healing logic lives in the orchestrator *workflow*, not in a daemon-side daemon.
 - Kill semantics: `DELETE` on a child ends only that child. `DELETE` on an orchestrator cascades to all its children with a grace period, then force-stops.
 
