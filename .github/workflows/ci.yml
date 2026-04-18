@@ -2,11 +2,31 @@ name: CI
 
 on:
   push:
-    branches: [master, agent/trunk]
+    branches: [master, agent/trunk, next]
   pull_request:
-    branches: [master, agent/trunk]
+    branches: [master, agent/trunk, next]
 
 jobs:
+  aloopd-core:
+    name: aloopd core (Bun typecheck + test)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: '1.3.10'
+
+      - name: Install
+        run: bun install
+
+      - name: Typecheck
+        run: bun x tsc -p packages/core/tsconfig.json
+
+      - name: Test
+        run: bun test packages/core/tests
+
   dashboard-tests:
     name: Dashboard Unit Tests
     runs-on: ubuntu-latest
