@@ -25,4 +25,4 @@ ALOOP_HOME=/tmp/aloop ALOOP_PORT=7777 bun run packages/core/bin/aloopd.ts
 - Singleton PID lock at `~/.aloop/aloopd.pid`
 - Graceful shutdown on SIGINT/SIGTERM
 
-See [DELIVERY_PLAN.md](../../DELIVERY_PLAN.md) for what ships in each milestone.
+See [docs/DELIVERY_PLAN.md](../../docs/DELIVERY_PLAN.md) for what ships in each milestone.

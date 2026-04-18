@@ -6,9 +6,9 @@
 
 ## Where to start
 
-- **[VISION.md](VISION.md)** — the product: who it's for, what it does, why it exists.
-- **[CONSTITUTION.md](CONSTITUTION.md)** — non-negotiable invariants. Read before contributing.
-- **[DELIVERY_PLAN.md](DELIVERY_PLAN.md)** — twelve milestones from spec to shipped v1.
+- **[docs/VISION.md](docs/VISION.md)** — the product: who it's for, what it does, why it exists.
+- **[docs/CONSTITUTION.md](docs/CONSTITUTION.md)** — non-negotiable invariants. Read before contributing.
+- **[docs/DELIVERY_PLAN.md](docs/DELIVERY_PLAN.md)** — twelve milestones from spec to shipped v1.
 - **[docs/spec/](docs/spec/)** — 20 reference docs covering architecture, daemon, API, pipeline, providers, trackers, orchestrator, agents, security, workflows, metrics, self-improvement, learning, setup, devcontainer.
 - **[docs/research/](docs/research/)** — outside research that informed the rebuild (Karpathy AutoResearch, Anthropic, Cognition, OpenHands, etc.).
 
@@ -18,12 +18,12 @@
 packages/
   core/                   @aloop/core — the daemon (aloopd)
 docs/
+  VISION.md               product vision
+  CONSTITUTION.md         non-negotiable invariants
+  DELIVERY_PLAN.md        v1 milestones
+  DESIGN_BRIEF.md         dashboard visual design (for M11)
   spec/                   reference docs (invariants, contracts)
   research/               external research notes
-  DESIGN_BRIEF.md         dashboard visual design (for M11)
-VISION.md                 product vision
-CONSTITUTION.md           non-negotiable invariants
-DELIVERY_PLAN.md          v1 milestones
 ```
 
 ## Development
@@ -51,10 +51,10 @@ Next: **M2 — state store + event log + drift detection** (SQLite via `bun:sqli
 
 ## Contributing
 
-- Read CONSTITUTION.md first.
+- Read [docs/CONSTITUTION.md](docs/CONSTITUTION.md) first.
 - Every change ships with a test (§V.19 — TDD mandatory).
 - No change may touch the oracle layer (spec, constitution, orchestrator prompts, metric definitions). See `docs/spec/self-improvement.md` §IX.
-- Work items are tracked via GitHub issues labeled `delivery/M<N>` per `DELIVERY_PLAN.md`.
+- Work items are tracked via GitHub issues labeled `delivery/M<N>` per [docs/DELIVERY_PLAN.md](docs/DELIVERY_PLAN.md).
 
 ## License
 
