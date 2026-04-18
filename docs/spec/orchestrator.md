@@ -2,7 +2,7 @@
 
 > **Reference document.** The contract for orchestrator sessions — how a spec becomes tracked work, how children are dispatched, how results are gated and merged, how self-healing happens. Hard rules live in CONSTITUTION.md. Work items live in GitHub issues (or the configured tracker).
 >
-> Sources: SPEC.md §Parallel Orchestrator Mode, §State Machine, §Budget; SPEC-ADDENDUM.md §Adapter Pattern, §Scan Agent Self-Healing, §Orchestrator Autonomy Fix, §PR Review, §Self-Healing, §Session Resumability (pre-decomposition, 2026-04-18). Consolidated against `daemon.md`, `api.md`, `pipeline.md`, `issue-tracker.md`.
+> Sources: SPEC.md §Parallel Orchestrator Mode, §State Machine, §Budget; SPEC-ADDENDUM.md §Adapter Pattern, §Scan Agent Self-Healing, §Orchestrator Autonomy Fix, §PR Review, §Self-Healing, §Session Resumability (pre-decomposition, 2026-04-18). Consolidated against `daemon.md`, `api.md`, `pipeline.md`, `work-tracker.md`.
 
 ## Table of contents
 
@@ -44,9 +44,11 @@ Human promotes `agent/trunk` to the project's mainline when satisfied.
                               │
            ┌──────────────────┼──────────────────┐
            ▼                  ▼                  ▼
-       Issue 10            Issue 20           Issue 30
-       (epic)              (epic)             (epic)
+       Epic 10             Epic 20            Epic 30
+       (work item)         (work item)        (work item)
        │  │  │              │  │                │
+     Story Story Story   Story Story        Story
+     ↓     ↓     ↓        ↓     ↓            ↓
      Child Child Child    Child Child         Child
      ─ each a session of kind=child, own worktree, own workflow ─
        │  │  │              │  │                │
@@ -76,7 +78,7 @@ Practical consequences:
 
 ## Inputs, outputs, and the tracker abstraction
 
-The orchestrator never speaks to GitHub, GitLab, Linear, or any tracker directly. It speaks in the abstract vocabulary defined by `issue-tracker.md`: `Issue` (with `kind: epic | story | task_mirror | other`), `ChangeSet`, `Comment`, `Review`, abstract labels (`priority_critical`, `change_request`, `epic`), abstract statuses (`needs_refinement`, `refined`, `in_progress`, `in_review`, `done`).
+The orchestrator never speaks to GitHub, GitLab, Linear, or any tracker directly. It speaks in the abstract vocabulary defined by `work-tracker.md`: `WorkItem` (with `kind: epic | story | task_mirror | other`), `ChangeSet`, `Comment`, `Review`, abstract labels (`priority_critical`, `change_request`, `epic`), abstract statuses (`needs_refinement`, `refined`, `in_progress`, `in_review`, `done`).
 
 The hierarchy is **Epic → Story → Task**:
 
@@ -86,7 +88,7 @@ The hierarchy is **Epic → Story → Task**:
 
 Where the tracker supports native sub-issue APIs (GitHub as of 2025-04-09, GA), the adapter uses them. Where it doesn't, the adapter falls back to `links.parent` metadata. Orchestrator prompts never see the difference.
 
-The daemon's `IssueTrackerAdapter` (GitHub, builtin, or future GitLab/Linear/etc.) translates abstract vocabulary into tracker-native operations.
+The daemon's `TrackerAdapter` (GitHub, builtin, or future GitLab/Linear/etc.) translates abstract vocabulary into tracker-native operations.
 
 **Orchestrator prompt outputs** are all tracker-agnostic JSON submitted via `aloop-agent submit`:
 
@@ -155,7 +157,7 @@ For each refined Epic, produce **Stories** — the unit a child session will pic
 
 For each Story, validate definition-of-ready (tests named, files in scope identified, external contracts referenced, environment requirements declared). Emits `refine_result` with `abstract_status: dor_validated`. Only `dor_validated` Stories are dispatchable.
 
-Tasks are **not** produced by the orchestrator. Tasks are generated inside a Story's child session by the plan agent, tracked via `aloop-agent todo`, and consumed by build/qa/review. Mirroring tasks to the tracker is an optional per-project feature (see `issue-tracker.md` §Task tracking).
+Tasks are **not** produced by the orchestrator. Tasks are generated inside a Story's child session by the plan agent, tracked via `aloop-agent todo`, and consumed by build/qa/review. Mirroring tasks to the tracker is an optional per-project feature (see `work-tracker.md` §Task tracking).
 
 Throughout: **agents see no tracker specifics.** All tracker writes happen daemon-side through the adapter.
 
@@ -185,7 +187,7 @@ When a child session produces a change set and signals readiness:
 3. Orchestrator queues `PROMPT_orch_review.md` via `triggers.pr_review_needed`.
 4. Review prompt outputs `review_result` with verdict `approved | changes_requested | reject`.
 5. Daemon applies the verdict:
-   - **approved** → orchestrator queues `merge_request` submit; daemon calls `mergeChangeSet` per project policy (squash by default). Issue moves to `done` via `status_map`.
+   - **approved** → orchestrator queues `merge_request` submit; daemon calls `mergeChangeSet` per project policy (squash by default). Story moves to `done` via `status_map`.
    - **changes_requested** → daemon posts review comments/threads via the adapter; child session gets its queue populated (`triggers.pr_review_requested` or similar) with the review body, resumes work.
    - **reject** → issue moves back to `refined` or `needs_refinement`; the orchestrator may redispatch or escalate.
 6. After merge, orchestrator emits `merge_complete` event; reconcile job updates aggregate state.
@@ -311,7 +313,7 @@ This keeps the conflict-resolution responsibility at the child level while the o
 ## Invariants
 
 1. **Orchestrator is a session.** No separate binary, no special runtime, no privileged code path.
-2. **Orchestrator never touches tracker APIs directly.** All tracker operations go through the configured `IssueTrackerAdapter`.
+2. **Orchestrator never touches tracker APIs directly.** All tracker operations go through the configured `TrackerAdapter`.
 3. **Orchestrator prompts are tracker-agnostic.** Generic data shapes only.
 4. **Orchestrator has no worktree**, or uses project root read-only.
 5. **Children are dispatched via the API.** `POST /v1/sessions` with `kind: child` and `parent_session_id`. No privileged dispatch path.

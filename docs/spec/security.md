@@ -1,247 +1,225 @@
 # Security
 
-> **Reference document.** Invariants and contracts consumed by agents at runtime. Work items live in GitHub issues; hard rules live in CONSTITUTION.md.
+> **Reference document.** Trust boundaries, policy enforcement, and audit guarantees. Hard rules live in CONSTITUTION.md. Work items live in GitHub issues.
 >
-> Sources: SPEC.md §Security Model: Trust Boundaries & GH Access Control (lines ~2389-2634) (pre-decomposition, 2026-04-18).
+> Sources: SPEC.md §Security Model: Trust Boundaries & GH Access Control (pre-decomposition, 2026-04-18). Generalized against `daemon.md`, `api.md`, `pipeline.md`, `work-tracker.md`.
 
 ## Table of contents
 
 - Principle
 - Trust layers
 - Deployment scenarios
-- Convention-file protocol
-- Architecture: keep loop scripts lean
-- `aloop gh` subcommand
-- Hardcoded policy
-- PATH sanitization (defense-in-depth)
+- Agent ↔ daemon interface (`aloop-agent`)
+- Tracker adapter policy (`aloop gh`, builtin, future adapters)
+- Hardcoded policy tables
+- Environment sanitization (daemon-owned)
 - Audit log
 
 ---
 
 ## Principle
 
-Agents are untrusted. The aloop CLI is the single trust boundary. Agents never have direct access to GitHub APIs, network endpoints, or the `gh` CLI. All external operations flow through the harness, which delegates to `aloop gh` — a policy-enforced subcommand of the aloop CLI.
+Agents are untrusted. **The daemon (`aloopd`) is the single trust boundary.** Agents never have direct access to tracker APIs (GitHub, GitLab, Linear, or built-in), the `gh` / `glab` / `linear` CLIs, network endpoints, or the `aloop` CLI. All external operations flow through the daemon, which enforces role-based policy before invoking an adapter.
+
+Restated:
+
+- Agent → `aloop-agent <cmd>` → daemon (policy check) → adapter → external system
+- Agent → *never directly* → external system
+
+Policy is **hardcoded in the daemon source**, not in project config. This prevents an agent from relaxing policy even if it somehow wrote to the filesystem.
 
 ## Trust layers
 
 ```
-┌──────────────────────────────────────────────┐
-│  LAYER 1: HOST (where harness runs)          │
-│                                              │
-│  loop.ps1 / loop.sh (harness)                │
-│    ├─ aloop CLI (single trust boundary)      │
-│    │    ├─ aloop gh      (GH operations)     │
-│    │    ├─ aloop resolve (project config)    │
-│    │    ├─ aloop orchestrate (fan-out)       │
-│    │    └─ aloop status  (monitoring)        │
-│    │                                         │
-│    └─ launches provider CLI ─────────────────┼──┐
-│                                              │  │
-│  worktree ◄──────────────────────────────────┼──┼── shared volume
-│                                              │  │
-├──────────────────────────────────────────────┤  │
-│  LAYER 2: SANDBOX (where agent runs)         │  │
-│                                              │  │
-│  agent (provider CLI) ◄──────────────────────┼──┘
-│    ├─ git (commit, push to own branch only)  │
-│    ├─ file read/write (worktree only)        │
-│    ├─ test runner                            │
-│    └─ requests/ (write side-effect requests)  │
-│                                              │
-│  ✗ no `gh` CLI (stripped from PATH)          │
-│  ✗ no `aloop` CLI                            │
-│  ✗ no direct network to api.github.com       │
-└──────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────┐
+│  LAYER 1: HOST (where the daemon and shims run)             │
+│                                                              │
+│  aloopd (daemon) — the trust anchor                          │
+│    ├─ v1 API (HTTP + SSE, localhost)                         │
+│    ├─ Scheduler (permits, quotas, burn-rate)                 │
+│    ├─ Project registry                                       │
+│    ├─ Overrides store                                        │
+│    ├─ Adapter orchestration                                  │
+│    │    ├─ ProviderAdapter  (5 impls, spawns provider CLIs)  │
+│    │    ├─ TrackerAdapter (github, builtin, …)               │
+│    │    ├─ ProjectAdapter   (worktrees, git)                 │
+│    │    └─ WorkerAdapter    (turn executor)                  │
+│    └─ Audit log (JSONL per session + daemon-level)           │
+│                                                              │
+│  aloop CLI, loop.sh/ps1 shims — clients of the daemon API    │
+│                                                              │
+├─────────────────────────────────────────────────────────────┤
+│  LAYER 2: SANDBOX (where agents run)                         │
+│                                                              │
+│  provider CLI (claude, opencode, codex, gemini, copilot)     │
+│    ├─ worktree read/write (scoped to session's worktree)     │
+│    ├─ git (commit, push to own branch only)                  │
+│    ├─ tests / validation                                     │
+│    └─ aloop-agent (validated CLI → daemon)                   │
+│                                                              │
+│  ✗ no `gh` / `glab` / tracker CLIs (stripped from PATH)      │
+│  ✗ no `aloop` CLI                                            │
+│  ✗ no direct network to api.github.com / etc.                │
+│  ✗ no read outside the session's worktree                    │
+└─────────────────────────────────────────────────────────────┘
 ```
 
 ## Deployment scenarios
 
-The trust boundary works regardless of where things run:
+The trust boundary holds regardless of where things run:
 
-| Scenario | Host (Layer 1) | Sandbox (Layer 2) | aloop CLI location |
-|----------|----------------|--------------------|--------------------|
-| Local dev | Your machine | Provider sandboxes (Codex sandbox, etc.) | Installed on machine |
-| Cloud orchestrator | Cloud VM / CI runner | Nested containers | In orchestrator container |
-| GitHub Actions | GH Actions runner | Spawned containers | Installed in action setup |
-| Docker-in-Docker | Outer container | Inner containers | In outer container |
+| Scenario | Host (Layer 1) | Sandbox (Layer 2) | Daemon location |
+|---|---|---|---|
+| Local dev | Your machine | Provider sandbox | On the same machine |
+| Cloud orchestrator (future) | Control-plane host | Remote worker VM | On control plane |
+| GitHub Actions | Runner | Spawned containers | Runner (ephemeral) |
+| Docker-in-Docker | Outer container | Inner containers | Outer container |
+| Devcontainer project | Host | Container | Host (communicates with container over bind-mount for worktree) |
 
-In every case: **aloop CLI lives where the harness lives**. The agent never needs it.
+In every case: **the daemon lives with the host**; agents live in sandboxes that can only reach the daemon via `aloop-agent` → localhost API.
 
-## Convention-file protocol
+## Agent ↔ daemon interface (`aloop-agent`)
 
-Agents communicate intent via filesystem — the only interface that crosses all sandbox boundaries (Docker volumes, bind mounts, NFS, etc.).
+Agents communicate via the `aloop-agent` CLI, which is the ONLY privileged binary on the agent's `PATH`. Its contract is defined in `pipeline.md` §Agent contract. Key properties:
 
-This is the same Request/Response Protocol described in the orchestrator section — `requests/*.json` for side effects, `queue/*.md` for follow-up prompts. Markdown content is always passed as file path references (`body_file`), never inline in the JSON.
+- **Auth handle** — every invocation carries an `AUTH_HANDLE` env var set by the daemon at session start. Scoped to one session, short-lived, rotated on daemon restart. Agents cannot forge calls for other sessions.
+- **Validated input** — every submit payload is validated against a typed schema. Malformed input is rejected with exit code 10.
+- **Role-scoped permissions** — the daemon checks the prompt's declared role against a permissions table (see `pipeline.md` §Permissions). Forbidden operations return exit code 12.
+- **Audited** — every call produces a log entry before the operation executes.
 
-**Request files** (agent writes to `$SESSION_DIR/requests/`):
-```json
-{
-  "id": "req-001",
-  "type": "create_pr",
-  "payload": {
-    "head": "aloop/issue-42",
-    "base": "agent/trunk",
-    "title": "Issue #42: Add provider health subsystem",
-    "body_file": "requests/bodies/pr-42.md",
-    "issue_number": 42
-  }
-}
-```
+The retired pattern of "agents write `.aloop/output/*.json` and the runtime bridges them" is gone. The session JSONL remains, but it's the output of `aloop-agent submit`, not the other way around.
 
-**Follow-up prompts** (runtime writes to `$SESSION_DIR/queue/`): response data is baked into the next prompt's body. No separate response files — the queue IS the response channel.
+## Tracker adapter policy (`aloop gh`, builtin, future adapters)
 
-**Protocol rules:**
-- Request files: `req-<NNN>-<type>.json`, monotonic counter, processed in order
-- Markdown content: always file path references (`body_file`, `sub_spec_file`, `prompt_file`, `content_file`)
-- Request files deleted by runtime after processing
-- Malformed requests moved to `requests/failed/` with error annotation
+The daemon exposes tracker operations through the `aloop gh` subcommand (and future analogues like `aloop gl`, `aloop linear`). Internally these route to the active `TrackerAdapter` for the project. Operations cannot be invoked directly by agents — only through `aloop-agent submit` with a submit type the daemon then translates to an adapter call.
 
-## Architecture: keep loop scripts lean
-
-**Critical design rule:** `loop.ps1` and `loop.sh` must NOT contain convention-file processing, GH logic, or any host-only operations directly. The loop scripts run inside containers and must stay minimal: iterate phases, invoke providers, write status/logs. That's it. Remote backup setup (repo creation via `gh`) belongs in `aloop start`, not in the loop scripts.
-
-All host-side operations (GH requests, steering injection, dashboard, request processing) are handled by the **aloop host monitor** — a separate process that runs alongside the loop on the host:
-
-```
-┌─── Host ──────────────────────────────────────────────┐
-│                                                        │
-│  aloop start                                           │
-│    ├── loop.ps1/sh (may run in container)              │
-│    │     └── just: read loop-plan.json + provider invoke│
-│    │                                                   │
-│    └── aloop monitor (host-side, always on host)       │
-│          ├── watches requests/ → executes side effects  │
-│          ├── writes to queue/ → loop picks up next iter  │
-│          ├── serves dashboard                          │
-│          ├── processes convention-file protocol         │
-│          └── manages provider health (cross-session)   │
-│                                                        │
-└────────────────────────────────────────────────────────┘
-```
-
-**What stays in loop.ps1/loop.sh:**
-- Read `loop-plan.json` each iteration, pick agent at `$cyclePosition`
-- Provider invocation (direct — loop and providers run in the same environment)
-  - Must track child PIDs when invoking providers
-  - Per-iteration timeout (default 3 hours / 10800 seconds) with precedence: prompt frontmatter `timeout` -> `ALOOP_PROVIDER_TIMEOUT` -> default. The built-in default must be identical in `loop.sh` and `loop.ps1` for cross-runtime parity. Timeout remains a catastrophic safety net only; not a behavioral limit on agent runtime
-  - On loop exit (`finally`/`trap`), kill all spawned child processes
-- Iteration counting
-- Status.json and log.jsonl writes
-  - Each session run must include a unique `run_id` in all log entries, or rotate logs on session start
-- TODO.md reading for phase prerequisites
-- PATH hardening (defense in depth, even though container already isolates)
-
-**Execution model:** The loop script and provider CLIs always run in the same environment. When containerized, `aloop start` on the host launches the loop **inside** the container via `devcontainer exec -- loop.sh` (or `loop.ps1`). From that point, the loop invokes providers directly (they're co-located). The loop never calls `devcontainer exec` itself — that's the host's job.
-
-**What moves to aloop monitor (host-side):**
-- Convention-file request processing (`requests/` → `aloop gh` → `queue/`)
-- Steering file detection and injection
-- Dashboard server
-- Provider health file management (already cross-session)
-- Session lifecycle (start, stop, cleanup, lockfile management)
-  - Session must use a PID lockfile (`session.lock`) in the session directory
-  - On start, check if lockfile exists and PID is alive — refuse to start or kill stale process
-  - On exit (including Ctrl+C and errors), clean up lockfile in `finally`/`trap` block
-  - Both `loop.ps1` and `loop.sh` must implement lockfile handling
-
-The monitor is a long-running process started by `aloop start` that watches the session directory via filesystem polling. It reads `status.json` to know the current iteration and processes requests/steering between iterations. This cleanly separates container-safe loop logic from host-privileged operations.
-
-**If convention-file processing was already added to loop.ps1:** It must be extracted out. The loop script should not import or call `aloop gh`. Any such code is a spec violation — the loop may run in a container where `aloop` is not available.
-
-## `aloop gh` subcommand
-
-The aloop CLI exposes policy-enforced GH operations:
+The policy table applies uniformly across adapters. GitHub is used in the examples; the same rules hold for GitLab, Linear, builtin, etc. (with tracker-specific mappings — e.g., "merge" means squash-merge a PR on GitHub, squash-merge an MR on GitLab, merge a linked Git branch on Linear, move built-in change set to `merged` state for builtin).
 
 ```bash
-aloop gh pr-create   --session <id> --request <file>
-aloop gh pr-comment  --session <id> --request <file>
-aloop gh issue-comment --session <id> --request <file>
+# Direct invocations exist for debugging / scripting only — not agent-facing:
+aloop gh issue-list    --session <id> [--repo <owner/repo>]
 aloop gh issue-create  --session <id> --request <file>   # orchestrator only
 aloop gh issue-close   --session <id> --request <file>   # orchestrator only
+aloop gh pr-create     --session <id> --request <file>
 aloop gh pr-merge      --session <id> --request <file>   # orchestrator only
+aloop gh pr-comment    --session <id> --request <file>
+aloop gh issue-comment --session <id> --request <file>
 ```
 
-## Hardcoded policy
+## Hardcoded policy tables
 
-Not configurable — prevents tampering.
+Not configurable. Lives in daemon source. Prevents tampering.
 
-**Child loop (per-issue agent):**
+### Child session (one Story, one child)
 
 | Operation | Allowed | Enforced constraints |
-|-----------|---------|---------------------|
-| `pr-create` | Yes | `--base` forced to `agent/trunk`, `--repo` forced from session config |
-| `issue-comment` | Yes | Only on the issue assigned to this child session |
-| `pr-comment` | Yes | Only on PRs created by this child session |
-| `pr-merge` | **No** | Rejected — only orchestrator can merge |
-| `issue-create` | **No** | Rejected — only orchestrator can create issues |
-| `issue-close` | **No** | Rejected — only orchestrator can close issues |
+|---|---|---|
+| `pr-create` | Yes | `base` forced to `agent/trunk`; `repo` forced from session config |
+| `issue-comment` | Yes | Only on the Story issue assigned to this session (ref match) |
+| `pr-comment` | Yes | Only on PRs created by this session |
+| `issue-create` | **No** | Only orchestrator |
+| `issue-close` | **No** | Only orchestrator (via merge flow) |
+| `pr-merge` | **No** | Only orchestrator |
 | `branch-delete` | **No** | Rejected unconditionally |
-| Raw `gh api` | **No** | Rejected unconditionally |
+| `sub_issue.add/remove` | **No** | Only orchestrator |
+| Raw adapter API (`gh api`, etc.) | **No** | Rejected unconditionally |
 
-**Orchestrator:**
+### Orchestrator session
 
 | Operation | Allowed | Enforced constraints |
-|-----------|---------|---------------------|
-| `issue-create` | Yes | Must include `aloop/auto` label |
-| `issue-close` | Yes | Only issues with `aloop/auto` label |
-| `pr-create` | Yes | `--base` forced to `agent/trunk` |
-| `pr-merge` | Yes | Only to `agent/trunk`, only squash merge |
-| `pr-comment` | Yes | Only on PRs with `aloop/auto` label |
-| `issue-comment` | Yes | Only on issues with `aloop/auto` label |
-| Anything targeting `main` | **No** | Rejected — human promotes to main |
-| `branch-delete` | **No** | Rejected — cleanup is manual |
-| Raw `gh api` | **No** | Rejected unconditionally |
+|---|---|---|
+| `issue-create` | Yes | Must include the project's autodispatch label (`aloop/auto` by default) |
+| `issue-close` | Yes | Only issues with the autodispatch label |
+| `sub_issue.add/remove/reorder` | Yes | Only for Epics/Stories created by this orchestrator |
+| `pr-create` | Yes | `base` forced to `agent/trunk` |
+| `pr-merge` | Yes | Only to `agent/trunk`; merge mode per project policy (default squash) |
+| `pr-comment`, `issue-comment` | Yes | Only on PRs / issues with autodispatch label |
+| `review.submit`, `review_thread.resolve` | Yes | Only on change sets linked to this project |
+| Anything targeting `main` / default branch | **No** | Human promotes `agent/trunk` → mainline |
+| `branch-delete` | **No** | Rejected — cleanup is manual or daemon-scheduled, not agent-initiated |
+| Raw adapter API | **No** | Rejected unconditionally |
 
-Policy is **hardcoded in the aloop CLI source**, not in a config file. This prevents an agent from modifying policy even if it somehow accessed the host filesystem.
+### Built-in adapter specifics
 
-## PATH sanitization (defense-in-depth)
+The built-in file-based tracker has the same policy surface. Since it's just filesystem operations, "hardcoded policy" maps to validation rules enforced before touching `.aloop/issues/*.json`:
 
-The harness strips `gh` from the agent's PATH before launching the provider:
+- Children can only update their assigned Story file's `status` → `in_progress`, `in_review`, or append change-set refs.
+- Only orchestrator can create files, close Stories, merge change sets (move state from `open` → `merged`).
+- `events.jsonl` is append-only; the daemon enforces this at the filesystem level.
 
-```powershell
-# In loop.ps1, before Invoke-Provider
-$originalPath = $env:PATH
-$env:PATH = ($env:PATH -split [IO.Path]::PathSeparator | Where-Object {
-    -not (Test-Path (Join-Path $_ 'gh.exe') -ErrorAction SilentlyContinue) -and
-    -not (Test-Path (Join-Path $_ 'gh') -ErrorAction SilentlyContinue)
-}) -join [IO.Path]::PathSeparator
+## Environment sanitization (daemon-owned)
 
-try {
-    $providerOutput = Invoke-Provider -ProviderName $iterationProvider -PromptContent $promptContent
-} finally {
-    $env:PATH = $originalPath  # restore for harness use
-}
-```
+The daemon, not the shim, sanitizes the environment before spawning a provider CLI:
 
-This is defense-in-depth. Even without it, agents can't do GH operations (they use the convention-file protocol). But stripping `gh` from PATH ensures an agent can't accidentally or intentionally bypass the protocol.
+- **`CLAUDECODE`** unset — prevents "cannot launch inside another session" errors when the parent was itself a Claude Code session.
+- **`PATH`** hardened to a known prefix. Tracker CLIs (`gh`, `glab`, `linear`) stripped; only the provider's own CLI and agent essentials (git, test runner, node, bun, etc.) remain.
+- **Secrets** stripped except those the provider's own `ProviderAdapter` explicitly declares.
+- **Injected**:
+  - `AUTH_HANDLE` — session-scoped auth for `aloop-agent`
+  - `ALOOP_SESSION_ID`, `ALOOP_PROJECT_PATH`
+  - `ALOOP_WORKTREE` — path to the session's worktree
+  - Provider-specific credentials (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, etc.) when the provider's adapter declares them
+- **Child process supervision** — daemon tracks the provider's PID, enforces per-turn timeout (from `timeout` in prompt frontmatter or `daemon.yml` default), kills on exit.
+
+Defense-in-depth: even if a shim sets `CLAUDECODE=$null`, the daemon has already done so. Environment sanitation is a daemon invariant.
 
 ## Audit log
 
-Every `aloop gh` invocation is logged to the session's `log.jsonl`:
+Every policy-gated operation produces a log entry **before** the operation executes. Granted or denied, both are logged.
+
+**Granted:**
 
 ```json
 {
-  "timestamp": "2026-02-27T12:00:00Z",
-  "event": "gh_operation",
-  "type": "pr-create",
-  "session": "ralph-skill-20260227-issue42",
-  "role": "child-loop",
-  "request_file": "001-pr-create.json",
-  "result": "success",
-  "pr_number": 15,
-  "enforced": { "base": "agent/trunk", "repo": "owner/repo" }
+  "timestamp": "2026-04-18T12:00:00Z",
+  "event": "policy.granted",
+  "operation": "pr-create",
+  "session_id": "s_abc",
+  "role": "build",
+  "adapter": "github",
+  "request": {
+    "base": "agent/trunk",
+    "repo": "owner/repo",
+    "title": "#42: ...",
+    "body_file": "requests/bodies/pr-42.md"
+  },
+  "enforced_constraints": { "base": "agent/trunk", "repo_locked": true }
 }
 ```
 
-Failed policy checks are logged as `gh_operation_denied`:
+**Denied:**
 
 ```json
 {
-  "timestamp": "2026-02-27T12:01:00Z",
-  "event": "gh_operation_denied",
-  "type": "pr-merge",
-  "session": "ralph-skill-20260227-issue42",
-  "role": "child-loop",
-  "reason": "pr-merge not allowed for child-loop role"
+  "timestamp": "2026-04-18T12:01:00Z",
+  "event": "policy.denied",
+  "operation": "pr-merge",
+  "session_id": "s_abc",
+  "role": "build",
+  "adapter": "github",
+  "reason": "pr-merge not allowed for child session",
+  "policy_code": "child_session_forbidden"
 }
 ```
+
+**Where it lives:**
+
+- Per-session entries in `~/.aloop/state/sessions/<id>/log.jsonl`.
+- Daemon-level entries (cross-session: project registration, overrides changes, daemon config reloads, auth handle rotations) in `~/.aloop/state/aloopd.log` (JSONL).
+- Both are append-only. The daemon never rewrites history.
+
+**Retention** is governed by `daemon.yml` (`retention.completed_sessions_days`, `retention.interrupted_sessions_days`). Audit entries survive the same lifecycle as the session JSONL.
+
+**Exposure:**
+
+- `GET /v1/sessions/:id/log` returns the session's full event log, including audit entries.
+- `GET /v1/events?topics=policy.*` streams audit events live over SSE.
+- `aloop audit` CLI subcommand (future) queries and formats audit entries for review.
+
+## Non-goals
+
+- **No agent-side policy.** Agents don't check policy before submitting; the daemon is the single source of enforcement.
+- **No configurable bypass.** There is no "dev mode" or env var that relaxes the policy tables. Policy is hardcoded to prevent accidents.
+- **No raw API access via any surface.** `gh api`, `glab api`, direct HTTP to tracker endpoints — all forbidden. If a capability is missing from the adapter, it's added to the adapter, not worked around.
+- **No cross-session read/write.** A session cannot read another session's worktree, JSONL, state, or auth handle. Daemon enforces this at every read path.
+- **No cross-project read/write.** A session scoped to project A cannot touch project B's artifacts.

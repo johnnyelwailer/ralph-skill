@@ -1,6 +1,8 @@
-# Issue Tracker
+# Work Tracker
 
-> **Reference document.** The generic issue-tracking contract. GitHub is the first-class shipped adapter. The contract is tracker-agnostic; any project can swap adapters — or run with no external tracker at all using the built-in file-based store. Hard rules live in CONSTITUTION.md. Work items live in GitHub issues.
+> **Reference document.** The generic work-tracking contract. GitHub is the first-class shipped adapter. The contract is tracker-agnostic; any project can swap adapters — or run with no external tracker at all using the built-in file-based store. Hard rules live in CONSTITUTION.md. Work items live in GitHub issues.
+>
+> The name "work tracker" (not "issue tracker") is deliberate — "issue" is GitHub's term for a single entity type, whereas aloop models **Epic**, **Story**, and **ChangeSet** as distinct work items. GitLab calls them issues/MRs/epics, Linear calls them issues/projects, Jira calls them stories/epics, plain text calls them tasks. "Work item" is the abstract vocabulary.
 >
 > Sources: CR #46 (agents must have zero knowledge of GitHub), CR #130 (investigator agent), CR #134 (inline PR review), CR #192 (comment-driven PR lifecycle), CR #169 (change request workflow), SPEC.md §`aloop gh` (moved to `security.md` as policy table), §Parallel Orchestrator decomposition; GitHub sub-issues API (GA 2025-04-09).
 
@@ -28,7 +30,7 @@
 
 The orchestrator's job is to break a spec into tracked work items, dispatch loops against them, merge their changes, and react to review feedback. Those concepts exist in GitHub, GitLab, Linear, Jira, self-hosted Gitea, Forgejo, and inside any plain-text project that just wants a queue. Hardcoding GitHub forces aloop users into one platform; embedding `gh` CLI calls throughout the orchestrator makes the code brittle to upstream changes and impossible to use offline.
 
-Aloop isolates the tracker behind a single `IssueTrackerAdapter` interface. Orchestrator prompts and workflows speak in terms of generic **epics**, **stories**, **tasks**, and **change sets** — the adapter translates to the tracker's native concepts.
+Aloop isolates the tracker behind a single `TrackerAdapter` interface. Orchestrator prompts and workflows speak in terms of generic **Epics**, **Stories**, **Tasks**, and **ChangeSets** — the adapter translates to the tracker's native concepts.
 
 The contract is:
 
@@ -39,7 +41,7 @@ The contract is:
 
 ## Trust boundary
 
-Same boundary as all other aloop side effects. Agents do not call `gh`, `glab`, Linear API, or any tracker CLI. Agents **express intent** through `aloop-agent submit --type <decompose|refine|estimate|review|...>`; the daemon routes that intent to the active `IssueTrackerAdapter`, which executes the operation under a policy that the daemon enforces.
+Same boundary as all other aloop side effects. Agents do not call `gh`, `glab`, Linear API, or any tracker CLI. Agents **express intent** through `aloop-agent submit --type <decompose|refine|estimate|review|...>`; the daemon routes that intent to the active `TrackerAdapter`, which executes the operation under a policy that the daemon enforces.
 
 - Agent → `aloop-agent submit` → daemon → adapter → tracker API
 - Agent → *never directly* → tracker API
@@ -56,7 +58,7 @@ Aloop models work at three levels. Only the first two are tracked externally; th
 | **Story** | One coherent implementation unit under an Epic. "Implement signup form + API endpoint." The unit a child session works. | Orchestrator's `sub_decompose` phase | One child session (kind=child) per Story |
 | **Task** | A single TODO inside the child session's worktree. "Write the signup form tests." Mechanical, short-lived, per-iteration. | Plan agent inside the child session | Build agent in the same session |
 
-**Epic and Story are tracker entities** — always, via the adapter. In GitHub, Epic is an issue and Story is a sub-issue. In the builtin adapter, Epic is a parent-level issue file and Story is a child-level issue file with a `links.parent` back-pointer. In future GitLab/Linear/etc. adapters, Epic and Story use the tracker's native hierarchy features.
+**Epic and Story are tracker entities** — always, via the adapter. In GitHub, Epic is an issue and Story is a sub-issue. In the builtin adapter, Epic is a parent-level work item file and Story is a child-level file with `links.parent`. In future GitLab/Linear/etc. adapters, Epic and Story use the tracker's native hierarchy features.
 
 **Tasks are session-internal.** They live in the daemon's task store (the `aloop-agent todo` system — see `pipeline.md` §Agent contract), survive worktree operations, and are routed between agents (plan → build, review → build, etc.) via `from`/`for` fields. Tasks are per-Story; each Story's child session has its own independent task list.
 
@@ -71,36 +73,36 @@ Why this split:
 ## Adapter interface
 
 ```ts
-interface IssueTrackerAdapter {
+interface TrackerAdapter {
   readonly id: "github" | "gitlab" | "linear" | "builtin" | string;
   readonly capabilities: TrackerCapabilities;
 
   // Connection
   ping(): Promise<TrackerHealth>;
 
-  // Issue queries
-  listIssues(filter: IssueFilter): AsyncIterable<Issue>;
-  getIssue(ref: IssueRef): Promise<Issue>;
-  listComments(ref: IssueRef): AsyncIterable<Comment>;
-  listLinkedChangeSets(ref: IssueRef): AsyncIterable<ChangeSetRef>;
+  // Work item queries
+  listWorkItems(filter: WorkItemFilter): AsyncIterable<WorkItem>;
+  getWorkItem(ref: WorkItemRef): Promise<WorkItem>;
+  listComments(ref: WorkItemRef): AsyncIterable<Comment>;
+  listLinkedChangeSets(ref: WorkItemRef): AsyncIterable<ChangeSetRef>;
 
   // Hierarchy
-  getParent(ref: IssueRef): Promise<IssueRef | null>;
-  listSubIssues(ref: IssueRef): AsyncIterable<Issue>;
-  addSubIssue(parent: IssueRef, child: IssueRef, opts?: { replaceParent?: boolean }): Promise<void>;
-  removeSubIssue(parent: IssueRef, child: IssueRef): Promise<void>;
-  reorderSubIssue(parent: IssueRef, child: IssueRef, after?: IssueRef, before?: IssueRef): Promise<void>;
-  subIssuesSummary(ref: IssueRef): Promise<{ total: number; completed: number }>;
+  getParent(ref: WorkItemRef): Promise<WorkItemRef | null>;
+  listChildren(ref: WorkItemRef): AsyncIterable<WorkItem>;
+  linkChild(parent: WorkItemRef, child: WorkItemRef, opts?: { replaceParent?: boolean }): Promise<void>;
+  unlinkChild(parent: WorkItemRef, child: WorkItemRef): Promise<void>;
+  reorderChild(parent: WorkItemRef, child: WorkItemRef, after?: WorkItemRef, before?: WorkItemRef): Promise<void>;
+  childrenSummary(ref: WorkItemRef): Promise<{ total: number; completed: number }>;
 
-  // Issue mutations
-  createIssue(draft: IssueDraft): Promise<IssueRef>;
-  updateIssue(ref: IssueRef, patch: IssuePatch): Promise<void>;
-  addComment(ref: IssueRef, body: string): Promise<CommentRef>;
-  addLabel(ref: IssueRef, label: string): Promise<void>;
-  removeLabel(ref: IssueRef, label: string): Promise<void>;
-  setAssignees(ref: IssueRef, assignees: string[]): Promise<void>;
-  closeIssue(ref: IssueRef, reason?: "completed" | "not_planned"): Promise<void>;
-  reopenIssue(ref: IssueRef): Promise<void>;
+  // Work item mutations
+  createWorkItem(draft: WorkItemDraft): Promise<WorkItemRef>;
+  updateWorkItem(ref: WorkItemRef, patch: WorkItemPatch): Promise<void>;
+  addComment(ref: WorkItemRef, body: string): Promise<CommentRef>;
+  addLabel(ref: WorkItemRef, label: string): Promise<void>;
+  removeLabel(ref: WorkItemRef, label: string): Promise<void>;
+  setAssignees(ref: WorkItemRef, assignees: string[]): Promise<void>;
+  closeWorkItem(ref: WorkItemRef, reason?: "completed" | "not_planned"): Promise<void>;
+  reopenWorkItem(ref: WorkItemRef): Promise<void>;
 
   // Change set (PR / MR / built-in branch) — optional capability
   createChangeSet?(draft: ChangeSetDraft): Promise<ChangeSetRef>;
@@ -113,8 +115,8 @@ interface IssueTrackerAdapter {
   closeChangeSet?(ref: ChangeSetRef): Promise<void>;
 
   // Task mirroring — optional capability (see §Task tracking)
-  mirrorTasks?(story: IssueRef, tasks: TaskSnapshot[]): Promise<void>;
-  readMirroredTasks?(story: IssueRef): AsyncIterable<TaskSnapshot>;
+  mirrorTasks?(story: WorkItemRef, tasks: TaskSnapshot[]): Promise<void>;
+  readMirroredTasks?(story: WorkItemRef): AsyncIterable<TaskSnapshot>;
 
   // Events — optional capability
   subscribe?(filter: TrackerEventFilter): AsyncGenerator<TrackerEvent>;
@@ -125,7 +127,7 @@ Capabilities declare what the adapter can do and how:
 
 ```ts
 type TrackerCapabilities = {
-  issues:                 true;
+  work_items:             true;
   labels:                 boolean;
   comments:               boolean;
   assignees:              boolean;
@@ -134,8 +136,8 @@ type TrackerCapabilities = {
   subscribe_events:       boolean;
 
   hierarchy: {
-    native_sub_issues:    boolean;   // tracker has a first-class sub-issue API
-    max_depth:            number;    // 8 for GitHub, N for others
+    native:               boolean;   // tracker has a first-class parent/child API
+    max_depth:            number;    // 8 for GitHub sub-issues, N for others
     max_children_per_parent: number; // 100 for GitHub
     single_parent_only:   boolean;   // true for GitHub
     cross_repo_allowed:   boolean;   // false for GitHub (same-org only)
@@ -143,7 +145,7 @@ type TrackerCapabilities = {
 
   tracks_tasks: {
     mirror_supported:     boolean;   // adapter can mirror session tasks
-    mirror_shape:         "checkboxes_in_body" | "sub_sub_issues" | "projects_board" | "none";
+    mirror_shape:         "checkboxes_in_body" | "sub_children" | "projects_board" | "none";
     max_tasks_per_story:  number | null;
   };
 
@@ -155,18 +157,20 @@ type TrackerCapabilities = {
 
 ## Generic data shapes
 
+The central entity is **WorkItem** (not "Issue" — "issue" is tracker-specific vocabulary). A WorkItem's `kind` tells you what role it plays in the Epic/Story/Task hierarchy.
+
 ```ts
-type IssueRef = {
+type WorkItemRef = {
   adapter: string;
   key: string;         // tracker-native id — GH "123", Linear "ABC-42", builtin "0007"
   url?: string;
 };
 
-type IssueKind = "epic" | "story" | "task_mirror" | "other";
+type WorkItemKind = "epic" | "story" | "task_mirror" | "other";
 
-type Issue = {
-  ref: IssueRef;
-  kind: IssueKind;
+type WorkItem = {
+  ref: WorkItemRef;
+  kind: WorkItemKind;
   title: string;
   body: string;
   state: "open" | "closed";
@@ -177,26 +181,37 @@ type Issue = {
   updated_at: string;
   closed_at?: string;
   links: {
-    parent?: IssueRef;
-    sub_issues?: IssueRef[];
-    blocks?: IssueRef[];
-    blocked_by?: IssueRef[];
+    parent?: WorkItemRef;
+    children?: WorkItemRef[];
+    blocks?: WorkItemRef[];
+    blocked_by?: WorkItemRef[];
     change_sets?: ChangeSetRef[];
   };
   metadata: Record<string, unknown>;
 };
 
-type IssueDraft = {
-  kind: IssueKind;
+type WorkItemDraft = {
+  kind: WorkItemKind;
   title: string;
   body: string;
   labels?: string[];
   assignees?: string[];
-  parent?: IssueRef;     // for kind=story, the Epic's ref
+  parent?: WorkItemRef;     // for kind=story, the Epic's ref
   metadata?: Record<string, unknown>;
 };
 
-type IssuePatch = Partial<Pick<Issue, "title" | "body" | "state" | "status" | "labels" | "assignees">>;
+type WorkItemPatch = Partial<Pick<WorkItem, "title" | "body" | "state" | "status" | "labels" | "assignees">>;
+
+type WorkItemFilter = {
+  kind?: WorkItemKind | WorkItemKind[];
+  state?: "open" | "closed";
+  status?: string;
+  labels?: string[];
+  parent?: WorkItemRef;
+  assignee?: string;
+  wave?: number;
+  limit?: number;
+};
 
 // ChangeSet, Review, ReviewThread, Comment — unchanged from v1 draft.
 ```
@@ -205,8 +220,8 @@ type IssuePatch = Partial<Pick<Issue, "title" | "body" | "state" | "status" | "l
 
 - `kind: epic` → plain issue, no parent.
 - `kind: story` → plain issue with `parent` set, exposed via the sub-issue API on the Epic.
-- `kind: task_mirror` → sub-issue of a Story (only when adapter mirrors tasks as sub-sub-issues).
-- `kind: other` → any issue not created by aloop (pre-existing work, human-filed requests).
+- `kind: task_mirror` → sub-issue of a Story (only when adapter mirrors tasks as sub-children).
+- `kind: other` → any work item not created by aloop (pre-existing work, human-filed requests).
 
 ## Abstract status and label mapping
 
@@ -214,7 +229,7 @@ Trackers have different state machines. Aloop maps a small set of **abstract sta
 
 ```yaml
 # aloop/config.yml (per project)
-issue_tracker:
+tracker:
   adapter: github
   status_map:
     backlog:            { state: open, metadata: { refined: false, dor_validated: false } }
@@ -236,7 +251,7 @@ issue_tracker:
 
 - **status_map** tells the adapter how to infer abstract status from tracker-native state + metadata, and how to set tracker-native state when transitioning.
 - **label_map** insulates prompt templates from platform-specific label naming. Prompts say "priority_critical"; adapter writes `aloop/priority-critical`.
-- The `epic` label is a fallback marker when the adapter lacks native sub-issues (GitLab, older Linear plans) — otherwise `kind` is enough.
+- The `epic` label is a fallback marker when the adapter lacks native hierarchy (GitLab, older Linear plans) — otherwise `kind` is enough.
 - Orchestrator workflows use abstract names exclusively.
 
 ## Task tracking
@@ -255,14 +270,14 @@ Tasks are NOT tracker entities by default. The pre-rebuild practice of parsing `
 
 | Shape | Where tasks appear | Trade-offs |
 |---|---|---|
-| `checkboxes_in_body` | A fenced section in the Story's issue body | Cheap, atomic update, human-readable. Loses individual history. |
-| `sub_sub_issues` | Each task is a sub-issue of the Story | Rich history, per-task comments, respects `max_depth`. Noisy (issue count, webhooks). Not all trackers support it. |
-| `projects_board` | Each task is a card on a project board linked to the Story | Clean separation from issues, good for visualization. Board must exist; tasks lose repo-local context. |
+| `checkboxes_in_body` | A fenced section in the Story's work-item body | Cheap, atomic update, human-readable. Loses individual history. |
+| `sub_children` | Each task is a sub-work-item of the Story | Rich history, per-task comments, respects `max_depth`. Noisy (count, webhooks). Not all trackers support it. |
+| `projects_board` | Each task is a card on a project board linked to the Story | Clean separation, good for visualization. Board must exist; tasks lose repo-local context. |
 
 Mirror policy per project:
 
 ```yaml
-issue_tracker:
+tracker:
   mirror_tasks:
     enabled: false                    # default off
     shape: checkboxes_in_body         # when enabled
@@ -286,10 +301,10 @@ The daemon pushes task-state changes to the adapter in batches (every 30s by def
 
 ## Built-in adapter (no external deps)
 
-For projects that don't want an external tracker — solo, air-gapped, or just avoiding vendor lock-in — the `builtin` adapter stores issues as files inside the project.
+For projects that don't want an external tracker — solo, air-gapped, or just avoiding vendor lock-in — the `builtin` adapter stores work items as files inside the project.
 
 ```
-<project>/.aloop/issues/
+<project>/.aloop/tracker/
   0001-add-setup-skill.json              # Epic
   0002-scheduler-permit-protocol.json    # Epic
   0003-burn-rate-gate.json               # Story, parent: 0002
@@ -299,7 +314,7 @@ For projects that don't want an external tracker — solo, air-gapped, or just a
   events.jsonl
 ```
 
-Each issue file:
+Each work-item file:
 
 ```json
 {
@@ -323,12 +338,12 @@ Each issue file:
 ### Properties
 
 - Zero external deps. `git`, a filesystem, and aloop itself.
-- Committed to the repo. Issue state is versioned alongside code — reviewable, blame-able, revertable.
+- Committed to the repo. Work-item state is versioned alongside code — reviewable, blame-able, revertable.
 - Deterministic IDs (monotonic `NNNN`).
 - `events.jsonl` is an append-only audit log — every mutation (create, label, assign, close) writes a line. Replays to any point in history.
 - Change sets are branch-based: one branch per change set, merged via `git` under the daemon's policy.
-- Native hierarchy: `links.parent`/`links.sub_issues` — capabilities.hierarchy.native_sub_issues = true (our own first-class support).
-- Task mirroring: `sub_sub_issues` shape supported, but default off because the builtin's strength is simplicity.
+- Native hierarchy: `links.parent`/`links.children` — `capabilities.hierarchy.native = true` (our own first-class support).
+- Task mirroring: `sub_children` shape supported, but default off because the builtin's strength is simplicity.
 - No real-time subscribe (or implemented via `fs.watch`).
 
 ### When to pick builtin
@@ -339,29 +354,29 @@ Each issue file:
 
 ### Migration
 
-`aloop issues migrate --from builtin --to github` (future) reads the built-in store, creates matching issues and sub-issues in GitHub, and rewrites `aloop/config.yml`.
+`aloop tracker migrate --from builtin --to github` (future) reads the built-in store, creates matching issues and sub-issues in GitHub, and rewrites `aloop/config.yml`.
 
 ## GitHub adapter (native sub-issues)
 
-Primary shipped adapter. Uses GitHub's native sub-issue API (GA 2025-04-09) for the Epic → Story hierarchy.
+Primary shipped adapter. Uses GitHub's native sub-issue API (GA 2025-04-09) for the Epic → Story hierarchy. "Issue" is GitHub's name for the underlying entity — our adapter translates that to WorkItem in both directions.
 
 ### Hierarchy implementation
 
 `capabilities.hierarchy`:
 
 ```
-native_sub_issues:       true
+native:                  true
 max_depth:               8
 max_children_per_parent: 100
 single_parent_only:      true       # GitHub enforces one parent per issue
-cross_repo_allowed:      false      # same-org only (cross-repo within org is allowed by GitHub but we restrict same-repo for adapter simplicity; see Configuration)
+cross_repo_allowed:      false      # same-org only (restricted in adapter for simplicity)
 ```
 
 ### API usage
 
 - **Reads**: GraphQL. One round-trip for `parent`, `subIssues`, `subIssuesSummary`, plus any other issue fields we want. Fewer REST calls, lower rate-limit pressure.
   - Fields on `Issue`: `parent`, `subIssues(first/last/after/before)`, `subIssuesSummary { total, completed, percentCompleted }`.
-- **Writes**: REST. Simpler payloads; integer IDs already in hand after issue creation.
+- **Writes**: REST. Simpler payloads; integer IDs already in hand after creation.
   - `POST /repos/{owner}/{repo}/issues/{parent_number}/sub_issues` with `{ sub_issue_id, replace_parent? }`.
   - `DELETE /repos/{owner}/{repo}/issues/{parent_number}/sub_issue` (singular `/sub_issue` — watch the path) with `{ sub_issue_id }`.
   - `PATCH /repos/{owner}/{repo}/issues/{parent_number}/sub_issues/priority` with `{ sub_issue_id, after_id | before_id }`.
@@ -371,7 +386,7 @@ cross_repo_allowed:      false      # same-org only (cross-repo within org is al
 
 Subscribe to the **`sub_issues`** event (not `issues` — GitHub does not fire `issues` for sub-issue changes). Actions: `sub_issue_added`, `sub_issue_removed`, `parent_issue_added`, `parent_issue_removed`. Payload carries `parent_issue_id`, `parent_issue`, `parent_issue_repo`, `sub_issue_id`, `sub_issue`.
 
-The GitHub adapter consumes webhooks through `aloopd`'s public webhook endpoint (when configured). Without webhook configuration, the adapter polls `listSubIssues` on Epics with `polling.enabled: true`. Webhook delivery + same-poller reconciliation is the recommended setup.
+The GitHub adapter consumes webhooks through `aloopd`'s public webhook endpoint (when configured). Without webhook configuration, the adapter polls `listChildren` on Epics with `polling.enabled: true`. Webhook delivery + polling reconciliation is the recommended setup.
 
 ### Secondary rate limits
 
@@ -393,7 +408,7 @@ The GitHub adapter consumes webhooks through `aloopd`'s public webhook endpoint 
 
 ### Policies
 
-Same boundary as `security.md` §"`aloop gh` policy table" — now generalized: every tracker operation passes through a per-role allow-list (`review` role cannot call `createIssue`; `decompose` role cannot call `mergeChangeSet`; etc.). Policies are daemon-enforced, not adapter-enforced.
+Same boundary as `security.md` §"Tracker adapter policy" — every tracker operation passes through a per-role allow-list (`review` role cannot call `createWorkItem`; `decompose` role cannot call `mergeChangeSet`; etc.). Policies are daemon-enforced, not adapter-enforced.
 
 CR #192 (comment-driven PR lifecycle) and CR #134 (inline review) are adapter concerns: both use `addChangeSetComment` with `position` for line-specific threads and `resolveChangeSetThread` for thread closure.
 
@@ -407,7 +422,7 @@ Orchestrator prompts produce tracker-agnostic structured output. The adapter lay
 {
   "type": "decompose_result",
   "level": "epic",
-  "issues": [
+  "items": [
     {
       "kind": "epic",
       "slug": "scheduler-and-permits",
@@ -429,7 +444,7 @@ Orchestrator prompts produce tracker-agnostic structured output. The adapter lay
   "type": "sub_decompose_result",
   "level": "story",
   "parent": { "slug": "scheduler-and-permits" },
-  "issues": [
+  "items": [
     {
       "kind": "story",
       "slug": "permit-protocol-design",
@@ -455,9 +470,9 @@ Analogous abstract shapes. `slug` stays stable across refinements; `ref` (adapte
 
 ### Identity
 
-- `slug` is the stable key the orchestrator uses before an issue exists in the tracker.
-- After `adapter.createIssue` returns, the daemon stores `{slug → ref}` mapping.
-- Subsequent orchestrator prompts reference issues by `slug`; daemon resolves to `ref` when calling the adapter.
+- `slug` is the stable key the orchestrator uses before a work item exists in the tracker.
+- After `adapter.createWorkItem` returns, the daemon stores `{slug → ref}` mapping.
+- Subsequent orchestrator prompts reference items by `slug`; daemon resolves to `ref` when calling the adapter.
 
 No tracker URLs, tracker-specific labels, `aloop/` prefixes, milestones, or `gh`-specific fields appear in orchestrator prompts or results.
 
@@ -472,7 +487,7 @@ The adapter normalizes tracker events into a single shape and publishes on the d
     "adapter": "github",
     "project_id": "p_...",
     "kind": "change_set.review_submitted",
-    "issue": { "adapter": "github", "key": "287" },
+    "work_item": { "adapter": "github", "key": "287" },
     "change_set": { "adapter": "github", "key": "412" },
     "reviewer": "alice",
     "verdict": "changes_requested",
@@ -483,8 +498,8 @@ The adapter normalizes tracker events into a single shape and publishes on the d
 
 Event kinds the orchestrator listens for:
 
-- `issue.created`, `issue.updated`, `issue.closed`, `issue.reopened`
-- `sub_issue.added`, `sub_issue.removed`, `parent_issue.added`, `parent_issue.removed`
+- `work_item.created`, `work_item.updated`, `work_item.closed`, `work_item.reopened`
+- `hierarchy.child_added`, `hierarchy.child_removed`, `hierarchy.parent_added`, `hierarchy.parent_removed`
 - `comment.created`, `comment.updated`
 - `change_set.opened`, `change_set.updated`, `change_set.closed`, `change_set.merged`, `change_set.conflict`
 - `change_set.review_submitted`, `change_set.review_thread_resolved`
@@ -496,7 +511,7 @@ Adapters without subscribe capability can be polled by a daemon-side adapter-agn
 Per-project in `aloop/config.yml`:
 
 ```yaml
-issue_tracker:
+tracker:
   adapter: github
   config:
     repo: owner/repo-name
@@ -520,10 +535,10 @@ issue_tracker:
 Switch to builtin:
 
 ```yaml
-issue_tracker:
+tracker:
   adapter: builtin
   config:
-    root: .aloop/issues
+    root: .aloop/tracker
 ```
 
 Daemon validates on project registration; missing required fields fail loud.
@@ -532,17 +547,17 @@ Daemon validates on project registration; missing required fields fail loud.
 
 Each project has its own tracker configuration. The daemon holds N live adapters, one per project. Adapters are not shared across projects even if they point at the same remote tracker.
 
-A session's `project_id` determines which adapter is used. There is no "global" issue tracker at the daemon level.
+A session's `project_id` determines which adapter is used. There is no "global" tracker at the daemon level.
 
 ## Future adapters
 
 Out of scope for v1, supported by the interface:
 
-- **GitLab** — issues + merge requests + epics. `native_sub_issues: true` via GitLab epics (premium tier) or parent-link fallback.
+- **GitLab** — issues + merge requests + epics. `hierarchy.native: true` via GitLab epics (premium tier) or parent-link fallback.
 - **Linear** — issues + projects + cycles. Uses Linear's parent/sub-issue hierarchy; `change_sets: false` (Linear model is branch-linked, not review-based in-product).
 - **Gitea / Forgejo** — self-hosted, similar to GitHub but no native sub-issues yet (as of 2026) — falls back to parent-link metadata.
 - **Jira** — issues + epics. Change sets via linked Bitbucket/GitHub (composite adapter possible).
-- **Plain-text** — `.aloop/issues/*.md` with YAML frontmatter; a thin variant of `builtin` for teams that want human-readable files under git.
+- **Plain-text** — `.aloop/tracker/*.md` with YAML frontmatter; a thin variant of `builtin` for teams that want human-readable files under git.
 
 Adding an adapter = implement the interface, declare capabilities, register with the daemon. No changes to orchestrator prompts or core daemon code.
 
@@ -550,7 +565,7 @@ Adding an adapter = implement the interface, declare capabilities, register with
 
 1. **No agent ever calls a tracker API.** Adapters run daemon-side under policy.
 2. **Orchestrator prompts are tracker-agnostic.** Generic data shapes only; `slug` identifiers across phases.
-3. **The adapter is the only code that knows the tracker's names for things.**
+3. **The adapter is the only code that knows the tracker's names for things.** "Issue" is GitHub vocabulary; aloop says "work item."
 4. **Status and label vocabulary come from project config.** Adding or renaming vocabulary is a config change, not a code change.
 5. **GitHub is a shipped adapter, not a default assumption.** Removing the GH adapter from `aloop/config.yml` must not break the daemon, the loop, or the orchestrator — it shifts the project to whichever adapter is configured (or to builtin).
 6. **The builtin adapter has feature parity with GH for the orchestrator's minimum viable flow** (decompose Epic → sub-decompose Stories → dispatch child sessions → review → merge → close).

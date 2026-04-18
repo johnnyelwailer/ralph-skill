@@ -1,368 +1,256 @@
 # Agents
 
-> **Reference document.** Invariants and contracts consumed by agents at runtime. Work items live in GitHub issues; hard rules live in CONSTITUTION.md.
+> **Reference document.** Per-agent contracts for the bundled agent catalog. What each agent reads, writes, and commits to. What it may do and must not. Agents are **pipeline participants**, not built-in roles — projects can add, remove, or replace any of them via `pipeline.yml`.
 >
-> Sources: SPEC.md §Proof-of-Work Phase, §QA Agent, §Spec-Gap Analysis, §Documentation Sync, §CLAUDECODE Sanitization (lines ~398-909) (pre-decomposition, 2026-04-18).
+> Hard rules live in CONSTITUTION.md. Work items live in GitHub issues.
+>
+> Sources: SPEC.md §Proof-of-Work Phase, §QA Agent, §Spec-Gap Analysis, §Documentation Sync, §CLAUDECODE Sanitization (pre-decomposition, 2026-04-18). Consolidated against `pipeline.md`, `provider-contract.md`, `work-tracker.md`.
 
 ## Table of contents
 
-- Proof-of-work phase
-- Default pipeline
-- Completion finalizer
-- Proof agent behavior
-- Proof manifest
-- Baseline management
-- Proof skip protocol
-- Proof prompt template
-- QA agent — black-box user testing
-- QA artifacts
-- QA prompt template
-- Spec-gap analysis agent
-- Documentation sync agent
-- CLAUDECODE environment variable sanitization
+- Agents as pipeline participants
+- Universal contract (all agents)
+- `plan`
+- `build`
+- `qa`
+- `review`
+- `proof`
+- `spec-gap`
+- `docs`
+- `spec-review`
+- `final-review`, `final-qa`
+- Orchestrator-side agents
+- Subagent catalog
 
 ---
 
-## Proof-of-work phase
+## Agents as pipeline participants
 
-A dedicated agent (`proof`) autonomously decides what evidence to generate for the work completed in preceding build iterations. The proof agent is not told what to prove via keyword matching or hardcoded rules — it inspects the actual work (TODO.md, commits, changed files, SPEC) and uses its judgment to determine what proof is possible, appropriate, and valuable.
+Every agent is a **named prompt with a role, a role's permissions, and a contract for what it reads/writes**. Agents are data (prompt files + frontmatter). The pipeline declares which agents run and in what order (see `pipeline.md`).
 
-## Default pipeline
+Aloop ships a bundled catalog (the ones described below). Projects can:
 
-```
-Continuous cycle:  plan → build × 5 → qa → review  (repeats until all tasks done)
-                                                      ↓ (all tasks done at cycle boundary)
-Finalizer:         spec-gap → docs → spec-review → final-review → final-qa → proof
-                      ↓ (any agent adds TODOs)
-                   abort finalizer → reset finalizerPosition → resume cycle
-```
+- Drop any of them from `pipeline.yml`.
+- Reorder them.
+- Add their own (`verify`, `debugger`, `security-audit`, `guard`, `migration`, etc.).
+- Replace a shipped agent by writing a new prompt file with the same role name — project prompt takes precedence over bundled.
 
-QA and review run every cycle to catch bugs and code quality issues early. Proof does NOT run in the cycle — it's expensive and only meaningful as final evidence. Proof runs only at the end — it's the last step of the finalizer.
+No agent is hardcoded in the daemon. The session runner only knows "run the prompt at `cycle[cyclePosition]` or `finalizer[finalizerPosition]` or the next queue item." Agent identity matters only to the prompt templates and to the permissions table.
 
-## Completion finalizer
+The bundled default pipeline (see `pipeline.yml` in the project or the installed defaults) is one configuration. Everything below describes each agent's contract, not the pipeline structure.
 
-The loop script has two prompt arrays: `cycle[]` (repeating work) and `finalizer[]` (one-shot completion validation). Both are compiled from `pipeline.yml` into `loop-plan.json` at session start.
+## Universal contract (all agents)
 
-When all TODO.md tasks are marked done at a **cycle boundary**, the loop switches from the cycle array to the finalizer array. If any finalizer agent creates new TODOs, the finalizer aborts and the cycle resumes. This is entirely self-contained in the loop script — no runtime, no trigger resolution, no external process needed.
+Every agent operates under the same ground rules:
 
-**Important:** The finalizer agents are **separate prompt files** from the cycle agents, even when they reuse the same instructions (via `{{include:}}`). This prevents the cycle's `qa` or `review` from accidentally appearing in the finalizer.
+- **Runs under a permit** issued by the scheduler. Turn start is gated; turn end releases.
+- **Receives a compiled prompt body** with template variables already expanded.
+- **Has `aloop-agent` on `PATH`** with an `AUTH_HANDLE` env var scoped to the session.
+- **Communicates through `aloop-agent`**: `submit`, `todo add/complete/dequeue/list/all-done`, `tracker ...`. Never calls tracker APIs directly. Never writes JSON files into `.aloop/output/` (retired by CR #135).
+- **Emits events as it runs** — the provider adapter streams `agent.chunk` events; the daemon persists them in the session's JSONL.
+- **Operates in a worktree** (when the session has one). Changes committed under the agent's authorship with a provenance trailer:
+  ```
+  Aloop-Agent: <role>
+  Aloop-Iteration: <n>
+  Aloop-Session: <id>
+  ```
+- **Has role-based permissions** (see `pipeline.md` §Agent contract — the permissions table defining what each role may submit and which tasks it may close).
+- **Does not modify the pipeline itself.** Only humans and the compile step edit `pipeline.yml`.
 
-**How it works:**
+## `plan`
 
-1. Cycle completes (last cycle agent finishes). Loop checks `allTasksMarkedDone` (mechanical TODO.md checkbox count).
-2. If false → start next cycle (wrap `cyclePosition` to 0).
-3. If true → switch to finalizer mode. Pick prompt at `finalizerPosition` from `finalizer[]`.
-4. Run finalizer agent. Advance `finalizerPosition`.
-5. **After each finalizer agent**: re-check TODO.md. If new open TODOs → reset `finalizerPosition` to 0, set `allTasksMarkedDone` to false, resume cycle. Log `finalizer_aborted`.
-6. If `finalizerPosition` reaches end of `finalizer[]` and no new TODOs → set `state: "completed"` in `status.json`, log `finalizer_completed`, exit loop.
+**Role:** Gap analysis between spec and code. Produces or refreshes tasks.
 
-**Queue still takes priority during finalizer** — steering, merge agent, or any other queue entry interrupts the finalizer just like it interrupts the cycle.
+**Reads:** Spec files (`{{SPEC_FILES}}`), session's `tasks.json` via `aloop-agent todo list`, worktree state (git log, TODO markers), RESEARCH.md, REVIEW_LOG.md, CONSTITUTION.md.
 
-**The finalizer agents:**
+**Writes:** Tasks, via `aloop-agent todo add` with `from: plan` and appropriate `for` role. Task order reflects priority. May commit a regenerated TODO.md rendering (`aloop-agent todo list --format md > TODO.md`) as a convenience for agents reading markdown; authoritative state is `tasks.json`.
 
-1. **spec-gap** — validates codebase against SPEC.md. Finds config drift, hallucinated features, cross-runtime parity issues. Analysis only — writes `[spec-gap]` items to TODO.md. If it finds anything, the finalizer aborts and the loop goes back to building.
-2. **docs** — syncs documentation to reality. Updates README, CLI help, completeness markers. Can modify doc files.
-3. **spec-review** — focuses solely on: "do the changes satisfy the requirements from the spec?" Verifies every acceptance criterion is met. Does NOT look at code quality — only requirement coverage.
-4. **final-review** — reuses review instructions (`{{include:instructions/review.md}}`). Same 9 gates as the cycle's review.
-5. **final-qa** — reuses QA instructions (`{{include:instructions/qa.md}}`). Final round of user-perspective testing.
-6. **proof** — generates human-verifiable evidence: screenshots, API captures, CLI recordings, before/after comparisons. Only runs here, never in the continuous cycle. **This is the only agent whose clean completion means the loop is truly done.**
+**May not:** Modify code, modify the spec, merge change sets, delete history.
 
-**Self-healing:** If any finalizer agent creates new TODOs, the loop goes back to plan → build × 5 → qa → review. When all tasks are done again, the entire finalizer fires from the beginning (`finalizerPosition` resets to 0). No partial re-entry.
+**Completion signal:** `aloop-agent submit --type plan_result` with a terse summary and the list of task slugs produced or updated. Also sets `abstract_status` of the parent Story to `in_progress` if it was `dor_validated`.
 
-**`loop-plan.json` structure:**
-```json
-{
-  "cycle": [
-    "PROMPT_plan.md",
-    "PROMPT_build.md", "PROMPT_build.md", "PROMPT_build.md",
-    "PROMPT_build.md", "PROMPT_build.md",
-    "PROMPT_qa.md",
-    "PROMPT_review.md"
-  ],
-  "finalizer": [
-    "PROMPT_spec-gap.md",
-    "PROMPT_docs.md",
-    "PROMPT_spec-review.md",
-    "PROMPT_final-review.md",
-    "PROMPT_final-qa.md",
-    "PROMPT_proof.md"
-  ],
-  "cyclePosition": 0,
-  "finalizerPosition": 0,
-  "iteration": 1,
-  "allTasksMarkedDone": false,
-  "version": 1
-}
-```
+## `build`
 
-## Orchestrator review layer
+**Role:** Implement one task at a time. Validate. Commit.
 
-After a child loop signals completion, the orchestrator performs its own review before creating/merging a PR:
+**Reads:** One task from `aloop-agent todo dequeue --for build` (or for its specialization — `frontend`, `backend`, `fullstack`, `migration`, `infra`, `docs-generator`, etc.). Reads code, tests, and whichever spec/reference files the task points at.
 
-1. **Spec compliance review** — does the child's work match the original issue/sub-spec? The orchestrator has the global picture and checks for scope drift, missing requirements, and cross-issue consistency.
-2. **Proof validation** — are the proof artifacts meaningful? Do they actually demonstrate the feature works? Test output and file listings are NOT proof. The orchestrator rejects empty or filler proof.
-3. **Integration check** — will this PR conflict with other child loops' work? Does it break the overall architecture?
+**Writes:** Code and tests. Commits per iteration. Marks task done via `aloop-agent todo complete <id>`.
 
-Only after the orchestrator is satisfied does it create the PR and run automated gates (CI, coverage, merge conflicts).
+**May not:** Create new unrelated tasks (those should come from plan/review). Touch files outside its scope without justification (see CONSTITUTION.md §Scope Control). Skip validation commands.
 
-## Proof agent behavior
+**Validation:** Before committing, runs the project's `{{VALIDATION_COMMANDS}}` (types, tests, lint). Failed validation keeps the task open; the turn is recorded as failed and retries per the pipeline's `onFailure` rule.
 
-The proof agent has full autonomy over what to prove and how. It receives:
+**Completion signal:** `aloop-agent submit --type build_result` with the commit SHAs, changed files, validation outcome, and usage stats.
 
-**Input (via prompt + worktree context):**
-- `TODO.md` — what tasks were worked on this cycle
-- Recent commits — what files changed and why
-- `SPEC.md` — what acceptance criteria exist
-- Available tooling — what's installed (Playwright, curl, node, etc.)
-- Previous proof baselines — what the app looked like before (if any)
+## `qa`
 
-**The agent decides:**
+**Role:** Black-box user testing. Never reads source code.
 
-1. **What needs proof** — inspects the work and determines which deliverables have provable, observable output. Could be UI screenshots, API response captures, CLI behavior captures, before/after visual comparisons, accessibility reports, or videos — whatever is appropriate and human-verifiable.
-2. **What proof is possible** — considers what tooling is available. If Playwright is installed and there's a frontend, screenshots are possible. If it's a CLI tool, output captures. If nothing is visually or behaviorally provable (pure refactoring, type-only/internal plumbing changes), the agent says "nothing to prove" and the phase completes as a skip.
-3. **How to generate it** — the agent runs the actual commands: launches servers, runs Playwright, captures screenshots, diffs against baselines, saves artifacts. It uses whatever tools make sense.
-4. **What to skip** — not everything needs proof. The agent explicitly notes what it chose not to prove and why.
+**Reads:** Spec files for expected behavior. `tasks.json` for recently completed tasks (test candidates). `QA_COVERAGE.md` for coverage gaps and previously failed features.
 
-**Subagent delegation**: The proof agent does not need to be a vision model itself. It captures screenshots and delegates visual analysis to a `vision-reviewer` subagent (running on a vision-capable model like Gemini Flash Lite or Seed-2.0-Lite). Similarly, it can delegate accessibility checks to an `accessibility-checker` subagent or performance analysis to a `perf-analyzer`. The proof agent orchestrates; subagents analyze.
+**Writes:** Test artifacts (`QA_COVERAGE.md`, `QA_LOG.md`) committed from the worktree. Files bugs as tasks via `aloop-agent todo add --from qa --for build --priority high` with reproduction steps in the body (`what you did → what happened → what spec says should happen`). Never writes bug tags into TODO.md markdown — the task store is the truth.
 
-**Output:**
+**May not:** Read source files. Read implementation details. Invent test targets outside the spec.
 
-The agent writes artifacts to the session directory and produces a manifest:
+**Scope per turn:** 3–5 features, happy path + error paths + edge cases. Layout verification mandatory for UI changes (screenshot at configured viewport). GitHub integration E2E (where applicable) creates throwaway test repos and always cleans up.
 
-```
-~/.aloop/sessions/<session-id>/
-  artifacts/
-    iter-<N>/
-      proof-manifest.json
-      <agent-chosen artifact files>
-```
+**Completion signal:** `aloop-agent submit --type qa_result` with pass/fail per feature, coverage delta, bug task IDs filed.
 
-## Proof manifest
+## `review`
 
-The manifest is structured so the reviewer and dashboard can consume it, but the content is entirely agent-determined:
+**Role:** Code-level quality gate. Inspects change set against 9 gates (spec compliance, test depth, coverage, code quality, integration sanity, proof verification, layout verification, version compliance, doc freshness). Full gate definitions in `instructions/review.md` (included via `{{include:instructions/review.md}}`).
+
+**Reads:** Diff since last review, spec files, CONSTITUTION.md, proof manifest, `REVIEW_LOG.md`, test output.
+
+**Writes:** Review findings appended to `REVIEW_LOG.md`. Fix tasks via `aloop-agent todo add --from review --for build --priority ...`.
+
+**Submit:** `aloop-agent submit --type review_result` with verdict (`approved | changes_requested | reject`), per-gate pass/fail, per-file findings with line locations (for change-set-level review in orchestrator context).
+
+**Subagent delegation:** Review may delegate structural checks to `code-critic` (deep reasoning), visual review to `vision-reviewer`, security to `security-scanner`, accessibility to `accessibility-checker` (see Subagent catalog).
+
+**May not:** Merge. Modify code. Override CONSTITUTION.md.
+
+## `proof`
+
+**Role:** Produce human-verifiable evidence that the cycle's work is real and working.
+
+**Decides autonomously:** What to prove, how to prove it, what to skip. Not told via keyword matching.
+
+**Reads:** Tasks completed this cycle (`aloop-agent todo list --status done --since-iter <last-proof>`), recent commits, spec, available tooling (Playwright, curl, etc.), previous baselines in `artifacts/baselines/`.
+
+**Writes:** Artifacts under `<session>/artifacts/iter-<N>/` and `proof-manifest.json` describing them.
 
 ```json
 {
   "iteration": 7,
   "phase": "proof",
   "provider": "copilot",
-  "timestamp": "2026-03-04T12:00:00Z",
-  "summary": "Captured 3 screenshots of the redesigned dashboard layout and verified API health endpoint returns valid JSON.",
+  "timestamp": "2026-04-18T12:00:00Z",
+  "summary": "3 screenshots, 1 API capture. Dashboard layout verified against baseline.",
   "artifacts": [
     {
       "type": "screenshot",
       "path": "dashboard-main.png",
-      "description": "Dashboard main view showing dense layout with TODO, log, and health panels",
+      "description": "Dashboard after layout refactor",
       "metadata": { "viewport": "1920x1080", "url": "http://localhost:3000" }
     },
     {
       "type": "visual_diff",
       "path": "dashboard-main-diff.png",
-      "description": "Pixel diff against previous baseline — 12.3% change, all in the log panel area",
+      "description": "12.3% change vs baseline, confined to log panel",
       "metadata": { "baseline": "baselines/dashboard-main.png", "diff_percentage": 12.3 }
-    },
-    {
-      "type": "api_response",
-      "path": "health-endpoint.json",
-      "description": "GET /api/state returns valid JSON with session status and provider health",
-      "metadata": { "status_code": 200, "content_type": "application/json" }
     }
   ],
   "skipped": [
-    {
-      "task": "Add provider health file locking in loop.ps1",
-      "reason": "PowerShell script internals — no observable external output to capture"
-    }
+    { "task": "internal file-lock retry", "reason": "no observable external output" }
   ],
   "baselines_updated": ["dashboard-main.png"]
 }
 ```
 
-The `type` field is free-form — the agent chooses whatever artifact types make sense. Common types might include `screenshot`, `visual_diff`, `api_response`, `cli_output`, `test_summary`, `accessibility_snapshot`, `video`, but the agent is not limited to these.
+`type` is free-form; common kinds: `screenshot`, `visual_diff`, `api_response`, `cli_output`, `test_summary`, `accessibility_snapshot`, `video`. Agent picks what fits.
 
-## Baseline management
+**Never treats as proof:** CI pass counts, lint summaries, type-check output, git diffs, commit summaries. Those are validation, not evidence.
 
-Baselines are stored per-session and updated when the reviewer approves:
+**Subagents:** Delegates visual analysis to `vision-reviewer`, accessibility to `accessibility-checker`, perf to `perf-analyzer`. Proof agent itself can run on a non-vision model.
 
-```
-artifacts/
-  baselines/
-    dashboard-main.png      ← updated after review approval
-    calendar-view.png
-```
+**Submit:** `aloop-agent submit --type proof_result` with the manifest body.
 
-- **First proof run**: No baselines exist. Agent captures initial screenshots, these become the baselines.
-- **Subsequent runs**: Agent diffs against baselines. Large diffs are noted in the manifest.
-- **After review approval**: Current screenshots replace baselines (harness copies them).
-- **After review rejection**: Baselines stay as-is. Next build + proof cycle generates new screenshots to compare against the unchanged baselines.
+**Baseline management:** On review approval, current screenshots replace `baselines/`. On rejection, baselines stay; next cycle compares against unchanged baselines.
 
-## Proof skip protocol
+**Skip protocol:** When nothing is provable (pure refactor, internal plumbing), writes a summary with empty `artifacts` and explanations under `skipped`. Review may agree (approve) or disagree and request actual proof.
 
-When the proof agent determines nothing is provable:
+## `spec-gap`
 
-```json
-{
-  "iteration": 7,
-  "phase": "proof",
-  "summary": "No provable artifacts this cycle. All completed tasks involve internal script logic with no observable external output.",
-  "artifacts": [],
-  "skipped": [
-    { "task": "Fix CLAUDECODE env var sanitization", "reason": "Internal env var handling" },
-    { "task": "Add file lock retry logic", "reason": "Concurrent file access internals" }
-  ]
-}
-```
+**Role:** Validate codebase consistency against the spec. Analysis only — produces tasks for other agents to fix.
 
-The reviewer sees this and can agree (approve) or disagree (reject with "actually, you could have tested the CLI output of `aloop status` after the health file changes").
+**Reads:** Spec files, config files, prompt templates, cross-platform code (bash + PowerShell), `tasks.json`.
 
-## Proof prompt template
+**Writes:** Findings as tasks via `aloop-agent todo add --from spec-gap --for build --priority ... --tag spec-gap`. Never modifies code, spec, or docs.
 
-`PROMPT_proof.md` instructs the agent:
-- Read TODO.md for recently completed tasks
-- Read recent commits for changed files
-- Inspect what tooling is available (Playwright, curl, etc.)
-- Decide what proof is valuable and possible
-- Produce observable, human-verifiable artifacts (screenshots, API captures, CLI behavior output, visual comparisons, videos when appropriate)
-- Do **not** treat CI output as proof (`npm test` pass counts, `tsc --noEmit`, lint summaries)
-- Do **not** treat git diffs or commit summaries as proof artifacts
-- Generate artifacts, save to `<session-dir>/artifacts/iter-<N>/`
-- Write `proof-manifest.json`
-- `output.txt` is saved per-iteration (extracted from `LOG_FILE.raw` by byte offset after provider invocation) — contains raw provider output for dashboard parsing (model, tokens, cost)
-- If nothing is visually or behaviorally provable, write "nothing to prove" with empty artifacts and explanations in skipped
+**Checks:**
 
-The prompt does NOT prescribe what types of proof to generate or what tools to use — that's the agent's judgment call.
+1. Config completeness — config references vs runtime support
+2. Spec vs code alignment — unimplemented acceptance criteria, hallucinated features, dead references
+3. Prompt template consistency — invalid provider references, orphan templates
+4. Cross-platform parity — logic present in one of bash/PowerShell but not the other
+5. Task hygiene — stale tasks, completed but still open, references to removed code
 
----
+**Cadence:** Project-configurable. Common patterns: every Nth cycle, and/or at the start of the finalizer. Configure in `pipeline.yml`; see `pipeline.md` §Event-driven dispatch.
 
-## QA agent — black-box user testing
+**Submit:** `aloop-agent submit --type spec_gap_result` with finding counts by category and created task IDs. Empty results is a valid outcome and allows the finalizer to proceed.
 
-A dedicated QA agent that tests features as a real user would — running commands, clicking through the dashboard, testing error paths — without ever reading source code. It runs after proof and before review in the default pipeline.
+## `docs`
 
-### QA agent behavior
+**Role:** Keep project documentation honest about current implementation state.
 
-The QA agent is a **black-box tester**. It:
-- Reads the SPEC to understand expected behavior (source of truth)
-- Reads TODO.md for recently completed tasks (test candidates)
-- Reads QA_COVERAGE.md for features never tested or previously failed
-- Tests 3-5 features per iteration through their public interface
-- Files bugs as `[qa/P1]` tasks in TODO.md with reproduction steps
-- Maintains QA_COVERAGE.md (feature × result matrix) and QA_LOG.md (session transcript)
-- Commits its own artifacts (QA_COVERAGE.md, QA_LOG.md, TODO.md updates)
+**Reads:** README, CLI help strings, `VERSIONS.md`, doc comments, actual code.
 
-**The QA agent NEVER reads source code.** It tests exclusively through CLI commands, HTTP endpoints, and browser interaction (via Playwright).
+**Writes:** Updates to README, CLI help, doc files. May add completeness markers: `Implemented`, `Partial (missing X)`, `Planned`, `Experimental`. Never modifies `SPEC.md` or code.
 
-### Test scope per iteration
+**Cadence:** Project-configurable.
 
-- **3-5 features** per QA session — focused and thorough, not broad and shallow
-- **Happy path + error paths + edge cases** for each feature
-- **Layout verification** (mandatory for dashboard/UI changes) — screenshot at desktop viewport, verify panel count and element visibility match spec
-- **GitHub integration E2E** (when GH features are claimed complete) — creates throwaway test repo, runs lifecycle, cleans up. Must use `--max-iterations 3` or similar to keep test runs short. Must clean up even on failure.
-- **Re-test previously failed features** from QA_COVERAGE.md
+**Submit:** `aloop-agent submit --type docs_result` with files modified and a summary of changes.
 
-## QA artifacts
+## `spec-review`
 
-- `QA_COVERAGE.md` — feature coverage matrix: feature name, last tested date, commit, PASS/FAIL, notes
-- `QA_LOG.md` — append-only session log with full command transcripts, stdout/stderr, exit codes, screenshots
-- `[qa/P1]` tasks in TODO.md — bugs with format: `what you did → what happened → what spec says should happen`
+**Role:** Requirement coverage, not code quality. Asks one question: "Do the changes satisfy the acceptance criteria from the spec?"
 
-## QA prompt template
+**Reads:** Spec files, change set diff, proof artifacts.
 
-`PROMPT_qa.md` instructs the agent:
-- Study the spec for expected behavior
-- Select test targets from recently completed tasks and coverage gaps
-- Set up realistic test environments (temp dirs, real git repos, real dependencies)
-- Test through public interfaces only (CLI, HTTP, browser)
-- Log every command with exact output
-- File bugs, update coverage, write session log, commit
+**Writes:** Findings as tasks (same mechanism as `review`), flagged `spec-review`. No code changes.
 
----
+**Submit:** `aloop-agent submit --type spec_review_result`.
 
-## Spec-gap analysis agent
+## `final-review`, `final-qa`
 
-A dedicated agent (`PROMPT_spec-gap.md`) that validates codebase consistency against SPEC.md. It runs **both periodically during the loop and in the completion chain**. The loop cannot finish while spec-gap findings remain open.
+**Role:** Same contract as `review` and `qa` respectively, but positioned in the finalizer chain and typically run at a higher reasoning effort. Share instructions with their cycle counterparts via `{{include:instructions/review.md}}` and `{{include:instructions/qa.md}}`.
 
-### Purpose
+The only difference from the cycle versions is *when* they run (finalizer), not *what* they check.
 
-The plan and review agents focus on individual tasks. Neither cross-references the full spec against the full codebase. This creates drift:
-- Config files fall out of sync with runtime code (e.g., `config.yml` missing a provider that loop scripts support)
-- Features get implemented but never added to spec, or spec describes features that were never built
-- QA/build agents hallucinate features not in spec, and subsequent agents treat them as real
-- TODO items reference code that no longer exists
+## Orchestrator-side agents
 
-The spec-gap agent catches these systematically.
+Orchestrator pipelines use a different catalog. Each still obeys the universal contract; the difference is what they read/write and which submit types they produce. See `orchestrator.md` for the pipeline and `work-tracker.md` for the generic submit schemas.
 
-### When it runs
+| Agent | Submit type | Purpose |
+|---|---|---|
+| `orch_product_analyst` | — (no tracker side effect) | Reads spec files; produces theme map + out-of-scope list as scratchpad |
+| `orch_decompose` | `decompose_result` | Produces Epics |
+| `orch_refine` | `refine_result` | Tightens scope of one Epic or Story |
+| `orch_sub_decompose` | `sub_decompose_result` | Produces Stories under one Epic |
+| `orch_estimate` | `estimate_result` | Complexity tier + dependency edits |
+| `orch_dispatch` | `dispatch_result` | List of Stories to launch |
+| `orch_review` | `review_result` | Change-set review, outputs verdict + inline comments |
+| `orch_resolver` | — (queues merge_conflict into child) | Decides rebase / recreate / abandon for conflicted change sets |
+| `orch_diagnose` | `diagnose_result` | Intelligent self-healing: observes anomaly events, returns a structured action for the daemon |
 
-**1. Periodically during the loop** — runs before every 2nd plan phase (i.e., every other cycle). This catches drift early, while builds are still happening. Gaps found become `[spec-gap]` TODO items that the build agent picks up in the next cycle.
+## Subagent catalog
 
-```
-Cycle 1:  plan → build x5 → qa → review
-Cycle 2:  spec-gap → plan → build x5 → qa → docs → review
-Cycle 3:  plan → build x5 → qa → review
-Cycle 4:  spec-gap → plan → build x5 → qa → docs → review
-...
-```
+Subagents are within-turn delegations (not aloop sessions). Support depends on provider (opencode, claude, copilot, codex — all have some form; opencode is most mature). Aloop ships a shared catalog under `.opencode/agents/` installed by `aloop setup`; per-phase hints surface via `{{SUBAGENT_HINTS}}`.
 
-**2. In the finalizer** — spec-gap is the first element of the `finalizer[]` array in `loop-plan.json`. When all tasks are done at the cycle boundary, the loop switches to the finalizer. If spec-gap finds gaps, it creates new TODO items, the finalizer aborts, and the cycle resumes. The loop only finishes when spec-gap produces zero findings.
+| Subagent | Model class | Purpose | Typical callers |
+|---|---|---|---|
+| `vision-reviewer` | vision | screenshot layout / visual analysis | `proof`, `review` |
+| `vision-comparator` | vision | baseline vs current comparison | `proof` |
+| `code-critic` | high-reasoning | deep code review — subtle bugs, security | `review` |
+| `test-writer` | fast-cheap | generate tests from spec | `build` (and specializations) |
+| `error-analyst` | fast-cheap | parse stack traces, suggest fixes | `build` on failure |
+| `spec-checker` | reasoning | verify implementation matches acceptance criteria | `review`, `spec-review` |
+| `security-scanner` | reasoning | OWASP / secrets / deps audit | `review`, `guard` |
+| `accessibility-checker` | vision | WCAG compliance | `proof`, `verify` |
+| `perf-analyzer` | fast-cheap | bundle size, lighthouse, load metrics | `proof` |
+| `docs-extractor` | fast-cheap | API docs, types, usage examples | `docs` |
 
-```
-finalizer[]:  spec-gap → docs → spec-review → final-review → final-qa → proof
-                  ↓ (if gaps found)        ↓ (if docs stale)
-            new TODO items → finalizer aborts → cycle resumes → build fixes them → ...
-```
+Cost optimization: a reasoning model should not spend tokens parsing stack traces or generating boilerplate — delegate those to a fast-cheap model, reserve expensive tokens for decisions.
 
-**Unlimited runs** — there is no cap on how many times spec-gap can run. It runs every other cycle plus at every finalizer attempt. The loop is done when the spec is fully fulfilled.
+## Environment hygiene
 
-### What it checks
+The daemon (not the shim, not the agent) sanitizes the environment before invoking a provider CLI:
 
-1. **Config completeness** — config.yml vs loop script provider/model support
-2. **Spec vs code alignment** — acceptance criteria referencing removed code, undocumented features
-3. **Prompt template consistency** — frontmatter referencing invalid providers, orphan templates
-4. **Cross-runtime parity** — validation sets in CLI vs loop.sh vs loop.ps1
-5. **TODO hygiene** — stale items, hallucinated features, completed items still open
+- Clears `CLAUDECODE` so nested `claude` calls don't refuse with "cannot launch inside another session."
+- Hardens `PATH` to a known prefix.
+- Strips secrets except those the provider explicitly requires.
+- Injects `AUTH_HANDLE`, `ALOOP_SESSION_ID`, `ALOOP_PROJECT_PATH`, and the provider's own credentials.
 
-### Rules
-
-- Analysis only — documents gaps in TODO.md, does not fix them
-- Prioritize most impactful gaps first
-- Tags items as `[spec-gap]` with priority P1/P2/P3
-- Distinguishes "spec is wrong" vs "code is wrong"
-- If zero gaps found, writes "spec-gap analysis: no discrepancies" and allows the chain to proceed
-
----
-
-## Documentation sync agent
-
-A dedicated agent (`PROMPT_docs.md`) that keeps project documentation accurate and honest about implementation status. It runs **periodically** (every 2nd cycle, after qa) and in the **finalizer** (after spec-gap, before spec-review).
-
-### Purpose
-
-Documentation drifts from reality fast during iterative development. README claims features that are half-built, CLI help text references flags that changed, and there's no honest accounting of what's actually done vs planned. The docs agent fixes this by cross-referencing docs against actual code.
-
-### When it runs
-
-- **Periodic**: every 2nd cycle, after qa (same cycles as spec-gap)
-- **Finalizer**: second element of `finalizer[]` array (after spec-gap, before spec-review)
-- The docs agent **can modify documentation files** (unlike spec-gap which is analysis-only)
-
-### What it does
-
-1. Syncs README.md feature lists with actual implementation state
-2. Updates CLI help text to match current flags/commands
-3. Adds honest completeness markers: "Implemented", "Partial (missing X)", "Planned", "Experimental"
-4. Documents config fields and override precedence
-5. Does NOT modify SPEC.md or code — only documentation files
-
----
-
-## CLAUDECODE environment variable sanitization
-
-When aloop is invoked from inside a Claude Code session (the normal case — user types `/aloop:start`), the `CLAUDECODE` env var is inherited. All entry points that launch provider CLIs must unset it to prevent "cannot launch inside another session" errors:
-
-| Location | Fix |
-|----------|-----|
-| `aloop/bin/loop.ps1` | `$env:CLAUDECODE = $null` at script top |
-| `aloop/bin/loop.sh` | `unset CLAUDECODE` at script top |
-| `aloop/cli/src/index.ts` | `delete process.env.CLAUDECODE` at entry |
-| `Invoke-Provider` (loop.ps1) | Also unset in the provider invocation block (defense-in-depth, in case something re-sets it) |
-| `invoke_provider` (loop.sh) | Same — `unset CLAUDECODE` before each provider call |
+Agents should assume they run in a clean, scoped environment. Any environment-related defense-in-depth (setting `CLAUDECODE=null` again in a script) is belt-and-suspenders for old invocation paths, not a requirement.
