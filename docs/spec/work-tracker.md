@@ -256,7 +256,7 @@ tracker:
 
 ## Task tracking
 
-**v1 scope: tasks live in the daemon, not the tracker.** Tracker mirroring is deferred to v2 — the capability flag stays in the interface for forward-compat, but no adapter ships an implementation in v1. The default (and only) path for v1 is the daemon's task store, manipulated by `aloop-agent todo`. Task state is:
+**Default: tasks live in the daemon.** Every child session has its own task list in the daemon's task store, manipulated by `aloop-agent todo`. Task state is:
 
 - Added by plan, review, spec-gap, or any agent with `todo add` permission.
 - Completed by build, qa, or the agent whose role matches the task's `for`.
@@ -264,9 +264,9 @@ tracker:
 - Survives worktree operations (task store is in session state dir, not worktree).
 - Exposed by `aloop-agent todo list --format md` as a TODO.md-compatible rendering for agents that read/write it.
 
-Tasks are NOT tracker entities. The pre-rebuild practice of parsing `TODO.md` markdown for completion detection is retired — completion is a structured API call.
+Tasks are NOT tracker entities by default. The pre-rebuild practice of parsing `TODO.md` markdown for completion detection is retired — completion is a structured API call.
 
-**v2 and beyond — opt-in mirroring.** The adapter interface exposes `mirrorTasks` / `readMirroredTasks` and the `tracks_tasks` capability block. No v1 adapter implements them; the shape is documented here as forward-compat. Projects that need stakeholder visibility into task-level progress should wait for v2 or use the dashboard instead. Three mirror shapes:
+**Opt-in: mirror tasks to the tracker.** When enabled, the adapter reflects the session's task list externally so stakeholders can watch task-level progress in their usual tracker UI. Default: off (tasks stay in the daemon). Three mirror shapes, pick one per project: Three mirror shapes:
 
 | Shape | Where tasks appear | Trade-offs |
 |---|---|---|
@@ -285,7 +285,36 @@ tracker:
     max_tasks: 50                     # hard cap to prevent runaway
 ```
 
-When an adapter ships with mirror support, the daemon will push task-state changes in batches (default: every 30s, or on session close) so it never blocks the child session; mirror failures log and do not halt work.
+| Shape | Where tasks appear | Trade-offs |
+|---|---|---|
+| `checkboxes_in_body` | A fenced section in the Story's work-item body | Cheap, atomic update, human-readable. Loses individual history. |
+| `sub_children` | Each task is a sub-work-item of the Story | Rich history, per-task comments, respects `max_depth`. Noisy (count, webhooks). Not all trackers support it. |
+| `projects_board` | Each task is a card on a project board linked to the Story | Clean separation, good for visualization. Board must exist; tasks lose repo-local context. |
+
+Mirror policy per project:
+
+```yaml
+tracker:
+  mirror_tasks:
+    enabled: false                    # default off
+    shape: checkboxes_in_body         # when enabled
+    include_completed: false          # show only pending
+    max_tasks: 50                     # hard cap to prevent runaway
+```
+
+The daemon pushes task-state changes to the adapter in batches (default: every 30s, or on session close) so it never blocks the child session; mirror failures log and do not halt work.
+
+**When to enable mirroring:**
+
+- Team projects where stakeholders watch progress in the tracker UI.
+- Projects with long-running stories where task history matters.
+- Compliance/audit contexts.
+
+**When not to:**
+
+- Solo or experimental work — noise outweighs benefit.
+- High-frequency TDD loops — task churn produces tracker spam.
+- Adapters whose available `mirror_shape` options all feel wrong for the project.
 
 ## Built-in adapter (no external deps)
 

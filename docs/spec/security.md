@@ -86,6 +86,7 @@ Agents communicate via the `aloop-agent` CLI, which is the ONLY privileged binar
 - **Validated input** — every submit payload is validated against a typed schema. Malformed input is rejected with exit code 10.
 - **Role-scoped permissions** — the daemon checks the prompt's declared role against a permissions table (see `pipeline.md` §Permissions). Forbidden operations return exit code 12.
 - **Audited** — every call produces a log entry before the operation executes.
+- **Rate-limited** — per-session token bucket (default: 100 requests/minute, configurable in `daemon.yml`). Exceeding the budget returns exit code 22 and emits `agent_cli.throttled`. Prevents runaway agents from thrashing the daemon with `todo list` loops or submit-spam.
 
 The retired pattern of "agents write `.aloop/output/*.json` and the runtime bridges them" is gone. The session JSONL remains, but it's the output of `aloop-agent submit`, not the other way around.
 

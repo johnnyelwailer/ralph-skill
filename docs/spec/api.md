@@ -32,9 +32,9 @@ Clients send `X-Aloop-Client: <name>/<version>` for telemetry and compatibility 
 
 ## Transport and auth
 
-- **HTTP/1.1** over localhost (`127.0.0.1` by default). JSON in, JSON out. Port configurable in `~/.aloop/daemon.yml` (default 7777, auto-written if `null`).
-- **SSE** for streams. Plain `text/event-stream`, no WebSocket in v1.
-- **Unix socket** at `~/.aloop/aloopd.sock` optional in v1 (decision deferred; API contract identical either way).
+- **HTTP/1.1** over localhost (`127.0.0.1` by default). JSON in, JSON out. Port configurable in `~/.aloop/daemon.yml` (default 7777, auto-written if `null`). Used by the dashboard (browsers can't talk to unix sockets) and by any remote/tunneled client.
+- **Unix socket** at `~/.aloop/aloopd.sock` — **required in v1**. Local clients (CLI, shim, `aloop-agent`) prefer the socket; it's faster and avoids port exposure. The container's bind-mount of `.aloop/` brings the socket into the sandbox so in-container `aloop-agent` calls go directly back to the host daemon. API contract is identical over socket and HTTP.
+- **SSE** for streams. Plain `text/event-stream`, no WebSocket in v1. Works over both transports.
 - **Auth:** localhost-only deployments are unauthenticated. Remote/tunneled deployments require `Authorization: Bearer <token>` where the token is read from `~/.aloop/token` (generated on install). CORS: `*` for localhost, restricted list for remote.
 
 ## Common envelope
@@ -46,6 +46,8 @@ JSON body for `POST`, `PUT`, `PATCH`. Unknown fields rejected with `400 bad_requ
 ### Response
 
 Success: resource JSON directly (not wrapped). List endpoints return `{ items: [...], next_cursor: string | null }`.
+
+**Payload versioning.** Every event and mutable resource carries a `_v` field on its payload (not its envelope): `_v: 1` for v1 shapes. Additive changes keep `_v` at 1; breaking shape changes bump `_v`. Clients check `_v` if they care; unknowns are ignored on additive changes.
 
 Error shape:
 
@@ -233,13 +235,15 @@ Every event has a monotonic `id` (ms timestamp + sequence). Events are durable (
 | `scheduler.permit.release` | permit released | `{permit_id, session_id}` |
 | `scheduler.permit.expired` | TTL reclaim | `{permit_id, session_id}` |
 | `scheduler.burn_rate_exceeded` | burn gate tripped for a session | `{session_id, observed, threshold}` |
-| `metrics.tick` | per-second metrics snapshot | resource + counters |
 | `agent.chunk` | streaming content from a provider turn | see below |
 | `daemon.log` | daemon stdout relayed over SSE | `{level, message, fields}` |
 
-### Backpressure
+### Backpressure and ordering
 
-Per-client buffer (default 1 MB). Overflow emits `warning.dropped` to the client and keeps the most recent events. Clients that need lossless tail must read JSONL directly via `GET /v1/sessions/:id/log`.
+- Per-client buffer (default 1 MB). Overflow emits `warning.dropped` to the client and keeps the most recent events.
+- **Clients MUST tolerate gaps** in event IDs and in `agent.chunk.sequence` — a gap indicates a drop, not a reorder.
+- **Clients MUST NOT tolerate reordering** — the daemon never publishes events out of monotonic order within a topic. If a client observes an out-of-order event, that is a daemon bug, not a normal condition.
+- Clients needing lossless tail read JSONL directly via `GET /v1/sessions/:id/log` or `/v1/sessions/:id/turns/:turn_id/chunks?replay=true`. The durable log is authoritative; SSE is best-effort live tail.
 
 ### Bulk tail
 
@@ -370,6 +374,8 @@ Returns:
 }
 ```
 
+Default `ttl_seconds` is `scheduler.permit_ttl_default` from `daemon.yml` (default 600). Sessions may request longer via `ttl_seconds` in the request body, capped at `scheduler.permit_ttl_max` (default 3600).
+
 Or denial:
 
 ```json
@@ -421,22 +427,30 @@ GET    /v1/setup/runs/:id/events             SSE: setup events (discovery.*, int
 
 On successful `verification` phase, the daemon transitions the project's `status` from `setup_pending` to `ready` and emits `setup.completed`.
 
+**Abandonment retention.** Abandoned runs (no activity for `setup.abandoned_retention` from `daemon.yml`, default 14 days) are garbage-collected. `DELETE /v1/setup/runs/:id` is permitted any time; if the project was registered in the `setup_pending` state and has no associated sessions, the DELETE also unregisters it. Projects already `ready` are not unregistered by DELETE.
+
+**`adapter.ping` flakiness.** The tracker readiness gate requires **2 of 3** consecutive `ping()` successes within a 10-second window before flipping the project's status to `ready`. Flakiness below that threshold is a real tracker signal and blocks setup from completing.
+
 ## Daemon
 
 ```
 GET  /v1/daemon/health        // liveness + version + uptime + counters
 GET  /v1/daemon/config
-PUT  /v1/daemon/config        // hot-reload of non-listener config
-POST /v1/daemon/reload        // re-read daemon.yml, overrides.yml
+POST /v1/daemon/reload        // re-read daemon.yml, overrides.yml, project config.yml files
+                              // applies to: scheduler limits, overrides, retention, project status maps
+                              // does NOT apply to: HTTP bind/port (require restart)
+                              // in-flight turns are never mutated; changes take effect on next permit
 ```
+
+Code / binary upgrades require a graceful daemon restart (`aloop daemon stop` → replace binary → `aloop daemon start`). Migrations run from `schema_version` in SQLite before the listener opens. See `daemon.md` §Upgrade.
 
 ## Metrics
 
 ```
-GET /v1/metrics               // Prometheus exposition
+GET /v1/metrics               // Prometheus text-exposition format
 ```
 
-Counters and gauges for sessions by status, permits by state, provider health, scheduler decisions, daemon resource usage. Cardinality kept bounded (no per-session labels on counters).
+Counters and gauges for sessions by status, permits by state, provider health, scheduler decisions, daemon resource usage. Cardinality kept bounded (no per-session labels on counters). Consumers: Prometheus scrapers, Grafana agents, dashboards that compute live deltas by polling this endpoint at their own cadence. Per-second resource metrics are NOT pushed over SSE — the bus stays event-driven.
 
 ---
 
@@ -445,11 +459,12 @@ Counters and gauges for sessions by status, permits by state, provider health, s
 The following are v1-stable and will not break:
 
 - Path structure (`/v1/<resource>/<id>/<sub>`)
-- Session kinds and status values
+- Session kinds and status values (`pending | running | paused | interrupted | stopped | completed | failed | archived`)
 - Permit denial codes and gate names
 - SSE topic names and envelope format
 - `agent.chunk` payload shape
 - Override keys (`allow`, `deny`, `force`)
 - Error `code` field values
+- Payload `_v` field (value `1` for v1)
 
 Additive: new fields, new topics, new endpoints, new chunk types. Clients ignore unknowns.

@@ -85,6 +85,8 @@ On turn FAILURE:  cyclePosition stays
 Queue turn:       cyclePosition stays (queue items are interrupts)
 ```
 
+**Turn success** means: the provider adapter emitted a `final: true` chunk AND at least one `agent.result` submit was accepted during the turn (or the agent's declared role has no submit types, e.g., a read-only probe). A turn that produces only a `usage` chunk without a submit is NOT a success — the cycle does not advance.
+
 This means a failed plan retries as plan (with the chain's next provider and any fallthrough that hasn't been tried), a failed build retries as build, a failed review retries as review. The next attempt picks a different provider if the failure classification permits (rate-limit, timeout) and a fresh permit is granted.
 
 Without this rule, the session wastes turns on downstream phases whose prerequisites were never produced (building without a plan, reviewing unplanned work).

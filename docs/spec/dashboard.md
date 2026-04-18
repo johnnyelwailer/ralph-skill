@@ -10,8 +10,9 @@ The daemon serves, without preference:
 
 - `aloop` CLI
 - In-repo dashboard (React/Vite, to be rehabilitated)
-- Telegram bot (#296, optional)
-- Any future integration (curl, scripts, IDE extensions)
+- Any future integration (curl, scripts, IDE extensions, chat bots)
+
+Third-party integrations (chat bots, webhooks, IDE plugins) are not part of v1. The API is designed so they can be added later without daemon changes.
 
 If the dashboard needs something the CLI cannot do, it is a missing API — fix the API, not the dashboard.
 

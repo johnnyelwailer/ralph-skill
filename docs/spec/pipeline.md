@@ -16,7 +16,7 @@
 - Event-driven dispatch (trigger + queue)
 - Scheduler permit hook
 - Runtime mutation
-- Agent contract — the `aloop-agent` CLI
+- Agent contract
 - Orchestrator as a workflow
 - Child loops as workflows
 - Subagent delegation
@@ -70,16 +70,15 @@ finalizer:
   - PROMPT_cleanup.md
 
 triggers:
-  merge_conflict: PROMPT_merge.md
-  stuck_detected: PROMPT_debug.md
-  steer:          PROMPT_steer.md
-  burn_rate_alert: PROMPT_orch_diagnose.md
-  orch_diagnose:   PROMPT_orch_diagnose.md
+  # Session-level (fired into this session's own queue)
+  merge_conflict:   PROMPT_merge.md
+  stuck_detected:   PROMPT_debug.md
+  steer:            PROMPT_steer.md
 ```
 
 - `pipeline`: cycle. Short repeating sequence, typically 5–7 entries. The compile step resolves `repeat`, expands `onFailure: retry` into loop-plan directives.
 - `finalizer`: sequence that runs once `allTasksMarkedDone` holds at cycle boundary. Resets to position 0 if any finalizer agent adds tasks. Only the last agent completing with zero new tasks ends the loop.
-- `triggers`: named event → prompt. Daemon-side watchers and workflow authors use these names; no keyword is hardcoded in code.
+- `triggers`: named event → prompt. Session-level triggers fire into the session's own queue; orchestrator workflows use a separate set of triggers (see §Event-driven dispatch and `orchestrator.md`). Daemon-side watchers and workflow authors use these names; no keyword is hardcoded in code.
 
 ### loop-plan.json (compiled artifact)
 
@@ -107,9 +106,7 @@ triggers:
   "triggers": {
     "merge_conflict":   "PROMPT_merge.md",
     "stuck_detected":   "PROMPT_debug.md",
-    "steer":            "PROMPT_steer.md",
-    "burn_rate_alert":  "PROMPT_orch_diagnose.md",
-    "orch_diagnose":    "PROMPT_orch_diagnose.md"
+    "steer":            "PROMPT_steer.md"
   },
   "cyclePosition": 0,
   "iteration": 1,
@@ -176,7 +173,7 @@ provider: [opencode, copilot, codex, gemini, claude]
 provider: [opencode/openrouter/glm@5.1, claude/opus]
 ```
 
-Chains are resolved at permit-grant time, allowing live overrides and health changes to influence selection.
+Chains are resolved at permit-grant time, allowing live overrides and health changes to influence selection. Chain length is capped at 10 entries; enforced at compile step.
 
 ## Shared instructions via `{{include:path}}`
 
@@ -271,14 +268,25 @@ The "intelligence" lives upstream:
 
 No expressions, no conditionals. Keywords and positions.
 
-| Condition | Detected by | Action |
-|---|---|---|
-| Steering from user | `POST /v1/sessions/:id/steer` | Queue a prompt using `triggers.steer` |
-| Pre-iteration merge conflict | Git state check before turn | Queue `triggers.merge_conflict` |
-| Stuck (N consecutive failures) | Event stream analyzer | Queue `triggers.stuck_detected` |
-| Burn-rate exceeded | Scheduler burn-rate gate denies permit | Queue `triggers.burn_rate_alert` for the orchestrator, not the child |
-| Orchestrator diagnose needed | Orchestrator workflow subscribes to events | Queue `triggers.orch_diagnose` into orchestrator's own queue |
-| Custom (project-defined) | Project-authored watcher | Queue the project's named trigger |
+Two trigger scopes, by convention:
+
+- **Session-level triggers** fire into a running session's own queue. Names have no prefix. Examples: `steer`, `stuck_detected`, `merge_conflict`, `plan_needed`.
+- **Orchestrator-level triggers** fire into the orchestrator's queue when it observes something about one of its children. Names use `child_*` prefix or `*_pr` suffix. Examples: `child_stuck`, `burn_rate_alert`, `merge_conflict_pr`, `pr_review_needed`, `user_comment`.
+
+Each workflow's `triggers:` map declares which keyword maps to which prompt; prompts themselves declare `trigger: <keyword>` in frontmatter. The daemon enforces the mapping and the scope. An orchestrator workflow cannot receive a session-level trigger; a child workflow cannot receive an orchestrator-level trigger.
+
+| Condition | Scope | Detected by | Action |
+|---|---|---|---|
+| Steering from user | session | `POST /v1/sessions/:id/steer` | Queue using `triggers.steer` |
+| Pre-iteration merge conflict (child) | session | Git state check before turn | Queue `triggers.merge_conflict` |
+| Stuck — N consecutive failures in own session | session | Event stream analyzer | Queue `triggers.stuck_detected` |
+| Stuck — orchestrator observing a child | orchestrator | Event stream subscription on `parent=<orch.id>` | Queue `triggers.child_stuck` |
+| Burn-rate exceeded | orchestrator | Scheduler emits `scheduler.burn_rate_exceeded` | Queue `triggers.burn_rate_alert` in the orchestrator |
+| Change-set needs review | orchestrator | `change_set.opened` / `change_set.updated` | Queue `triggers.pr_review_needed` |
+| Change-set conflict with trunk | orchestrator | `change_set.conflict` | Queue `triggers.merge_conflict_pr` |
+| Human comment on Epic/Story | orchestrator | `comment.created` with `source=human` | Queue `triggers.user_comment` |
+| Orchestrator diagnose needed | orchestrator | Any anomaly classification | Queue `triggers.orch_diagnose` |
+| Custom (project-defined) | either | Project-authored watcher | Queue project's named trigger (scope declared) |
 
 ## Scheduler permit hook
 
@@ -317,7 +325,9 @@ For permanent changes, the compile step rewrites `loop-plan.json`:
 
 Agents never modify the plan themselves. Pipeline authoring is a user + compile-step concern.
 
-## Agent contract — the `aloop-agent` CLI
+## Agent contract
+
+> The `aloop-agent` CLI is the single way agents communicate with the daemon.
 
 Agents communicate with the daemon through `aloop-agent`, a small validated CLI present on `PATH` inside every worktree. It is the **only** legitimate way for an agent to produce output or manage task state. File-based contracts (dropping JSON into `.aloop/output/`) are retired by CR #135.
 
@@ -344,6 +354,7 @@ Validates the payload against the schema, writes to the session's event log as `
 | 11 | Unknown type |
 | 12 | Permission denied (agent role not allowed to submit this type) |
 | 20 | Daemon unreachable |
+| 22 | Rate-limited (per-session token bucket exhausted) |
 
 ### Task management
 
@@ -470,7 +481,9 @@ Aloop ships a catalog of opencode subagent definitions in `.opencode/agents/` (i
 | `security-scanner` | reasoning | OWASP / secrets / deps audit | review, guard |
 | `accessibility-checker` | vision | WCAG compliance | proof, verify |
 
-Subagent integration is provider-specific; the aloop runtime exposes it through the `{{SUBAGENT_HINTS}}` variable and the `.opencode/agents/` directory. Providers without native subagent support see an empty `{{SUBAGENT_HINTS}}`.
+Subagent integration is provider-specific; the aloop daemon exposes it through the `{{SUBAGENT_HINTS}}` variable and the `.opencode/agents/` directory. Providers without native subagent support see an empty `{{SUBAGENT_HINTS}}`.
+
+**Subagent catalog lives in `agents.md` §Subagent catalog.** This section lists only the integration mechanism; the canonical list of named subagents and their purposes is in `agents.md`.
 
 ## Reasoning effort
 

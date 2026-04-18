@@ -42,7 +42,7 @@ Semantics:
 2. Track present without version → latest model on that track.
 3. Bare provider → default track, latest model from the provider's model map.
 
-**A chain is an ordered array of provider references.** The scheduler attempts entries left-to-right within a single turn. The canonical preference for this project:
+**A chain is an ordered array of provider references, maximum 10 entries** (compile-step enforced). The scheduler attempts entries left-to-right within a single turn. The canonical preference for this project:
 
 ```yaml
 provider: [opencode, copilot, codex, gemini, claude]

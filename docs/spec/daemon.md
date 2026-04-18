@@ -46,7 +46,7 @@ No forking per session in v1. Every session runs on the daemon's event loop with
 ~/.aloop/
   daemon.yml                    daemon configuration (port, autostart, defaults)
   aloopd.pid                    singleton lock
-  aloopd.sock                   unix socket (optional, future)
+  aloopd.sock                   unix socket (required in v1) — local clients (CLI, shim, aloop-agent) prefer this; HTTP on 127.0.0.1 for browsers (dashboard)
   overrides.yml                 persisted provider overrides
   token                         bearer token (for remote/tunneled access)
   state/
@@ -106,7 +106,7 @@ Three kinds, one table, same API.
 - `id`, `project_id`, `kind`, `parent_session_id`
 - `workflow` — which compiled `loop-plan.json` is active
 - `provider_chain` — resolved ordered chain for this session (opencode → copilot → ...)
-- `status` — `pending`, `running`, `paused`, `completed`, `failed`, `interrupted`, `archived`
+- `status` — canonical enum: `pending | running | paused | interrupted | stopped | completed | failed | archived`. Transitions: `pending → running` (on first permit grant); `running → paused` (explicit pause) and back; `running → interrupted` (daemon crash / graceful daemon stop mid-turn); `running → stopped` (explicit `DELETE`); `running → completed` (final review approved or workflow's own exit); `running → failed` (unrecoverable error). `interrupted | stopped | paused` are resumable. `completed | failed | archived` are terminal.
 - `worktree_path` — null for orchestrator
 - `created_at`, `updated_at`, `ended_at`
 - `cost_usd`, `tokens_in`, `tokens_out`, `commits` — running aggregates updated from events
@@ -135,7 +135,9 @@ The scheduler is the **only gate** between a turn being "wanted" and a turn bein
 - Turn completion → `DELETE /v1/scheduler/permits/:id` releases.
 - TTL expiry without release → scheduler reclaims, emits `scheduler.permit.expired`.
 
-**No process-local permits.** Even in-daemon code talks to the scheduler over HTTP. This is the single most important forward-compat move.
+**Permit TTL.** Default 600 seconds, configurable in `daemon.yml` (`scheduler.permit_ttl_default`). Longer-running turns request longer TTLs at acquire time (capped by `scheduler.permit_ttl_max`, default 1 hour). Expired permits are reclaimed by the watchdog's permit-expiry-sweep job.
+
+**In-proc in v1, HTTP-ready for v2.** In v1, in-daemon callers invoke the scheduler through a typed interface that implements the same contract as the HTTP endpoint — no local HTTP hop per permit. The HTTP path exists so a v2 split (scheduler on its own replica, or workers on remote VMs) is a deployment change. No process-local permits — even the in-proc path goes through the scheduler's single authority.
 
 ## Watchdog / reconcile jobs
 
@@ -210,11 +212,25 @@ CLI commands that need the daemon check `GET /v1/daemon/health`. If no response 
 
 ### Upgrade
 
-1. `aloop daemon stop` (graceful)
-2. Replace binary
-3. `aloop daemon start` — runs state migrations from `schema_version` in SQLite before opening the port
+Two modes:
+
+**Config hot-reload** (no restart):
+
+- Change `~/.aloop/daemon.yml`, `~/.aloop/overrides.yml`, or project-level `aloop/config.yml`.
+- `POST /v1/daemon/reload` re-reads the files. Scheduler limits, retention, overrides, project status maps are applied on the next permit acquire / next session start — in-flight turns are never mutated.
+- HTTP bind/port require a daemon restart — they cannot hot-reload.
+
+**Binary / code upgrade** (restart required):
+
+1. `aloop daemon stop` (graceful — drains in-flight turns up to grace period, then force).
+2. Replace binary.
+3. `aloop daemon start` — runs state migrations from `schema_version` in SQLite before opening the listener.
 
 Migrations are versioned, tested, irreversible. State that fails migration goes to `state/quarantine/`.
+
+**Session-ID stability.** Session IDs are stable across minor-version upgrades. A major-version upgrade may require a migration that rewrites IDs; if so, the migration preserves a mapping in a `session_id_migrations` table for API callers holding stale IDs.
+
+Zero-downtime code swap is NOT a v1 goal. A restart is the supported path; the graceful drain + permit reclaim on restart produces minimal disruption (sessions resume on daemon start via the interrupted flow).
 
 ### Crash recovery
 

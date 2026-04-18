@@ -28,7 +28,7 @@ A single long-running local daemon (`aloopd`) owns all state and scheduling. Eve
 ```
 ┌──────────────────────────────────────────────────────────────┐
 │  Clients                                                      │
-│    aloop CLI · Dashboard (React) · Telegram bot · scripts     │
+│    aloop CLI · Dashboard (React) · scripts · future integrations │
 │    loop.sh / loop.ps1 shim (≤150 LOC each)                    │
 └──────────────────────────────────────────────────────────────┘
               │ HTTP + SSE  (v1 API, localhost)
