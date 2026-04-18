@@ -1,217 +1,168 @@
 # Loop Invariants
 
-> **Reference document.** Invariants and contracts consumed by agents at runtime. Work items live in GitHub issues; hard rules live in CONSTITUTION.md.
+> **Reference document.** The state-machine invariants every session (standalone, orchestrator, child) must obey. Hard rules live in CONSTITUTION.md. Work items live in GitHub issues.
 >
-> Sources: SPEC.md §Mandatory Final Review Gate, §Phase Advancement Only on Success (lines ~205-397), SPEC-ADDENDUM.md §Orchestrate Mode: No Iteration Cap, §Scan Agent Self-Healing, §Loop Flag `--no-task-exit` (pre-decomposition, 2026-04-18).
+> Sources: SPEC.md §Mandatory Final Review Gate, §Phase Advancement Only on Success; SPEC-ADDENDUM.md §Orchestrate Mode: No Iteration Cap, §Scan Agent Self-Healing, §Loop Flag `--no-task-exit` (pre-decomposition, 2026-04-18).
 
 ## Table of contents
 
-- Mandatory final review gate (loop exit invariant)
+- The three concepts: cycle, finalizer, queue
+- Final review gate (no mid-cycle exit)
 - Completion state machine
 - Edge cases
-- Implementation notes
-- Phase advancement only on success (retry-same-phase)
-- Phase prerequisites (defense-in-depth)
-- Provider failure capture
-- Interaction with existing features
-- Safety valve: max retries per phase
-- Orchestrate mode: no iteration cap
-- Loop flag: `--no-task-exit`
+- Phase advancement only on success
+- Phase prerequisites
+- Retry exhaustion safety valve
+- Iteration caps
+- `--no-task-exit` (orchestrator mode)
+- Invariant enforcement
 
 ---
 
-## Mandatory final review gate (loop exit invariant)
+## The three concepts: cycle, finalizer, queue
 
-In any pipeline that includes a `review` agent, the loop MUST NOT exit on task completion during a build phase. The build agent can mark all tasks done, but only the review agent can approve a clean exit. Instead:
+Every session's runtime behavior is expressible as three ordered inputs and one position pointer:
 
-1. **Build detects all tasks complete** → set `allTasksMarkedDone` flag in `loop-plan.json`, log `tasks_marked_complete`, but **do not exit** — cycle continues normally through qa and review
-2. **Cycle completes** → at the cycle boundary, the loop checks `allTasksMarkedDone`. If true, switches to the `finalizer[]` array.
-3. **Finalizer decides**:
-   - If all finalizer agents pass (no new TODOs) → proof completes → loop exits with `state: "completed"`
-   - If any finalizer agent finds issues → new TODOs created, `allTasksMarkedDone` resets, `finalizerPosition` resets to 0, cycle resumes
+- **`cycle`** — the repeating pipeline sequence (e.g., `plan → build × 5 → qa → review`). Flat array of prompt filenames in `loop-plan.json`. Position is `cyclePosition % cycle.length`.
+- **`finalizer`** — a separate array of prompts that run once `allTasksMarkedDone` holds at a cycle boundary (spec-gap, docs, review, QA, proof, cleanup). Position is `finalizerPosition`.
+- **`queue`** — per-session `queue/NNN-*.md` files. Checked before every turn. If present, the first-sorted item runs and is deleted afterwards. Queue items do NOT advance `cyclePosition`.
 
-This ensures the finalizer (which includes review, QA, and proof) is the **only** path to a clean exit when a finalizer is configured.
+This is the entire scheduling surface. Anything else is the daemon's upstream concern (watchdogs writing to queue, compile step rewriting the plan). The session runner itself just advances these pointers according to the invariants below.
+
+## Final review gate (no mid-cycle exit)
+
+In any pipeline that includes a `review` agent, the session MUST NOT exit on task completion during a build phase. The build agent can mark all tasks done, but only the finalizer's review can approve a clean exit.
+
+1. **Build detects all tasks complete** → set `allTasksMarkedDone = true` in `loop-plan.json`, log `tasks_marked_complete`. **Do not exit.** Cycle continues through qa and review.
+2. **Cycle boundary reached** (last agent in `cycle[]` finishes) → check `allTasksMarkedDone`. If true, switch to finalizer mode.
+3. **Finalizer runs**:
+   - All finalizer agents pass without adding tasks → last agent (typically `proof`) completes → session status becomes `completed`, session ends.
+   - Any finalizer agent adds tasks → `allTasksMarkedDone` resets to false, `finalizerPosition` resets to 0, session returns to cycle mode.
+
+This guarantees the finalizer (which includes the deepest review, QA, and proof passes) is the only path to clean completion. Build alone cannot finish the job.
 
 ## Completion state machine
 
 ```
-build works on tasks → cycle continues normally (plan → build × 5 → qa → review)
-    ↓
-cycle ends (review completes) → loop checks: all TODOs done?
-  NO  → start next cycle
-  YES → switch to finalizer[] array
-    ↓
-any finalizer agent adds new TODOs?
-  YES → back to normal cycle (plan → build × 5 → qa → review)
-  NO  → proof completes → state=completed, loop exits
+┌────────────────┐    cycle complete AND all tasks done?
+│   cycle mode   │─────────────────────── NO ──┐
+└────────────────┘                              │
+         │ YES                                  │
+         ▼                                      ▼
+┌────────────────┐    finalizer agent adds tasks?
+│ finalizer mode │──── YES ──→ reset position 0, back to cycle
+└────────────────┘
+         │ NO (all finalizer agents passed)
+         ▼
+┌────────────────┐
+│   completed    │  session status terminal
+└────────────────┘
 ```
 
-The loop does NOT exit mid-cycle. The cycle always runs to completion (though queue entries like steering can interrupt individual agents). Only at the cycle boundary does the loop check `allTasksMarkedDone` and decide: next cycle or switch to finalizer.
+Key properties:
+
+- The session **never exits mid-cycle**. Queue overrides can interrupt individual *turns*, but the cycle structure always runs to completion before the `allTasksMarkedDone` check.
+- `allTasksMarkedDone` is checked **only at cycle boundaries**, never mid-cycle.
+- Finalizer is aborted (not paused) when new tasks appear — all work has to be re-verified in order.
 
 ## Edge cases
 
-- **Review-only pipeline**: No build phase exists, so this invariant doesn't apply. The single review runs and exits.
-- **Build-only pipeline**: No review phase exists. Current behavior (exit on all tasks done) is correct for this pipeline, but finalizer still runs if configured.
-- **Plan-build pipeline** (no review agent configured): No review phase. Cycle ends after last build. Finalizer entry check happens there.
-- **Steering mid-flight**: If steering arrives while the finalizer is running, the steer phase takes priority, the finalizer is aborted (position reset to 0), and the loop resumes the normal cycle after steering.
-- **Finalizer agent adds TODOs**: `allTasksMarkedDone` flips back to false, `finalizerPosition` resets to 0. Loop resumes normal cycle. When all tasks are done again, the full finalizer fires from the beginning.
+- **Review-only pipeline** (no build phase): the invariant about waiting for finalizer doesn't apply; the pipeline runs once and exits.
+- **Build-only pipeline** (no review phase): completion on `allTasksMarkedDone` is acceptable because there's no review to gate on. Finalizer still runs if configured.
+- **Plan-build pipeline** (no review or qa agent): cycle ends after last build; if `allTasksMarkedDone`, finalizer (if configured) runs.
+- **Steering mid-flight**: queue items interrupt the next turn, not the current one. If steering arrives while finalizer is running, it runs in the next turn, and the finalizer is aborted (position reset to 0, cycle resumes afterwards).
+- **Finalizer agent adds tasks mid-run**: `allTasksMarkedDone` flips to false, `finalizerPosition` resets to 0, session returns to cycle mode. When the cycle again satisfies the boundary check, the full finalizer fires from the start.
 
-## Implementation notes
+## Phase advancement only on success
 
-- `loop-plan.json` fields: `"allTasksMarkedDone": false`, `"finalizerPosition": 0`, `"finalizer": [...]`
-- The loop checks `allTasksMarkedDone` **only at the cycle boundary** (after the last agent in the cycle completes)
-- If true: switch to finalizer mode — pick prompt from `finalizer[finalizerPosition]`, advance `finalizerPosition`
-- After each finalizer agent: re-check TODO.md — if new open items exist, reset `finalizerPosition` to 0, set `allTasksMarkedDone` to false, resume cycle
-- If `finalizerPosition` reaches end of `finalizer[]` with no new TODOs: set `state: completed`, exit
-- No trigger resolution, no runtime dependency — the loop handles this mechanically with two arrays
-- Log events: `finalizer_entered` (all tasks done at cycle boundary), `finalizer_aborted` (new TODOs mid-finalizer), `finalizer_completed` (last agent done, no new TODOs)
+Failed turns do not advance `cyclePosition`. The scheduler's per-turn fallthrough (see `provider-contract.md`) handles provider retries within a single turn; `cyclePosition` only moves when a turn produces a successful outcome.
 
----
-
-## Phase advancement only on success (retry-same-phase)
-
-Failed iterations retry the same pipeline phase with the next round-robin provider instead of blindly advancing. This prevents wasted iterations (e.g., building without a plan, reviewing unplanned work).
+Rule:
 
 ```
-iter 1: claude  plan   → FAIL
-iter 2: codex   plan   → retry same phase, different provider
-iter 3: gemini  plan   → SUCCESS, TODO.md created
-iter 4: copilot build  → NOW advance (plan exists)
-iter 5: claude  build  → continues building
+On turn SUCCESS:  cyclePosition = (cyclePosition + 1) % cycle.length
+On turn FAILURE:  cyclePosition stays
+Queue turn:       cyclePosition stays (queue items are interrupts)
 ```
 
-### Rule 1: Failed iterations do not advance the phase cycle
+This means a failed plan retries as plan (with the chain's next provider and any fallthrough that hasn't been tried), a failed build retries as build, a failed review retries as review. The next attempt picks a different provider if the failure classification permits (rate-limit, timeout) and a fresh permit is granted.
 
-The cycle position (index into the compiled loop plan in `loop-plan.json`) must be tracked independently from the iteration counter. The `cyclePosition` field in `loop-plan.json` tracks where we are in the pipeline. It only increments on successful iterations.
+Without this rule, the session wastes turns on downstream phases whose prerequisites were never produced (building without a plan, reviewing unplanned work).
 
-```
-cyclePosition = 0   # starts at plan (persisted in loop-plan.json)
+## Phase prerequisites
 
-Resolve next agent:
-  if forced flags (steer, review, plan) → return those, don't touch cyclePosition
-  else → return agent from cycle[cyclePosition % cycleLength]
-
-On iteration SUCCESS:
-  cyclePosition++   (written back to loop-plan.json)
-
-On iteration FAILURE:
-  cyclePosition stays the same
-  next iteration retries the same phase with the next round-robin provider
-```
-
-This means a failed plan retries as plan, a failed build retries as build, a failed review retries as review. The round-robin still rotates providers, so each retry uses a different provider — giving the best chance of success.
-
-### Rule 2: Phase prerequisites (defense-in-depth)
-
-Even with Rule 1, add explicit guards so phases can't run without their prerequisites:
+Defense-in-depth, enforced by the session runner before the adapter is invoked:
 
 | Phase | Prerequisite | If not met |
-|-------|-------------|------------|
-| `build` | TODO.md exists with at least one `- [ ]` task | Force plan instead |
-| `review` | At least one commit since last plan iteration | Force build instead |
-| `plan` | None (always allowed) | — |
+|---|---|---|
+| `build` | At least one unchecked `- [ ]` in `TODO.md` | Force `plan` instead |
+| `review` | At least one commit since the last `plan` turn | Force `build` instead |
+| `qa` | Same as `review` | Force `build` instead |
+| `plan` | None | — |
+| `finalizer[*]` | Normal cycle completed with `allTasksMarkedDone` | — (gated by the state machine) |
 
-```powershell
-function Check-PhasePrerequisites {
-    param([string]$Phase)
+When the session runner forces a different phase, it emits `phase_prerequisite_miss` with `{requested, actual, reason}`. `cyclePosition` is NOT advanced — the next turn retries the requested phase after the substitute phase runs.
 
-    if ($Phase -eq 'build') {
-        $lines = Get-PlanLines
-        $unchecked = ($lines | Where-Object { $_ -match '^\s*-\s+\[ \]' }).Count
-        if ($unchecked -eq 0) {
-            Write-Warning "No unchecked tasks in TODO.md — forcing plan phase"
-            Write-LogEntry -Event "phase_prerequisite_miss" -Data @{
-                requested = "build"; actual = "plan"; reason = "no_tasks"
-            }
-            return 'plan'
-        }
-    }
+## Retry exhaustion safety valve
 
-    if ($Phase -eq 'review') {
-        if (-not (Get-HasBuildsToReview)) {
-            Write-Warning "No builds since last plan — forcing build phase"
-            Write-LogEntry -Event "phase_prerequisite_miss" -Data @{
-                requested = "review"; actual = "build"; reason = "no_builds"
-            }
-            return 'build'
-        }
-    }
-
-    return $Phase
-}
-```
-
-### Rule 3: Provider failure capture
-
-Capture stderr separately for failure diagnosis:
-
-```powershell
-$output = $null
-$errorOutput = $null
-$PromptContent | & claude ... 2>&1 | Tee-Object -Variable rawOutput
-$output = $rawOutput | Where-Object { $_ -isnot [System.Management.Automation.ErrorRecord] }
-$errorOutput = $rawOutput | Where-Object { $_ -is [System.Management.Automation.ErrorRecord] }
-
-if ($LASTEXITCODE -ne 0) {
-    $errorText = ($errorOutput | Out-String).Trim()
-    throw "claude exited with code $LASTEXITCODE`nStderr: $errorText"
-}
-```
-
-This feeds into the provider health failure classification system, which can distinguish rate_limit vs auth vs timeout from the actual error text.
-
-## Interaction with existing features
-
-| Feature | Interaction |
-|---------|-------------|
-| **Queue overrides** | Queue entries take priority over cycle position. When a queued prompt is consumed, cycle position is NOT advanced. Replaces the old `forcePlanNext`/`forceReviewNext` flags. |
-| **Steering** | Injects steer prompt into queue. After steer phase, cycle position resets to 0 (plan) so the new plan reflects the steering. |
-| **Phase retry** | A phase repeatedly failing with different providers is handled by `MAX_PHASE_RETRIES` — after all providers fail the same phase, log `phase_all_providers_failed` and advance anyway (avoid infinite retry). |
-| **Provider health** | Failed iterations feed into provider health. If claude fails plan, its health degrades. Next retry tries codex (healthy). Provider health + retry-same-phase work together naturally. |
-| **Round-robin** | Round-robin still rotates on every iteration. So retry-same-phase with round-robin = same phase, different provider. This is the desired behavior. |
-
-## Safety valve: max retries per phase
-
-To prevent infinite retry loops (all providers fail the same phase forever):
+To prevent infinite retry loops (same phase fails with every provider):
 
 ```
-MAX_PHASE_RETRIES = len(round_robin_providers) * 2
+max_phase_retries = len(resolved_chain) * 2
 ```
 
-If the same phase fails `MAX_PHASE_RETRIES` times consecutively:
-- Log `phase_retry_exhausted` with all failure reasons
-- Advance cycle position anyway (skip to next phase)
-- This prevents the loop from getting stuck retrying a fundamentally broken phase
+After `max_phase_retries` consecutive failures on the same phase, the session:
 
----
+1. Emits `phase_retry_exhausted` with all failure classifications.
+2. Advances `cyclePosition` anyway.
+3. Emits `phase_skipped` with the phase name.
 
-## Orchestrate mode: no iteration cap
+The skip is visible to the orchestrator (if any) via events. Orchestrator diagnose workflow may decide to pause the session, swap providers, or escalate.
 
-In orchestrate mode, child loops must not have a default `max_iterations` limit. The orchestrator manages completion through task state — when all issues are resolved and PRs merged, the orchestrator is done. An arbitrary iteration cap causes child loops to stop mid-task.
+`max_phase_retries` is configurable per pipeline; default comes from `daemon.yml`.
 
-| Mode | `max_iterations` default | Rationale |
-|------|--------------------------|-----------|
-| `loop` | `50` (from `config.yml`) | Safety net for unattended single-agent loops |
-| `orchestrate` | **None (unlimited)** | Orchestrator owns completion criteria via issue/PR state |
+## Iteration caps
 
-**Implementation:**
-- `compile-loop-plan` must **not** inject `max_iterations` into `loop-plan.json` when the session mode is `orchestrate`
-- `aloop setup` must **not** prompt for max iterations when orchestrate mode is selected
-- `loop.sh` / `loop.ps1` must treat missing `max_iterations` in `loop-plan.json` as "no limit"
-- The orchestrator can still stop child loops externally via `stop_child` requests when tasks are complete
+| Session kind | `max_iterations` default | Rationale |
+|---|---|---|
+| `standalone` | Taken from project config; typically 50 | Safety net for unattended single-agent sessions |
+| `orchestrator` | **None (unlimited)** | Completion is managed by the tracker: all issues merged/closed → orchestrator stops |
+| `child` | **None (unlimited)** | Parent orchestrator owns completion; children end via `DELETE /v1/sessions/:id` from parent |
 
-**Budget controls for pay-per-use providers:** Iteration caps are not a substitute for budget controls. For pay-per-use providers (OpenRouter via OpenCode), use `budget_cap_usd` in `meta.json` instead. Subscription providers (Claude Code, Copilot, Codex, Gemini) have no per-request cost — budget caps do not apply to them.
+Implementation rules:
 
----
+- The compile step MUST NOT inject `max_iterations` into `loop-plan.json` for orchestrator or child sessions.
+- Session runner treats missing `max_iterations` as unlimited.
+- Orchestrator stops children externally via the API, not via iteration cap.
 
-## Loop flag: `--no-task-exit`
+**Budget controls for pay-per-use providers:** iteration caps are not a substitute for budget. For pay-per-use providers (OpenRouter via OpenCode), use scheduler burn-rate and budget gates (see `provider-contract.md` §Cost and usage capture, `daemon.md` §Scheduler authority). Subscription providers (Claude Max, Copilot, Codex, Gemini) have no per-request cost — budget caps do not apply, but concurrency and cooldown limits still do.
 
-The orchestrator scan loop must never auto-complete based on TODO.md task status. The `--no-task-exit` flag on `loop.sh`/`loop.ps1` disables the `check_all_tasks_complete` check entirely.
+## `--no-task-exit` (orchestrator mode)
 
-- **Child loops**: do NOT use this flag — they complete when all tasks are done (normal behavior)
-- **Orchestrator loop**: ALWAYS uses this flag — completion is managed by `process-requests` (all issues merged/failed)
+Orchestrator sessions must never auto-complete based on `TODO.md` task status — their completion criterion is tracker state (issues resolved, change sets merged or closed).
 
-**Implementation:**
-- `loop.sh`: `NO_TASK_EXIT=false` default, `--no-task-exit` sets it to true
-- `check_all_tasks_complete()`: returns 1 immediately if `NO_TASK_EXIT=true`
-- `orchestrate.ts`: passes `--no-task-exit` in loop.sh args
+- Orchestrator sessions: session runner SKIPS the `allTasksMarkedDone` check entirely. Finalizer still runs when explicitly scheduled.
+- Standalone and child sessions: normal `allTasksMarkedDone` semantics apply.
+
+Implementation: a `mode: orchestrator | session` flag in `loop-plan.json` (written by the compile step based on session kind). Runners check the flag before the cycle-boundary check.
+
+## Invariant enforcement
+
+These invariants are enforced **by the session runner inside the daemon**, not by the shim. The shim only:
+
+- Asks for the next prompt (`GET /v1/sessions/:id/next`).
+- Runs it.
+- Posts results.
+
+All state-machine transitions — `cyclePosition` updates, `allTasksMarkedDone` flips, finalizer entry/exit, phase prerequisite substitution, retry counting, skip-on-exhaustion — happen daemon-side and are persisted to SQLite + JSONL before `GET /v1/sessions/:id/next` returns its next answer.
+
+Tests cover each invariant:
+
+- Cycle-boundary-only completion check (unit test: driven event stream, expected transitions).
+- Queue item does not advance `cyclePosition` (property test).
+- Failed turn does not advance `cyclePosition` (property test).
+- Phase prerequisite substitution emits the correct event and does not advance.
+- Retry exhaustion advances and emits the skip event.
+- Orchestrator mode never fires `allTasksMarkedDone` (regression test on the flag path).
+
+The invariants are the contract; the implementation is under test; the rebuild exists to restore them.
