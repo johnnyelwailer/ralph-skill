@@ -8,7 +8,7 @@ on:
 
 jobs:
   aloopd-core:
-    name: aloopd core (Bun typecheck + test)
+    name: workspace (Bun constitution + typecheck + test)
     runs-on: ubuntu-latest
 
     steps:
@@ -21,8 +21,11 @@ jobs:
       - name: Install
         run: bun install
 
+      - name: Constitution Checks
+        run: bun run check:constitution
+
       - name: Typecheck
-        run: bun x tsc -p packages/core/tsconfig.json
+        run: bun --filter '*' typecheck
 
       - name: Test
         run: bun test

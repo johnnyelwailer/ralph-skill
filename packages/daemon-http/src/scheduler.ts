@@ -1,4 +1,4 @@
-import type { SchedulerService } from "./service.ts";
+import type { SchedulerService } from "@aloop/scheduler";
 
 export type SchedulerDeps = {
   readonly scheduler: SchedulerService;
@@ -34,7 +34,7 @@ export async function handleScheduler(
 
     const sessionId = asNonEmptyString(parsed.data.session_id);
     const providerCandidate = asNonEmptyString(parsed.data.provider_candidate);
-    const ttlSeconds = asPositiveInt(parsed.data.ttl_seconds, "ttl_seconds");
+    const ttlSeconds = asPositiveInt(parsed.data.ttl_seconds);
     if (!sessionId) return badRequest("session_id is required");
     if (!providerCandidate) return badRequest("provider_candidate is required");
     if (ttlSeconds === "invalid") return badRequest("ttl_seconds must be a positive integer");
@@ -62,10 +62,9 @@ function asNonEmptyString(value: unknown): string | undefined {
   return typeof value === "string" && value.length > 0 ? value : undefined;
 }
 
-function asPositiveInt(value: unknown, field: string): number | "invalid" | undefined {
+function asPositiveInt(value: unknown): number | "invalid" | undefined {
   if (value === undefined) return undefined;
   if (typeof value !== "number" || !Number.isInteger(value) || value < 1) return "invalid";
-  void field;
   return value;
 }
 

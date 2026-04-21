@@ -4,7 +4,7 @@ export {
   appendEventOnce,
   readAllEvents,
   simpleAppend,
-} from "./events/jsonl.ts";
+} from "@aloop/event-jsonl";
 export { openDatabase, Database, type OpenedDatabase } from "./state/database.ts";
 export {
   loadBundledMigrations,

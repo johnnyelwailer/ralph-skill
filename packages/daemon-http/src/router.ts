@@ -1,8 +1,9 @@
 import type { ConfigStore } from "@aloop/daemon-config";
-import { handleScheduler, type SchedulerService } from "@aloop/scheduler";
+import type { SchedulerService } from "@aloop/scheduler";
 import type { EventWriter, ProjectRegistry } from "@aloop/state-sqlite";
 import { handleProviders } from "./providers.ts";
 import { handleProjects } from "./projects.ts";
+import { handleScheduler } from "./scheduler.ts";
 
 export type RouterDeps = {
   readonly registry: ProjectRegistry;
