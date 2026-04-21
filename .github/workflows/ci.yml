@@ -8,7 +8,7 @@ on:
 
 jobs:
   aloopd-core:
-    name: aloopd core (Bun typecheck + test)
+    name: workspace (Bun constitution + typecheck + test)
     runs-on: ubuntu-latest
 
     steps:
