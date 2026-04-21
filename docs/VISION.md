@@ -53,7 +53,7 @@ A bad day on aloop (and how it handles it):
 - Scheduler with permit-based gating, real quota probes, burn-rate safety, live overrides.
 - Orchestrator session with Epic → Story decomposition, parallel dispatch, quality gates, merge-to-trunk, intelligent diagnose.
 - Rehabilitated React dashboard consuming only the v1 API.
-- Setup skill + runtime producing CONSTITUTION.md + validated project in one flow.
+- Setup interview + runtime producing CONSTITUTION.md + a validated project in one flow, with orchestration blocked until every ambiguity is resolved.
 - Full TDD coverage of primitives, workflows, and engine.
 - Constitution invariants green across all LOC budgets.
 

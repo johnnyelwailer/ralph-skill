@@ -14,6 +14,26 @@ Spec is on branch `next`. Code lands on `next` (for now); a future `main` merge 
 4. **Each milestone should unlock the next.** If M5 doesn't visibly unlock something in M6, the plan is wrong.
 5. **User-observable behavior is the acceptance.** Not "code compiles" — "you can run command X and see result Y."
 
+## Setup delivery note
+
+The new setup architecture is **cross-cutting**, not one isolated milestone. It lands in layers:
+
+- **M3** provides the project registry, `setup_pending` lifecycle, and compile/readiness foundations.
+- **M5/M6** provide provider execution and long-lived daemon-run workflow substrate that setup-side agents reuse.
+- **M9** provides the orchestrator/child-loop machinery that setup can reuse under the hood for background research, setup-side judgment, and initial decomposition handoff.
+- **M11** provides the dashboard shell over the same setup API.
+- **M12** is the first full end-to-end proof that the whole setup experience works on a real project.
+
+This means "setup" should not be treated as a thin preflight script in the implementation plan. The user-facing command stays `aloop setup`, but the underlying capabilities arrive incrementally across these milestones.
+
+## Sandboxing note
+
+Sandboxing is the broader execution concept; the project devcontainer is only the first shipped backend.
+
+- v1 uses host execution plus the project devcontainer as the practical local sandbox path.
+- A later execution milestone should adopt `sandbox-core` as the abstraction layer for sandbox lifecycle, exec, streaming, and file transfer.
+- That future change is intended to unlock server deployment where each loop/session can run in its own offloaded sandbox without changing the daemon API or orchestration model.
+
 ---
 
 ## M1 — Scaffolding + daemon skeleton + health
@@ -64,7 +84,7 @@ Spec is on branch `next`. Code lands on `next` (for now); a future `main` merge 
 
 **Test:** register a project, edit its `pipeline.yml`, hot-reload, verify new `loop-plan.json` matches expected. Invalid pipeline.yml fails compile with a precise error.
 
-**Non-goals:** setup phases 2–5 (those need sessions + tracker); scheduler integration.
+**Non-goals:** interactive setup interview, setup-side background research, and tracker-backed setup handoff; scheduler integration.
 
 **Unlocks:** sessions can now be configured.
 
@@ -165,6 +185,7 @@ Spec is on branch `next`. Code lands on `next` (for now); a future `main` merge 
 - `file_scope.owned` enforcement at dispatch: overlap with in-flight Stories → permit denied.
 - Epic/Story conversation flow: `comment.created` (source=human) → `triggers.user_comment` → `PROMPT_orch_conversation.md`.
 - Self-healing via `orch_diagnose` actions (`pause_session`, `redispatch`, `file_followup`, `raise_threshold`).
+- Reuse of the same orchestrator/child-loop substrate for setup-side background research and `setup_decompose` handoff, with a different setup-agent catalog rather than a separate engine.
 - `agent/trunk` branch management.
 
 **Test:** decompose a multi-epic spec → refine → dispatch 3 parallel children on disjoint file scopes → review → merge to `agent/trunk`. Deliberately comment on an Epic mid-flight → orchestrator replies + takes action. Deliberately dispatch overlapping scopes → second dispatch denied.
@@ -197,12 +218,14 @@ Spec is on branch `next`. Code lands on `next` (for now); a future `main` merge 
 **Deliverable:**
 - Existing React/Vite dashboard rewired to consume v1 API only.
 - Panels: session list (grouped by project), session detail with live event tail, provider health, scheduler permits, cost + keeper-rate, metric comparison by `variant_id`.
+- Basic setup-run shell: active setup runs, current stage/progress, current question set, background research status, and chapter/document summaries via the same setup API used by the CLI.
 - Steering box, stop button, override editor.
+- Ability to resume a setup run, answer structured questions, and leave comments on setup chapters/documents from the dashboard.
 - Auth in place for future tunneling (bearer token, off by default for localhost).
 
-**Test:** launch dashboard, watch M9's parallel-dispatch scenario in real-time. Kill a session via the dashboard — daemon confirms stop. Override a provider live → in-flight turn unaffected, next grant respects it.
+**Test:** launch dashboard, watch M9's parallel-dispatch scenario in real-time, then resume a setup run and answer a structured question without leaving the dashboard. Kill a session via the dashboard — daemon confirms stop. Override a provider live → in-flight turn unaffected, next grant respects it.
 
-**Non-goals:** new UI components; design polish; Storybook.
+**Non-goals:** design polish, full chat-first UX, or the final rich chapter-review UI for every setup stage; Storybook.
 
 **Unlocks:** aloop is operable by humans in the loop.
 
@@ -218,7 +241,7 @@ Spec is on branch `next`. Code lands on `next` (for now); a future `main` merge 
 - End-to-end smoke test against one real multi-provider project.
 - v1.0.0 tag on `next`; PR `next` → `master`.
 
-**Test:** fresh machine → clone → `aloop install` → `aloop setup` a real project → orchestrate a small spec → get merged PRs. Uninstall cleanly.
+**Test:** fresh machine → clone → `aloop install` → `aloop setup` a real project through the discovery-driven interview until no ambiguities remain → orchestrate a small spec → get merged PRs. Uninstall cleanly.
 
 **Non-goals:** v1.5 (learning optimizer, AutoResearch, constitutional red-team) — those wait for production data.
 

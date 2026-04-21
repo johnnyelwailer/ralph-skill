@@ -1,12 +1,13 @@
-# Devcontainer
+# Sandboxing
 
-> **Reference document.** How aloop sessions run inside VS Code devcontainers for isolation. What the container contract is, how providers authenticate inside the container, what the daemon owns on the host and what runs in the sandbox. Hard rules live in CONSTITUTION.md. Work items live in GitHub issues.
+> **Reference document.** How aloop sessions run inside sandboxes. In v1, the concrete sandbox backend is the project's VS Code / Docker devcontainer. Longer term this broadens into backend-neutral sandboxing, with devcontainer as one backend and `sandbox-core` as the planned abstraction seam for local Docker and hosted sandbox backends. Hard rules live in CONSTITUTION.md. Work items live in GitHub issues.
 >
 > Sources: SPEC.md §Devcontainer Support (pre-decomposition, 2026-04-18). Consolidated against `daemon.md`, `security.md`, `provider-contract.md`.
 
 ## Table of contents
 
 - Goal
+- Sandbox abstraction
 - Configuration contract
 - Host / sandbox boundary
 - Container reuse across sessions
@@ -22,13 +23,31 @@
 
 ## Goal
 
-Enable aloop sessions to run inside VS Code / Docker devcontainers for full isolation. Agents get a sandbox with their provider CLIs and project tooling; the daemon runs on the host where it owns state, scheduling, and tracker access.
+Enable aloop sessions to run inside sandboxes for isolation. In v1 that means VS Code / Docker devcontainers. Agents get a sandbox with their provider CLIs and project tooling; the daemon runs on the host where it owns state, scheduling, and tracker access.
 
 Why this matters:
 
-- **Security boundary.** Devcontainer is the natural sandbox for Layer 2 (agent execution per `security.md`). Agents cannot reach host credentials, filesystem beyond mounted paths, or network beyond what the container allows.
+- **Security boundary.** A sandbox is the natural Layer 2 execution boundary (per `security.md`). In v1 the devcontainer provides that boundary. Agents cannot reach host credentials, filesystem beyond mounted paths, or network beyond what the sandbox allows.
 - **Reproducibility.** Identical environment across machines. No "works on my machine" drift between provider CLI versions or system tools.
-- **Required for the daemon/shim boundary.** The daemon runs on the host; provider CLIs run inside the container. `aloop-agent` in the container talks to the daemon over the mounted Unix socket or localhost HTTP (loopback forwarded into the container).
+- **Required for the daemon/shim boundary.** The daemon runs on the host; provider CLIs run inside the sandbox. `aloop-agent` in the sandbox talks to the daemon over the mounted Unix socket or localhost HTTP (loopback forwarded into the container).
+
+## Sandbox abstraction
+
+This document is intentionally broader than its filename. `devcontainer.md` remains the file path because the concrete v1 backend is a devcontainer, but the architectural term is **sandboxing**.
+
+Load-bearing distinction:
+
+- **Sandboxing** is the product concept: isolated execution environments for loops and setup-side work.
+- **Devcontainer** is the first shipped local sandbox backend.
+- **`sandbox-core`** is the planned abstraction layer for backend-neutral sandbox lifecycle, exec, streaming, file transfer, and optional capabilities.
+
+Planned shape:
+
+- v1: host execution and project devcontainer execution
+- next local backend: `sandbox-core` local Docker
+- future hosted backend: `sandbox-core` adapter to remote sandboxes, potentially one sandbox per loop/session
+
+The daemon remains the control plane in every case. Sandbox selection is an execution concern, not a second orchestration system.
 
 ## Configuration contract
 
@@ -118,13 +137,13 @@ When `.devcontainer/devcontainer.json` exists:
 6. Shim runs the turn loop; `aloop-agent` calls go back to the daemon over the forwarded socket or localhost.
 7. Daemon watches state on the host filesystem; dashboard serves it unchanged.
 
-**Container is the default when available.** If `.devcontainer/` exists, the daemon uses it. To bypass, the user passes `--dangerously-skip-container` to `aloop start`, which:
+**Devcontainer is the default sandbox when available.** If `.devcontainer/` exists, the daemon uses it. To bypass, the user passes `--dangerously-skip-container` to `aloop start`, which:
 
 - Prints a visible warning that agents have full host access.
 - Logs a `container.bypassed` event.
 - Is never set by default by any skill or command.
 
-If `.devcontainer/` does not exist, providers run on the host with a setup suggestion to create one.
+If `.devcontainer/` does not exist, providers run on the host with a setup suggestion to create a sandboxed execution environment. In v1 that suggestion is a devcontainer; later it may be another supported sandbox backend.
 
 ## Provider auth in container
 

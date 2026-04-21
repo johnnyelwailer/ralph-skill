@@ -43,7 +43,7 @@ Policy is **hardcoded in the daemon source**, not in project config. This preven
 │    │    ├─ ProviderAdapter  (5 impls, spawns provider CLIs)  │
 │    │    ├─ TrackerAdapter (github, builtin, …)               │
 │    │    ├─ ProjectAdapter   (worktrees, git)                 │
-│    │    └─ WorkerAdapter    (turn executor)                  │
+│    │    └─ SandboxAdapter   (execution environment seam)     │
 │    └─ Audit log (JSONL per session + daemon-level)           │
 │                                                              │
 │  aloop CLI, loop.sh/ps1 shims — clients of the daemon API    │
@@ -70,11 +70,12 @@ The trust boundary holds regardless of where things run:
 
 | Scenario | Host (Layer 1) | Sandbox (Layer 2) | Daemon location |
 |---|---|---|---|
-| Local dev | Your machine | Provider sandbox | On the same machine |
+| Local dev | Your machine | Host process or local sandbox backend | On the same machine |
 | Cloud orchestrator (future) | Control-plane host | Remote worker VM | On control plane |
 | GitHub Actions | Runner | Spawned containers | Runner (ephemeral) |
 | Docker-in-Docker | Outer container | Inner containers | Outer container |
 | Devcontainer project | Host | Container | Host (communicates with container over bind-mount for worktree) |
+| Hosted sandbox (future) | Control-plane host | Offloaded sandbox per loop | On control plane |
 
 In every case: **the daemon lives with the host**; agents live in sandboxes that can only reach the daemon via `aloop-agent` → localhost API.
 

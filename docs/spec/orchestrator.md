@@ -2,7 +2,7 @@
 
 > **Reference document.** The contract for orchestrator sessions — how a spec becomes tracked work, how children are dispatched, how results are gated and merged, how self-healing happens. Hard rules live in CONSTITUTION.md. Work items live in GitHub issues (or the configured tracker).
 >
-> Sources: SPEC.md §Parallel Orchestrator Mode, §State Machine, §Budget; SPEC-ADDENDUM.md §Adapter Pattern, §Scan Agent Self-Healing, §Orchestrator Autonomy Fix, §PR Review, §Self-Healing, §Session Resumability (pre-decomposition, 2026-04-18). Consolidated against `daemon.md`, `api.md`, `pipeline.md`, `work-tracker.md`.
+> Sources: SPEC.md §Parallel Orchestrator Mode, §State Machine, §Budget; SPEC-ADDENDUM.md §Adapter Pattern, §Scan Agent Self-Healing, §Orchestrator Autonomy Fix, §PR Review, §Self-Healing, §Session Resumability (pre-decomposition, 2026-04-18). Consolidated against `daemon.md`, `api.md`, `pipeline.md`, `work-tracker.md`, `refinement.md`.
 
 ## Table of contents
 
@@ -30,6 +30,17 @@
 An orchestrator session decomposes a spec (one or more files) into tracked work items, launches child sessions per item in their own worktrees, reviews the resulting change sets against hard criteria, merges the approved ones into an agent-owned trunk branch, and repairs failures through an intelligent diagnose loop.
 
 Human promotes `agent/trunk` to the project's mainline when satisfied.
+
+The runtime orchestrator owns **living decomposition**. Setup may establish the initial decomposition baseline needed to begin autonomous delivery, but once the project is running the runtime orchestrator remains responsible for keeping decomposition current as the spec evolves.
+
+That includes reacting to:
+
+- change requests that alter scope or priorities
+- edited spec chapters or rewritten requirements
+- comments on Epics / Stories
+- implementation discoveries that require splitting, merging, or re-sequencing work
+
+The prompt behavior for ambiguity handling, contradiction handling, and variant exploration is shared with setup and defined in `refinement.md`. Runtime refinement is not a separate daemon subsystem; it is a prompt-level contract executed through the existing orchestrator workflow.
 
 ```
           spec files (SPEC.md, docs/spec/*.md, etc.)
@@ -137,13 +148,17 @@ The state machine is encoded in `orchestrator.yaml` as cycle + triggers, not in 
 
 Five phases, each a separate prompt. Each phase emits a tracker-agnostic submit type. The pipeline produces the Epic → Story structure; Tasks come later, inside each Story's child session.
 
+This pipeline is not "first setup only." It is the runtime system's continuing authority for living decomposition after handoff from setup.
+
 ### Global spec analysis (`PROMPT_orch_product_analyst.md` or similar)
 
-Runs once per session (or when spec files change). Input: the project's spec files (paths from `aloop/config.yml`). Output: high-level theme map, out-of-scope list, major dependencies. No tracker side effect.
+Runs once per session and again whenever the spec meaningfully changes. Input: the project's spec files (paths from `aloop/config.yml`). Output: high-level theme map, out-of-scope list, major dependencies. No tracker side effect.
 
 ### Epic decomposition (`PROMPT_orch_decompose.md`)
 
 Breaks the spec into **Epics** — coarse vertical slices, each representing a shippable increment. Emits `decompose_result` with `kind: epic` and `abstract_status: needs_refinement`. Adapter creates top-level issues.
+
+The first Epic set may have originated during setup handoff. After that, `orch_decompose` remains the authority for re-decomposition when the live spec has diverged enough that the existing Epic set is stale.
 
 ### Epic refinement (`PROMPT_orch_refine.md`)
 
@@ -158,6 +173,8 @@ For each refined Epic, produce **Stories** — the unit a child session will pic
 For each Story, validate definition-of-ready (tests named, files in scope identified including `file_scope.owned`, external contracts referenced, environment requirements declared) AND **select the workflow** the child session will run (per `workflows.md` §Selection logic). Emits `refine_result` with `abstract_status: dor_validated` and `metadata.workflow` set. Only `dor_validated` Stories with a valid `workflow` are dispatchable.
 
 Workflow selection follows the deterministic priority: explicit override → label match → file-scope pattern → complexity tier → default. The selection trace is recorded in `metadata.workflow_selection_trace` for audit. Humans can override via comment on the Story (handled by `orch_conversation`).
+
+`orch_refine` also owns runtime ambiguity handling per `refinement.md`: when a Story is underspecified, contradictory, or stale, it should split safe work from decision-bound work, ask for feedback through the tracker when needed, and prefer exploratory draft work over silent assumption-making.
 
 Tasks are **not** produced by the orchestrator. Tasks are generated inside a Story's child session by the plan agent, tracked via `aloop-agent todo`, and consumed by build/qa/review. Mirroring tasks to the tracker is an optional per-project feature (see `work-tracker.md` §Task tracking).
 
@@ -208,6 +225,12 @@ When a merge lands, downstream issues may have become more or less feasible. The
 - **Scope drift** (child ran long, produced extras) → orchestrator queues a `refine` on affected issues.
 - **Stale issues** (prereqs changed under them) → status reverts to `needs_refinement`.
 - **Failed issues** (child session ended `failed`) → orchestrator decides: redispatch (new child, same issue), refine (scope is wrong), or pause (systemic problem → diagnose).
+
+The same machinery applies when the spec changes under a running project:
+
+- **Edited spec / accepted change request** → re-run spec analysis, then refine or decompose again as needed.
+- **Epic no longer matches current scope** → move back to `needs_refinement`, or replace with a newly decomposed set.
+- **Story structure stale after requirement change** → re-run `orch_sub_decompose` and invalidate dispatchability for affected Stories until the new structure is consistent.
 
 Redispatch is always a **new child session**. The old session's events, logs, and change set (if any) are retained for post-mortem.
 
@@ -323,11 +346,11 @@ Child sessions follow the same resume semantics as standalone sessions (see `dae
 
 ## Per-task environment requirements
 
-Some issues need special environments: vision support, a specific Node version, a devcontainer, a database. The orchestrator reads the issue's `metadata.environment_requirements` (set during refinement) and includes them in the dispatch:
+Some issues need special environments: vision support, a specific Node version, a sandboxed runtime, a database. The orchestrator reads the issue's `metadata.environment_requirements` (set during refinement) and includes them in the dispatch:
 
 - If `requires_vision: true` → chain must filter to providers with `capabilities.vision`.
-- If `devcontainer: true` → the daemon spawns the child inside the project's devcontainer (see `devcontainer.md`).
-- If `node_version: "22"` → the devcontainer or worker VM must provide it; failure to provide emits `dispatch_infeasible`.
+- If `devcontainer: true` → the daemon spawns the child inside the project's devcontainer, which is the v1 local sandbox backend (see `devcontainer.md`).
+- If `node_version: "22"` → the selected sandbox backend must provide it; failure to provide emits `dispatch_infeasible`.
 
 Dispatch never blindly launches a child into the wrong environment. An infeasible dispatch halts with a diagnose trigger.
 

@@ -16,7 +16,9 @@
 
 ```
 packages/
-  core/                   @aloop/core — the daemon (aloopd)
+  core/                   @aloop/core — shared contracts, compile logic, stats
+  daemon/                 @aloop/daemon — aloopd composition, config, HTTP routes
+  state-sqlite/           @aloop/state-sqlite — SQLite projections + JSONL event storage
 docs/
   VISION.md               product vision
   CONSTITUTION.md         non-negotiable invariants
@@ -33,21 +35,21 @@ Requires [Bun](https://bun.sh) ≥ 1.3.
 ```bash
 bun install
 bun test                         # run all package tests
-bun x tsc -p packages/core/tsconfig.json   # typecheck
+bun --filter '*' typecheck       # typecheck all workspace packages
 ```
 
 Run the daemon locally:
 
 ```bash
-ALOOP_HOME=/tmp/aloop ALOOP_PORT=7777 bun run packages/core/bin/aloopd.ts
+ALOOP_HOME=/tmp/aloop ALOOP_PORT=7777 bun run packages/daemon/bin/aloopd.ts
 curl http://127.0.0.1:7777/v1/daemon/health
 ```
 
 ## Current milestone
 
-**M1 — daemon skeleton + health.** HTTP + unix socket, `GET /v1/daemon/health`, SSE scaffold, singleton PID lock, graceful shutdown. 17 tests green. Commit `a329ab23a`.
+**M4 — scheduler + permits + overrides (in progress).** The repo now includes project CRUD, config reload, pipeline compile, durable scheduler permits, provider overrides, SQLite-backed permit projection, and JSONL-backed daemon events. The current suite is **169 tests green**.
 
-Next: **M2 — state store + event log + drift detection** (SQLite via `bun:sqlite`, JSONL per session, projector, Welford, CUSUM, replay).
+Next: finish the remaining M4 gates and watchdog wiring before moving on to session-runner work.
 
 ## Contributing
 

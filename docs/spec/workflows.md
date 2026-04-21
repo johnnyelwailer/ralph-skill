@@ -290,7 +290,7 @@ workflow:
     - quick-fix                          # this project requires QA on everything; never use quick-fix
 ```
 
-The compile step validates: every workflow referenced exists; no `forbid` workflow is selectable; `default` is set. Errors surface during setup verification (`setup.md` Phase 4).
+The compile step validates: every workflow referenced exists; no `forbid` workflow is selectable; `default` is set. Errors surface during setup verification (`setup.md` Phase 6).
 
 ## Custom workflows
 

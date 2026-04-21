@@ -21,7 +21,7 @@
 
 ## One-line summary
 
-A single long-running local daemon (`aloopd`) owns all state and scheduling. Every client — CLI, dashboard, bot, script, loop shim — talks to it over a versioned HTTP+SSE API. Providers, issue trackers, and worker runtimes are adapters behind typed interfaces, swappable without touching core.
+A single long-running local daemon (`aloopd`) owns all state and scheduling. Every client — CLI, dashboard, bot, script, loop shim — talks to it over a versioned HTTP+SSE API. Providers, issue trackers, and sandbox execution backends are adapters behind typed interfaces, swappable without touching core.
 
 ## Layers
 
@@ -46,7 +46,8 @@ A single long-running local daemon (`aloopd`) owns all state and scheduling. Eve
 │      ProviderAdapter    (5 impls: opencode, copilot, codex,   │
 │                           gemini, claude)                     │
 │      TrackerAdapter      (2 impls: github, builtin)           │
-│      WorkerAdapter       (1 impl: in-proc; future: remote)    │
+│      SandboxAdapter      (v1: local execution / devcontainer;  │
+│                           future: sandbox-core-backed backends)│
 │      ProjectAdapter      (1 impl: local-fs; future: remote-clone)│
 │      StateStore          (1 impl: SQLite; future: Postgres)   │
 │      EventStore          (1 impl: JSONL; future: JSONL + S3)  │
@@ -83,7 +84,7 @@ This is the load-bearing decision:
 - **Compile step** — translates `pipeline.yml` into `loop-plan.json`. See `pipeline.md` §Compile step for the canonical description (single YAML reader in the system).
 - **Watchdog / reconcile** — stuck detection, provider quota refresh, permit expiry sweep, orphan cleanup, burn-rate tracking, crash recovery. All internal to the daemon; no external cron.
 - **Project registry** — N unrelated repos served by one daemon instance.
-- **Adapter orchestration** — invokes `ProviderAdapter` for turns, `TrackerAdapter` for decomposition/review/merge, `WorkerAdapter` for turn execution.
+- **Adapter orchestration** — invokes `ProviderAdapter` for turns, `TrackerAdapter` for decomposition/review/merge, and `SandboxAdapter` for session execution environments.
 
 Full detail in `daemon.md`.
 
@@ -120,7 +121,7 @@ Six typed interfaces enclose everything external to the daemon core:
 |---|---|---|---|
 | **ProviderAdapter** | `provider-contract.md` | opencode, copilot, codex, gemini, claude | One per AI provider; runs turns; emits agent chunks |
 | **TrackerAdapter** | `work-tracker.md` | github, builtin | Generic work-item (Epic/Story) + change-set surface; GH is one instance |
-| **WorkerAdapter** | in-daemon (seam) | in-proc | Runs turns in the daemon's process today; remote worker tomorrow |
+| **SandboxAdapter** | in-daemon (seam) | host execution, project devcontainer | Acquires the execution environment for a session and runs turns inside it; later maps to `sandbox-core` backends for local Docker and hosted sandboxes |
 | **ProjectAdapter** | in-daemon (seam) | local-fs | Worktree operations on local filesystem today; remote clone tomorrow |
 | **StateStore** | in-daemon (seam) | sqlite | Queryable current-state; Postgres tomorrow |
 | **EventStore** | in-daemon (seam) | jsonl | Authoritative append-only event log; JSONL + S3 tomorrow |

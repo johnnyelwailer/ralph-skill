@@ -4,7 +4,7 @@
 >
 > Hard rules live in CONSTITUTION.md. Work items live in GitHub issues.
 >
-> Sources: SPEC.md §Proof-of-Work Phase, §QA Agent, §Spec-Gap Analysis, §Documentation Sync, §CLAUDECODE Sanitization (pre-decomposition, 2026-04-18). Consolidated against `pipeline.md`, `provider-contract.md`, `work-tracker.md`.
+> Sources: SPEC.md §Proof-of-Work Phase, §QA Agent, §Spec-Gap Analysis, §Documentation Sync, §CLAUDECODE Sanitization (pre-decomposition, 2026-04-18). Consolidated against `pipeline.md`, `provider-contract.md`, `work-tracker.md`, `refinement.md`.
 
 ## Table of contents
 
@@ -69,6 +69,8 @@ Every agent operates under the same ground rules:
 
 **Completion signal:** `aloop-agent submit --type plan_result` with a terse summary and the list of task slugs produced or updated. Also sets `abstract_status` of the parent Story to `in_progress` if it was `dor_validated`.
 
+When the assigned Story turns out to be under-specified, contradictory, or stale, `plan` should not paper over the gap by inventing product behavior. It should separate safe work from decision-bound work and route the unresolved part back into the existing refinement/conversation machinery described in `refinement.md`.
+
 ## `build`
 
 **Role:** Implement one task at a time. Validate. Commit.
@@ -110,6 +112,8 @@ Every agent operates under the same ground rules:
 **Subagent delegation:** Review may delegate structural checks to `code-critic` (deep reasoning), visual review to `vision-reviewer`, security to `security-scanner`, accessibility to `accessibility-checker` (see Subagent catalog).
 
 **May not:** Merge. Modify code. Override CONSTITUTION.md.
+
+Under the shared refinement contract, review should reject changes that silently commit to one unresolved product or UX variant without making the decision explicit.
 
 ## `proof`
 
@@ -156,6 +160,8 @@ Every agent operates under the same ground rules:
 **Subagents:** Delegates visual analysis to `vision-reviewer`, accessibility to `accessibility-checker`, perf to `perf-analyzer`. Proof agent itself can run on a non-vision model.
 
 **Submit:** `aloop-agent submit --type proof_result` with the manifest body.
+
+For exploratory or variant-driven work, proof artifacts should be comparison-friendly so `orch_conversation` can use them directly in human-facing clarification threads. See `refinement.md`.
 
 **Baseline management:** On review approval, current screenshots replace `baselines/`. On rejection, baselines stay; next cycle compares against unchanged baselines.
 
@@ -225,6 +231,22 @@ Orchestrator pipelines use a different catalog. Each still obeys the universal c
 | `orch_resolver` | — (queues merge_conflict into child) | Decides rebase / recreate / abandon for conflicted change sets |
 | `orch_diagnose` | `diagnose_result` | Intelligent self-healing: observes anomaly events, returns a structured action for the daemon |
 | `orch_conversation` | `conversation_result` | Handles human comments on Epics/Stories (reply, edit work item, re-decompose, pause, inject into child, file follow-up) |
+
+`orch_refine`, `orch_conversation`, `setup_judge`, and `setup_questioner` share the ambiguity/decision-handling prompt discipline from `refinement.md`. The architecture stays the same; the prompts become more explicit about classification, option synthesis, recommendation, and evidence-backed human feedback.
+
+## Setup-side agents
+
+Setup uses the same underlying orchestration/session machinery, but with a different catalog focused on understanding, drafting, and readiness rather than implementation. See `setup.md` for the workflow boundary.
+
+| Agent | Submit type | Purpose |
+|---|---|---|
+| `setup_discover` | `setup_discovery_result` | Whole-repo discovery, environment scan, and initial findings |
+| `setup_research` | `setup_research_result` | Deeper analysis of unclear modules, domains, or external questions |
+| `setup_judge` | `setup_readiness_verdict` | Emits the current readiness verdict and blocking ambiguities |
+| `setup_questioner` | `setup_question_batch` | Selects the next staged user questions based on current findings |
+| `setup_spec_writer` | `setup_chapter_update` | Drafts or revises spec chapters and supporting setup documents |
+| `setup_constitution_drafter` | `setup_chapter_update` | Drafts project constitution rules from spec + codebase understanding |
+| `setup_decompose` | `decompose_result` | Produces the initial Epic baseline for orchestrator-mode handoff |
 
 ## Subagent catalog
 

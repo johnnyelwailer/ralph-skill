@@ -24,6 +24,7 @@
 `aloopd` is the single process that owns:
 
 - **Active sessions** and their state machines
+- **Active setup runs** and their state machines
 - **Provider health, quota, and cooldown** state
 - **Scheduler permits** — the truth on what runs when
 - **Event aggregation** from all sessions into per-session JSONL + the global event bus
@@ -36,9 +37,9 @@ CLI (`aloop`), dashboard, bots, and scripts never bypass the daemon. Every actio
 
 Single daemon per host. One SQLite file, one set of JSONL logs, one HTTP listener, one scheduler. Lock file at `~/.aloop/aloopd.pid` enforces singleton.
 
-The daemon hosts workers **in-process** in v1. A worker is the code path that runs a session's turns — spawns provider CLIs, reads output, writes events. In v2 workers may decompose into separate processes on separate VMs (see distribution seams).
+The daemon owns session execution in v1, but the execution environment is a seam. A session may run directly on the host or inside a local sandbox backend such as the project's devcontainer. In later deployments, the same seam may target offloaded sandbox infrastructure (see distribution seams).
 
-No forking per session in v1. Every session runs on the daemon's event loop with per-turn timeouts and cancellation tokens. Provider CLIs are spawned as child processes; the daemon supervises them.
+No separate worker fleet in v1. Every session runs under daemon supervision with per-turn timeouts and cancellation tokens. Provider CLIs are spawned either directly on the host or inside the selected local sandbox backend; the daemon supervises the lifecycle either way.
 
 ## State layout
 
@@ -57,7 +58,7 @@ No forking per session in v1. Every session runs on the daemon's event loop with
       artifacts/                proof artifacts per iteration
     setup_runs/<id>/
       log.jsonl                 authoritative event history for a setup run
-      scratch/                  interview answers, discovery output, draft configs
+      scratch/                  discovery output, drafts, ambiguity ledger, chapter state
 ```
 
 **Split of responsibility:**
@@ -78,6 +79,8 @@ The daemon serves N unrelated repositories on one host.
 - `status` — `setup_pending` | `ready` | `archived`. Setup is the only writer of the transition to `ready` (see `setup.md` §Verification); sessions may only start against `ready` projects.
 - `added_at`, `last_active_at`
 
+`setup_pending` may represent an active multi-day setup orchestration, not just a newly registered repo. The daemon remains the single authority over that run's lifecycle and over the transition to `ready`.
+
 **Per-project config** at `<abs_path>/.aloop/config.yml` — pipeline, provider chain, validation commands, safety rules. Daemon reads on session start; does not cache across sessions unless a file watcher invalidates.
 
 **Daemon-level config** at `~/.aloop/daemon.yml` — port, autostart, global defaults used when project config is silent.
@@ -86,11 +89,27 @@ The daemon serves N unrelated repositories on one host.
 - `aloop start` invoked in a directory walks up for `.aloop/` to find the project. Explicit `--project <path>` overrides.
 - CLI resolves `abs_path` → `project_id` via `GET /v1/projects?path=<abs_path>`. Unknown path → `POST /v1/projects` registers it.
 - Every session op in the API carries `project_id`. No path walking in the daemon.
+- Setup runs are project-scoped. A project may have at most one active setup run at a time.
 
 **Isolation:**
 - A session from project A cannot read project B's worktree, config, secrets, or event log.
+- A setup run from project A cannot read project B's setup workspace, drafts, comments, or discovery state.
 - Scheduler permits are **global** (one host, one daemon, one set of quotas) but session data is project-scoped.
 - Deleting a project soft-deletes its sessions (moved to `archived`), does not reclaim disk until `aloop project purge <id>`.
+
+## Setup runs
+
+Setup runs are not normal implementation sessions, but the daemon treats them with the same discipline: authoritative state, durable event history, resumability, and background child execution where applicable.
+
+Practical consequences:
+
+- A setup run may live for minutes or days.
+- A setup run may continue background research while awaiting user input.
+- CLI, dashboard, and skill/chat shells all attach to the same setup run through the HTTP API.
+- A project cannot start normal sessions while its setup state is not `ready`.
+- The daemon only permits setup to advance into scaffold, verification, or runtime handoff when the latest setup readiness verdict is `resolved`.
+
+The detailed setup contract lives in `setup.md`; this document's invariant is simpler: setup is daemon-owned state, not client-owned conversation state.
 
 ## Session kinds
 
@@ -263,11 +282,17 @@ JSONL writes go through an `EventStore` interface. v1 implementation: local per-
 
 Worktree operations (open, list, diff, commit) go through `ProjectAdapter`. v1 implementation: local filesystem (~50 LOC). v2 worker implementation: clone the repo onto the worker's VM, operate against the clone, push back via gh/git.
 
-### Seam 5: `WorkerAdapter`
+### Seam 5: `SandboxAdapter`
 
-The code path that runs a turn is behind `WorkerAdapter.runTurn(turnSpec): AsyncGenerator<AgentChunk>`. v1 implementation: in-process (direct function call, still emits events through the event bus). v2 implementation: HTTP to a remote worker that implements the same interface.
+The execution environment for a session sits behind `SandboxAdapter`. Conceptually it owns:
 
-Worker identity is an event field (`worker_id`). v1 always emits `"local"`. v2 emits the worker's assigned ID. Dashboard groups events by worker without knowing which era it's in.
+- provisioning or attaching to the session sandbox
+- hydrating the worktree into that environment
+- executing provider turns there
+- streaming chunks/events back to the daemon
+- collecting artifacts and terminating or retaining the sandbox
+
+v1 implementations are local: host execution and project devcontainer execution. The planned next step is to map this seam to `sandbox-core` so aloop can target local Docker and hosted backends through one abstraction. A later hosted deployment may then place each loop in its own offloaded sandbox without changing the orchestrator, API, or tracker logic.
 
 ### Seam 6: Scheduler as HTTP service
 
@@ -275,11 +300,11 @@ Already designed that way. Permit acquire/release are HTTP calls, not function c
 
 ### Seam 7: Event publication is async batched
 
-Workers (in-proc in v1, remote in v2) accumulate events in a local buffer and POST them to `POST /v1/events` in batches (every 100ms or 1KB, whichever first). The daemon's own in-proc worker uses the same batching path — "it's HTTP all the way down" is the mental model.
+Execution backends (host, devcontainer, or future offloaded sandbox) accumulate events in a local buffer and POST them to `POST /v1/events` in batches (every 100ms or 1KB, whichever first). The daemon's own local execution path uses the same batching model — "it's HTTP all the way down" is the mental model.
 
 ### What v1 explicitly does NOT implement
 
-- Postgres, S3, object storage, remote workers, worker leases
+- Postgres, S3, object storage, offloaded sandbox fleets, sandbox leases
 - Any queue system (Redis, SQS, Postgres FOR UPDATE SKIP LOCKED)
 - Authentication beyond "localhost = trusted"
 - Container orchestration, Kubernetes primitives, gRPC meshes
@@ -291,9 +316,9 @@ These are v2+ concerns. Mentioning them here locks the seams so we don't design 
 
 1. Implement `Postgres` `StateStore` adapter behind the existing interface.
 2. Implement `S3` `EventStore` adapter (write-through) behind the existing interface.
-3. Extract `aloopd-worker` binary that hosts `WorkerAdapter` over HTTP, registers with the control plane on boot, polls for work.
+3. Implement a `sandbox-core`-backed `SandboxAdapter` for hosted sandboxes.
 4. Deploy control plane as a stateless HTTP service with Postgres + S3 behind it.
-5. Deploy workers as a fleet of VMs with all 5 provider CLIs pre-installed and auth seeded per-VM.
+5. Deploy sandbox capacity as a fleet of VMs / containers with the required provider CLIs, auth, and runtime profiles pre-seeded.
 6. API contract unchanged. CLI, dashboard, bots work against the hosted endpoint with a bearer token.
 
 Estimated scope when the time comes: 3–4 weeks, not a rewrite. That's the payoff for treating the seams as load-bearing in v1.

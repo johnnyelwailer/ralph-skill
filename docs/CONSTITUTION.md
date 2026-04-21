@@ -18,7 +18,7 @@ The constitution is law. Specs describe the system; this document constrains it.
 ## II. Architecture
 
 5. **The shims stay tiny. `loop.sh` and `loop.ps1` target <150 LOC each and must shrink, never grow.** They are lock+invoke clients. Any PR that touches a shim must reduce its LOC. New behavior that looks loop-shaped lives in the daemon.
-6. **The daemon is single-host in v1, but the seams allow distribution.** State behind `StateStore`, events behind `EventStore`, turn execution behind `WorkerAdapter`, worktrees behind `ProjectAdapter`. Every v1 implementation has exactly one impl; every seam survives v2 decomposition.
+6. **The daemon is single-host in v1, but the seams allow distribution.** State behind `StateStore`, events behind `EventStore`, sandboxed turn execution behind `SandboxAdapter`, worktrees behind `ProjectAdapter`. Every v1 implementation has exactly one impl; every seam survives v2 decomposition.
 7. **The core runtime is small. Target <2,000 LOC core, <800 LOC per extension, <150 LOC per file.** Growth is a design smell. Split or move before adding.
 8. **One process owns concurrency.** The scheduler is the single authority over what runs when. Every turn — standalone, orchestrator, child — acquires a permit before provider invocation. No bypasses, not even for single-session local runs.
 9. **Tracker is an abstraction.** GitHub is one `TrackerAdapter` among many; `builtin` is a first-class offline alternative. Orchestrator prompts are tracker-agnostic (`WorkItem`, `Epic`, `Story`, `ChangeSet`). No `gh`-specific terms leak upstream of the adapter.

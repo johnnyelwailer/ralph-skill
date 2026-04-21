@@ -15,6 +15,7 @@
 - Sessions
 - Steering
 - Events (SSE)
+- Artifacts
 - Agent streaming (forward-compat)
 - Providers
 - Overrides
@@ -230,6 +231,7 @@ Every event has a monotonic `id` (ms timestamp + sequence). Events are durable (
 | `provider.health` | cooldown entry/exit, failure classification | health state |
 | `provider.quota` | quota probe result | `{provider_id, remaining, reset_at}` |
 | `provider.override.changed` | overrides PUT | new overrides doc |
+| `scheduler.limits.changed` | scheduler limits PUT | `{limits}` |
 | `scheduler.permit.grant` | permit issued | `{permit_id, session_id, provider_id, ttl}` |
 | `scheduler.permit.deny` | permit refused | `{session_id, reason, gate, details}` |
 | `scheduler.permit.release` | permit released | `{permit_id, session_id}` |
@@ -252,6 +254,79 @@ GET /v1/sessions/:id/log?since=<event_id>&format=jsonl
 ```
 
 Returns `application/x-ndjson`, streaming. Useful for exports, offline analysis, and guaranteed-lossless clients.
+
+## Artifacts
+
+Artifacts are daemon-managed files associated with sessions, setup runs, work items, or change sets. Proof outputs are the primary source, but clients may also upload images or other files that should be referenced in discussion.
+
+This is the minimal runtime primitive that enables image-backed feedback without requiring clients or agents to speak tracker-native upload APIs.
+
+### List / inspect / content
+
+```
+GET /v1/artifacts?project_id=<id>&session_id=<id>&setup_run_id=<id>&work_item_key=<key>&phase=proof&type=screenshot
+GET /v1/artifacts/:id
+GET /v1/artifacts/:id/content
+```
+
+- `GET /v1/artifacts` returns artifact metadata only.
+- `GET /v1/artifacts/:id` returns one artifact's metadata.
+- `GET /v1/artifacts/:id/content` returns the raw file bytes with the stored media type.
+
+Illustrative metadata shape:
+
+```json
+{
+  "_v": 1,
+  "id": "a_01j...",
+  "project_id": "p_...",
+  "session_id": "s_...",
+  "setup_run_id": null,
+  "kind": "screenshot",
+  "phase": "proof",
+  "label": "dashboard-main",
+  "filename": "dashboard-main.png",
+  "media_type": "image/png",
+  "bytes": 183441,
+  "url": "/v1/artifacts/a_01j.../content",
+  "created_at": "..."
+}
+```
+
+### Upload
+
+```
+POST /v1/artifacts
+Content-Type: multipart/form-data
+fields:
+  project_id=<id>
+  session_id=<id>?         // optional
+  setup_run_id=<id>?       // optional
+  work_item_key=<key>?     // optional
+  kind=image|screenshot|mockup|diff|other
+  label=<short label>?     // optional
+  file=<binary>
+```
+
+Returns the created artifact metadata.
+
+This endpoint is intentionally generic but narrow:
+
+- it lets the dashboard or other clients upload user-provided images for discussion
+- it lets comments reference daemon-managed artifacts uniformly
+- it avoids any direct tracker-native upload path from clients or agents
+
+### Inline usage in comments
+
+Comment bodies are markdown. Inline images use normal markdown image syntax and point at daemon-managed artifact URLs:
+
+```md
+Here is variant B:
+
+![Variant B](/v1/artifacts/a_01j.../content)
+```
+
+Comments may also carry structured artifact references so clients do not need to scrape markdown to understand which artifacts are attached or embedded.
 
 ## Agent streaming (forward-compat)
 
@@ -410,22 +485,36 @@ Hot-reloadable. Takes effect on the next permit request.
 
 ## Setup
 
-Setup is a resumable, verified flow for onboarding a project. See `setup.md` for the phases and contract.
+Setup is a resumable, long-lived setup orchestration for onboarding a project. CLI and dashboard are first-class API clients; external skill/chat hosts should drive the same API path (directly or through the CLI/shared client layer), not a privileged alternate backend. See `setup.md` for the phases and contract.
 
 ```
 POST   /v1/setup/runs                        start a setup run for a project (or greenfield)
                                              body: { abs_path, mode?, non_interactive?, flags? }
 GET    /v1/setup/runs                        list runs (active, completed, failed)
-GET    /v1/setup/runs/:id                    current phase, progress, findings, pending prompts
+GET    /v1/setup/runs/:id                    current phase, progress, findings, unresolved ambiguities,
+                                             readiness verdict, chapters/documents summary,
+                                             background research summary, current question-set or confirmation step
+GET    /v1/setup/runs/:id/chapters           chapter/document breakdown for rich clients
 POST   /v1/setup/runs/:id/answer             body: { question_id, value } — supply interview answer
-POST   /v1/setup/runs/:id/approve-scaffold   user approves generated files before they land
+POST   /v1/setup/runs/:id/comments           body: { target_type, target_id, body, artifact_refs? } — add feedback /
+                                             steering to a chapter or draft document, with optional attached or inline artifacts
+POST   /v1/setup/runs/:id/approve-scaffold   user approves generated files before they land;
+                                             rejected while blocking ambiguities remain
 POST   /v1/setup/runs/:id/resume             continue an interrupted run
-DELETE /v1/setup/runs/:id                    abort (does not unregister project if already registered)
+DELETE /v1/setup/runs/:id                    abort; may also unregister a still-setup_pending
+                                             project when no sessions exist
 GET    /v1/setup/runs/:id/events             SSE: setup events (discovery.*, interview.*,
-                                             generation.*, verification.*, completion.*)
+                                             ambiguity.*, confirmation.*, generation.*,
+                                             verification.*, completion.*)
 ```
 
-On successful `verification` phase, the daemon transitions the project's `status` from `setup_pending` to `ready` and emits `setup.completed`.
+On successful `verification` phase, the daemon transitions the project's `status` from `setup_pending` to `ready`. The setup run emits `setup.completed` only after the full flow is done, including optional orchestrator bootstrap when the selected mode requires it.
+
+**Background research.** Setup runs may continue background research while awaiting user input, and may remain active across multiple days. `resume` returns the current stage rather than restarting the flow.
+
+**Interactive fast path.** Structured-answer question flow should advance without waiting for the background setup orchestrator. The current question set is derived from the persisted question graph / setup state and may be updated immediately on answer submission. Freeform answers may invoke a small inline reasoning pass in the active shell/session; they should not require a full queued orchestrator turn just to select the next question.
+
+**Readiness gate.** The daemon only allows scaffold, verification, or runtime-orchestrator bootstrap when the latest setup readiness verdict is `resolved`. Blocking ambiguities discovered from the repository, environment, or user answers stop the run before those transitions. In non-interactive mode, unresolved blocking ambiguity is a hard error rather than a fallback default.
 
 **Abandonment retention.** Abandoned runs (no activity for `setup.abandoned_retention` from `daemon.yml`, default 14 days) are garbage-collected. `DELETE /v1/setup/runs/:id` is permitted any time; if the project was registered in the `setup_pending` state and has no associated sessions, the DELETE also unregisters it. Projects already `ready` are not unregistered by DELETE.
 

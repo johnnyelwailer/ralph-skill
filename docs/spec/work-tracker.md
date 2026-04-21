@@ -39,9 +39,11 @@ The contract is:
 - All orchestrator interactions go through the adapter.
 - Adapters are the only code that speaks tracker-native API.
 
+Setup may establish the **initial Epic baseline** for orchestrator-mode projects during the final setup handoff, but after handoff the runtime orchestrator owns **living decomposition** and all further tracker-side decomposition changes.
+
 ## Trust boundary
 
-Same boundary as all other aloop side effects. Agents do not call `gh`, `glab`, Linear API, or any tracker CLI. Agents **express intent** through `aloop-agent submit --type <decompose|refine|estimate|review|...>`; the daemon routes that intent to the active `TrackerAdapter`, which executes the operation under a policy that the daemon enforces.
+Same boundary as all other aloop side effects. Agents do not call `gh`, `glab`, Linear API, or any tracker CLI. Agents **express intent** through `aloop-agent submit --type <decompose_result|sub_decompose_result|refine_result|estimate_result|review_result|...>`; the daemon routes that intent to the active `TrackerAdapter`, which executes the operation under a policy that the daemon enforces.
 
 - Agent → `aloop-agent submit` → daemon → adapter → tracker API
 - Agent → *never directly* → tracker API
@@ -54,7 +56,7 @@ Aloop models work at three levels. Only the first two are tracked externally; th
 
 | Level | What it is | Who creates it | Who executes it |
 |---|---|---|---|
-| **Epic** | Top-level vertical slice of the spec. "Add user authentication." Shippable increment. | Orchestrator's `decompose` phase | Decomposes into Stories |
+| **Epic** | Top-level vertical slice of the spec. "Add user authentication." Shippable increment. | Setup handoff or orchestrator's `decompose` phase | Decomposes into Stories |
 | **Story** | One coherent implementation unit under an Epic. "Implement signup form + API endpoint." The unit a child session works. | Orchestrator's `sub_decompose` phase | One child session (kind=child) per Story |
 | **Task** | A single TODO inside the child session's worktree. "Write the signup form tests." Mechanical, short-lived, per-iteration. | Plan agent inside the child session | Build agent in the same session |
 
@@ -97,7 +99,7 @@ interface TrackerAdapter {
   // Work item mutations
   createWorkItem(draft: WorkItemDraft): Promise<WorkItemRef>;
   updateWorkItem(ref: WorkItemRef, patch: WorkItemPatch): Promise<void>;
-  addComment(ref: WorkItemRef, body: string): Promise<CommentRef>;
+  addComment(ref: WorkItemRef, body: string, opts?: { artifact_refs?: CommentArtifactRef[] }): Promise<CommentRef>;
   addLabel(ref: WorkItemRef, label: string): Promise<void>;
   removeLabel(ref: WorkItemRef, label: string): Promise<void>;
   setAssignees(ref: WorkItemRef, assignees: string[]): Promise<void>;
@@ -108,7 +110,7 @@ interface TrackerAdapter {
   createChangeSet?(draft: ChangeSetDraft): Promise<ChangeSetRef>;
   getChangeSet?(ref: ChangeSetRef): Promise<ChangeSet>;
   listChangeSets?(filter: ChangeSetFilter): AsyncIterable<ChangeSet>;
-  addChangeSetComment?(ref: ChangeSetRef, body: string, position?: LinePosition): Promise<CommentRef>;
+  addChangeSetComment?(ref: ChangeSetRef, body: string, position?: LinePosition, opts?: { artifact_refs?: CommentArtifactRef[] }): Promise<CommentRef>;
   resolveChangeSetThread?(ref: CommentRef): Promise<void>;
   updateChangeSetBranch?(ref: ChangeSetRef): Promise<void>;
   mergeChangeSet?(ref: ChangeSetRef, mode: MergeMode): Promise<MergeResult>;
@@ -213,7 +215,23 @@ type WorkItemFilter = {
   limit?: number;
 };
 
-// ChangeSet, Review, ReviewThread, Comment — unchanged from v1 draft.
+type CommentArtifactRef = {
+  artifact_id: string;
+  presentation?: "attachment" | "inline_image" | "link";
+  alt?: string;
+};
+
+type Comment = {
+  ref: CommentRef;
+  body: string;                 // markdown
+  author: string;
+  created_at: string;
+  updated_at?: string;
+  artifact_refs?: CommentArtifactRef[];
+  metadata?: Record<string, unknown>;
+};
+
+// ChangeSet, Review, ReviewThread — unchanged from v1 draft.
 ```
 
 `kind` is aloop-level vocabulary; adapters map it to tracker-native semantics. For GitHub:
@@ -431,6 +449,21 @@ Same boundary as `security.md` §"Tracker adapter policy" — every tracker oper
 
 CR #192 (comment-driven PR lifecycle) and CR #134 (inline review) are adapter concerns: both use `addChangeSetComment` with `position` for line-specific threads and `resolveChangeSetThread` for thread closure.
 
+### Artifact-aware comments
+
+Comments on work items and change sets are markdown bodies and may carry `artifact_refs`.
+
+This supports two complementary patterns:
+
+- **attachments** — a client or prompt attaches proof artifacts, screenshots, diffs, or mockups alongside the comment
+- **inline images** — the markdown body embeds daemon-managed artifact URLs directly, typically for screenshots or visual comparisons
+
+Adapter behavior:
+
+- if the target tracker supports inline markdown images or native image attachments, the adapter should preserve inline rendering when possible
+- if the target tracker does not support that rendering mode, the adapter falls back to appended artifact links while preserving `artifact_refs` in metadata for aloop-native clients
+- built-in tracker rendering should support both attachments and inline images directly
+
 ## Orchestrator-facing contract (generic decomposition schema)
 
 Orchestrator prompts produce tracker-agnostic structured output. The adapter layer translates into tracker-native operations.
@@ -532,7 +565,7 @@ Event kinds the orchestrator listens for:
 
 - `work_item.created`, `work_item.updated`, `work_item.closed`, `work_item.reopened`
 - `hierarchy.child_added`, `hierarchy.child_removed`, `hierarchy.parent_added`, `hierarchy.parent_removed`
-- `comment.created`, `comment.updated` — **human comments are first-class orchestrator input** (see `orchestrator.md` §Epic/Story conversations). Adapter populates `data.source` as `"human"` for comments authored by users and `"aloop"` for comments authored by the orchestrator; the `user_comment` trigger in orchestrator workflows filters to `source=human` to avoid self-reaction loops.
+- `comment.created`, `comment.updated` — **human comments are first-class orchestrator input** (see `orchestrator.md` §Epic/Story conversations). Adapter populates `data.source` as `"human"` for comments authored by users and `"aloop"` for comments authored by the orchestrator; the `user_comment` trigger in orchestrator workflows filters to `source=human` to avoid self-reaction loops. Comments may include `artifact_refs`; adapters should surface them in normalized events so orchestrator-side prompts and clients can reason over visual evidence without scraping tracker-native markup.
 - `change_set.opened`, `change_set.updated`, `change_set.closed`, `change_set.merged`, `change_set.conflict`
 - `change_set.review_submitted`, `change_set.review_thread_resolved`
 
