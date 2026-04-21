@@ -25,7 +25,7 @@ jobs:
         run: bun run check:constitution
 
       - name: Typecheck
-        run: bun x tsc -p packages/core/tsconfig.json
+        run: bun --filter '*' typecheck
 
       - name: Test
         run: bun test
