@@ -1,0 +1,28 @@
+{
+  "name": "@aloop/daemon",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "aloopd": "./bin/aloopd.ts"
+  },
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "bun test",
+    "start": "bun run bin/aloopd.ts"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "typescript": "^5.6.0"
+  },
+  "dependencies": {
+    "@aloop/core": "workspace:*",
+    "@aloop/daemon-config": "workspace:*",
+    "@aloop/daemon-http": "workspace:*",
+    "@aloop/scheduler": "workspace:*",
+    "@aloop/state-sqlite": "workspace:*"
+  }
+}
