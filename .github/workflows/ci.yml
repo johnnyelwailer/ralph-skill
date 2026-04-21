@@ -21,6 +21,9 @@ jobs:
       - name: Install
         run: bun install
 
+      - name: Constitution Checks
+        run: bun run check:constitution
+
       - name: Typecheck
         run: bun x tsc -p packages/core/tsconfig.json
 
