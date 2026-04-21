@@ -87,6 +87,41 @@ async function resJson<T>(res: Response): Promise<T> {
   return JSON.parse(text) as T;
 }
 
+function makeDepsWithQuota(
+  quotaProbe: NonNullable<import("@aloop/scheduler").SchedulerProbes["providerQuota"]>,
+) {
+  const db = new Database(":memory:");
+  migrate(db, loadBundledMigrations());
+  const home = mkdtempSync(join(tmpdir(), "aloop-scheduler-test-"));
+  const paths = resolveDaemonPaths({ ALOOP_HOME: home });
+  const config = createConfigStore({
+    daemon: DAEMON_DEFAULTS,
+    overrides: OVERRIDES_DEFAULT,
+    paths,
+  });
+  const events = createEventWriter({
+    db,
+    store: new JsonlEventStore(paths.logFile),
+    projectors: [new EventCountsProjector(), new PermitProjector()],
+    nextId: () => `evt_${crypto.randomUUID()}`,
+  });
+  const schedulerConfig: SchedulerConfigView = {
+    scheduler: () => config.daemon().scheduler,
+    overrides: () => config.overrides(),
+    updateLimits: async (rawPatch: Record<string, unknown>) => {
+      const limits = config.daemon().scheduler;
+      return { ok: true, limits };
+    },
+  };
+  const scheduler = new SchedulerService(
+    new PermitRegistry(db),
+    schedulerConfig,
+    events,
+    { providerQuota: quotaProbe },
+  );
+  return { scheduler };
+}
+
 // ─── /v1/scheduler/limits ────────────────────────────────────────────────────
 
 describe("GET /v1/scheduler/limits", () => {
@@ -255,6 +290,65 @@ describe("POST /v1/scheduler/permits", () => {
     expect(body.permit.id).toBeTruthy();
     expect(body.permit.sessionId).toBe("sess_abc");
     expect(body.permit.providerId).toBe("test-provider");
+  });
+
+  test("returns granted:false with retryAfterSeconds when provider quota denies with retry info", async () => {
+    const quotaProbe = async () => ({
+      ok: false,
+      reason: "rate_limit_exceeded",
+      retryAfterSeconds: 120,
+      remaining: 0,
+    });
+    const { scheduler } = makeDepsWithQuota(quotaProbe);
+    const req = new Request("http://x/v1/scheduler/permits", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        session_id: "sess_quota",
+        provider_candidate: "opencode",
+      }),
+    });
+    const res = await handleScheduler(req, makeSchedulerDeps(scheduler), "/v1/scheduler/permits");
+    expect(res).toBeDefined();
+    const body = await resJson<{
+      _v: number;
+      granted: boolean;
+      reason: string;
+      gate: string;
+      retryAfterSeconds?: number;
+    }>(res!);
+    expect(body.granted).toBe(false);
+    expect(body.reason).toBe("rate_limit_exceeded");
+    expect(body.gate).toBe("provider");
+    expect(body.retryAfterSeconds).toBe(120);
+  });
+
+  test("returns granted:false with remaining quota info when provider quota denies", async () => {
+    const quotaProbe = async () => ({
+      ok: false,
+      reason: "daily_limit_exceeded",
+      remaining: 0,
+      resetAt: "2026-04-22T00:00:00Z",
+    });
+    const { scheduler } = makeDepsWithQuota(quotaProbe);
+    const req = new Request("http://x/v1/scheduler/permits", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        session_id: "sess_quota2",
+        provider_candidate: "claude",
+      }),
+    });
+    const res = await handleScheduler(req, makeSchedulerDeps(scheduler), "/v1/scheduler/permits");
+    expect(res).toBeDefined();
+    const body = await resJson<{
+      granted: boolean;
+      reason: string;
+      gate: string;
+    }>(res!);
+    expect(body.granted).toBe(false);
+    expect(body.reason).toBe("daily_limit_exceeded");
+    expect(body.gate).toBe("provider");
   });
 
   test("returns granted:true when ttl_seconds is provided and valid", async () => {
