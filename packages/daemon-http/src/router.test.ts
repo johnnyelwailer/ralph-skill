@@ -81,6 +81,64 @@ describe("makeFetchHandler (unit)", () => {
     const res = await fetch(new Request("http://x/v1/events/echo"));
     expect(res.status).toBe(200);
     expect(res.headers.get("content-type")).toContain("text/event-stream");
+    expect(res.headers.get("cache-control")).toBe("no-cache");
+    expect(res.headers.get("connection")).toBe("keep-alive");
+  });
+
+  test("SSE echo streams exactly two events: hello then ping", async () => {
+    const fetch = makeFetchHandler(makeDeps());
+    const res = await fetch(new Request("http://x/v1/events/echo"));
+    expect(res.status).toBe(200);
+    const text = await res.text();
+
+    // The SSE format is: "event: <name>\ndata: <json>\n\n"
+    const lines = text.split("\n");
+    const events: { event: string; data: unknown }[] = [];
+    for (let i = 0; i < lines.length; i++) {
+      if (lines[i]?.startsWith("event: ")) {
+        const eventName = lines[i]!.slice("event: ".length);
+        const dataLine = lines[i + 1] ?? "";
+        const dataStr = dataLine.startsWith("data: ") ? dataLine.slice("data: ".length) : "";
+        events.push({ event: eventName, data: JSON.parse(dataStr) });
+        i++; // skip the data line we just consumed
+      }
+    }
+
+    expect(events).toHaveLength(2);
+    expect(events[0]!.event).toBe("hello");
+    expect(events[0]!.data).toMatchObject({ _v: 1, message: "sse scaffold alive" });
+
+    expect(events[1]!.event).toBe("ping");
+    expect(events[1]!.data).toMatchObject({ _v: 1 });
+    expect(typeof (events[1]!.data as { ts: number }).ts).toBe("number");
+  });
+
+  test("SSE echo ping event contains a unix timestamp", async () => {
+    const fetch = makeFetchHandler(makeDeps());
+    const res = await fetch(new Request("http://x/v1/events/echo"));
+    expect(res.status).toBe(200);
+    const text = await res.text();
+
+    const pingLineIdx = text.split("\n").findIndex((l) => l === "event: ping");
+    expect(pingLineIdx).toBeGreaterThan(-1);
+    const dataLine = text.split("\n")[pingLineIdx + 1] ?? "";
+    expect(dataLine).toStartWith("data: ");
+    const ts = JSON.parse(dataLine.slice("data: ".length)).ts as number;
+    // Timestamp should be a reasonable unix epoch milliseconds value
+    expect(ts).toBeGreaterThan(1_000_000_000_000);
+    expect(ts).toBeLessThan(10_000_000_000_000);
+  });
+
+  test("SSE stream closes after ping event (no infinite loop)", async () => {
+    const fetch = makeFetchHandler(makeDeps());
+    const res = await fetch(new Request("http://x/v1/events/echo"));
+    expect(res.status).toBe(200);
+    const text = await res.text();
+    // Should contain exactly two event blocks, then connection closes
+    const eventCount = (text.match(/^event: /gm) ?? []).length;
+    expect(eventCount).toBe(2);
+    // Text should end with the trailing newline from the last `\n\n`
+    expect(text).toMatch(/\n\n$/);
   });
 
   test("returns 404 envelope for unknown routes", async () => {
