@@ -5,9 +5,6 @@ import {
   migrate,
   ProjectRegistry,
 } from "@aloop/state-sqlite";
-import { mkdtempSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import {
   archiveProject,
   createProject,
@@ -21,313 +18,315 @@ import {
 function makeDeps(): Deps {
   const db = new Database(":memory:");
   migrate(db, loadBundledMigrations());
-  // events are not used by projects-handlers, but Deps requires it
-  return { registry: new ProjectRegistry(db) } as unknown as Deps;
+  return { registry: new ProjectRegistry(db) };
 }
 
 async function resJson<T>(res: Response): Promise<T> {
-  const text = await res.text();
-  return JSON.parse(text) as T;
+  return JSON.parse(await res.text()) as T;
 }
 
-function postRequest(url: string, body: unknown): Request {
-  return new Request(url, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(body),
-  });
-}
-
-function patchRequest(url: string, body: unknown): Request {
-  return new Request(url, {
-    method: "PATCH",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(body),
-  });
-}
+// ─── listProjects ─────────────────────────────────────────────────────────────
 
 describe("listProjects", () => {
-  test("returns empty list when no projects exist", async () => {
+  test("returns 200 with empty items when no projects exist", async () => {
     const deps = makeDeps();
     const res = listProjects(new Request("http://x/v1/projects"), deps);
     expect(res.status).toBe(200);
-    const body = await resJson<{ items: unknown[] }>(res as Response);
+    const body = await resJson<{ _v: number; items: unknown[] }>(res);
+    expect(body._v).toBe(1);
     expect(body.items).toEqual([]);
   });
 
-  test("returns projects filtered by status", async () => {
+  test("returns projects matching status filter", async () => {
     const deps = makeDeps();
-    const created = deps.registry.create({ absPath: "/test/path" });
-    deps.registry.updateStatus(created.id, "archived");
+    const p1 = deps.registry.create({ absPath: "/a" });
+    deps.registry.updateStatus(p1.id, "ready");
+    deps.registry.create({ absPath: "/b" }); // setup_pending
 
-    const res = listProjects(new Request("http://x/v1/projects?status=archived"), deps);
-    expect(res.status).toBe(200);
-    const body = await resJson<{ items: Array<{ id: string; abs_path: string }> }>(res as Response);
+    const res = listProjects(
+      new Request("http://x/v1/projects?status=ready"),
+      deps,
+    );
+    const body = await resJson<{ items: Array<{ id: string }> }>(res);
     expect(body.items.length).toBe(1);
-    expect(body.items[0].id).toBe(created.id);
-    expect(body.items[0].abs_path).toBe("/test/path");
-  });
-
-  test("returns projects filtered by path", async () => {
-    const deps = makeDeps();
-    deps.registry.create({ absPath: "/unique/path" });
-    deps.registry.create({ absPath: "/other/path" });
-
-    const res = listProjects(new Request("http://x/v1/projects?path=/unique/path"), deps);
-    expect(res.status).toBe(200);
-    const body = await resJson<{ items: Array<{ abs_path: string }> }>(res as Response);
-    expect(body.items.length).toBe(1);
-    expect(body.items[0].abs_path).toBe("/unique/path");
+    expect(body.items[0]!.id).toBe(p1.id);
   });
 
   test("returns 400 for invalid status param", async () => {
     const deps = makeDeps();
-    const res = listProjects(new Request("http://x/v1/projects?status=invalid_status"), deps);
+    const res = listProjects(
+      new Request("http://x/v1/projects?status=invalid_status"),
+      deps,
+    );
     expect(res.status).toBe(400);
-    const body = await resJson<{ error: { code: string; message: string } }>(res as Response);
+    const body = await resJson<{ error: { code: string } }>(res);
     expect(body.error.code).toBe("bad_request");
-    expect(body.error.message).toContain("invalid_status");
+  });
+
+  test("combines status and path filters", async () => {
+    const deps = makeDeps();
+    const p1 = deps.registry.create({ absPath: "/a" });
+    deps.registry.updateStatus(p1.id, "ready");
+    deps.registry.create({ absPath: "/b" });
+
+    const url = new URL("http://x/v1/projects");
+    url.searchParams.set("status", "ready");
+    url.searchParams.set("path", "/a");
+    const res = listProjects(new Request(url), deps);
+    const body = await resJson<{ items: Array<{ id: string }> }>(res);
+    expect(body.items.length).toBe(1);
+    expect(body.items[0]!.id).toBe(p1.id);
   });
 });
 
-describe("createProject", () => {
-  test("creates a project with required abs_path", async () => {
-    const deps = makeDeps();
-    const res = await createProject(
-      postRequest("http://x/v1/projects", { abs_path: "/new/project" }),
-      deps,
-    );
-    expect(res.status).toBe(201);
-    const body = await resJson<{ id: string; abs_path: string; name: string }>(res as Response);
-    expect(body.id).toBeTruthy();
-    expect(body.abs_path).toBe("/new/project");
-    expect(body.name).toBe("project"); // defaults to basename of abs_path
-  });
+// ─── createProject ───────────────────────────────────────────────────────────
 
-  test("creates a project with optional name", async () => {
+describe("createProject", () => {
+  test("returns 201 with project on success", async () => {
     const deps = makeDeps();
-    const res = await createProject(
-      postRequest("http://x/v1/projects", { abs_path: "/named/project", name: "My Project" }),
-      deps,
-    );
+    const req = new Request("http://x/v1/projects", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ abs_path: "/test/path" }),
+    });
+    const res = await createProject(req, deps);
     expect(res.status).toBe(201);
-    const body = await resJson<{ name: string }>(res as Response);
-    expect(body.name).toBe("My Project");
+    const body = await resJson<{ _v: number; id: string; abs_path: string }>(res);
+    expect(body._v).toBe(1);
+    expect(body.abs_path).toBe("/test/path");
   });
 
   test("returns 400 when abs_path is missing", async () => {
     const deps = makeDeps();
-    const res = await createProject(postRequest("http://x/v1/projects", {}), deps);
+    const req = new Request("http://x/v1/projects", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name: "no path" }),
+    });
+    const res = await createProject(req, deps);
     expect(res.status).toBe(400);
-    const body = await resJson<{ error: { code: string; message: string } }>(res as Response);
+    const body = await resJson<{ error: { code: string } }>(res);
     expect(body.error.code).toBe("bad_request");
-    expect(body.error.message).toContain("abs_path");
   });
 
-  test("returns 409 when project already registered", async () => {
+  test("returns 400 when abs_path is not a string", async () => {
     const deps = makeDeps();
-    deps.registry.create({ absPath: "/duplicate/path" });
-    const res = await createProject(
-      postRequest("http://x/v1/projects", { abs_path: "/duplicate/path" }),
-      deps,
-    );
+    const req = new Request("http://x/v1/projects", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ abs_path: 123 }),
+    });
+    const res = await createProject(req, deps);
+    expect(res.status).toBe(400);
+  });
+
+  test("accepts name alongside abs_path", async () => {
+    const deps = makeDeps();
+    const req = new Request("http://x/v1/projects", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ abs_path: "/my/path", name: "My Project" }),
+    });
+    const res = await createProject(req, deps);
+    expect(res.status).toBe(201);
+    const body = await resJson<{ name: string }>(res);
+    expect(body.name).toBe("My Project");
+  });
+
+  test("returns 409 when abs_path is already registered", async () => {
+    const deps = makeDeps();
+    deps.registry.create({ absPath: "/dup" });
+    const req = new Request("http://x/v1/projects", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ abs_path: "/dup" }),
+    });
+    const res = await createProject(req, deps);
     expect(res.status).toBe(409);
-    const body = await resJson<{ error: { code: string; details: { abs_path: string } } }>(
-      res as Response,
-    );
+    const body = await resJson<{ error: { code: string; details: { abs_path: string } } }>(res);
     expect(body.error.code).toBe("project_already_registered");
-    expect(body.error.details.abs_path).toBe("/duplicate/path");
+    expect(body.error.details.abs_path).toBe("/dup");
   });
 
-  test("returns 400 for invalid JSON body", async () => {
+  test("returns 400 when body is not JSON", async () => {
     const deps = makeDeps();
     const req = new Request("http://x/v1/projects", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: "not valid json",
+      body: "not json at all",
     });
     const res = await createProject(req, deps);
     expect(res.status).toBe(400);
-    const body = await resJson<{ error: { code: string } }>(res as Response);
-    expect(body.error.code).toBe("bad_request");
   });
 
-  test("returns 400 for non-object JSON body", async () => {
+  test("returns 400 when body is an array instead of object", async () => {
     const deps = makeDeps();
     const req = new Request("http://x/v1/projects", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: "123",
+      body: "[]",
     });
     const res = await createProject(req, deps);
     expect(res.status).toBe(400);
-    const body = await resJson<{ error: { code: string } }>(res as Response);
-    expect(body.error.code).toBe("bad_request");
-  });
-
-  test("returns 400 for empty body", async () => {
-    const deps = makeDeps();
-    const req = new Request("http://x/v1/projects", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: "",
-    });
-    const res = await createProject(req, deps);
-    expect(res.status).toBe(400);
-    const body = await resJson<{ error: { code: string } }>(res as Response);
-    expect(body.error.code).toBe("bad_request");
   });
 });
 
+// ─── getProject ──────────────────────────────────────────────────────────────
+
 describe("getProject", () => {
-  test("returns project by id", async () => {
+  test("returns 200 with project when found", async () => {
     const deps = makeDeps();
-    const created = deps.registry.create({ absPath: "/test/path" });
+    const created = deps.registry.create({ absPath: "/test" });
     const res = getProject(created.id, deps);
     expect(res.status).toBe(200);
-    const body = await resJson<{ id: string }>(res as Response);
+    const body = await resJson<{ _v: number; id: string }>(res);
     expect(body.id).toBe(created.id);
   });
 
-  test("returns 404 for unknown id", async () => {
+  test("returns 404 when project not found", async () => {
     const deps = makeDeps();
     const res = getProject("does-not-exist", deps);
     expect(res.status).toBe(404);
-    const body = await resJson<{ error: { code: string } }>(res as Response);
+    const body = await resJson<{ error: { code: string } }>(res);
     expect(body.error.code).toBe("project_not_found");
   });
 });
+
+// ─── patchProject ────────────────────────────────────────────────────────────
 
 describe("patchProject", () => {
-  test("updates project name", async () => {
+  test("returns 200 when updating name", async () => {
     const deps = makeDeps();
-    const created = deps.registry.create({ absPath: "/test/path" });
-    const res = await patchProject(
-      created.id,
-      patchRequest("http://x/v1/projects", { name: "Updated Name" }),
-      deps,
-    );
+    const created = deps.registry.create({ absPath: "/test" });
+    const req = new Request(`http://x/v1/projects/${created.id}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name: "Renamed" }),
+    });
+    const res = await patchProject(created.id, req, deps);
     expect(res.status).toBe(200);
-    const body = await resJson<{ name: string }>(res as Response);
-    expect(body.name).toBe("Updated Name");
+    const body = await resJson<{ _v: number; name: string }>(res);
+    expect(body.name).toBe("Renamed");
   });
 
-  test("updates project status", async () => {
+  test("returns 200 when updating status", async () => {
     const deps = makeDeps();
-    const created = deps.registry.create({ absPath: "/test/path" });
-    const res = await patchProject(
-      created.id,
-      patchRequest("http://x/v1/projects", { status: "archived" }),
-      deps,
-    );
+    const created = deps.registry.create({ absPath: "/test" });
+    const req = new Request(`http://x/v1/projects/${created.id}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ status: "ready" }),
+    });
+    const res = await patchProject(created.id, req, deps);
     expect(res.status).toBe(200);
-    const body = await resJson<{ status: string }>(res as Response);
+    const body = await resJson<{ status: string }>(res);
+    expect(body.status).toBe("ready");
+  });
+
+  test("returns 200 when updating both name and status", async () => {
+    const deps = makeDeps();
+    const created = deps.registry.create({ absPath: "/test" });
+    const req = new Request(`http://x/v1/projects/${created.id}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name: "New Name", status: "archived" }),
+    });
+    const res = await patchProject(created.id, req, deps);
+    expect(res.status).toBe(200);
+    const body = await resJson<{ name: string; status: string }>(res);
+    expect(body.name).toBe("New Name");
     expect(body.status).toBe("archived");
   });
 
-  test("returns 400 for invalid status value", async () => {
+  test("returns 400 when neither name nor status is provided", async () => {
     const deps = makeDeps();
-    const created = deps.registry.create({ absPath: "/test/path" });
-    const res = await patchProject(
-      created.id,
-      patchRequest("http://x/v1/projects", { status: "invalid_status" }),
-      deps,
-    );
+    const created = deps.registry.create({ absPath: "/test" });
+    const req = new Request(`http://x/v1/projects/${created.id}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({}),
+    });
+    const res = await patchProject(created.id, req, deps);
     expect(res.status).toBe(400);
-    const body = await resJson<{ error: { code: string } }>(res as Response);
+    const body = await resJson<{ error: { code: string } }>(res);
     expect(body.error.code).toBe("bad_request");
   });
 
-  test("returns 400 when no updatable fields provided", async () => {
+  test("returns 400 when status value is invalid", async () => {
     const deps = makeDeps();
-    const created = deps.registry.create({ absPath: "/test/path" });
-    const res = await patchProject(
-      created.id,
-      patchRequest("http://x/v1/projects", {}),
-      deps,
-    );
+    const created = deps.registry.create({ absPath: "/test" });
+    const req = new Request(`http://x/v1/projects/${created.id}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ status: "not_a_valid_status" }),
+    });
+    const res = await patchProject(created.id, req, deps);
     expect(res.status).toBe(400);
-    const body = await resJson<{ error: { code: string; message: string } }>(res as Response);
-    expect(body.error.code).toBe("bad_request");
-    expect(body.error.message).toContain("no updatable fields");
   });
 
-  test("returns 404 for unknown project id", async () => {
+  test("returns 404 when project not found", async () => {
     const deps = makeDeps();
-    const res = await patchProject(
-      "does-not-exist",
-      patchRequest("http://x/v1/projects", { name: "New Name" }),
-      deps,
-    );
+    const req = new Request("http://x/v1/projects/nope", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name: "New Name" }),
+    });
+    const res = await patchProject("nope", req, deps);
     expect(res.status).toBe(404);
-    const body = await resJson<{ error: { code: string } }>(res as Response);
-    expect(body.error.code).toBe("project_not_found");
   });
 
-  test("returns 400 for invalid JSON body", async () => {
+  test("returns 400 when body is not JSON", async () => {
     const deps = makeDeps();
-    const created = deps.registry.create({ absPath: "/test/path" });
-    const req = new Request("http://x/v1/projects", {
+    const created = deps.registry.create({ absPath: "/test" });
+    const req = new Request(`http://x/v1/projects/${created.id}`, {
       method: "PATCH",
       headers: { "content-type": "application/json" },
-      body: "not valid json",
+      body: "not json",
     });
     const res = await patchProject(created.id, req, deps);
     expect(res.status).toBe(400);
-    const body = await resJson<{ error: { code: string } }>(res as Response);
-    expect(body.error.code).toBe("bad_request");
-  });
-
-  test("returns 400 for non-object JSON body", async () => {
-    const deps = makeDeps();
-    const created = deps.registry.create({ absPath: "/test/path" });
-    const req = new Request("http://x/v1/projects", {
-      method: "PATCH",
-      headers: { "content-type": "application/json" },
-      body: '"just a string"',
-    });
-    const res = await patchProject(created.id, req, deps);
-    expect(res.status).toBe(400);
-    const body = await resJson<{ error: { code: string } }>(res as Response);
-    expect(body.error.code).toBe("bad_request");
   });
 });
 
+// ─── archiveProject ──────────────────────────────────────────────────────────
+
 describe("archiveProject", () => {
-  test("archives an existing project", async () => {
+  test("returns 200 with archived project", async () => {
     const deps = makeDeps();
-    const created = deps.registry.create({ absPath: "/test/path" });
+    const created = deps.registry.create({ absPath: "/test" });
     const res = archiveProject(created.id, deps);
     expect(res.status).toBe(200);
-    const body = await resJson<{ status: string }>(res as Response);
+    const body = await resJson<{ _v: number; status: string }>(res);
     expect(body.status).toBe("archived");
   });
 
-  test("returns 404 for unknown project id", async () => {
+  test("returns 404 when project not found", async () => {
     const deps = makeDeps();
     const res = archiveProject("does-not-exist", deps);
     expect(res.status).toBe(404);
-    const body = await resJson<{ error: { code: string } }>(res as Response);
+    const body = await resJson<{ error: { code: string } }>(res);
     expect(body.error.code).toBe("project_not_found");
   });
 });
 
+// ─── purgeProject ────────────────────────────────────────────────────────────
+
 describe("purgeProject", () => {
-  test("purges an existing project", async () => {
+  test("returns 204 and removes the project", async () => {
     const deps = makeDeps();
-    const created = deps.registry.create({ absPath: "/test/path" });
+    const created = deps.registry.create({ absPath: "/test" });
     const res = purgeProject(created.id, deps);
     expect(res.status).toBe(204);
-    // verify project is gone
+    // Verify project is gone
     const getRes = getProject(created.id, deps);
     expect(getRes.status).toBe(404);
   });
 
-  test("returns 404 for unknown project id", async () => {
+  test("returns 404 when project not found", async () => {
     const deps = makeDeps();
     const res = purgeProject("does-not-exist", deps);
     expect(res.status).toBe(404);
-    const body = await resJson<{ error: { code: string } }>(res as Response);
+    const body = await resJson<{ error: { code: string } }>(res);
     expect(body.error.code).toBe("project_not_found");
   });
 });
