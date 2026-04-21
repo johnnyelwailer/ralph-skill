@@ -1,28 +1,19 @@
 # @aloop/core
 
-The aloop daemon (`aloopd`) and its local primitives.
+Shared aloop runtime primitives: compile logic, event contracts, and statistical helpers.
 
 ## Development
 
 ```bash
 bun install            # from repo root
-bun test packages/core/tests
+bun test
 bun x tsc -p packages/core/tsconfig.json
 ```
 
-Start the daemon locally:
+## Current scope
 
-```bash
-ALOOP_HOME=/tmp/aloop ALOOP_PORT=7777 bun run packages/core/bin/aloopd.ts
-```
+- `compile/*` — pipeline parsing and compile into `loop-plan.json`
+- `events/*` — authoritative event envelope + store interface
+- `stats/*` — Welford and CUSUM primitives
 
-## Current scope (M1)
-
-- HTTP listener on `127.0.0.1:<port>`
-- Unix socket at `~/.aloop/aloopd.sock` (or `$ALOOP_HOME/aloopd.sock`)
-- `GET /v1/daemon/health` — canonical v1 shape (`{_v, status, version, uptime_seconds}`)
-- `GET /v1/events/echo` — SSE scaffold proving the transport works
-- Singleton PID lock at `~/.aloop/aloopd.pid`
-- Graceful shutdown on SIGINT/SIGTERM
-
-See [docs/DELIVERY_PLAN.md](../../docs/DELIVERY_PLAN.md) for what ships in each milestone.
+Daemon composition and persistence now live in `@aloop/daemon` and `@aloop/state-sqlite`.

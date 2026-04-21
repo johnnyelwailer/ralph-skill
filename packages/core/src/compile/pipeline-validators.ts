@@ -1,13 +1,15 @@
-import type { PipelinePhase, ProviderRef, TransitionKeyword } from "./types.ts";
-
-const REASONING_VALUES = new Set(["none", "low", "medium", "high", "xhigh"]);
-const MAX_CHAIN_LENGTH = 10;
+import type { PipelinePhase } from "./types.ts";
+import {
+  parseTransition,
+  validateProvider,
+  validateReasoning,
+} from "./pipeline-phase-validators.ts";
 
 type MutablePhase = {
   agent: string;
   repeat?: number;
-  onFailure?: TransitionKeyword;
-  provider?: ProviderRef;
+  onFailure?: PipelinePhase["onFailure"];
+  provider?: PipelinePhase["provider"];
   model?: string;
   reasoning?: PipelinePhase["reasoning"];
   timeout?: string;
@@ -81,13 +83,8 @@ function validatePhase(
   }
 
   if (obj.reasoning !== undefined) {
-    if (typeof obj.reasoning !== "string" || !REASONING_VALUES.has(obj.reasoning)) {
-      errors.push(
-        `${path}.reasoning: must be one of ${Array.from(REASONING_VALUES).join(", ")}`,
-      );
-    } else {
-      phase.reasoning = obj.reasoning as PipelinePhase["reasoning"];
-    }
+    const reasoning = validateReasoning(obj.reasoning, `${path}.reasoning`, errors);
+    if (reasoning) phase.reasoning = reasoning;
   }
 
   if (obj.timeout !== undefined) {
@@ -100,62 +97,6 @@ function validatePhase(
 
   return phase as PipelinePhase;
 }
-
-function parseTransition(
-  value: unknown,
-  path: string,
-  errors: string[],
-): TransitionKeyword | undefined {
-  if (typeof value !== "string") {
-    errors.push(`${path}: must be a keyword string (e.g. "retry" or "goto build")`);
-    return undefined;
-  }
-  const trimmed = value.trim();
-  if (trimmed === "retry") return { type: "retry" };
-  const match = /^goto\s+(\S+)$/.exec(trimmed);
-  if (match) return { type: "goto", target: match[1]! };
-  errors.push(
-    `${path}: unknown transition keyword: "${trimmed}" (expected "retry" or "goto <agent>")`,
-  );
-  return undefined;
-}
-
-function validateProvider(
-  value: unknown,
-  path: string,
-  errors: string[],
-): ProviderRef | undefined {
-  if (typeof value === "string") {
-    if (value.length === 0) {
-      errors.push(`${path}: provider string cannot be empty`);
-      return undefined;
-    }
-    return value;
-  }
-  if (Array.isArray(value)) {
-    if (value.length === 0) {
-      errors.push(`${path}: chain cannot be empty`);
-      return undefined;
-    }
-    if (value.length > MAX_CHAIN_LENGTH) {
-      errors.push(`${path}: chain length ${value.length} exceeds cap of ${MAX_CHAIN_LENGTH}`);
-      return undefined;
-    }
-    const chain: string[] = [];
-    for (let i = 0; i < value.length; i++) {
-      const entry = value[i];
-      if (typeof entry !== "string" || entry.length === 0) {
-        errors.push(`${path}[${i}]: each chain entry must be a non-empty string`);
-        return undefined;
-      }
-      chain.push(entry);
-    }
-    return chain;
-  }
-  errors.push(`${path}: must be a string or an array of strings`);
-  return undefined;
-}
-
 export function validateStringArray(
   value: unknown,
   path: string,
