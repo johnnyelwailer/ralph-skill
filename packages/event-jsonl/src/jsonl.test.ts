@@ -3,7 +3,7 @@ import { makeEvent, makeIdGenerator, type EventEnvelope } from "@aloop/core";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { appendEventOnce, JsonlEventStore, readAllEvents } from "./jsonl.ts";
+import { appendEventOnce, JsonlEventStore, readAllEvents, simpleAppend } from "./jsonl.ts";
 
 describe("JsonlEventStore", () => {
   let dir: string;
@@ -104,5 +104,35 @@ describe("JsonlEventStore", () => {
     await appendEventOnce(path, makeEvent("b", 2, gen));
     const events = await readAllEvents(path);
     expect(events.map((e) => e.topic)).toEqual(["a", "b"]);
+  });
+
+  test("simpleAppend: lightweight direct fs append without a store instance", async () => {
+    const gen = makeIdGenerator();
+    await simpleAppend(path, makeEvent("x", { k: "v" }, gen));
+    await simpleAppend(path, makeEvent("y", { k2: "v2" }, gen));
+    const events = await readAllEvents(path);
+    expect(events.map((e) => e.topic)).toEqual(["x", "y"]);
+    expect(events[0]!.data).toEqual({ k: "v" });
+    expect(events[1]!.data).toEqual({ k2: "v2" });
+  });
+
+  test("simpleAppend: creates parent directories recursively", async () => {
+    const nested = join(dir, "deeply", "nested", "dir", "log.jsonl");
+    const gen = makeIdGenerator();
+    await simpleAppend(nested, makeEvent("z", 99, gen));
+    const events = await readAllEvents(nested);
+    expect(events.map((e) => e.topic)).toEqual(["z"]);
+  });
+
+  test("appendEventOnce and simpleAppend are interchangeable for single appends", async () => {
+    const pathA = join(dir, "a.jsonl");
+    const pathB = join(dir, "b.jsonl");
+    const gen = makeIdGenerator();
+    await appendEventOnce(pathA, makeEvent("a", 1, gen));
+    await simpleAppend(pathB, makeEvent("b", 2, gen));
+    const eventsA = await readAllEvents(pathA);
+    const eventsB = await readAllEvents(pathB);
+    expect(eventsA[0]!.data).toBe(1);
+    expect(eventsB[0]!.data).toBe(2);
   });
 });
