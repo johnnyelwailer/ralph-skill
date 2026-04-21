@@ -1,5 +1,4 @@
 export { SchedulerService } from "./service.ts";
-export { handleScheduler, type SchedulerDeps } from "./route.ts";
 export {
   startSchedulerWatchdog,
   type RunningWatchdog,
