@@ -1,14 +1,15 @@
 # Pipeline
 
-> **Reference document.** The agent pipeline model: how workflows are authored, compiled, executed, and mutated. Hard rules live in CONSTITUTION.md. Work items live in GitHub issues.
+> **Reference document.** The workflow step model: how pipelines are authored, compiled, executed, and mutated. Hard rules live in CONSTITUTION.md. Work items live in GitHub issues.
 >
 > Sources: SPEC.md §Configurable Agent Pipeline, §Reasoning Effort, §Vision Model; SPEC-ADDENDUM.md §Prompt Reference Rule, §`aloop start` Unification; CRs #287 (chain grammar), #135 (agent CLI), #94 (data-driven), #191 (compile step).
 
 ## Table of contents
 
-- Core concept: agents as the unit
+- Core concept: steps as the unit
 - Workflow vs pipeline vs loop-plan
 - Prompt file format (frontmatter + body)
+- Exec step manifest format
 - Chain grammar in frontmatter
 - Shared instructions via `{{include:path}}`
 - Template variable reference
@@ -26,15 +27,22 @@
 
 ---
 
-## Core concept: agents as the unit
+## Core concept: steps as the unit
 
-An **agent** is a named unit with a prompt, an optional provider/model preference, an optional reasoning effort, and an optional trigger. Agents are data, not code.
+A **step** is a named pipeline unit. v1 defines two step kinds:
 
-A **pipeline** is an authored sequence of agents with transition rules (`repeat`, `onFailure`). The default is `plan → build × 5 → proof → qa → review`, but this is just one possible pipeline — projects author their own.
+- **`agent`** — a model-driven turn backed by a prompt file, provider/model preference, reasoning effort, and optional trigger.
+- **`exec`** — a deterministic code step backed by a manifest that names a runtime and a checked-in file to execute.
+
+Both are data. Neither is inline logic in YAML.
+
+A **pipeline** is an authored sequence of steps with transition rules (`repeat`, `onFailure`). The default is `plan → build × 5 → proof → qa → review`, but this is just one possible pipeline — projects author their own.
 
 A **workflow** is any pipeline configuration intended for a session: plan-build-review, review-only, orchestrator-scan-dispatch, etc. Every workflow is just a pipeline + some metadata.
 
 Agents are **not hardcoded**. `plan`, `build`, `proof`, `qa`, `review` are bundled defaults. Projects can define any named agent (`verify`, `debugger`, `security-audit`, `docs-generator`, `guard`).
+
+Exec steps are also **not hardcoded**. Projects define them by adding manifests such as `EXEC_regen-api.yml` or `EXEC_sync-issues.yml` under the templates directory and referencing them from `pipeline.yml`.
 
 ## Workflow vs pipeline vs loop-plan
 
@@ -46,13 +54,14 @@ Three artifacts, compiled in order:
 | `loop-plan.json` (session) | Compile step | Daemon + shell shim | Per session; rewritten on mutations |
 | Live session state | Daemon | Clients (CLI, dashboard) | Per session; in SQLite + JSONL |
 
-The shell shim and the daemon **only** consume `loop-plan.json` and prompt files. Neither parses YAML. The compile step is the one place YAML gets interpreted.
+The shell shim and the daemon **only** consume `loop-plan.json`, prompt files, and compiled exec manifests. Neither parses YAML. The compile step is the one place YAML gets interpreted.
 
 ### pipeline.yml (source of truth)
 
 ```yaml
 pipeline:
   - agent: plan
+  - exec: regen-api
   - agent: build
     repeat: 5
     onFailure: retry
@@ -61,13 +70,13 @@ pipeline:
     onFailure: goto build
 
 finalizer:
-  - PROMPT_spec-gap.md
-  - PROMPT_docs.md
-  - PROMPT_spec-review.md
-  - PROMPT_final-review.md
-  - PROMPT_final-qa.md
-  - PROMPT_proof.md
-  - PROMPT_cleanup.md
+  - agent: spec-gap
+  - agent: docs
+  - agent: spec-review
+  - agent: final-review
+  - agent: final-qa
+  - agent: proof
+  - exec: cleanup-generated
 
 triggers:
   # Session-level (fired into this session's own queue)
@@ -76,32 +85,34 @@ triggers:
   steer:            PROMPT_steer.md
 ```
 
-- `pipeline`: cycle. Short repeating sequence, typically 5–7 entries. The compile step resolves `repeat`, expands `onFailure: retry` into loop-plan directives.
-- `finalizer`: sequence that runs once `allTasksMarkedDone` holds at cycle boundary. Resets to position 0 if any finalizer agent adds tasks. Only the last agent completing with zero new tasks ends the loop.
+- `pipeline`: cycle. Short repeating sequence, typically 5–7 entries. Each entry is either `agent: <name>` or `exec: <name>`. The compile step resolves `repeat`, expands `onFailure: retry` into loop-plan directives, and resolves names to prompt/manifests.
+- `finalizer`: sequence that runs once `allTasksMarkedDone` holds at cycle boundary. Uses the same step syntax as `pipeline`. Resets to position 0 if any finalizer agent adds tasks. Only the last step completing with zero new tasks ends the loop.
 - `triggers`: named event → prompt. Session-level triggers fire into the session's own queue; orchestrator workflows use a separate set of triggers (see §Event-driven dispatch and `orchestrator.md`). Daemon-side watchers and workflow authors use these names; no keyword is hardcoded in code.
 
 ### loop-plan.json (compiled artifact)
 
 ```json
 {
+  "_v": 2,
   "cycle": [
-    "PROMPT_plan.md",
-    "PROMPT_build.md",
-    "PROMPT_build.md",
-    "PROMPT_build.md",
-    "PROMPT_build.md",
-    "PROMPT_build.md",
-    "PROMPT_qa.md",
-    "PROMPT_review.md"
+    { "kind": "agent", "ref": "PROMPT_plan.md" },
+    { "kind": "exec", "ref": "EXEC_regen-api.json" },
+    { "kind": "agent", "ref": "PROMPT_build.md" },
+    { "kind": "agent", "ref": "PROMPT_build.md" },
+    { "kind": "agent", "ref": "PROMPT_build.md" },
+    { "kind": "agent", "ref": "PROMPT_build.md" },
+    { "kind": "agent", "ref": "PROMPT_build.md" },
+    { "kind": "agent", "ref": "PROMPT_qa.md" },
+    { "kind": "agent", "ref": "PROMPT_review.md" }
   ],
   "finalizer": [
-    "PROMPT_spec-gap.md",
-    "PROMPT_docs.md",
-    "PROMPT_spec-review.md",
-    "PROMPT_final-review.md",
-    "PROMPT_final-qa.md",
-    "PROMPT_proof.md",
-    "PROMPT_cleanup.md"
+    { "kind": "agent", "ref": "PROMPT_spec-gap.md" },
+    { "kind": "agent", "ref": "PROMPT_docs.md" },
+    { "kind": "agent", "ref": "PROMPT_spec-review.md" },
+    { "kind": "agent", "ref": "PROMPT_final-review.md" },
+    { "kind": "agent", "ref": "PROMPT_final-qa.md" },
+    { "kind": "agent", "ref": "PROMPT_proof.md" },
+    { "kind": "exec", "ref": "EXEC_cleanup-generated.json" }
   ],
   "triggers": {
     "merge_conflict":   "PROMPT_merge.md",
@@ -114,7 +125,7 @@ triggers:
 }
 ```
 
-Flat arrays of filenames. All logic lived in the compile step; the session runner just reads positions.
+Typed step descriptors. Agent steps resolve to prompt files; exec steps resolve to compiled manifests. This is a structural change from the original string-array form, so adding exec support bumps the `loop-plan.json` structural version.
 
 ## Prompt file format (frontmatter + body)
 
@@ -157,6 +168,58 @@ Precedence for execution settings at permit-grant time (highest first):
 2. Prompt file's frontmatter
 3. Project `aloop/config.yml`
 4. Daemon `daemon.yml`
+
+## Exec step manifest format
+
+An exec step is defined by a checked-in manifest file under the templates directory:
+
+```text
+aloop/templates/
+  EXEC_regen-api.yml
+  EXEC_cleanup-generated.yml
+```
+
+Pipeline authors reference the step by name:
+
+```yaml
+pipeline:
+  - agent: plan
+  - exec: regen-api
+  - agent: build
+```
+
+Example manifest:
+
+```yaml
+kind: exec
+runtime: bun
+file: scripts/regen-api.ts
+args: ["--check"]
+cwd: worktree
+timeout: 5m
+platforms: [darwin, linux]
+env_allowlist: [OPENAPI_BASE_URL]
+idempotent: true
+```
+
+Fields:
+
+- `kind` — must be `exec`.
+- `runtime` — executor. v1 allows `bun`, `node`, `bash`, or `pwsh`.
+- `file` — checked-in repo path to execute. Required. Inline code in YAML is forbidden.
+- `args` — ordered argument list.
+- `cwd` — `worktree`, `repo`, or an explicit relative path under one of those roots.
+- `timeout` — hard execution timeout.
+- `platforms` — optional allow-list. If omitted, step is assumed portable across supported platforms.
+- `env_allowlist` — env vars the daemon may pass through to the step. Default is empty.
+- `idempotent` — whether retrying the step is expected to be safe. `onFailure: retry` is valid only when this is `true`.
+
+Hard rules:
+
+- Exec manifests are configuration, not source code. The code lives in checked-in files like `scripts/*.ts`, `scripts/*.js`, `scripts/*.sh`, or `scripts/*.ps1`.
+- Durable state changes still go through official session contracts. If an exec step needs to add tasks or submit structured output, it calls `aloop-agent`; it does not write daemon/session state files directly.
+- Prefer `bun` or `node` for project-defined logic. `bash` and `pwsh` are valid for environment glue, but cross-platform workflows should not depend on bash alone.
+- Exec steps are for deterministic hooks, code generation, validations, and integrations. They are not a replacement for judgment-heavy prompts such as review, diagnosis, or human conversation.
 
 ## Chain grammar in frontmatter
 
@@ -239,13 +302,15 @@ Setup itself may be orchestrated through a dedicated setup workflow, but the sam
 Responsibilities:
 
 1. Read `aloop/config.yml` + `aloop/pipeline.yml` + per-agent overrides.
-2. Resolve `repeat` (unroll to flat cycle array).
+2. Resolve `repeat` (unroll to the flat cycle/finalizer step arrays).
 3. Resolve `onFailure` directives into runtime-applicable rules (stored separately in session state, not in `loop-plan.json`; the daemon applies them).
-4. Resolve trigger name → prompt filename mapping.
-5. Resolve chain grammar for any unspecified `provider:` frontmatter using project defaults.
-6. Copy prompt files into `<session>/prompts/` with template variables expanded (setup-time set).
-7. Write `loop-plan.json` to session state dir.
-8. Emit `session.loop_plan.updated` on the bus.
+4. Resolve `agent: <name>` to `PROMPT_<name>.md` and `exec: <name>` to `EXEC_<name>.yml`.
+5. Resolve trigger name → prompt filename mapping.
+6. Resolve chain grammar for any unspecified `provider:` frontmatter using project defaults.
+7. Copy prompt files into `<session>/prompts/` with template variables expanded (setup-time set).
+8. Copy exec manifests into `<session>/steps/` and compile them to runtime-ready JSON descriptors.
+9. Write `loop-plan.json` to session state dir.
+10. Emit `session.loop_plan.updated` on the bus.
 
 `loop-plan.json` has a `version` field that increments on every write. The daemon logs plan changes as they happen.
 
@@ -256,10 +321,10 @@ Rule: **the shim and the daemon never parse `pipeline.yml`.** If an operation ne
 The daemon's session runner is dumb in the way `loop.sh` used to try to be:
 
 1. Check queue — if a file exists, run its frontmatter's config, delete it after.
-2. Check if in finalizer mode — if yes, pick the next prompt from `finalizer[]`.
-3. Otherwise pick the next prompt from `cycle[cyclePosition]`.
+2. Check if in finalizer mode — if yes, pick the next step from `finalizer[]`.
+3. Otherwise pick the next step from `cycle[cyclePosition]`.
 4. Request a permit (see Scheduler permit hook).
-5. Invoke the resolved adapter.
+5. Invoke the resolved adapter or runtime.
 6. Persist result + usage, update position.
 
 The "intelligence" lives upstream:
@@ -267,6 +332,7 @@ The "intelligence" lives upstream:
 - **Queue population** happens via the API (`POST /v1/sessions/:id/steer`) or by the daemon's own watchers (stuck detector, merge detector, burn-rate watcher) matching named triggers from `triggers{}` in `loop-plan.json`.
 - **Finalizer switch** is mechanical — enter finalizer when `allTasksMarkedDone`, abort finalizer back to cycle position 0 if any finalizer agent adds tasks.
 - **Trigger resolution** is keyword matching: the daemon observes an event (`merge_conflict`), looks up `triggers.merge_conflict`, writes `queue/NNN-<keyword>.md` pointing at that prompt.
+- **Exec scope in v1** is deliberate: `exec` steps may appear in `pipeline` and `finalizer`, but `triggers:` still target prompts only. Event-driven diagnosis and conversation remain agent turns.
 
 No expressions, no conditionals. Keywords and positions.
 
@@ -292,13 +358,14 @@ Each workflow's `triggers:` map declares which keyword maps to which prompt; pro
 
 ## Scheduler permit hook
 
-Before invoking the adapter, the session runner:
+Before invoking the adapter or runtime, the session runner:
 
-1. `POST /v1/scheduler/permits` with `{ session_id, provider_candidate, estimated_cost_usd }` for the first provider in the resolved chain.
-2. On grant: proceed to adapter invocation.
-3. On denial with `rate_limit`, `provider_unavailable`, or `overrides_exclude_all`: advance to next provider in chain, request again.
-4. On denial with `burn_rate_exceeded` or `budget_exceeded`: session pauses; scheduler emits event; orchestrator (if any) gets notified via event bus.
-5. On denial with `system_pressure`: wait `retry_after_seconds` and retry the same provider.
+1. For an agent step: `POST /v1/scheduler/permits` with `{ session_id, provider_candidate, estimated_cost_usd }` for the first provider in the resolved chain.
+2. For an exec step: `POST /v1/scheduler/permits` with `{ session_id, executor_kind: "exec", runtime }`.
+3. On grant: proceed to execution.
+4. On denial with `rate_limit`, `provider_unavailable`, or `overrides_exclude_all` for an agent step: advance to next provider in chain, request again.
+5. On denial with `burn_rate_exceeded` or `budget_exceeded`: session pauses; scheduler emits event; orchestrator (if any) gets notified via event bus.
+6. On denial with `system_pressure`: wait `retry_after_seconds` and retry the same provider/runtime.
 
 The session runner **never** bypasses the scheduler — even if the session is standalone and concurrency is 1. The permit grant records the active provider, facilitates burn-rate accounting, and keeps all load decisions in one place.
 
@@ -308,7 +375,7 @@ The pipeline is mutable at runtime through two mechanisms:
 
 ### Override queue
 
-`<session>/queue/` holds files in the same frontmatter format as cycle prompts. The session runner checks this dir before the cycle.
+`<session>/queue/` holds prompt files in the same frontmatter format as cycle prompts. The session runner checks this dir before the cycle.
 
 Writers:
 - **User** via `POST /v1/sessions/:id/steer` → CLI, dashboard, or bot
@@ -325,7 +392,7 @@ For permanent changes, the compile step rewrites `loop-plan.json`:
 - Escalation ladder threshold crossed → inject recovery prompt; adjust position.
 - Project config change → full recompile.
 
-Agents never modify the plan themselves. Pipeline authoring is a user + compile-step concern.
+Agents and exec steps never modify the plan themselves. Pipeline authoring is a user + compile-step concern.
 
 ## Agent contract
 
@@ -402,6 +469,7 @@ Default permissions:
 | `qa` | qa_result | yes (any `for`) | own tasks |
 | `proof` | proof_result | no | own tasks |
 | `refine` (orchestrator) | refine_result | no | no |
+| `consistency` (orchestrator) | consistency_result | no | no |
 | `decompose` (orchestrator) | decompose_result | no | no |
 
 Projects may extend this table in `aloop/config.yml`.
@@ -425,6 +493,7 @@ pipeline:
     trigger: refine_needed
   - agent: orch_estimate
     trigger: estimate_needed
+  - agent: orch_consistency
   - agent: orch_dispatch
   - agent: orch_review
     trigger: pr_review_needed
@@ -432,7 +501,7 @@ pipeline:
     trigger: merge_conflict_pr
 
 finalizer:
-  - PROMPT_orch_cleanup.md
+  - agent: orch_cleanup
 
 triggers:
   decompose_needed:       PROMPT_orch_decompose.md
@@ -450,7 +519,7 @@ Runtime-level truths:
 - The orchestrator has no worktree (or uses project root read-only).
 - It creates children via `POST /v1/sessions` with `kind: child` and `parent_session_id: <self.id>`.
 - It subscribes to `/v1/events?parent=<self.id>` and writes to its own queue when it decides to act on anomalies — no daemon-side self-healing daemon.
-- It uses `aloop-agent` just like any other session — it submits `decompose_result`, reads `child_stuck` events, and queues `PROMPT_orch_diagnose.md` on its own queue when needed.
+- It uses `aloop-agent` just like any other session — it submits `decompose_result`, `consistency_result`, reads `child_stuck` events, and queues `PROMPT_orch_diagnose.md` on its own queue when needed.
 
 Self-healing is intelligent because it is an agent turn (the diagnose prompt), not a shell script reacting to metrics. The diagnose turn's output is either a new queue item (e.g., "kill child X," "pause dispatch," "raise burn-rate threshold") or a `no_action` submit.
 
@@ -544,3 +613,4 @@ User-facing default `--help` shows ~8 commands: `setup`, `start`, `status`, `ste
 5. **Provider chains are resolved at permit-grant time.** Live overrides and health matter.
 6. **Queue + finalizer + cycle are the only scheduling surfaces.** Everything else is upstream.
 7. **Triggers are keywords, not expressions.** If a project needs a new trigger, it registers a name and a prompt. No predicates in the plan.
+8. **Inline code in YAML is forbidden.** Deterministic code runs through checked-in exec manifests and files, never through shell snippets embedded in `pipeline.yml`.

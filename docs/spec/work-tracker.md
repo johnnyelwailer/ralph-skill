@@ -43,7 +43,7 @@ Setup may establish the **initial Epic baseline** for orchestrator-mode projects
 
 ## Trust boundary
 
-Same boundary as all other aloop side effects. Agents do not call `gh`, `glab`, Linear API, or any tracker CLI. Agents **express intent** through `aloop-agent submit --type <decompose_result|sub_decompose_result|refine_result|estimate_result|review_result|...>`; the daemon routes that intent to the active `TrackerAdapter`, which executes the operation under a policy that the daemon enforces.
+Same boundary as all other aloop side effects. Agents do not call `gh`, `glab`, Linear API, or any tracker CLI. Agents **express intent** through `aloop-agent submit --type <decompose_result|sub_decompose_result|refine_result|estimate_result|consistency_result|review_result|...>`; the daemon routes that intent to the active `TrackerAdapter`, which executes the operation under a policy that the daemon enforces.
 
 - Agent → `aloop-agent submit` → daemon → adapter → tracker API
 - Agent → *never directly* → tracker API
@@ -529,9 +529,107 @@ Orchestrator prompts produce tracker-agnostic structured output. The adapter lay
 
 This is the enforcement layer behind the research's repeated finding that parallel children on shared trunk are safe **only** when work is on disjoint files. See `docs/research/agent-systems-2026.md` §4 and §7.
 
+### Optional benchmark metadata
+
+Benchmarking does **not** introduce a new work-item kind. Benchmark candidates are ordinary Stories with optional metadata that marks them as alternative attempts for the same bounded task.
+
+Recommended shape:
+
+```json
+{
+  "metadata": {
+    "config_variant_id": "frontend/codex-gpt5.4-a",
+    "benchmark": {
+      "group_id": "bg_frontend_button_2026w17",
+      "source_story_slug": "button-theming-fix",
+      "task_family": "frontend.component.theming",
+      "agent_type": "frontend-build",
+      "rubric_id": "frontend-v1",
+      "role": "candidate"
+    }
+  }
+}
+```
+
+Notes:
+
+- `benchmark.group_id` ties alternative candidate Stories together.
+- `source_story_slug` points to the canonical task this benchmark is evaluating.
+- `task_family` is the generalization unit for future routing; do not overfit it to one Story title.
+- `agent_type` names the specialized agent family being compared (`frontend-build`, `backend-build`, `review`, etc.).
+- `rubric_id` identifies the scoring rubric the project used; without this, cross-project comparison is weak.
+- `role` is advisory metadata (`candidate` or `canonical`), not a new state machine.
+
+Benchmark groups intentionally reuse ordinary Story mechanics:
+
+- one child session per Story still holds
+- benchmark candidates still obey the same `file_scope` overlap rules
+- because duplicate candidates usually share `file_scope.owned`, they are normally serialized under the current shared-trunk model rather than dispatched concurrently
+- only one candidate in a benchmark group should advance to merge; the others remain evidence, not merged alternatives
+
 ### `refine_result`, `estimate_result`, `review_result`
 
 Analogous abstract shapes. `slug` stays stable across refinements; `ref` (adapter, key) is assigned by the adapter after creation. Tasks are NOT in `decompose_result` / `sub_decompose_result` — they are generated inside the child session by the plan phase.
+
+For Stories, `refine_result` should also populate the basis snapshot used by pre-dispatch consistency checks. Recommended metadata fields:
+
+```json
+{
+  "metadata": {
+    "refinement_basis": {
+      "checked_at": "2026-04-21T10:12:00Z",
+      "spec_revision": "specrev_2026-04-21T10:05:11Z",
+      "story_updated_at": "2026-04-21T10:12:00Z",
+      "epic_updated_at": "2026-04-21T09:48:02Z",
+      "dependency_story_refs": [
+        { "slug": "permit-persistence", "updated_at": "2026-04-21T09:40:17Z" }
+      ],
+      "related_story_refs": [
+        { "slug": "scheduler-reconcile", "updated_at": "2026-04-21T09:58:33Z" }
+      ]
+    }
+  }
+}
+```
+
+`related_story_refs` exists for semantic coupling that is real but not a hard dependency edge: sibling Stories sharing an API contract, competing realization Stories under one Epic, or cross-Epic Stories that must stay aligned.
+
+### `consistency_result`
+
+`consistency_result` is the orchestrator's analysis-only pre-dispatch guard. It answers whether a Story refined earlier is still safe to launch now.
+
+Recommended shape:
+
+```json
+{
+  "type": "consistency_result",
+  "items": [
+    {
+      "story": { "slug": "permit-protocol-design" },
+      "basis_checked_at": "2026-04-21T10:12:00Z",
+      "verdict": "stale",
+      "reasons": [
+        {
+          "kind": "story_updated",
+          "slug": "permit-persistence",
+          "updated_at": "2026-04-21T11:03:44Z",
+          "summary": "Sibling Story now owns lease-renewal behavior this Story assumed locally."
+        }
+      ],
+      "recommended_action": "requeue_refine",
+      "recommended_status": "needs_refinement"
+    }
+  ]
+}
+```
+
+Semantics:
+
+- `clean` means dispatch may proceed for the checked basis.
+- `stale` means the Story should not dispatch until refinement is rerun.
+- `blocked` means the Story is inconsistent in a way that now depends on another unresolved item or contradiction.
+
+The consistency agent does not rewrite work items directly. The daemon applies the result by updating status/metadata and queueing the normal refinement path.
 
 ### Identity
 

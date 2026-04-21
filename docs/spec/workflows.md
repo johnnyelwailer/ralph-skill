@@ -292,6 +292,8 @@ workflow:
 
 The compile step validates: every workflow referenced exists; no `forbid` workflow is selectable; `default` is set. Errors surface during setup verification (`setup.md` Phase 6).
 
+Benchmarking is orthogonal to workflow selection. A benchmark candidate should normally reuse the exact workflow the canonical Story would have used; "benchmark" is not itself a special workflow in v1. If a project wants a benchmark-specific judge or rubric phase, it adds that as an ordinary custom workflow or finalizer prompt rather than as daemon-side benchmark logic.
+
 ## Custom workflows
 
 Projects add their own under `<project>/.aloop/workflows/<name>.yaml`. Schema is enforced at compile. Three rules:

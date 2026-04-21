@@ -10,6 +10,7 @@
 - Why Karpathy AutoResearch doesn't apply (here)
 - The right shape: continuous structured experimentation
 - Methodology catalog
+- Budgeted benchmark mode (existing-primitives only)
 - v1 minimum (must ship)
 - v1.5 candidates (after first telemetry)
 - v2+ candidates (after months of production)
@@ -104,6 +105,120 @@ Grouped by what they address. For each: what it does, where it slots in aloop's 
 - **Constitutional AI iteration (Anthropic pattern).** Constitution itself iterated by red-team exercises that try to break the system. Findings file CRs against CONSTITUTION (Level 3, human-merged). Makes Section IX of CONSTITUTION a living document while preserving agent-read-only invariant.
 - **Reward modeling from human review.** When humans review PRs, capture qualitative judgments. Train (or prompt) a reward model. Powerful but requires consistent human review data. v2.
 
+## Budgeted benchmark mode (existing-primitives only)
+
+There is one accelerator that fits aloop's operating model without introducing a new optimization subsystem: **budgeted benchmark mode**.
+
+Idea: spend a small fixed weekly budget on a few carefully chosen, real, benchmarkable tasks. Run the same task shape under a small set of variants, pick the winner for that task, and keep the resulting evidence for future routing.
+
+This produces two kinds of value:
+
+- **Immediate value** — the benchmarked task itself can land from the best candidate rather than from the first acceptable one.
+- **Slow learning value** — over weeks, the system accumulates evidence about which variant tends to win for a given agent type and task family.
+
+### Why this mode exists
+
+The default learning loop in this document is intentionally slow-horizon: every Story contributes one data point. That is the right foundation.
+
+But some task families are common, bounded, and expensive enough to justify a little extra measurement:
+
+- frontend component work
+- test-authoring tasks
+- bounded refactors
+- contract-focused backend slices
+
+For these, a small amount of duplicated work can pay for itself by improving both the current outcome and future routing.
+
+### Constraint: v1 must reuse existing primitives
+
+This mode is deliberately **not** a new daemon subsystem in v1. No dedicated benchmark runner, no benchmark database, no benchmark-only API, no special scheduler path.
+
+It is composed from existing primitives:
+
+| Need | Existing primitive |
+|---|---|
+| select the task shape | ordinary Story labels + metadata + orchestrator refinement |
+| choose variants | existing `provider_chain`, `model`, and `config_variant_id` fields |
+| run the work | ordinary child sessions and ordinary workflows |
+| evaluate quality | ordinary proof/review/finalizer agents plus project prompts |
+| keep evidence | existing Story metadata, child-session history, change sets, and `metric_aggregates` grouped by `variant_id` |
+| keep cost bounded | existing cost metrics + project policy on how many benchmark Stories may be dispatched per week |
+
+### Execution model
+
+Benchmark mode is expressed as a small group of **ordinary Stories** that all represent the same bounded task, with shared benchmark metadata and different variants.
+
+Each benchmark candidate:
+
+- uses the same `file_scope`
+- uses the same selected workflow the canonical task would have used
+- differs only in variant choice (`config_variant_id`, provider/model, or project-layer prompt hash)
+- produces the same normal artifacts: commits, proof outputs, review outputs, and change set
+
+One important consequence falls directly out of the current trunk-safety model:
+
+- **Benchmark candidates run serially in v1.**
+
+Why: benchmark candidates for the same task necessarily share `file_scope.owned`, and the scheduler's overlap gate already denies concurrent Stories with overlapping ownership. That rule is correct and should not be weakened just to make benchmarking easier. Under current primitives, benchmark runs compare alternatives **one after another**, each from the same `agent/trunk` base, not in parallel.
+
+This is acceptable because benchmark mode is explicitly slow-budgeted rather than throughput-maximizing.
+
+### Task selection rules
+
+Only benchmark tasks that are:
+
+- bounded enough that duplicate execution cost is acceptable
+- common enough that the result is likely to generalize
+- reviewable by artifacts and rubrics, not only by taste
+- uncertain enough that variant choice plausibly matters
+
+Avoid benchmarking:
+
+- giant or highly ambiguous Stories
+- one-off migrations with no recurring shape
+- tasks whose quality cannot be judged except by long-horizon production fallout
+
+### Evaluation stack
+
+Benchmark evaluation should stay boring and layered:
+
+1. **Objective checks first** — tests, lint, typecheck, screenshots, perf captures, accessibility checks, coverage deltas, contract checks.
+2. **Workflow-native review artifacts second** — proof, review, final-review, final-qa, or any project-specific finalizer already in the chosen workflow.
+3. **Agent-type-specific rubric third** — captured in project prompts or Story metadata, not in daemon code.
+4. **Human tie-break only when needed** — close scores, conflicting artifacts, or high-stakes tasks.
+
+Different specialized agents care about different rubrics:
+
+- **testing** — coverage improvement, flake resistance, usefulness of assertions, bug-finding quality
+- **builder** — spec coverage, correctness, maintainability, review findings
+- **frontend builder** — responsiveness, accessibility, composability, theming consistency, visual correctness
+
+### Winner policy
+
+Exactly one benchmark candidate may become the winner for a benchmark group.
+
+- The winner proceeds through the ordinary approval and merge path.
+- Non-winning candidates are closed or rejected as ordinary work items; their artifacts remain part of the evidence trail.
+- The benchmark group is valuable even when no candidate is good enough to merge: that result still teaches the routing layer that the tested variants underperformed on this task family.
+
+### What this mode is not
+
+- Not a replacement for variant tagging on all Stories.
+- Not a license to weaken `file_scope` overlap protections.
+- Not a prompt optimizer.
+- Not an automatic self-merging learning loop.
+- Not a reason to add benchmark-specific code before the basic evidence substrate exists.
+
+### Future primitives, only if later automation justifies them
+
+No new runtime primitive is required for the initial mode above.
+
+If later automation and UI support are worth the code, keep the additions minimal:
+
+1. **Dedicated benchmark-budget enforcement** — a scheduler/accounting primitive that reserves a weekly budget bucket for benchmark-tagged Stories rather than relying on project policy.
+2. **Benchmark result API/dashboard surface** — read-only aggregation over existing Story/session data so humans can inspect win rate, cost, and confidence by task family.
+3. **Isolated benchmark sandboxes** — only if true parallel same-task eval becomes worth the complexity. Without such a primitive, duplicate candidates remain serial by design.
+
 ## v1 minimum (must ship)
 
 Foundations without which no future learning is possible. Build these in v1; do not build the optimizer layer.
@@ -116,7 +231,7 @@ Foundations without which no future learning is possible. Build these in v1; do 
 | Canary-aware permit allocation | Scheduler can grant `K%` of permits to a flagged variant for safe rollout. | ~40 LOC in scheduler |
 | Variant-comparison dashboard panel | Humans can see merge rate / burn rate / gate pass rate per variant. | dashboard work, post-MVP |
 
-These four primitives mean: when v1.5 work begins, the data is already there, the safety mechanisms are already there, and the analysis layer can be added without restructuring.
+These five primitives mean: when v1.5 work begins, the data is already there, the safety mechanisms are already there, and the analysis layer can be added without restructuring.
 
 ## v1.5 candidates (after first telemetry)
 
@@ -166,3 +281,5 @@ If any of the three is missing, the capability does not ship. No exceptions.
 4. **Methodology is documented before automation.** A bandit, BO, or OPRO loop in code requires a corresponding section in this doc explaining the math, the assumptions, and the cheat-prevention.
 5. **v1 ships the data substrate; v1.5+ ships the analysis layer.** Don't reverse this order. An optimizer without data is a hallucinator.
 6. **Statistical significance is a gate, not a suggestion.** Optimizer proposals carry the evidence (effect size, sample size, confidence interval); the CR is rejectable on insufficient evidence alone.
+7. **Budgeted benchmark mode reuses Story/workflow primitives.** No benchmark-only runner or sidecar subsystem is introduced before the existing evidence substrate is working.
+8. **Benchmark duplicates do not bypass trunk-safety rules.** Under the current shared-trunk model, same-task candidates remain serial unless a future isolated-sandbox primitive is explicitly added.

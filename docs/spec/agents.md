@@ -226,6 +226,7 @@ Orchestrator pipelines use a different catalog. Each still obeys the universal c
 | `orch_refine` | `refine_result` | Tightens scope of one Epic or Story |
 | `orch_sub_decompose` | `sub_decompose_result` | Produces Stories under one Epic |
 | `orch_estimate` | `estimate_result` | Complexity tier + dependency edits |
+| `orch_consistency` | `consistency_result` | Checks whether a `dor_validated` Story is still consistent with newer spec, Epic, dependency, or sibling-story changes before dispatch |
 | `orch_dispatch` | `dispatch_result` | List of Stories to launch |
 | `orch_review` | `review_result` | Change-set review, outputs verdict + inline comments |
 | `orch_resolver` | — (queues merge_conflict into child) | Decides rebase / recreate / abandon for conflicted change sets |

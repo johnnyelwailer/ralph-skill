@@ -109,6 +109,7 @@ The daemon's `TrackerAdapter` (GitHub, builtin, or future GitLab/Linear/etc.) tr
 | `sub_decompose_result` | List of Stories under one Epic | Adapter creates issues with `kind: story` and links as sub-issues of the Epic |
 | `refine_result` | Epic or Story with scope tightened, constraints added, DoR fields set | Adapter updates issue body and status metadata |
 | `estimate_result` | Complexity tier + dependency graph adjustments | Adapter updates metadata / labels |
+| `consistency_result` | Pre-dispatch consistency verdict for one or more Stories | Daemon records verdict metadata; stale Stories move back to `needs_refinement` and queue `refine_needed` |
 | `review_result` | Verdict + per-file findings + thread locations | Adapter posts change-set comments and resolves threads |
 | `merge_request` | Approved change set ready to merge | Daemon (not adapter) calls `mergeChangeSet` per policy |
 
@@ -127,7 +128,7 @@ The orchestrator cycles through a scan heartbeat that reacts to tracker events a
 decompose_needed? ── yes ──→ decompose → refine → estimate ─┐
   │ no                                                      │
   ▼                                                         │
-dispatchable issues > 0? ── yes ──→ dispatch ───────────────┤
+dispatchable issues > 0? ── yes ──→ consistency → dispatch ─┤
   │ no                                                      │
   ▼                                                         │
 child change sets open? ── yes ──→ monitor + gate + merge ──┤
@@ -176,7 +177,57 @@ Workflow selection follows the deterministic priority: explicit override → lab
 
 `orch_refine` also owns runtime ambiguity handling per `refinement.md`: when a Story is underspecified, contradictory, or stale, it should split safe work from decision-bound work, ask for feedback through the tracker when needed, and prefer exploratory draft work over silent assumption-making.
 
+`orch_refine` must also capture the Story's **refinement basis** so later dispatch-time drift checks can stay incremental instead of re-reading the whole tracker. Recommended metadata shape:
+
+```json
+{
+  "refinement_basis": {
+    "checked_at": "2026-04-21T10:12:00Z",
+    "spec_revision": "specrev_2026-04-21T10:05:11Z",
+    "story_updated_at": "2026-04-21T10:12:00Z",
+    "epic_updated_at": "2026-04-21T09:48:02Z",
+    "dependency_story_refs": [
+      { "slug": "permit-persistence", "updated_at": "2026-04-21T09:40:17Z" }
+    ],
+    "related_story_refs": [
+      { "slug": "scheduler-reconcile", "updated_at": "2026-04-21T09:58:33Z" }
+    ]
+  }
+}
+```
+
+`related_story_refs` is intentionally small. It is the shortlist of non-blocking sibling or cross-Epic Stories whose scope meaningfully constrains this Story. This is the knob that lets the orchestrator ask "what changed since this Story was last refined?" instead of rescanning every Story on every heartbeat.
+
 Tasks are **not** produced by the orchestrator. Tasks are generated inside a Story's child session by the plan agent, tracked via `aloop-agent todo`, and consumed by build/qa/review. Mirroring tasks to the tracker is an optional per-project feature (see `work-tracker.md` §Task tracking).
+
+### Pre-dispatch consistency check (`PROMPT_orch_consistency.md`)
+
+Right before dispatch, the orchestrator runs a narrow consistency pass over candidate Stories. This is not a second refinement. It is a cheap guard whose only job is to answer: "is this Story still dispatch-safe given what changed elsewhere since it was last refined?"
+
+The consistency pass should first filter by cheap invalidators:
+
+- current project `spec_revision` is newer than `metadata.refinement_basis.spec_revision`
+- the Story's own `updated_at` is newer than `metadata.refinement_basis.story_updated_at`
+- parent Epic `updated_at` is newer than `metadata.refinement_basis.epic_updated_at`
+- any dependency or `related_story_ref` has `created_at` or `updated_at` newer than the recorded snapshot
+- a human comment arrived after `metadata.refinement_basis.checked_at`
+
+Only Stories that trip one of those invalidators need a full consistency prompt turn. Stories with no newer relevant inputs can flow straight to dispatch.
+
+`orch_consistency` is analysis-only. It does not rewrite the Story body itself. It emits `consistency_result` with a verdict such as:
+
+- `clean` — still consistent; dispatch may proceed
+- `stale` — semantics drifted; skip dispatch
+- `blocked` — a dependency or contradiction now makes dispatch unsafe
+
+Default daemon behavior on drift is:
+
+- mark the Story `needs_refinement`
+- attach the detected drift reasons in metadata and/or a tracker note
+- queue `refine_needed` for that Story
+- skip dispatch until a new `refine_result` lands
+
+That default is deliberately conservative. If future experience shows that some classes of drift can be auto-repaired mechanically, the repair still happens through a normal `orch_refine` turn, not by letting `orch_consistency` silently mutate scope.
 
 Throughout: **agents see no tracker specifics.** All tracker writes happen daemon-side through the adapter.
 
@@ -189,6 +240,7 @@ The dispatcher is a prompt (`PROMPT_orch_dispatch.md` or similar) that:
    - Parent Epic is `refined` (or `dor_validated`).
    - Dependencies satisfied (all blocking Stories `done`, possibly across Epics).
    - Wave gate — higher waves wait until lower waves' critical paths are merged.
+   - Pre-dispatch consistency gate passed: either no relevant inputs changed since `metadata.refinement_basis.checked_at`, or the latest `consistency_result` for the current basis is `clean`.
    - Scheduler permit for the child session can be acquired (concurrency, system, quota, burn-rate gates all pass).
    - Override policy permits a provider for this Story's chain.
 3. Emits `dispatch_result` — a list of `{story_ref, workflow, provider_chain}` tuples. `workflow` is read from the Story's `metadata.workflow` (set by `orch_refine`); the dispatcher validates the workflow exists, is permitted by project config (`workflow.forbid` list), and matches the Story's `file_scope` patterns. Mismatches return the Story to `refined` with a re-route note.
@@ -196,6 +248,8 @@ The dispatcher is a prompt (`PROMPT_orch_dispatch.md` or similar) that:
 5. Daemon creates the child's worktree (branch `aloop/issue-<story_key>`, based on `agent/trunk`) and starts the child's session runner.
 
 The dispatcher does not spawn processes. It submits intent. The daemon does the work.
+
+Benchmark candidates are not a separate session kind. They are ordinary Stories with shared benchmark metadata (see `work-tracker.md`) and are dispatched through the same path. Under the current shared-trunk/file-scope model, same-task benchmark candidates normally run **serially**, not in parallel, because their `file_scope.owned` sets overlap by design and the scheduler should keep denying concurrent overlap.
 
 ## Monitor + gate + merge
 
@@ -217,6 +271,8 @@ When a child session produces a change set and signals readiness:
 - Merge mode per project config (`merge_mode: squash | merge | rebase`).
 - Merge requires: mergeability check passing, tracker's CI required checks green (if configured), review verdict `approved`.
 
+For benchmark groups, only one candidate should reach the approved-and-merge path. Non-winning candidates are closed or rejected as ordinary Stories after comparison; their artifacts still count as evidence for future routing.
+
 ## Replan and redispatch
 
 When a merge lands, downstream issues may have become more or less feasible. The orchestrator's scan cycle re-evaluates:
@@ -231,6 +287,7 @@ The same machinery applies when the spec changes under a running project:
 - **Edited spec / accepted change request** → re-run spec analysis, then refine or decompose again as needed.
 - **Epic no longer matches current scope** → move back to `needs_refinement`, or replace with a newly decomposed set.
 - **Story structure stale after requirement change** → re-run `orch_sub_decompose` and invalidate dispatchability for affected Stories until the new structure is consistent.
+- **A `dor_validated` Story drifted before dispatch** → `orch_consistency` marks it stale, queues re-refinement, and leaves unrelated Stories moving.
 
 Redispatch is always a **new child session**. The old session's events, logs, and change set (if any) are retained for post-mortem.
 

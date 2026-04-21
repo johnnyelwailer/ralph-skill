@@ -84,7 +84,7 @@ This is the load-bearing decision:
 - **Compile step** — translates `pipeline.yml` into `loop-plan.json`. See `pipeline.md` §Compile step for the canonical description (single YAML reader in the system).
 - **Watchdog / reconcile** — stuck detection, provider quota refresh, permit expiry sweep, orphan cleanup, burn-rate tracking, crash recovery. All internal to the daemon; no external cron.
 - **Project registry** — N unrelated repos served by one daemon instance.
-- **Adapter orchestration** — invokes `ProviderAdapter` for turns, `TrackerAdapter` for decomposition/review/merge, and `SandboxAdapter` for session execution environments.
+- **Adapter orchestration** — invokes `ProviderAdapter` for agent turns, `TrackerAdapter` for decomposition/review/merge, and `SandboxAdapter` for session execution environments and deterministic exec steps.
 
 Full detail in `daemon.md`.
 
@@ -93,9 +93,9 @@ Full detail in `daemon.md`.
 `loop.sh` and `loop.ps1` are API clients, not business logic. Hard budget: ≤150 LOC each. What they do:
 
 1. Acquire a local session lock.
-2. Ask the daemon for the next prompt to execute (`GET /v1/sessions/:id/next`).
-3. Invoke the resolved provider CLI with the prompt body.
-4. Post turn events as they happen (`POST /v1/sessions/:id/events`, batched).
+2. Ask the daemon for the next step to execute (`GET /v1/sessions/:id/next`).
+3. Invoke the resolved provider CLI or deterministic runtime with the compiled step payload.
+4. Post step events as they happen (`POST /v1/sessions/:id/events`, batched).
 5. Write turn result + usage chunks.
 6. Release lock and exit.
 
@@ -159,7 +159,7 @@ Explicit non-goals — decisions that must not drift back in:
 - **No business logic in the shim.** If shrinking requires moving logic, move it.
 - **No YAML parsing outside the compile step.** Shims and session runner use `loop-plan.json`.
 - **No direct tracker calls from agents.** Always `aloop-agent submit` → daemon → adapter.
-- **No expressions in pipeline YAML.** Keywords (`onFailure: retry`, `trigger: merge_conflict`) are data; evaluation is daemon code.
+- **No expressions or inline code in pipeline YAML.** Keywords (`onFailure: retry`, `trigger: merge_conflict`) are data; deterministic code runs through typed exec manifests; evaluation is daemon code.
 - **No second runtime process.** Orchestrators run as workflows in the same daemon, not separate binaries.
 - **No in-process state that outlives a request.** Session state is SQLite + JSONL, not daemon memory.
 - **No concurrency that bypasses the scheduler.** Every turn goes through the permit protocol, even for standalone single-session runs.
