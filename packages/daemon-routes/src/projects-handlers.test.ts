@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { openDatabase, ProjectRegistry } from "@aloop/state-sqlite";
-import { listProjects, getProject } from "./projects-handlers.ts";
+import { listProjects, getProject, archiveProject, purgeProject } from "./projects-handlers.ts";
 import type { Deps } from "./projects-common.ts";
 
 function makeDeps(dir: string): Deps {
@@ -149,5 +149,86 @@ describe("getProject", () => {
     const body = await (res as Response).json();
     expect(body.error.code).toBe("project_not_found");
     expect(body.error.details.id).toBe("no-such-id");
+  });
+});
+
+describe("archiveProject", () => {
+  let dir: string;
+  let deps: Deps;
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), "aloop-proj-handlers-"));
+    deps = makeDeps(dir);
+  });
+
+  afterEach(() => {
+    const reg = deps.registry as unknown as { _db: { close(): void } };
+    reg._db?.close();
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  test("returns 200 with archived status when project exists", async () => {
+    const created = deps.registry.create({ absPath: "/x", name: "proj-x" });
+    const res = archiveProject(created.id, deps);
+    expect(res.status).toBe(200);
+    const body = await (res as Response).json();
+    expect(body.id).toBe(created.id);
+    expect(body.status).toBe("archived");
+    expect(body._v).toBe(1);
+  });
+
+  test("returns 404 when project not found", async () => {
+    const res = archiveProject("no-such-id", deps);
+    expect(res.status).toBe(404);
+    const body = await (res as Response).json();
+    expect(body.error.code).toBe("project_not_found");
+    expect(body.error.details.id).toBe("no-such-id");
+  });
+
+  test("actually archives the project (verifiable via getProject)", async () => {
+    const created = deps.registry.create({ absPath: "/y", name: "proj-y" });
+    archiveProject(created.id, deps);
+    const getRes = getProject(created.id, deps);
+    expect(getRes.status).toBe(200);
+    const body = await (getRes as Response).json();
+    expect(body.status).toBe("archived");
+  });
+});
+
+describe("purgeProject", () => {
+  let dir: string;
+  let deps: Deps;
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), "aloop-proj-handlers-"));
+    deps = makeDeps(dir);
+  });
+
+  afterEach(() => {
+    const reg = deps.registry as unknown as { _db: { close(): void } };
+    reg._db?.close();
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  test("returns 204 with null body when project is purged", async () => {
+    const created = deps.registry.create({ absPath: "/z", name: "proj-z" });
+    const res = purgeProject(created.id, deps);
+    expect(res.status).toBe(204);
+    expect(res.body).toBeNull();
+  });
+
+  test("returns 404 when project not found", async () => {
+    const res = purgeProject("no-such-id", deps);
+    expect(res.status).toBe(404);
+    const body = await (res as Response).json();
+    expect(body.error.code).toBe("project_not_found");
+    expect(body.error.details.id).toBe("no-such-id");
+  });
+
+  test("actually removes the project (verifiable via getProject)", async () => {
+    const created = deps.registry.create({ absPath: "/w", name: "proj-w" });
+    purgeProject(created.id, deps);
+    const getRes = getProject(created.id, deps);
+    expect(getRes.status).toBe(404);
   });
 });
