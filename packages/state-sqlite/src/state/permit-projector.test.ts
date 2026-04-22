@@ -1,12 +1,11 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { makeIdGenerator } from "@aloop/core";
+import { loadBundledMigrations, migrate, openDatabase } from "@aloop/sqlite-db";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { JsonlEventStore } from "@aloop/event-jsonl";
 import { createEventWriter } from "../events/append-and-project.ts";
-import { openDatabase } from "./database.ts";
-import { migrate, loadBundledMigrations } from "./migrations.ts";
 import { PermitProjector } from "./permit-projector.ts";
 import { PermitRegistry, clearPermits } from "./permits.ts";
 import { EventCountsProjector, runProjector } from "./projector.ts";

@@ -1,11 +1,11 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { Database } from "bun:sqlite";
 import { makeEvent, makeIdGenerator, type EventEnvelope } from "@aloop/core";
+import { loadBundledMigrations, migrate } from "@aloop/sqlite-db";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { JsonlEventStore } from "@aloop/event-jsonl";
-import { loadBundledMigrations, migrate } from "./migrations.ts";
 import { clearEventCounts, EventCountsProjector, runProjector } from "./projector.ts";
 
 function openDb(): Database {

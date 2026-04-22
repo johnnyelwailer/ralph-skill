@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { openDatabase } from "@aloop/sqlite-db";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { openDatabase } from "./database.ts";
 import {
   canonicalizeProjectPath,
   ProjectAlreadyRegisteredError,
