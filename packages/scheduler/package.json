@@ -15,6 +15,7 @@
     "typescript": "^5.6.0"
   },
   "dependencies": {
+    "@aloop/scheduler-gates": "workspace:*",
     "@aloop/state-sqlite": "workspace:*"
   }
 }

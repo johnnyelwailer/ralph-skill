@@ -14,7 +14,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ProviderOverrides, SchedulerConfigView, SchedulerLimits } from "./decisions.ts";
-import type { SchedulerProbes } from "./probes.ts";
+import type { SchedulerProbes } from "@aloop/scheduler-gates";
 import { SchedulerService } from "./service.ts";
 
 type Harness = {

@@ -36,15 +36,12 @@ describe("DEFAULT_SCHEDULER_PROBES", () => {
 describe("SystemSample type shape", () => {
   test("sample has all required readonly fields", () => {
     const sample = probes.DEFAULT_SCHEDULER_PROBES.systemSample();
-    // Readonly fields exist and are accessible
     expect(sample.cpuPct).toBeDefined();
     expect(sample.memPct).toBeDefined();
     expect(sample.loadAvg).toBeDefined();
   });
 
   test("cpuPct is clamped to [0, 100] even under extreme loadavg values", () => {
-    // If loadavg returned an enormous number, clampPct logic caps it at 100.
-    // We verify the property holds by checking the returned value is always in range.
     for (let i = 0; i < 10; i++) {
       const s = probes.DEFAULT_SCHEDULER_PROBES.systemSample();
       expect(s.cpuPct).toBeGreaterThanOrEqual(0);

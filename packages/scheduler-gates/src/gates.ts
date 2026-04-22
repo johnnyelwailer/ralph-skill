@@ -1,5 +1,5 @@
 import type { EventWriter } from "@aloop/state-sqlite";
-import type { ProviderOverrides, SchedulerLimits } from "./decisions.ts";
+import type { ProviderOverrides, SchedulerLimits } from "./types.ts";
 import type { BurnRateSample, SchedulerProbes } from "./probes.ts";
 
 type GateDenied = { ok: false; reason: string; details: Record<string, unknown> };

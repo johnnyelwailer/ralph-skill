@@ -1,4 +1,4 @@
-import { isMapping, loadYamlFile } from "./yaml.ts";
+import { isMapping, loadYamlFile } from "@aloop/config-schema-utils";
 import type { ParseResult } from "@aloop/core";
 import { writeFileSync } from "node:fs";
 import { stringify as yamlStringify } from "yaml";

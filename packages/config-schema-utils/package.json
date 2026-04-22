@@ -1,5 +1,5 @@
 {
-  "name": "@aloop/state-sqlite",
+  "name": "@aloop/config-schema-utils",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -16,8 +16,6 @@
   },
   "dependencies": {
     "@aloop/core": "workspace:*",
-    "@aloop/event-jsonl": "workspace:*",
-    "@aloop/state-projects": "workspace:*",
-    "@aloop/sqlite-db": "workspace:*"
+    "yaml": "^2.8.3"
   }
 }

@@ -1,11 +1,15 @@
 import { PermitRegistry, type EventWriter } from "@aloop/state-sqlite";
-import { applyOverrides, checkBurnRateGate, checkSystemGate } from "./gates.ts";
+import {
+  applyOverrides,
+  checkBurnRateGate,
+  checkSystemGate,
+  type SchedulerProbes,
+} from "@aloop/scheduler-gates";
 import type {
   AcquirePermitInput,
   PermitDecision,
   SchedulerConfigView,
 } from "./decisions.ts";
-import type { SchedulerProbes } from "./probes.ts";
 import {
   appendPermitDeny,
   appendPermitGrant,

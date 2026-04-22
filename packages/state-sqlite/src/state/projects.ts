@@ -1,19 +1,17 @@
 import { basename } from "node:path";
 import type { Database } from "bun:sqlite";
 import {
+  canonicalizeProjectPath,
+  getProjectById,
+  getProjectByPath,
+  listProjectsFromDb,
   ProjectAlreadyRegisteredError,
   ProjectNotFoundError,
   type CreateProjectInput,
   type Project,
   type ProjectFilter,
   type ProjectStatus,
-} from "./project-types.ts";
-import {
-  canonicalizeProjectPath,
-  getProjectById,
-  getProjectByPath,
-  listProjectsFromDb,
-} from "./projects-queries.ts";
+} from "@aloop/state-projects";
 
 export {
   canonicalizeProjectPath,

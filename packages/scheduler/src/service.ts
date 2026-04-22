@@ -5,7 +5,7 @@ import type {
   PermitDecision,
   SchedulerConfigView,
 } from "./decisions.ts";
-import type { SchedulerProbes } from "./probes.ts";
+import type { SchedulerProbes } from "@aloop/scheduler-gates";
 import { acquirePermitDecision } from "./acquire.ts";
 import {
   appendPermitExpired,

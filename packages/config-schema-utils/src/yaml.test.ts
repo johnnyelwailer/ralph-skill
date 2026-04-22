@@ -1,7 +1,10 @@
 import { describe, expect, test } from "bun:test";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { loadYamlFile, parseYamlString, isMapping } from "./yaml.ts";
 
 type YamlParseResult = ReturnType<typeof parseYamlString>;
+const THIS_DIR = dirname(fileURLToPath(import.meta.url));
 
 function expectParseOk(result: YamlParseResult) {
   expect(result.ok).toBe(true);
@@ -56,7 +59,7 @@ describe("parseYamlString", () => {
 
 describe("loadYamlFile", () => {
   test("returns ok with parsed content for a valid YAML file", () => {
-    const result = loadYamlFile("packages/config-schema/src/daemon-types.ts");
+    const result = loadYamlFile(resolve(THIS_DIR, "validators.ts"));
     // TypeScript source is not valid YAML, so parse fails
     const errors = expectParseErrors(result);
     expect(errors[0]).toContain("yaml parse error");
@@ -70,7 +73,7 @@ describe("loadYamlFile", () => {
 
   test("returns error when file cannot be read", () => {
     // A directory path causes readFileSync to fail with EISDIR
-    const result = loadYamlFile("packages/config-schema/src");
+    const result = loadYamlFile(THIS_DIR);
     const errors = expectParseErrors(result);
     expect(errors[0]).toContain("cannot read");
   });

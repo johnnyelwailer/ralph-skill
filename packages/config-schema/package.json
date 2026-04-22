@@ -15,6 +15,7 @@
     "typescript": "^5.6.0"
   },
   "dependencies": {
+    "@aloop/config-schema-utils": "workspace:*",
     "@aloop/core": "workspace:*",
     "yaml": "^2.8.3"
   }

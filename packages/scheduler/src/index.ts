@@ -17,4 +17,4 @@ export type {
   ProviderQuotaSample,
   BurnRateSample,
   SchedulerProbes,
-} from "./probes.ts";
+} from "@aloop/scheduler-gates";
