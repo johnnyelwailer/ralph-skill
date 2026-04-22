@@ -9,6 +9,10 @@ import {
   type ProviderRegistry,
 } from "@aloop/provider";
 import {
+  errorMessage,
+  classifyProviderProbeFailure,
+} from "./providers-failure-classify.ts";
+import {
   badRequest,
   errorResponse,
   jsonResponse,
@@ -59,18 +63,30 @@ export async function handleProviders(
     if (!authHandle || authHandle.trim().length === 0) {
       return badRequest("x-aloop-auth-handle header is required for quota probe");
     }
-    const quota = await adapter.probeQuota(authHandle);
-    const health = deps.providerHealth.setQuota(providerId, quota);
-    await deps.events.append("provider.quota", {
-      provider_id: providerId,
-      remaining: quota.remaining,
-      total: quota.total,
-      reset_at: quota.resetsAt,
-      currency: quota.currency,
-      probed_at: quota.probedAt,
-    });
-    await deps.events.append("provider.health", health);
-    return jsonResponse(200, { _v: 1, provider_id: providerId, quota });
+    try {
+      const quota = await adapter.probeQuota(authHandle);
+      deps.providerHealth.noteSuccess(providerId);
+      const health = deps.providerHealth.setQuota(providerId, quota);
+      await deps.events.append("provider.quota", {
+        provider_id: providerId,
+        remaining: quota.remaining,
+        total: quota.total,
+        reset_at: quota.resetsAt,
+        currency: quota.currency,
+        probed_at: quota.probedAt,
+      });
+      await deps.events.append("provider.health", health);
+      return jsonResponse(200, { _v: 1, provider_id: providerId, quota });
+    } catch (err) {
+      const classification = classifyProviderProbeFailure(err);
+      const health = deps.providerHealth.noteFailure(providerId, classification);
+      await deps.events.append("provider.health", health);
+      return errorResponse(502, "quota_probe_failed", `quota probe failed for ${providerId}`, {
+        provider_id: providerId,
+        classification,
+        message: errorMessage(err),
+      });
+    }
   }
 
   if (pathname === "/v1/providers/resolve-chain") {

@@ -86,7 +86,7 @@ function makeRequest(method: string, body?: unknown): Request {
   });
 }
 
-function makeProviderAdapterWithProbe(): ProviderAdapter {
+function makeProviderAdapterWithProbe(opts: { errorMessage?: string } = {}): ProviderAdapter {
   return {
     id: "claude",
     capabilities: {
@@ -102,13 +102,16 @@ function makeProviderAdapterWithProbe(): ProviderAdapter {
     resolveModel(ref) {
       return { providerId: "claude", modelId: ref };
     },
-    probeQuota: async () => ({
-      remaining: 123,
-      total: 1000,
-      resetsAt: new Date(1_700_000_000_000).toISOString(),
-      probedAt: new Date(1_700_000_000_000).toISOString(),
-      currency: "tokens",
-    }),
+    probeQuota: async () => {
+      if (opts.errorMessage) throw new Error(opts.errorMessage);
+      return {
+        remaining: 123,
+        total: 1000,
+        resetsAt: new Date(1_700_000_000_000).toISOString(),
+        probedAt: new Date(1_700_000_000_000).toISOString(),
+        currency: "tokens",
+      };
+    },
     async *sendTurn() {
       yield { type: "text", content: { delta: "ok" } };
       yield { type: "usage", content: { providerId: "claude", modelId: "claude" }, final: true };
@@ -120,6 +123,7 @@ function makeProvidersDeps(options: {
   config?: ConfigStore;
   events?: ReturnType<typeof makeEventWriter>;
   withQuotaProbe?: boolean;
+  quotaProbeErrorMessage?: string;
 } = {}): ProvidersDeps & { events: ReturnType<typeof makeEventWriter> } {
   const providerRegistry = new ProviderRegistry();
   providerRegistry.register(
@@ -128,7 +132,13 @@ function makeProvidersDeps(options: {
     }),
   );
   if (options.withQuotaProbe) {
-    providerRegistry.register(makeProviderAdapterWithProbe());
+    providerRegistry.register(
+      makeProviderAdapterWithProbe(
+        options.quotaProbeErrorMessage === undefined
+          ? {}
+          : { errorMessage: options.quotaProbeErrorMessage },
+      ),
+    );
   }
   const providerHealth = new InMemoryProviderHealthStore(
     providerRegistry.list().map((adapter) => adapter.id),
@@ -190,6 +200,7 @@ describe("handleProviders", () => {
 
     test("returns probe result and updates quota in health store", async () => {
       const deps = makeProvidersDeps({ withQuotaProbe: true });
+      deps.providerHealth.noteFailure("claude", "auth");
       const req = new Request("http://localhost/v1/providers/claude/quota", {
         method: "GET",
         headers: { "x-aloop-auth-handle": "auth_1" },
@@ -199,6 +210,7 @@ describe("handleProviders", () => {
       const body = await resJson<{ quota: { remaining: number } }>(result!);
       expect(body.quota.remaining).toBe(123);
       expect(deps.providerHealth.get("claude").quotaRemaining).toBe(123);
+      expect(deps.providerHealth.get("claude").status).toBe("healthy");
       expect(deps.events.appended).toHaveLength(2);
       expect(deps.events.appended[0]).toMatchObject({
         topic: "provider.quota",
@@ -211,7 +223,30 @@ describe("handleProviders", () => {
       });
       expect(deps.events.appended[1]).toMatchObject({
         topic: "provider.health",
-        data: { providerId: "claude", quotaRemaining: 123 },
+        data: { providerId: "claude", quotaRemaining: 123, status: "healthy" },
+      });
+    });
+
+    test("records probe failure in provider health and returns 502", async () => {
+      const deps = makeProvidersDeps({
+        withQuotaProbe: true,
+        quotaProbeErrorMessage: "unauthorized: invalid api key",
+      });
+      const req = new Request("http://localhost/v1/providers/claude/quota", {
+        method: "GET",
+        headers: { "x-aloop-auth-handle": "auth_1" },
+      });
+      const result = await handleProviders(req, deps, "/v1/providers/claude/quota");
+      expect(result!.status).toBe(502);
+      const body = await resJson<{ error: { code: string; details: { classification: string } } }>(result!);
+      expect(body.error.code).toBe("quota_probe_failed");
+      expect(body.error.details.classification).toBe("auth");
+      expect(deps.providerHealth.get("claude").status).toBe("degraded");
+      expect(deps.providerHealth.get("claude").failureReason).toBe("auth");
+      expect(deps.events.appended).toHaveLength(1);
+      expect(deps.events.appended[0]).toMatchObject({
+        topic: "provider.health",
+        data: { providerId: "claude", status: "degraded", failureReason: "auth" },
       });
     });
   });
