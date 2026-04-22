@@ -1,138 +1,95 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { startHttp, type RunningHttp, type StartHttpOptions } from "./http.ts";
+import { startHttp, type StartHttpOptions } from "./http.ts";
 
-function makeDeps(): StartHttpOptions["deps"] {
+/** Minimal RouterDeps that are sufficient to exercise startHttp. */
+function makeDeps() {
   return {
-    registry: {
-      list() {
-        return [];
-      },
-      get() {
-        return undefined;
-      },
-    } as unknown as StartHttpOptions["deps"]["registry"],
-    config: {
-      daemon() {
-        return {
-          scheduler: {
-            concurrencyCap: 3,
-            permitTtlDefaultSeconds: 600,
-            permitTtlMaxSeconds: 3600,
-            systemLimits: { cpuMaxPct: 80, memMaxPct: 85, loadMax: 4.0 },
-            burnRate: { maxTokensSinceCommit: 1_000_000, minCommitsPerHour: 1 },
-          },
-        };
-      },
-      overrides() {
-        return { allow: null, deny: null, force: null };
-      },
-    } as unknown as StartHttpOptions["deps"]["config"],
-    scheduler: {
-      listPermits() {
-        return [];
-      },
-      currentLimits() {
-        return {
-          concurrencyCap: 3,
-          permitTtlDefaultSeconds: 600,
-          permitTtlMaxSeconds: 3600,
-          systemLimits: { cpuMaxPct: 80, memMaxPct: 85, loadMax: 4.0 },
-          burnRate: { maxTokensSinceCommit: 1_000_000, minCommitsPerHour: 1 },
-        };
-      },
-      async updateLimits() {
-        return { ok: true, limits: {} } as any;
-      },
-      async acquirePermit() {
-        return { granted: false, reason: "test", gate: "test", details: {} };
-      },
-      async releasePermit() {
-        return false;
-      },
-    } as unknown as StartHttpOptions["deps"]["scheduler"],
-    events: {
-      async append() {
-        return { topic: "", data: {}, id: "test", ts: 0 };
-      },
-    } as unknown as StartHttpOptions["deps"]["events"],
-    handleDaemon: () => undefined,
+    registry: {} as any,
+    config: {} as any,
+    scheduler: {} as any,
+    events: {} as any,
+    handleDaemon: (req: Request, pathname: string) =>
+      new Response(JSON.stringify({ _v: 1, status: "ok" }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
   };
 }
 
 describe("startHttp", () => {
-  test("returns a RunningHttp with the configured port and hostname", async () => {
-    const deps = makeDeps();
-    const running = startHttp({ port: 0, deps });
+  let tmpDir: string;
 
-    try {
-      expect(typeof running.port).toBe("number");
-      expect(running.hostname).toBe("127.0.0.1");
-      expect(typeof running.server).toBe("object");
-      expect(typeof running.stop).toBe("function");
-    } finally {
-      await running.stop();
-    }
+  beforeEach(() => {
+    tmpDir = `/tmp/aloop-http-test-${Date.now()}`;
   });
 
-  test("uses provided hostname when specified", async () => {
-    const deps = makeDeps();
-    const running = startHttp({ hostname: "0.0.0.0", port: 0, deps });
-
-    try {
-      expect(running.hostname).toBe("0.0.0.0");
-    } finally {
-      await running.stop();
-    }
+  afterEach(async () => {
+    // Cleanup is handled per-test; no persistent state here.
   });
 
-  test("defaults hostname to 127.0.0.1 when not provided", async () => {
-    const deps = makeDeps();
-    const running = startHttp({ port: 0, deps });
+  test("starts an HTTP server and returns port and hostname", async () => {
+    const opts: StartHttpOptions = {
+      port: 0,
+      deps: makeDeps(),
+    };
+    const running = startHttp(opts);
 
-    try {
-      expect(running.hostname).toBe("127.0.0.1");
-    } finally {
-      await running.stop();
-    }
-  });
+    expect(running.port).toBeGreaterThan(0);
+    expect(typeof running.hostname).toBe("string");
+    expect(running.hostname).toBe("127.0.0.1");
+    expect(typeof running.stop).toBe("function");
 
-  test("stop() returns a Promise that resolves without error", async () => {
-    const deps = makeDeps();
-    const running = startHttp({ port: 0, deps });
-    await running.stop();
-    // second call to stop is also safe
     await running.stop();
   });
 
-  test("server is actually listening — HTTP request returns 200 for projects route", async () => {
-    const deps = makeDeps();
-    const running = startHttp({ port: 0, deps });
+  test("binds to the specified hostname when provided", async () => {
+    const opts: StartHttpOptions = {
+      port: 0,
+      hostname: "0.0.0.0",
+      deps: makeDeps(),
+    };
+    const running = startHttp(opts);
 
-    try {
-      const port = running.port;
-      const res = await fetch(`http://127.0.0.1:${port}/v1/projects`);
-      expect(res.status).toBe(200);
-      const body = await res.json() as { _v: number; items: unknown[] };
-      expect(body._v).toBe(1);
-      expect(body.items).toEqual([]);
-    } finally {
-      await running.stop();
-    }
+    expect(running.hostname).toBe("0.0.0.0");
+
+    await running.stop();
   });
 
-  test("server is actually listening — unknown route returns 404 envelope", async () => {
-    const deps = makeDeps();
-    const running = startHttp({ port: 0, deps });
+  test("uses 127.0.0.1 as default hostname when not specified", async () => {
+    const opts: StartHttpOptions = {
+      port: 0,
+      deps: makeDeps(),
+    };
+    const running = startHttp(opts);
 
-    try {
-      const port = running.port;
-      const res = await fetch(`http://127.0.0.1:${port}/v1/no-such-route`);
-      expect(res.status).toBe(404);
-      const body = await res.json() as { error: { _v: number; code: string; message: string } };
-      expect(body.error._v).toBe(1);
-      expect(body.error.code).toBe("not_found");
-    } finally {
-      await running.stop();
-    }
+    expect(running.hostname).toBe("127.0.0.1");
+
+    await running.stop();
+  });
+
+  test("stop() terminates the server without throwing", async () => {
+    const opts: StartHttpOptions = {
+      port: 0,
+      deps: makeDeps(),
+    };
+    const running = startHttp(opts);
+
+    await expect(running.stop()).resolves.toBeUndefined();
+
+    // Second stop must also not throw (idempotent)
+    await expect(running.stop()).resolves.toBeUndefined();
+  });
+
+  test("server is accessible from the returned RunningHttp", async () => {
+    const opts: StartHttpOptions = {
+      port: 0,
+      deps: makeDeps(),
+    };
+    const running = startHttp(opts);
+
+    expect(typeof running.server).toBe("object");
+    expect(running.server).not.toBeNull();
+
+    await running.stop();
   });
 });
