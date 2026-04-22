@@ -150,4 +150,90 @@ describe("normalizeLimitsPatch", () => {
     expect(patch.permitTtlMaxSeconds).toBe(100);
     expect(patch.cpuMaxPct).toBe(50);
   });
+
+  test("accepts empty nested system_limits ({}) without error", () => {
+    const errors: string[] = [];
+    const patch = normalizeLimitsPatch({ system_limits: {} }, errors);
+    expect(errors).toEqual([]);
+    expect(patch.cpuMaxPct).toBeUndefined();
+    expect(patch.memMaxPct).toBeUndefined();
+    expect(patch.loadMax).toBeUndefined();
+  });
+
+  test("accepts empty nested burn_rate ({}) without error", () => {
+    const errors: string[] = [];
+    const patch = normalizeLimitsPatch({ burn_rate: {} }, errors);
+    expect(errors).toEqual([]);
+    expect(patch.minCommitsPerHour).toBeUndefined();
+    expect(patch.maxTokensSinceCommit).toBeUndefined();
+  });
+
+  test("accepts mixed snake and camel keys within the same nested system_limits object", () => {
+    const errors: string[] = [];
+    const patch = normalizeLimitsPatch(
+      { system_limits: { cpu_max_pct: 70, memMaxPct: 85, load_max: 3.5 } },
+      errors,
+    );
+    expect(errors).toEqual([]);
+    expect(patch.cpuMaxPct).toBe(70);
+    expect(patch.memMaxPct).toBe(85);
+    expect(patch.loadMax).toBe(3.5);
+  });
+
+  test("accepts mixed snake and camel keys within the same nested burn_rate object", () => {
+    const errors: string[] = [];
+    const patch = normalizeLimitsPatch(
+      { burn_rate: { min_commits_per_hour: 2, maxTokensSinceCommit: 1_000_000 } },
+      errors,
+    );
+    expect(errors).toEqual([]);
+    expect(patch.minCommitsPerHour).toBe(2);
+    expect(patch.maxTokensSinceCommit).toBe(1_000_000);
+  });
+
+  test("burn_rate as top-level object (not map) returns error: must be a mapping", () => {
+    const errors: string[] = [];
+    const patch = normalizeLimitsPatch({ burn_rate: 42 }, errors);
+    expect(errors).toContain("scheduler.burn_rate: must be a mapping");
+    expect(patch.maxTokensSinceCommit).toBeUndefined();
+    expect(patch.minCommitsPerHour).toBeUndefined();
+  });
+
+  test("system_limits as top-level string returns error: must be a mapping", () => {
+    const errors: string[] = [];
+    const patch = normalizeLimitsPatch({ system_limits: "not-a-map" }, errors);
+    expect(errors).toContain("scheduler.system_limits: must be a mapping");
+    expect(patch.cpuMaxPct).toBeUndefined();
+  });
+
+  test("top-level burn_rate object shadows its own nested burn_rate.min_commits_per_hour key", () => {
+    // When burn_rate is an object at top level, isMap(burnRate) is true,
+    // so nested extraction runs and picks from the object.
+    // Top-level burn_rate value (an object) is NOT picked by pick() for min_commits_per_hour
+    // because pick() reads rawPatch directly, not the parsed burnRate variable.
+    // The nested burn_rate object values are correctly picked.
+    const errors: string[] = [];
+    const patch = normalizeLimitsPatch(
+      { burn_rate: { min_commits_per_hour: 3, maxTokensSinceCommit: 500_000 } },
+      errors,
+    );
+    expect(errors).toEqual([]);
+    expect(patch.minCommitsPerHour).toBe(3);
+    expect(patch.maxTokensSinceCommit).toBe(500_000);
+  });
+
+  test("empty patch {} is accepted and produces all-undefined patch values (no errors)", () => {
+    const errors: string[] = [];
+    const patch = normalizeLimitsPatch({}, errors);
+    expect(errors).toEqual([]);
+    // All values must be undefined (the keys are typed fields but values are absent)
+    expect(patch.concurrencyCap).toBeUndefined();
+    expect(patch.permitTtlDefaultSeconds).toBeUndefined();
+    expect(patch.permitTtlMaxSeconds).toBeUndefined();
+    expect(patch.cpuMaxPct).toBeUndefined();
+    expect(patch.memMaxPct).toBeUndefined();
+    expect(patch.loadMax).toBeUndefined();
+    expect(patch.minCommitsPerHour).toBeUndefined();
+    expect(patch.maxTokensSinceCommit).toBeUndefined();
+  });
 });
