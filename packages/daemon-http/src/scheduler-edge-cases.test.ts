@@ -232,3 +232,115 @@ describe("PATCH /v1/scheduler/limits (wrong method)", () => {
     expect(body.error.code).toBe("method_not_allowed");
   });
 });
+
+// ─── GET /v1/scheduler/limits ────────────────────────────────────────────────
+
+describe("GET /v1/scheduler/limits", () => {
+  test("returns 200 with full limits envelope", async () => {
+    const { scheduler } = makeDeps();
+    const req = new Request("http://x/v1/scheduler/limits", { method: "GET" });
+    const res = await handleScheduler(req, makeSchedulerDeps(scheduler), "/v1/scheduler/limits");
+    expect(res).toBeDefined();
+    expect(res!.status).toBe(200);
+    const body = await resJson<{
+      _v: number;
+      concurrencyCap: number;
+      permitTtlDefaultSeconds: number;
+      permitTtlMaxSeconds: number;
+      systemLimits: { cpuMaxPct: number; memMaxPct: number; loadMax: number };
+      burnRate: { maxTokensSinceCommit: number; minCommitsPerHour: number };
+    }>(res!);
+    expect(body._v).toBe(1);
+    expect(typeof body.concurrencyCap).toBe("number");
+    expect(typeof body.permitTtlDefaultSeconds).toBe("number");
+    expect(typeof body.permitTtlMaxSeconds).toBe("number");
+    expect(body.systemLimits).toBeDefined();
+    expect(body.burnRate).toBeDefined();
+  });
+
+  test("limits reflect current config values", async () => {
+    const { scheduler } = makeDeps();
+    const req = new Request("http://x/v1/scheduler/limits", { method: "GET" });
+    const res = await handleScheduler(req, makeSchedulerDeps(scheduler), "/v1/scheduler/limits");
+    const body = await resJson<{ concurrencyCap: number; systemLimits: { cpuMaxPct: number } }>(res!);
+    // DAEMON_DEFAULTS values
+    expect(body.concurrencyCap).toBe(3);
+    expect(body.systemLimits.cpuMaxPct).toBe(80);
+  });
+});
+
+// ─── GET /v1/scheduler/permits ───────────────────────────────────────────────
+
+describe("GET /v1/scheduler/permits", () => {
+  test("returns 200 with empty items when no permits exist", async () => {
+    const { scheduler } = makeDeps();
+    const req = new Request("http://x/v1/scheduler/permits", { method: "GET" });
+    const res = await handleScheduler(req, makeSchedulerDeps(scheduler), "/v1/scheduler/permits");
+    expect(res).toBeDefined();
+    expect(res!.status).toBe(200);
+    const body = await resJson<{ items: unknown[] }>(res!);
+    expect(body.items).toEqual([]);
+  });
+
+  test("returns 200 with permits after acquisition", async () => {
+    const { scheduler } = makeDeps();
+    // Acquire a permit first
+    const acquireReq = new Request("http://x/v1/scheduler/permits", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ session_id: "s_get_permits", provider_candidate: "opencode" }),
+    });
+    await handleScheduler(acquireReq, makeSchedulerDeps(scheduler), "/v1/scheduler/permits");
+
+    const req = new Request("http://x/v1/scheduler/permits", { method: "GET" });
+    const res = await handleScheduler(req, makeSchedulerDeps(scheduler), "/v1/scheduler/permits");
+    expect(res!.status).toBe(200);
+    const body = await resJson<{ items: Array<{ id: string; sessionId: string }> }>(res!);
+    expect(body.items.length).toBe(1);
+    expect(body.items[0]!.sessionId).toBe("s_get_permits");
+  });
+});
+
+// ─── /v1/scheduler/permits/:id (wrong method) ────────────────────────────────
+
+describe("/v1/scheduler/permits/:id (wrong method)", () => {
+  test("returns 405 for GET on a specific permit id", async () => {
+    const { scheduler } = makeDeps();
+    const req = new Request("http://x/v1/scheduler/permits/perm_abc123", { method: "GET" });
+    const res = await handleScheduler(req, makeSchedulerDeps(scheduler), "/v1/scheduler/permits/perm_abc123");
+    expect(res).toBeDefined();
+    expect(res!.status).toBe(405);
+    const body = await resJson<{ error: { code: string } }>(res!);
+    expect(body.error.code).toBe("method_not_allowed");
+  });
+
+  test("returns 405 for POST on a specific permit id", async () => {
+    const { scheduler } = makeDeps();
+    const req = new Request("http://x/v1/scheduler/permits/perm_abc123", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({}),
+    });
+    const res = await handleScheduler(req, makeSchedulerDeps(scheduler), "/v1/scheduler/permits/perm_abc123");
+    expect(res).toBeDefined();
+    expect(res!.status).toBe(405);
+  });
+});
+
+// ─── Unhandled paths return undefined ────────────────────────────────────────
+
+describe("handleScheduler returns undefined for unhandled paths", () => {
+  test("returns undefined for /v1/scheduler (bare prefix — caller should handle)", async () => {
+    const { scheduler } = makeDeps();
+    const req = new Request("http://x/v1/scheduler", { method: "GET" });
+    const res = await handleScheduler(req, makeSchedulerDeps(scheduler), "/v1/scheduler");
+    expect(res).toBeUndefined();
+  });
+
+  test("returns undefined for /v1/scheduler/other (unrecognised sub-path)", async () => {
+    const { scheduler } = makeDeps();
+    const req = new Request("http://x/v1/scheduler/other", { method: "GET" });
+    const res = await handleScheduler(req, makeSchedulerDeps(scheduler), "/v1/scheduler/other");
+    expect(res).toBeUndefined();
+  });
+});
