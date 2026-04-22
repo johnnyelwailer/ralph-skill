@@ -164,6 +164,25 @@ describe("EventCountsProjector", () => {
     expect(countsAsMap(db)).toEqual({});
   });
 
+  test("clearEventCounts removes all rows", async () => {
+    const db = openDb();
+    const projector = new EventCountsProjector();
+    const gen = makeIdGenerator();
+    projector.apply(db, makeEvent("a", {}, gen));
+    projector.apply(db, makeEvent("b", {}, gen));
+    projector.apply(db, makeEvent("a", {}, gen));
+    expect(countsAsMap(db)).toEqual({ a: 2, b: 1 });
+
+    clearEventCounts(db);
+    expect(countsAsMap(db)).toEqual({});
+  });
+
+  test("clearEventCounts on already-empty table is safe", async () => {
+    const db = openDb();
+    clearEventCounts(db); // must not throw
+    expect(countsAsMap(db)).toEqual({});
+  });
+
   test("projection is transactional — batch commit semantics", async () => {
     // If the transaction mechanism is working, a mid-replay error shouldn't
     // leave the projection in an inconsistent state. We test the happy path
