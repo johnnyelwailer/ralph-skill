@@ -181,6 +181,60 @@ describe("handleProviders", () => {
       expect(result!.status).toBe(400);
     });
 
+    test("returns 400 when force is an empty string", async () => {
+      const deps = { config: makeConfigStore(), events: makeEventWriter() };
+      const result = await handleProviders(
+        makeRequest("PUT", { force: "" }),
+        deps,
+        PATH,
+      );
+      expect(result!.status).toBe(400);
+      const body = await result!.json();
+      expect(body.error.code).toBe("bad_request");
+    });
+
+    test("returns 400 for deny list containing an empty string", async () => {
+      const deps = { config: makeConfigStore(), events: makeEventWriter() };
+      const result = await handleProviders(
+        makeRequest("PUT", { deny: ["provider_a", ""] }),
+        deps,
+        PATH,
+      );
+      expect(result!.status).toBe(400);
+      const body = await result!.json();
+      expect(body.error.code).toBe("bad_request");
+      expect(body.error.details.errors).toContainEqual(
+        expect.stringContaining("deny"),
+      );
+    });
+
+    test("returns 400 when body is null JSON value", async () => {
+      const deps = { config: makeConfigStore(), events: makeEventWriter() };
+      const badReq = new Request(`http://localhost${PATH}`, {
+        method: "PUT",
+        body: "null",
+        headers: { "content-type": "application/json" },
+      });
+      const result = await handleProviders(badReq, deps, PATH);
+      expect(result!.status).toBe(400);
+      const body = await result!.json();
+      expect(body.error.code).toBe("bad_request");
+      expect(body.error.message).toBe("request body must be a JSON object");
+    });
+
+    test("returns 400 when body is an array", async () => {
+      const deps = { config: makeConfigStore(), events: makeEventWriter() };
+      const badReq = new Request(`http://localhost${PATH}`, {
+        method: "PUT",
+        body: JSON.stringify(["not", "an", "object"]),
+        headers: { "content-type": "application/json" },
+      });
+      const result = await handleProviders(badReq, deps, PATH);
+      expect(result!.status).toBe(400);
+      const body = await result!.json();
+      expect(body.error.code).toBe("bad_request");
+    });
+
     test("returns 400 for unknown top-level field", async () => {
       const deps = { config: makeConfigStore(), events: makeEventWriter() };
       const result = await handleProviders(
