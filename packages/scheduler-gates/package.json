@@ -1,5 +1,5 @@
 {
-  "name": "@aloop/scheduler",
+  "name": "@aloop/scheduler-gates",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -15,7 +15,6 @@
     "typescript": "^5.6.0"
   },
   "dependencies": {
-    "@aloop/scheduler-gates": "workspace:*",
     "@aloop/state-sqlite": "workspace:*"
   }
 }

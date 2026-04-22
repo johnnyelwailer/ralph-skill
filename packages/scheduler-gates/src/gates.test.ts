@@ -1,9 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { applyOverrides, checkSystemGate } from "./gates.ts";
-import type { SchedulerLimits } from "./decisions.ts";
+import type { SchedulerLimits } from "./types.ts";
 import type { SchedulerProbes } from "./probes.ts";
-
-// ─── applyOverrides ─────────────────────────────────────────────────────────
 
 describe("applyOverrides", () => {
   test("force field bypasses deny and allow lists", () => {
@@ -85,7 +83,6 @@ describe("applyOverrides", () => {
   });
 
   test("provider exactly in deny list is rejected even if also in allow list", () => {
-    // deny takes priority over allow (checked first)
     const result = applyOverrides("opencode", {
       force: null,
       deny: ["opencode"],
@@ -115,8 +112,6 @@ describe("applyOverrides", () => {
     if (!result.ok) expect(result.reason).toBe("provider_denied");
   });
 });
-
-// ─── checkSystemGate ────────────────────────────────────────────────────────
 
 describe("checkSystemGate", () => {
   const defaultLimits: SchedulerLimits["systemLimits"] = {
@@ -239,7 +234,6 @@ describe("checkSystemGate", () => {
   });
 
   test("uses the sample returned by calling systemSample(), not the function itself", () => {
-    // Confirm the function is called at check time with current values
     let callCount = 0;
     const sample: SchedulerProbes["systemSample"] = () => {
       callCount++;
