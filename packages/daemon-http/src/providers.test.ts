@@ -293,6 +293,22 @@ describe("handleProviders", () => {
       expect(body.resolved_chain).toEqual(["claude"]);
       expect(body.excluded_health).toEqual(["opencode"]);
     });
+
+    test("does not mutate provider health for unknown provider refs", async () => {
+      const deps = makeProvidersDeps();
+      const before = deps.providerHealth.list().length;
+      const req = new Request(`http://localhost${PATH_RESOLVE_CHAIN}`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          session_id: "s_3",
+          provider_chain: ["mystery/provider@1"],
+        }),
+      });
+      const result = await handleProviders(req, deps, PATH_RESOLVE_CHAIN);
+      expect(result!.status).toBe(200);
+      expect(deps.providerHealth.list().length).toBe(before);
+    });
   });
 
   describe("GET /v1/providers/overrides", () => {

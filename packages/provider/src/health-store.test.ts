@@ -35,4 +35,11 @@ describe("InMemoryProviderHealthStore", () => {
     expect(state.quotaRemaining).toBe(42);
     expect(state.quotaResetsAt).toBe(new Date(NOW + 60_000).toISOString());
   });
+
+  test("peek reads existing state without creating unknown providers", () => {
+    const store = new InMemoryProviderHealthStore(["opencode"], NOW);
+    expect(store.peek("opencode")?.providerId).toBe("opencode");
+    expect(store.peek("missing")).toBeUndefined();
+    expect(store.list().map((state) => state.providerId)).toEqual(["opencode"]);
+  });
 });

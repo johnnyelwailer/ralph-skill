@@ -1,4 +1,5 @@
 import {
+  createUnknownHealth,
   isProviderAvailable,
   providerIdFromRef,
   type InMemoryProviderHealthStore,
@@ -48,7 +49,9 @@ export function resolveChain(
   });
   const excludedHealth: string[] = [];
   const chain = afterOverrides.filter((ref) => {
-    const isAvailable = isProviderAvailable(healthStore.get(safeProviderId(ref)));
+    const providerId = safeProviderId(ref);
+    const state = healthStore.peek(providerId) ?? createUnknownHealth(providerId);
+    const isAvailable = isProviderAvailable(state);
     if (!isAvailable) excludedHealth.push(ref);
     return isAvailable;
   });
