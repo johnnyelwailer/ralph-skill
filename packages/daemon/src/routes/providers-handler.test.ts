@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { handleProviders, type ProvidersDeps } from "@aloop/daemon-routes";
+import { handleProviders, type ProvidersDeps } from "@aloop/daemon-routes-providers";
 import type { EventWriter } from "@aloop/state-sqlite";
 import type { ConfigStore } from "@aloop/daemon-config";
 import { DAEMON_DEFAULTS, OVERRIDES_DEFAULT } from "@aloop/daemon-config";

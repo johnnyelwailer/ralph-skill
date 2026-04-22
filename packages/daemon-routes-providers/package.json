@@ -1,5 +1,5 @@
 {
-  "name": "@aloop/daemon-routes",
+  "name": "@aloop/daemon-routes-providers",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -15,7 +15,8 @@
     "typescript": "^5.6.0"
   },
   "dependencies": {
-    "@aloop/scheduler": "workspace:*",
+    "@aloop/daemon-config": "workspace:*",
+    "@aloop/provider": "workspace:*",
     "@aloop/state-sqlite": "workspace:*"
   }
 }
