@@ -325,6 +325,121 @@ describe("handleProviders", () => {
       expect(result!.status).toBe(200);
       expect(deps.providerHealth.list().length).toBe(before);
     });
+
+    test("returns 400 when session_id is an empty string", async () => {
+      const deps = makeProvidersDeps({ withQuotaProbe: true });
+      const req = new Request(`http://localhost${PATH_RESOLVE_CHAIN}`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ session_id: "" }),
+      });
+      const result = await handleProviders(req, deps, PATH_RESOLVE_CHAIN);
+      expect(result!.status).toBe(400);
+      const body = await resJson<{ error: { code: string } }>(result!);
+      expect(body.error.code).toBe("bad_request");
+    });
+
+    test("returns 400 when session_id is whitespace-only", async () => {
+      const deps = makeProvidersDeps({ withQuotaProbe: true });
+      const req = new Request(`http://localhost${PATH_RESOLVE_CHAIN}`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ session_id: "   " }),
+      });
+      const result = await handleProviders(req, deps, PATH_RESOLVE_CHAIN);
+      expect(result!.status).toBe(400);
+      const body = await resJson<{ error: { code: string } }>(result!);
+      expect(body.error.code).toBe("bad_request");
+    });
+
+    test("returns 400 when session_id is not a string", async () => {
+      const deps = makeProvidersDeps({ withQuotaProbe: true });
+      const req = new Request(`http://localhost${PATH_RESOLVE_CHAIN}`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ session_id: 42 }),
+      });
+      const result = await handleProviders(req, deps, PATH_RESOLVE_CHAIN);
+      expect(result!.status).toBe(400);
+      const body = await resJson<{ error: { code: string } }>(result!);
+      expect(body.error.code).toBe("bad_request");
+    });
+
+    test("returns 400 when provider_chain is not an array", async () => {
+      const deps = makeProvidersDeps({ withQuotaProbe: true });
+      const req = new Request(`http://localhost${PATH_RESOLVE_CHAIN}`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ session_id: "s_1", provider_chain: "opencode" }),
+      });
+      const result = await handleProviders(req, deps, PATH_RESOLVE_CHAIN);
+      expect(result!.status).toBe(400);
+      const body = await resJson<{ error: { code: string } }>(result!);
+      expect(body.error.code).toBe("bad_request");
+    });
+
+    test("returns 400 when provider_chain contains non-string elements", async () => {
+      const deps = makeProvidersDeps({ withQuotaProbe: true });
+      const req = new Request(`http://localhost${PATH_RESOLVE_CHAIN}`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ session_id: "s_1", provider_chain: ["opencode", 123] }),
+      });
+      const result = await handleProviders(req, deps, PATH_RESOLVE_CHAIN);
+      expect(result!.status).toBe(400);
+      const body = await resJson<{ error: { code: string } }>(result!);
+      expect(body.error.code).toBe("bad_request");
+    });
+
+    test("returns 400 when provider_chain contains an empty string", async () => {
+      const deps = makeProvidersDeps({ withQuotaProbe: true });
+      const req = new Request(`http://localhost${PATH_RESOLVE_CHAIN}`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ session_id: "s_1", provider_chain: ["opencode", ""] }),
+      });
+      const result = await handleProviders(req, deps, PATH_RESOLVE_CHAIN);
+      expect(result!.status).toBe(400);
+      const body = await resJson<{ error: { code: string } }>(result!);
+      expect(body.error.code).toBe("bad_request");
+    });
+
+    test("returns 400 for non-JSON body", async () => {
+      const deps = makeProvidersDeps({ withQuotaProbe: true });
+      const req = new Request(`http://localhost${PATH_RESOLVE_CHAIN}`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: "not json at all",
+      });
+      const result = await handleProviders(req, deps, PATH_RESOLVE_CHAIN);
+      expect(result!.status).toBe(400);
+      const body = await resJson<{ error: { code: string } }>(result!);
+      expect(body.error.code).toBe("bad_request");
+    });
+
+    test("returns 400 when body is a JSON array", async () => {
+      const deps = makeProvidersDeps({ withQuotaProbe: true });
+      const req = new Request(`http://localhost${PATH_RESOLVE_CHAIN}`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: "[]",
+      });
+      const result = await handleProviders(req, deps, PATH_RESOLVE_CHAIN);
+      expect(result!.status).toBe(400);
+      const body = await resJson<{ error: { code: string } }>(result!);
+      expect(body.error.code).toBe("bad_request");
+    });
+
+    test("returns 405 for GET on resolve-chain", async () => {
+      const deps = makeProvidersDeps({ withQuotaProbe: true });
+      const req = new Request(`http://localhost${PATH_RESOLVE_CHAIN}`, {
+        method: "GET",
+      });
+      const result = await handleProviders(req, deps, PATH_RESOLVE_CHAIN);
+      expect(result!.status).toBe(405);
+      const body = await resJson<{ error: { code: string } }>(result!);
+      expect(body.error.code).toBe("method_not_allowed");
+    });
   });
 
   describe("GET /v1/providers/overrides", () => {
@@ -554,7 +669,7 @@ describe("handleProviders", () => {
         handleProviders(
           makeRequest("PUT", { allow: ["opencode"], deny: null, force: null }),
           deps,
-          PATH,
+          PATH_OVERRIDES,
         ),
       ).rejects.toThrow("unexpected string error");
     });
@@ -576,7 +691,7 @@ describe("handleProviders", () => {
         handleProviders(
           makeRequest("PUT", { allow: null, deny: null, force: "codex" }),
           deps,
-          PATH,
+          PATH_OVERRIDES,
         ),
       ).rejects.toThrow("database write failed");
     });
@@ -599,7 +714,7 @@ describe("handleProviders", () => {
         handleProviders(
           makeRequest("PUT", { allow: null, deny: null, force: "anthropic" }),
           deps,
-          PATH,
+          PATH_OVERRIDES,
         ),
       ).rejects.toThrow("write failure");
       // No event should be appended since the throw happened before append
