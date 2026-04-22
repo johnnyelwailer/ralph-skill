@@ -72,7 +72,7 @@ describe("listProjects", () => {
     const url = new URL("http://x/v1/projects");
     url.searchParams.set("status", "ready");
     url.searchParams.set("path", "/a");
-    const res = listProjects(new Request(url), deps);
+    const res = listProjects(new Request(url.toString()), deps);
     const body = await resJson<{ items: Array<{ id: string }> }>(res);
     expect(body.items.length).toBe(1);
     expect(body.items[0]!.id).toBe(p1.id);

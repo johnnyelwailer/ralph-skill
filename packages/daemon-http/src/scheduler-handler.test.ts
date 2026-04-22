@@ -55,7 +55,7 @@ describe("DELETE /v1/scheduler/permits/:id", () => {
 
     expect(res).toBeDefined();
     expect(res!.status).toBe(405);
-    const body = await resJson<{ error: { code: string } }>(res!);
+    const body = await resJson<{ error: { code: string; message: string } }>(res!);
     expect(body.error.code).toBe("method_not_allowed");
   });
 
@@ -123,7 +123,7 @@ describe("POST /v1/scheduler/permits validation", () => {
 
     expect(res).toBeDefined();
     expect(res!.status).toBe(400);
-    const body = await resJson<{ error: { code: string } }>(res!);
+    const body = await resJson<{ error: { code: string; message: string } }>(res!);
     expect(body.error.code).toBe("bad_request");
   });
 
@@ -138,7 +138,7 @@ describe("POST /v1/scheduler/permits validation", () => {
 
     expect(res).toBeDefined();
     expect(res!.status).toBe(400);
-    const body = await resJson<{ error: { code: string } }>(res!);
+    const body = await resJson<{ error: { code: string; message: string } }>(res!);
     expect(body.error.code).toBe("bad_request");
   });
 
@@ -153,7 +153,7 @@ describe("POST /v1/scheduler/permits validation", () => {
 
     expect(res).toBeDefined();
     expect(res!.status).toBe(400);
-    const body = await resJson<{ error: { code: string } }>(res!);
+    const body = await resJson<{ error: { code: string; message: string } }>(res!);
     expect(body.error.code).toBe("bad_request");
     expect(body.error.message).toContain("ttl_seconds");
   });
@@ -169,7 +169,7 @@ describe("POST /v1/scheduler/permits validation", () => {
 
     expect(res).toBeDefined();
     expect(res!.status).toBe(400);
-    const body = await resJson<{ error: { code: string } }>(res!);
+    const body = await resJson<{ error: { code: string; message: string } }>(res!);
     expect(body.error.code).toBe("bad_request");
   });
 
@@ -184,7 +184,7 @@ describe("POST /v1/scheduler/permits validation", () => {
 
     expect(res).toBeDefined();
     expect(res!.status).toBe(400);
-    const body = await resJson<{ error: { code: string } }>(res!);
+    const body = await resJson<{ error: { code: string; message: string } }>(res!);
     expect(body.error.code).toBe("bad_request");
   });
 
@@ -199,7 +199,7 @@ describe("POST /v1/scheduler/permits validation", () => {
 
     expect(res).toBeDefined();
     expect(res!.status).toBe(400);
-    const body = await resJson<{ error: { code: string } }>(res!);
+    const body = await resJson<{ error: { code: string; message: string } }>(res!);
     expect(body.error.code).toBe("bad_request");
     expect(body.error.message).toContain("invalid JSON body");
   });
@@ -215,7 +215,7 @@ describe("POST /v1/scheduler/permits validation", () => {
 
     expect(res).toBeDefined();
     expect(res!.status).toBe(400);
-    const body = await resJson<{ error: { code: string } }>(res!);
+    const body = await resJson<{ error: { code: string; message: string } }>(res!);
     expect(body.error.code).toBe("bad_request");
     expect(body.error.message).toContain("request body must be a JSON object");
   });
@@ -231,7 +231,7 @@ describe("POST /v1/scheduler/permits validation", () => {
 
     expect(res).toBeDefined();
     expect(res!.status).toBe(400);
-    const body = await resJson<{ error: { code: string } }>(res!);
+    const body = await resJson<{ error: { code: string; message: string } }>(res!);
     expect(body.error.code).toBe("bad_request");
   });
 
@@ -322,7 +322,7 @@ describe("GET /v1/scheduler/limits", () => {
 
     expect(res).toBeDefined();
     expect(res!.status).toBe(405);
-    const body = await resJson<{ error: { code: string } }>(res!);
+    const body = await resJson<{ error: { code: string; message: string } }>(res!);
     expect(body.error.code).toBe("method_not_allowed");
   });
 });
@@ -389,7 +389,7 @@ describe("PUT /v1/scheduler/limits", () => {
 
     expect(res).toBeDefined();
     expect(res!.status).toBe(400);
-    const body = await resJson<{ error: { code: string } }>(res!);
+    const body = await resJson<{ error: { code: string; message: string } }>(res!);
     expect(body.error.code).toBe("bad_request");
     expect(body.error.message).toContain("invalid JSON body");
   });
@@ -405,7 +405,7 @@ describe("PUT /v1/scheduler/limits", () => {
 
     expect(res).toBeDefined();
     expect(res!.status).toBe(400);
-    const body = await resJson<{ error: { code: string } }>(res!);
+    const body = await resJson<{ error: { code: string; message: string } }>(res!);
     expect(body.error.code).toBe("bad_request");
     expect(body.error.message).toContain("request body must be a JSON object");
   });

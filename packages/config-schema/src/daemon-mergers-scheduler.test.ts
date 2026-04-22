@@ -353,7 +353,7 @@ describe("mergeLogging", () => {
   });
 
   test("accepts valid log levels", () => {
-    for (const level of ["debug", "info", "warn", "error"]) {
+    for (const level of ["debug", "info", "warn", "error"] as const) {
       const errors = makeErrors();
       const result = mergeLogging({ level }, errors);
       expect(result.level).toBe(level);

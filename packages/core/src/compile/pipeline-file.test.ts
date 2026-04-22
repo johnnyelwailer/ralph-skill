@@ -1,6 +1,20 @@
 import { describe, expect, test } from "bun:test";
 import { loadPipelineFromFile } from "./pipeline.ts";
 
+type PipelineLoadResult = ReturnType<typeof loadPipelineFromFile>;
+
+function expectParseOk(result: PipelineLoadResult) {
+  expect(result.ok).toBe(true);
+  if (!result.ok) throw new Error(`expected parse success, got: ${result.errors.join("; ")}`);
+  return result.value;
+}
+
+function expectParseErrors(result: PipelineLoadResult) {
+  expect(result.ok).toBe(false);
+  if (result.ok) throw new Error("expected parse failure");
+  return result.errors;
+}
+
 describe("loadPipelineFromFile", () => {
   test("parses a valid pipeline.yml and returns the config", () => {
     // write a temp file and read it back
@@ -23,22 +37,22 @@ triggers:
     writeFileSync(filePath, yaml, "utf-8");
 
     const result = loadPipelineFromFile(filePath);
-    expect(result.ok).toBe(true);
-    expect(result.value!.pipeline).toHaveLength(2);
-    expect(result.value!.pipeline[0]!.agent).toBe("build");
-    expect(result.value!.pipeline[1]!.agent).toBe("test");
-    expect(result.value!.pipeline[1]!.repeat).toBe(3);
-    expect(result.value!.finalizer).toEqual(["cleanup"]);
-    expect(result.value!.triggers).toEqual({ push: "main" });
+    const parsed = expectParseOk(result);
+    expect(parsed.pipeline).toHaveLength(2);
+    expect(parsed.pipeline[0]!.agent).toBe("build");
+    expect(parsed.pipeline[1]!.agent).toBe("test");
+    expect(parsed.pipeline[1]!.repeat).toBe(3);
+    expect(parsed.finalizer).toEqual(["cleanup"]);
+    expect(parsed.triggers).toEqual({ push: "main" });
 
     rmSync(dir, { recursive: true, force: true });
   });
 
   test("returns error when file does not exist", () => {
     const result = loadPipelineFromFile("/tmp/this/file/does/not/exist/12345.yml");
-    expect(result.ok).toBe(false);
-    expect(result.errors[0]).toStartWith("cannot read pipeline file:");
-    expect(result.errors[0]).toContain("ENOENT");
+    const errors = expectParseErrors(result);
+    expect(errors[0]).toStartWith("cannot read pipeline file:");
+    expect(errors[0]).toContain("ENOENT");
   });
 
   test("returns error with the file path in the message", () => {
@@ -50,8 +64,8 @@ triggers:
     const filePath = join(dir, "nonexistent.yml");
 
     const result = loadPipelineFromFile(filePath);
-    expect(result.ok).toBe(false);
-    expect(result.errors[0]).toContain(filePath);
+    const errors = expectParseErrors(result);
+    expect(errors[0]).toContain(filePath);
 
     rmSync(dir, { recursive: true, force: true });
   });

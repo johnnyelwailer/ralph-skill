@@ -1,19 +1,48 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import { handleProviders, type ProvidersDeps } from "./providers.ts";
 import type { EventWriter } from "@aloop/state-sqlite";
 import type { ConfigStore } from "@aloop/daemon-config";
-import { OVERRIDES_DEFAULT } from "@aloop/daemon-config";
+import { DAEMON_DEFAULTS, OVERRIDES_DEFAULT } from "@aloop/daemon-config";
 
 const PATH = "/v1/providers/overrides";
+type OverridesBody = {
+  _v: number;
+  allow: readonly string[] | null;
+  deny: readonly string[] | null;
+  force: string | null;
+};
 
 function makeConfigStore(initial = OVERRIDES_DEFAULT): ConfigStore {
+  let daemonConfig = DAEMON_DEFAULTS;
   let value = { ...initial };
   return {
+    daemon() {
+      return daemonConfig;
+    },
     overrides() {
       return value;
     },
+    paths() {
+      return {
+        home: "/tmp/aloop-home",
+        pidFile: "/tmp/aloop-home/aloopd.pid",
+        socketFile: "/tmp/aloop-home/aloopd.sock",
+        stateDir: "/tmp/aloop-home/state",
+        logFile: "/tmp/aloop-home/state/aloopd.log",
+        daemonConfigFile: "/tmp/aloop-home/daemon.yml",
+        overridesFile: "/tmp/aloop-home/overrides.yml",
+      };
+    },
+    reload() {
+      return { ok: true, daemon: daemonConfig, overrides: value } as const;
+    },
+    setDaemon(next) {
+      daemonConfig = next;
+      return daemonConfig;
+    },
     setOverrides(v) {
       value = { ...v };
+      return value;
     },
   };
 }
@@ -24,10 +53,20 @@ function makeEventWriter(): EventWriter & { appended: unknown[] } {
     appended,
     async append(topic, data) {
       appended.push({ topic, data });
-      // Return a minimal envelope shape so callers that read `event.topic` don't crash.
-      return { topic, data, id: "test-id", ts: 0 };
+      // Return a minimal valid envelope shape.
+      return {
+        _v: 1,
+        topic,
+        data,
+        id: "test-id",
+        timestamp: new Date(0).toISOString(),
+      };
     },
   };
+}
+
+async function resJson<T>(res: Response): Promise<T> {
+  return JSON.parse(await res.text()) as T;
 }
 
 function makeRequest(method: string, body?: unknown): Request {
@@ -58,7 +97,7 @@ describe("handleProviders", () => {
       const deps = { config, events: makeEventWriter() };
       const result = await handleProviders(makeRequest("GET"), deps, PATH);
       expect(result!.status).toBe(200);
-      const body = await result!.json();
+      const body = await resJson<OverridesBody>(result!);
       expect(body).toEqual({ _v: 1, ...custom });
     });
 
@@ -66,7 +105,7 @@ describe("handleProviders", () => {
       const deps = { config: makeConfigStore(), events: makeEventWriter() };
       const result = await handleProviders(makeRequest("GET"), deps, PATH);
       expect(result!.status).toBe(200);
-      const body = await result!.json();
+      const body = await resJson<OverridesBody>(result!);
       expect(body).toEqual({ _v: 1, ...OVERRIDES_DEFAULT });
     });
   });
@@ -79,7 +118,7 @@ describe("handleProviders", () => {
       const deps = { config, events };
       const result = await handleProviders(makeRequest("DELETE"), deps, PATH);
       expect(result!.status).toBe(200);
-      const body = await result!.json();
+      const body = await resJson<OverridesBody>(result!);
       expect(body).toEqual({ _v: 1, ...OVERRIDES_DEFAULT });
       expect(config.overrides()).toEqual(OVERRIDES_DEFAULT);
     });
@@ -110,7 +149,7 @@ describe("handleProviders", () => {
         PATH,
       );
       expect(result!.status).toBe(200);
-      const body = await result!.json();
+      const body = await resJson<OverridesBody>(result!);
       expect(body).toEqual({ _v: 1, ...overrides });
       expect(config.overrides()).toEqual(overrides);
     });
@@ -140,7 +179,7 @@ describe("handleProviders", () => {
       });
       const result = await handleProviders(badReq, deps, PATH);
       expect(result!.status).toBe(400);
-      const body = await result!.json();
+      const body = await resJson<{ error: { code: string } }>(result!);
       expect(body.error.code).toBe("bad_request");
     });
 
@@ -152,7 +191,7 @@ describe("handleProviders", () => {
         PATH,
       );
       expect(result!.status).toBe(400);
-      const body = await result!.json();
+      const body = await resJson<{ error: { code: string } }>(result!);
       expect(body.error.code).toBe("bad_request");
     });
 
@@ -164,7 +203,7 @@ describe("handleProviders", () => {
         PATH,
       );
       expect(result!.status).toBe(400);
-      const body = await result!.json();
+      const body = await resJson<{ error: { code: string; details: { errors: string[] } } }>(result!);
       expect(body.error.code).toBe("bad_request");
       expect(body.error.details.errors).toContainEqual(
         expect.stringContaining("allow"),
@@ -189,7 +228,7 @@ describe("handleProviders", () => {
         PATH,
       );
       expect(result!.status).toBe(400);
-      const body = await result!.json();
+      const body = await resJson<{ error: { code: string } }>(result!);
       expect(body.error.code).toBe("bad_request");
     });
 
@@ -201,7 +240,7 @@ describe("handleProviders", () => {
         PATH,
       );
       expect(result!.status).toBe(400);
-      const body = await result!.json();
+      const body = await resJson<{ error: { code: string; details: { errors: string[] } } }>(result!);
       expect(body.error.code).toBe("bad_request");
       expect(body.error.details.errors).toContainEqual(
         expect.stringContaining("deny"),
@@ -217,7 +256,7 @@ describe("handleProviders", () => {
       });
       const result = await handleProviders(badReq, deps, PATH);
       expect(result!.status).toBe(400);
-      const body = await result!.json();
+      const body = await resJson<{ error: { code: string; message: string } }>(result!);
       expect(body.error.code).toBe("bad_request");
       expect(body.error.message).toBe("request body must be a JSON object");
     });
@@ -231,7 +270,7 @@ describe("handleProviders", () => {
       });
       const result = await handleProviders(badReq, deps, PATH);
       expect(result!.status).toBe(400);
-      const body = await result!.json();
+      const body = await resJson<{ error: { code: string } }>(result!);
       expect(body.error.code).toBe("bad_request");
     });
 
@@ -243,7 +282,7 @@ describe("handleProviders", () => {
         PATH,
       );
       expect(result!.status).toBe(400);
-      const body = await result!.json();
+      const body = await resJson<{ error: { details: { errors: string[] } } }>(result!);
       expect(body.error.details.errors).toContainEqual(
         expect.stringContaining("unknown"),
       );
@@ -339,7 +378,7 @@ describe("handleProviders", () => {
       const deps = { config: makeConfigStore(), events: makeEventWriter() };
       const result = await handleProviders(makeRequest("POST"), deps, PATH);
       expect(result!.status).toBe(405);
-      const body = await result!.json();
+      const body = await resJson<{ error: { code: string } }>(result!);
       expect(body.error.code).toBe("method_not_allowed");
     });
 
