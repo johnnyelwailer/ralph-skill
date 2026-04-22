@@ -84,4 +84,25 @@ describe("createProviderQuotaProbe", () => {
     // Unknown providers are considered available (no health record = no restriction)
     expect(await Promise.resolve(probe("unknown-provider"))).toBeNull();
   });
+
+  test("unparseable cooldownUntil ISO string: retryAfterSeconds omitted", async () => {
+    // toRetryAfterSeconds uses Date.parse which returns NaN for invalid dates.
+    // Number.isFinite(NaN) is false, so no retryAfterSeconds is included.
+    // The provider is still unavailable but the client has no ETA.
+    const store = new InMemoryProviderHealthStore(["opencode"]);
+    const now = Date.now();
+    const health = {
+      ...createUnknownHealth("opencode", now),
+      status: "cooldown" as const,
+      cooldownUntil: "not-a-valid-iso-date",
+    };
+    // @ts-expect-error – mutating internal state for test isolation
+    store.states.set("opencode", health);
+
+    const probe = createProviderQuotaProbe(store);
+    const sample = await Promise.resolve(probe("opencode"));
+    expect(sample).not.toBeNull();
+    expect(sample?.ok).toBe(false);
+    expect(sample?.retryAfterSeconds).toBeUndefined();
+  });
 });
