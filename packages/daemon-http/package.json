@@ -16,6 +16,7 @@
   },
   "dependencies": {
     "@aloop/daemon-config": "workspace:*",
+    "@aloop/provider": "workspace:*",
     "@aloop/scheduler": "workspace:*",
     "@aloop/state-sqlite": "workspace:*"
   }
