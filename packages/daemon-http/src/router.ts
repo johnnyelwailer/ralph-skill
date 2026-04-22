@@ -1,9 +1,9 @@
-import type { ProjectRegistry } from "@aloop/state-sqlite";
-import { handleProjects } from "./projects.ts";
-
 export type RouterDeps = {
-  readonly registry: ProjectRegistry;
   readonly handleDaemon: (
+    req: Request,
+    pathname: string,
+  ) => Response | Promise<Response | undefined> | undefined;
+  readonly handleProjects: (
     req: Request,
     pathname: string,
   ) => Response | Promise<Response | undefined> | undefined;
@@ -43,7 +43,7 @@ export function makeFetchHandler(
       });
     }
 
-    const projectsResponse = await handleProjects(req, { registry: deps.registry }, pathname);
+    const projectsResponse = await deps.handleProjects(req, pathname);
     if (projectsResponse) return projectsResponse;
 
     const providersResponse = await deps.handleProviders(req, pathname);

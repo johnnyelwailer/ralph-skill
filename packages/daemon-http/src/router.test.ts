@@ -1,20 +1,18 @@
 import { describe, expect, test } from "bun:test";
-import { Database } from "bun:sqlite";
-import {
-  loadBundledMigrations,
-  migrate,
-  ProjectRegistry,
-} from "@aloop/state-sqlite";
 import { makeFetchHandler } from "./router.ts";
 
 function makeDeps() {
-  const db = new Database(":memory:");
-  migrate(db, loadBundledMigrations());
   return {
-    registry: new ProjectRegistry(db),
     handleDaemon: (req: Request, pathname: string) => {
       if (req.method !== "GET" || pathname !== "/v1/daemon/health") return undefined;
       return new Response(JSON.stringify({ _v: 1, status: "ok", uptime_seconds: 0 }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    },
+    handleProjects: (req: Request, pathname: string) => {
+      if (req.method !== "GET" || pathname !== "/v1/projects") return undefined;
+      return new Response(JSON.stringify({ _v: 1, items: [] }), {
         status: 200,
         headers: { "content-type": "application/json" },
       });
@@ -34,7 +32,7 @@ describe("makeFetchHandler (unit)", () => {
     expect(body.status).toBe("ok");
   });
 
-  test("dispatches /v1/projects to the projects route module", async () => {
+  test("dispatches /v1/projects to the projects route callback", async () => {
     const fetch = makeFetchHandler(makeDeps());
     const res = await fetch(new Request("http://x/v1/projects"));
     expect(res.status).toBe(200);
