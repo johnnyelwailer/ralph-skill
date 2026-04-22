@@ -302,7 +302,7 @@ describe("projection functions", () => {
 
     clearPermits(db);
 
-    const rows = db.query<{}, []>("SELECT COUNT(*) AS count FROM permits").all();
+    const rows = db.query<{ count: number }, []>("SELECT COUNT(*) AS count FROM permits").all();
     expect(rows[0]!.count).toBe(0);
     db.close();
   });
