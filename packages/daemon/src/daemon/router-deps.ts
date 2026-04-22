@@ -1,11 +1,10 @@
 import type { ConfigStore } from "@aloop/daemon-config";
 import type { RouterDeps } from "@aloop/daemon-http";
 import type { InMemoryProviderHealthStore, ProviderRegistry } from "@aloop/provider";
+import { handleProviders as handleProvidersRoute, handleScheduler as handleSchedulerRoute } from "@aloop/daemon-routes";
 import type { SchedulerService } from "@aloop/scheduler";
 import type { EventWriter, ProjectRegistry } from "@aloop/state-sqlite";
 import { handleDaemon as handleDaemonRoute } from "../routes/daemon.ts";
-import { handleProviders as handleProvidersRoute } from "../routes/providers.ts";
-import { handleScheduler as handleSchedulerRoute } from "../routes/scheduler.ts";
 
 export type MakeRouterDepsInput = {
   readonly registry: ProjectRegistry;

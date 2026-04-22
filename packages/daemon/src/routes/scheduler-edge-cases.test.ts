@@ -18,8 +18,8 @@ import {
   OVERRIDES_DEFAULT,
   resolveDaemonPaths,
 } from "@aloop/daemon-config";
+import { handleScheduler, type SchedulerDeps } from "@aloop/daemon-routes";
 import { SchedulerService, type SchedulerConfigView } from "@aloop/scheduler";
-import { handleScheduler, type SchedulerDeps } from "./scheduler.ts";
 
 function makeDeps() {
   const db = new Database(":memory:");

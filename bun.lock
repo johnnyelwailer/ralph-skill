@@ -41,6 +41,7 @@
         "@aloop/core": "workspace:*",
         "@aloop/daemon-config": "workspace:*",
         "@aloop/daemon-http": "workspace:*",
+        "@aloop/daemon-routes": "workspace:*",
         "@aloop/provider": "workspace:*",
         "@aloop/provider-opencode": "workspace:*",
         "@aloop/scheduler": "workspace:*",
@@ -64,6 +65,17 @@
     },
     "packages/daemon-http": {
       "name": "@aloop/daemon-http",
+      "version": "0.1.0",
+      "dependencies": {
+        "@aloop/state-sqlite": "workspace:*",
+      },
+      "devDependencies": {
+        "@types/bun": "latest",
+        "typescript": "^5.6.0",
+      },
+    },
+    "packages/daemon-routes": {
+      "name": "@aloop/daemon-routes",
       "version": "0.1.0",
       "dependencies": {
         "@aloop/daemon-config": "workspace:*",
@@ -150,6 +162,8 @@
     "@aloop/daemon-config": ["@aloop/daemon-config@workspace:packages/daemon-config"],
 
     "@aloop/daemon-http": ["@aloop/daemon-http@workspace:packages/daemon-http"],
+
+    "@aloop/daemon-routes": ["@aloop/daemon-routes@workspace:packages/daemon-routes"],
 
     "@aloop/event-jsonl": ["@aloop/event-jsonl@workspace:packages/event-jsonl"],
 
