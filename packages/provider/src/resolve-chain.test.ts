@@ -263,3 +263,59 @@ describe("safeProviderId fallback in resolveProviderChain", () => {
     expect(resolved.chain).toEqual(["   "]);
   });
 });
+
+describe("resolveProviderChain — empty-array overrides", () => {
+  // Empty arrays are truthy in JS, so overrides.allow && ... evaluates to true.
+  // This means allow:[] excludes EVERY provider (nothing is in an empty set).
+
+  test("allow: [] (empty array) excludes all providers — nothing is in an empty set", () => {
+    const health = new InMemoryProviderHealthStore(["opencode", "claude"]);
+    const resolved = resolveProviderChain(
+      ["opencode", "claude"],
+      { allow: [], deny: null, force: null },
+      health,
+    );
+    // Every provider fails the allow check since nothing is included in []
+    expect(resolved.chain).toEqual([]);
+    expect(resolved.excludedOverrides).toEqual(["opencode", "claude"]);
+  });
+
+  test("deny: [] (empty array) excludes nothing — empty set matches nothing", () => {
+    const health = new InMemoryProviderHealthStore(["opencode", "claude"]);
+    const resolved = resolveProviderChain(
+      ["opencode", "claude"],
+      { allow: null, deny: [], force: null },
+      health,
+    );
+    // deny:[] matches nothing so nothing is excluded
+    expect(resolved.chain).toEqual(["opencode", "claude"]);
+    expect(resolved.excludedOverrides).toEqual([]);
+  });
+
+  test("allow: [] takes priority over empty deny array", () => {
+    const health = new InMemoryProviderHealthStore(["a", "b", "c"]);
+    // allow:[] excludes all, deny:[] excludes nothing — allow check fires first
+    const resolved = resolveProviderChain(
+      ["a", "b", "c"],
+      { allow: [], deny: [], force: null },
+      health,
+    );
+    expect(resolved.chain).toEqual([]);
+    expect(resolved.excludedOverrides).toEqual(["a", "b", "c"]);
+  });
+});
+
+describe("resolveProviderChain — force with non-empty refs", () => {
+  test("force overrides chain with non-empty refs — original refs not added to excludedOverrides", () => {
+    const health = new InMemoryProviderHealthStore(["opencode", "claude", "gemini"]);
+    // When force is set, the overridden chain is just [force] — original refs
+    // are NOT compared against allow/deny and NOT added to excludedOverrides
+    const resolved = resolveProviderChain(
+      ["opencode", "claude"],
+      { allow: null, deny: ["opencode"], force: "gemini" },
+      health,
+    );
+    expect(resolved.chain).toEqual(["gemini"]);
+    expect(resolved.excludedOverrides).toEqual([]);
+  });
+});
