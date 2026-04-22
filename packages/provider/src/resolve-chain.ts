@@ -1,15 +1,6 @@
-import {
-  createUnknownHealth,
-  isProviderAvailable,
-  providerIdFromRef,
-  type InMemoryProviderHealthStore,
-} from "@aloop/provider";
-
-type ProviderOverrides = {
-  allow: readonly string[] | null;
-  deny: readonly string[] | null;
-  force: string | null;
-};
+import { createUnknownHealth, isProviderAvailable } from "./health.ts";
+import { providerIdFromRef } from "./ref.ts";
+import type { InMemoryProviderHealthStore } from "./health-store.ts";
 
 export type ResolvedProviderChain = {
   chain: string[];
@@ -17,7 +8,13 @@ export type ResolvedProviderChain = {
   excludedHealth: string[];
 };
 
-export function parseRequestedChain(
+export type ProviderOverrides = {
+  allow: readonly string[] | null;
+  deny: readonly string[] | null;
+  force: string | null;
+};
+
+export function parseRequestedProviderChain(
   raw: unknown,
 ): { ok: true; value: readonly string[] | null } | { ok: false; error: string } {
   if (raw === undefined) return { ok: true, value: null };
@@ -28,7 +25,7 @@ export function parseRequestedChain(
   return { ok: true, value: raw as readonly string[] };
 }
 
-export function resolveChain(
+export function resolveProviderChain(
   refs: readonly string[],
   overrides: ProviderOverrides,
   healthStore: InMemoryProviderHealthStore,
