@@ -7,12 +7,10 @@ export {
   type ProviderHealthStatus,
   type ProviderFailureClass,
   type FailureUpdateOptions,
-} from "./health.ts";
-export { InMemoryProviderHealthStore } from "./health-store.ts";
-export {
+  InMemoryProviderHealthStore,
   classifyProviderProbeFailure,
   errorMessage,
-} from "./probe-failure.ts";
+} from "@aloop/provider-health";
 export {
   parseRequestedProviderChain,
   resolveProviderChain,

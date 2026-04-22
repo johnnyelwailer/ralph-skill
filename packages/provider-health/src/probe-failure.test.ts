@@ -4,14 +4,17 @@ import { classifyProviderProbeFailure, errorMessage } from "./probe-failure.ts";
 describe("classifyProviderProbeFailure", () => {
   test("classifies auth failures", () => {
     expect(classifyProviderProbeFailure(new Error("unauthorized: invalid api key"))).toBe("auth");
+    expect(classifyProviderProbeFailure(new Error("HTTP 403 forbidden"))).toBe("auth");
   });
 
   test("classifies rate limit failures", () => {
     expect(classifyProviderProbeFailure(new Error("rate limit exceeded (429)"))).toBe("rate_limit");
+    expect(classifyProviderProbeFailure(new Error("too many requests"))).toBe("rate_limit");
   });
 
   test("classifies timeout failures", () => {
     expect(classifyProviderProbeFailure(new Error("request timed out"))).toBe("timeout");
+    expect(classifyProviderProbeFailure(new Error("ECONNRESET"))).toBe("timeout");
   });
 
   test("classifies concurrent-cap failures", () => {
@@ -31,10 +34,10 @@ describe("errorMessage", () => {
   });
 
   test("returns string input as-is", () => {
-    expect(errorMessage("plain string")).toBe("plain string");
+    expect(errorMessage("oops")).toBe("oops");
   });
 
   test("stringifies non-error values", () => {
-    expect(errorMessage(404)).toBe("404");
+    expect(errorMessage({ code: 42 })).toContain("[object Object]");
   });
 });
