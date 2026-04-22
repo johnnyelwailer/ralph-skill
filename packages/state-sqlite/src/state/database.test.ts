@@ -20,8 +20,8 @@ describe("openDatabase", () => {
   test("opens an in-memory database with bundled migrations applied", () => {
     const { db, migrated } = openDatabase(":memory:");
     expect(migrated.previousVersion).toBe(0);
-    expect(migrated.currentVersion).toBe(migrated.applied[migrated.applied.length - 1]);
     expect(migrated.applied.length).toBeGreaterThan(0);
+    expect(migrated.currentVersion).toBe(migrated.applied[migrated.applied.length - 1]!);
     // Can run a query that depends on the schema
     const row = db.query<{ v: number }, []>("SELECT MAX(version) AS v FROM schema_version").get();
     expect(row?.v).toBe(migrated.currentVersion);
@@ -80,7 +80,8 @@ describe("openDatabase", () => {
     const { db } = openDatabase(":memory:");
     const row = db.query<{ journal_mode: string }, []>("PRAGMA journal_mode").get();
     // in-memory defaults to memory or delete; either way WAL is not set
-    expect(["memory", "delete"]).toContain(row?.journal_mode);
+    expect(row).not.toBeNull();
+    expect(["memory", "delete"]).toContain(row!.journal_mode);
     db.close();
   });
 

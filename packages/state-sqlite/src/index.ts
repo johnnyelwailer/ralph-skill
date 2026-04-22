@@ -5,14 +5,14 @@ export {
   readAllEvents,
   simpleAppend,
 } from "@aloop/event-jsonl";
-export { openDatabase, Database, type OpenedDatabase } from "./state/database.ts";
+export { openDatabase, Database, type OpenedDatabase } from "@aloop/sqlite-db";
 export {
   loadBundledMigrations,
   loadMigrationsFromDir,
   migrate,
   type Migration,
   type MigrateResult,
-} from "./state/migrations.ts";
+} from "@aloop/sqlite-db";
 export { PermitProjector } from "./state/permit-projector.ts";
 export {
   PermitRegistry,
