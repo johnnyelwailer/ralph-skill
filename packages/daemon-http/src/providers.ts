@@ -5,14 +5,14 @@ import {
 } from "@aloop/daemon-config";
 import type { EventWriter } from "@aloop/state-sqlite";
 import {
+  classifyProviderProbeFailure,
+  errorMessage,
   parseRequestedProviderChain,
   resolveProviderChain,
   type InMemoryProviderHealthStore,
   type ProviderRegistry,
 } from "@aloop/provider";
 import {
-  errorMessage,
-  classifyProviderProbeFailure,
   quotaProbeFailureHttp,
 } from "./providers-failure-classify.ts";
 import {
