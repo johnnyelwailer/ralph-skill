@@ -295,4 +295,23 @@ describe("parseJsonBody (providers-http variant)", () => {
     const nonObjectBody = await nonObjectResult.error.json();
     expect(nonObjectBody.error.message).toBe("request body must be a JSON object");
   });
+
+  test("returns badRequest error when req.text() throws (non-UTF-8 body)", async () => {
+    // The providers-http parseJsonBody wraps req.text() in a try/catch to handle
+    // non-UTF-8 body streams gracefully.  We mock req.text() to throw a TypeError
+    // to exercise this error path, since a real invalid-UTF-8 ReadableStream
+    // behaves differently across JS runtimes.
+    const req = {
+      method: "POST",
+      async text() {
+        throw new TypeError("failed to decode text");
+      },
+    } as unknown as Request;
+    const result = await parseJsonBody(req);
+    expect("error" in result).toBe(true);
+    expect(result.error.status).toBe(400);
+    const body = await result.error.json();
+    expect(body.error.code).toBe("bad_request");
+    expect(body.error.message).toBe("request body must be valid UTF-8 text");
+  });
 });
