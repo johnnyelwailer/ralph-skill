@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { createProject, patchProject } from "./projects-write.ts";
+import { archiveProject, createProject, purgeProject, patchProject } from "./projects-write.ts";
 import type { Deps } from "./projects-common.ts";
+import { ProjectAlreadyRegisteredError, ProjectNotFoundError } from "@aloop/state-sqlite";
 
 class MockRegistry {
   private projects = new Map<string, { id: string; name: string; absPath: string; status: string }>();
@@ -8,8 +9,7 @@ class MockRegistry {
 
   create(input: { absPath: string; name?: string }) {
     if ([...this.projects.values()].some((p) => p.absPath === input.absPath)) {
-      const err = new Error(`project already registered at ${input.absPath}`);
-      (err as any).absPath = input.absPath;
+      const err = new ProjectAlreadyRegisteredError(input.absPath);
       throw err;
     }
     const id = `proj_${this.nextId++}`;
@@ -28,22 +28,27 @@ class MockRegistry {
 
   updateName(id: string, name: string) {
     const p = this.projects.get(id);
-    if (!p) {
-      const err = new Error(`project not found: ${id}`);
-      throw err;
-    }
+    if (!p) throw new ProjectNotFoundError(id);
     p.name = name;
     return p;
   }
 
   updateStatus(id: string, status: string) {
     const p = this.projects.get(id);
-    if (!p) {
-      const err = new Error(`project not found: ${id}`);
-      throw err;
-    }
+    if (!p) throw new ProjectNotFoundError(id);
     p.status = status;
     return p;
+  }
+
+  archive(id: string) {
+    const p = this.projects.get(id);
+    if (!p) throw new ProjectNotFoundError(id);
+    p.status = "archived";
+    return p;
+  }
+
+  purge(id: string) {
+    this.projects.delete(id);
   }
 }
 
@@ -181,6 +186,47 @@ describe("createProject", () => {
     const res = await createProject(req, deps);
     // Should succeed using default name behavior (basename of abs_path)
     expect(res.status).toBe(201);
+  });
+});
+
+// ─── archiveProject ─────────────────────────────────────────────────────────
+
+describe("archiveProject", () => {
+  test("returns 200 with archived project when project exists", () => {
+    const deps = makeDeps();
+    const created = deps.registry.create({ absPath: "/tmp/archive-test" });
+    const res = archiveProject(created.id, deps);
+    expect(res.status).toBe(200);
+  });
+
+  test("returns 404 when project does not exist", () => {
+    const deps = makeDeps();
+    const res = archiveProject("nonexistent-id-xyz", deps);
+    expect(res.status).toBe(404);
+  });
+});
+
+// ─── purgeProject ──────────────────────────────────────────────────────────
+
+describe("purgeProject", () => {
+  test("returns 204 when project is deleted", () => {
+    const deps = makeDeps();
+    const created = deps.registry.create({ absPath: "/tmp/purge-test" });
+    const res = purgeProject(created.id, deps);
+    expect(res.status).toBe(204);
+  });
+
+  test("project is no longer retrievable after purge", () => {
+    const deps = makeDeps();
+    const created = deps.registry.create({ absPath: "/tmp/purge-test-2" });
+    purgeProject(created.id, deps);
+    expect(deps.registry.get(created.id)).toBeUndefined();
+  });
+
+  test("returns 404 when project does not exist", () => {
+    const deps = makeDeps();
+    const res = purgeProject("nonexistent-id-xyz", deps);
+    expect(res.status).toBe(404);
   });
 });
 
