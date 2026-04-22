@@ -117,6 +117,27 @@ describe("/v1/scheduler/*", () => {
     expect(granted.permit.providerId).toBe("codex");
   });
 
+  test("provider gate denies permits when provider health is degraded", async () => {
+    daemon.providerHealth.noteFailure("opencode", "auth");
+    const denied = await fetch(`${baseUrl}/v1/scheduler/permits`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ session_id: "s_1", provider_candidate: "opencode" }),
+    }).then((r) =>
+      r.json() as Promise<{
+        granted: boolean;
+        reason: string;
+        gate: string;
+        details: { provider_id: string; status: string };
+      }>,
+    );
+    expect(denied.granted).toBe(false);
+    expect(denied.reason).toBe("provider_unavailable");
+    expect(denied.gate).toBe("provider");
+    expect(denied.details.provider_id).toBe("opencode");
+    expect(denied.details.status).toBe("degraded");
+  });
+
   test("PUT /v1/scheduler/limits updates live limits and persists daemon.yml", async () => {
     const res = await fetch(`${baseUrl}/v1/scheduler/limits`, {
       method: "PUT",
