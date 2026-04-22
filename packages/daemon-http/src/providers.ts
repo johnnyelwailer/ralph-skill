@@ -11,6 +11,7 @@ import {
 import {
   errorMessage,
   classifyProviderProbeFailure,
+  quotaProbeFailureHttp,
 } from "./providers-failure-classify.ts";
 import {
   badRequest,
@@ -80,8 +81,9 @@ export async function handleProviders(
     } catch (err) {
       const classification = classifyProviderProbeFailure(err);
       const health = deps.providerHealth.noteFailure(providerId, classification);
+      const failureHttp = quotaProbeFailureHttp(classification);
       await deps.events.append("provider.health", health);
-      return errorResponse(502, "quota_probe_failed", `quota probe failed for ${providerId}`, {
+      return errorResponse(failureHttp.status, failureHttp.code, `quota probe failed for ${providerId}`, {
         provider_id: providerId,
         classification,
         message: errorMessage(err),

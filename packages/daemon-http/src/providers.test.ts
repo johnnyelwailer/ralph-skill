@@ -227,7 +227,7 @@ describe("handleProviders", () => {
       });
     });
 
-    test("records probe failure in provider health and returns 502", async () => {
+    test("records probe failure in provider health and returns auth-specific error", async () => {
       const deps = makeProvidersDeps({
         withQuotaProbe: true,
         quotaProbeErrorMessage: "unauthorized: invalid api key",
@@ -237,9 +237,9 @@ describe("handleProviders", () => {
         headers: { "x-aloop-auth-handle": "auth_1" },
       });
       const result = await handleProviders(req, deps, "/v1/providers/claude/quota");
-      expect(result!.status).toBe(502);
+      expect(result!.status).toBe(401);
       const body = await resJson<{ error: { code: string; details: { classification: string } } }>(result!);
-      expect(body.error.code).toBe("quota_probe_failed");
+      expect(body.error.code).toBe("provider_auth_failed");
       expect(body.error.details.classification).toBe("auth");
       expect(deps.providerHealth.get("claude").status).toBe("degraded");
       expect(deps.providerHealth.get("claude").failureReason).toBe("auth");
@@ -248,6 +248,22 @@ describe("handleProviders", () => {
         topic: "provider.health",
         data: { providerId: "claude", status: "degraded", failureReason: "auth" },
       });
+    });
+
+    test("maps timeout failures to 504", async () => {
+      const deps = makeProvidersDeps({
+        withQuotaProbe: true,
+        quotaProbeErrorMessage: "request timed out",
+      });
+      const req = new Request("http://localhost/v1/providers/claude/quota", {
+        method: "GET",
+        headers: { "x-aloop-auth-handle": "auth_1" },
+      });
+      const result = await handleProviders(req, deps, "/v1/providers/claude/quota");
+      expect(result!.status).toBe(504);
+      const body = await resJson<{ error: { code: string; details: { classification: string } } }>(result!);
+      expect(body.error.code).toBe("provider_probe_timeout");
+      expect(body.error.details.classification).toBe("timeout");
     });
   });
 
