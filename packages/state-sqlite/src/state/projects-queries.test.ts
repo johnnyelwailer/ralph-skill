@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { openDatabase } from "./database.ts";
@@ -23,7 +23,7 @@ describe("canonicalizeProjectPath", () => {
     const dir = mkdtempSync(join(tmpdir(), "aloop-canon-"));
     try {
       const result = canonicalizeProjectPath(dir);
-      expect(result).toBe(dir);
+      expect(result).toBe(realpathSync(dir));
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -34,7 +34,7 @@ describe("canonicalizeProjectPath", () => {
     try {
       const withSlash = dir + "/";
       const result = canonicalizeProjectPath(withSlash);
-      expect(result).toBe(dir);
+      expect(result).toBe(realpathSync(dir));
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
