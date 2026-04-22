@@ -4,7 +4,10 @@ import {
   type ConfigStore,
 } from "@aloop/daemon-config";
 import type { EventWriter } from "@aloop/state-sqlite";
-import type { InMemoryProviderHealthStore, ProviderRegistry } from "@aloop/provider";
+import {
+  type InMemoryProviderHealthStore,
+  type ProviderRegistry,
+} from "@aloop/provider";
 import {
   badRequest,
   errorResponse,
@@ -13,6 +16,7 @@ import {
   notFoundResponse,
   parseJsonBody,
 } from "./http-helpers.ts";
+import { parseRequestedChain, resolveChain } from "./providers-resolve-chain.ts";
 
 export type ProvidersDeps = {
   readonly config: ConfigStore;
@@ -67,6 +71,28 @@ export async function handleProviders(
     });
     await deps.events.append("provider.health", health);
     return jsonResponse(200, { _v: 1, provider_id: providerId, quota });
+  }
+
+  if (pathname === "/v1/providers/resolve-chain") {
+    if (req.method !== "POST") return methodNotAllowed();
+    const parsed = await parseJsonBody(req);
+    if ("error" in parsed) return parsed.error;
+    const body = parsed.data as { session_id?: unknown; provider_chain?: unknown };
+    if (typeof body.session_id !== "string" || body.session_id.trim().length === 0) {
+      return badRequest("session_id is required");
+    }
+    const requestedChain = parseRequestedChain(body.provider_chain);
+    if (!requestedChain.ok) return badRequest(requestedChain.error);
+    const baseChain = requestedChain.value ?? deps.providerRegistry.list().map((adapter) => adapter.id);
+    const resolved = resolveChain(baseChain, deps.config.overrides(), deps.providerHealth);
+    return jsonResponse(200, {
+      _v: 1,
+      session_id: body.session_id,
+      input_chain: baseChain,
+      resolved_chain: resolved.chain,
+      excluded_overrides: resolved.excludedOverrides,
+      excluded_health: resolved.excludedHealth,
+    });
   }
 
   if (pathname !== "/v1/providers/overrides") return undefined;

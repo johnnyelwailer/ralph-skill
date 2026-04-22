@@ -11,6 +11,7 @@ import {
 } from "@aloop/provider";
 
 const PATH_OVERRIDES = "/v1/providers/overrides";
+const PATH_RESOLVE_CHAIN = "/v1/providers/resolve-chain";
 type OverridesBody = {
   _v: number;
   allow: readonly string[] | null;
@@ -212,6 +213,50 @@ describe("handleProviders", () => {
         topic: "provider.health",
         data: { providerId: "claude", quotaRemaining: 123 },
       });
+    });
+  });
+
+  describe("POST /v1/providers/resolve-chain", () => {
+    test("returns 400 when session_id is missing", async () => {
+      const deps = makeProvidersDeps({ withQuotaProbe: true });
+      const req = new Request(`http://localhost${PATH_RESOLVE_CHAIN}`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      const result = await handleProviders(req, deps, PATH_RESOLVE_CHAIN);
+      expect(result!.status).toBe(400);
+    });
+
+    test("applies allow/deny overrides to the resolved chain", async () => {
+      const config = makeConfigStore({ allow: ["opencode"], deny: ["claude"], force: null });
+      const deps = makeProvidersDeps({ withQuotaProbe: true, config });
+      const req = new Request(`http://localhost${PATH_RESOLVE_CHAIN}`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ session_id: "s_1" }),
+      });
+      const result = await handleProviders(req, deps, PATH_RESOLVE_CHAIN);
+      expect(result!.status).toBe(200);
+      const body = await resJson<{ resolved_chain: string[]; excluded_overrides: string[] }>(result!);
+      expect(body.resolved_chain).toEqual(["opencode"]);
+      expect(body.excluded_overrides).toEqual(["claude"]);
+    });
+
+    test("filters providers that are unavailable by health", async () => {
+      const deps = makeProvidersDeps({ withQuotaProbe: true });
+      const now = Date.now();
+      deps.providerHealth.noteFailure("opencode", "auth", now);
+      const req = new Request(`http://localhost${PATH_RESOLVE_CHAIN}`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ session_id: "s_2" }),
+      });
+      const result = await handleProviders(req, deps, PATH_RESOLVE_CHAIN);
+      expect(result!.status).toBe(200);
+      const body = await resJson<{ resolved_chain: string[]; excluded_health: string[] }>(result!);
+      expect(body.resolved_chain).toEqual(["claude"]);
+      expect(body.excluded_health).toEqual(["opencode"]);
     });
   });
 
