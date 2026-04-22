@@ -45,6 +45,7 @@
         "@aloop/provider": "workspace:*",
         "@aloop/provider-opencode": "workspace:*",
         "@aloop/scheduler": "workspace:*",
+        "@aloop/scheduler-limits": "workspace:*",
         "@aloop/state-sqlite": "workspace:*",
       },
       "devDependencies": {
@@ -66,9 +67,6 @@
     "packages/daemon-http": {
       "name": "@aloop/daemon-http",
       "version": "0.1.0",
-      "dependencies": {
-        "@aloop/state-sqlite": "workspace:*",
-      },
       "devDependencies": {
         "@types/bun": "latest",
         "typescript": "^5.6.0",
@@ -122,6 +120,17 @@
       "name": "@aloop/scheduler",
       "version": "0.1.0",
       "dependencies": {
+        "@aloop/state-sqlite": "workspace:*",
+      },
+      "devDependencies": {
+        "@types/bun": "latest",
+        "typescript": "^5.6.0",
+      },
+    },
+    "packages/scheduler-limits": {
+      "name": "@aloop/scheduler-limits",
+      "version": "0.1.0",
+      "dependencies": {
         "@aloop/daemon-config": "workspace:*",
         "@aloop/state-sqlite": "workspace:*",
       },
@@ -172,6 +181,8 @@
     "@aloop/provider-opencode": ["@aloop/provider-opencode@workspace:packages/provider-opencode"],
 
     "@aloop/scheduler": ["@aloop/scheduler@workspace:packages/scheduler"],
+
+    "@aloop/scheduler-limits": ["@aloop/scheduler-limits@workspace:packages/scheduler-limits"],
 
     "@aloop/sqlite-db": ["@aloop/sqlite-db@workspace:packages/sqlite-db"],
 

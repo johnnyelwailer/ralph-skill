@@ -1,11 +1,17 @@
 import {
   daemonConfigToRaw,
   parseDaemonConfig,
+  type DaemonConfig,
   type ConfigStore,
 } from "@aloop/daemon-config";
 import { type EventWriter } from "@aloop/state-sqlite";
-import type { LimitsUpdateResult } from "./decisions.ts";
 import { normalizeLimitsPatch } from "./limits-patch.ts";
+
+export type SchedulerLimits = DaemonConfig["scheduler"];
+
+export type LimitsUpdateResult =
+  | { ok: true; limits: SchedulerLimits }
+  | { ok: false; errors: readonly string[] };
 
 export async function updateSchedulerLimits(
   config: ConfigStore,

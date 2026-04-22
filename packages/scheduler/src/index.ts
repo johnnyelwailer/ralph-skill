@@ -4,8 +4,6 @@ export {
   type RunningWatchdog,
   type StartSchedulerWatchdogInput,
 } from "./watchdog.ts";
-export { normalizeLimitsPatch } from "./limits-patch.ts";
-export { updateSchedulerLimits } from "./limits-update.ts";
 export type {
   SchedulerLimits,
   ProviderOverrides,

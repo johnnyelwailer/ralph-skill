@@ -26,6 +26,7 @@
     "@aloop/provider": "workspace:*",
     "@aloop/provider-opencode": "workspace:*",
     "@aloop/scheduler": "workspace:*",
+    "@aloop/scheduler-limits": "workspace:*",
     "@aloop/state-sqlite": "workspace:*"
   }
 }
