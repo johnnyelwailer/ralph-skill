@@ -1,9 +1,9 @@
 import type { ConfigStore } from "@aloop/daemon-config";
 import type { RouterDeps } from "@aloop/daemon-http";
 import type { InMemoryProviderHealthStore, ProviderRegistry } from "@aloop/provider";
+import { handleProviders as handleProvidersRoute } from "@aloop/daemon-routes-providers";
 import {
   handleProjects as handleProjectsRoute,
-  handleProviders as handleProvidersRoute,
   handleScheduler as handleSchedulerRoute,
 } from "@aloop/daemon-routes";
 import type { SchedulerService } from "@aloop/scheduler";
