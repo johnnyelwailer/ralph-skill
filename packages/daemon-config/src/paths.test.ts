@@ -11,6 +11,9 @@ describe("resolveDaemonPaths", () => {
     expect(paths.pidFile).toBe(join(expected, "aloopd.pid"));
     expect(paths.socketFile).toBe(join(expected, "aloopd.sock"));
     expect(paths.stateDir).toBe(join(expected, "state"));
+    expect(paths.daemonConfigFile).toBe(join(expected, "daemon.yml"));
+    expect(paths.overridesFile).toBe(join(expected, "overrides.yml"));
+    expect(paths.logFile).toBe(join(expected, "state", "aloopd.log"));
   });
 
   test("honors ALOOP_HOME override", () => {

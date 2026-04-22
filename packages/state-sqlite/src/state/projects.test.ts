@@ -134,6 +134,10 @@ describe("ProjectRegistry", () => {
     expect(() => registry.updateName("nope", "x")).toThrow(ProjectNotFoundError);
   });
 
+  test("updateStatus throws ProjectNotFoundError for unknown id", () => {
+    expect(() => registry.updateStatus("nope", "ready")).toThrow(ProjectNotFoundError);
+  });
+
   test("updateStatus enforces valid enum via DB CHECK", () => {
     const p = registry.create({ absPath: tmpProjectDir });
     // Cast through `any` to prove the DB is the enforcement layer, not TS.

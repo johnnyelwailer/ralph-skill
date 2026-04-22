@@ -3,7 +3,7 @@ import { makeEvent, makeIdGenerator, type EventEnvelope } from "@aloop/core";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { appendEventOnce, JsonlEventStore, readAllEvents } from "./jsonl.ts";
+import { appendEventOnce, JsonlEventStore, readAllEvents, simpleAppend } from "./jsonl.ts";
 
 describe("JsonlEventStore", () => {
   let dir: string;
@@ -90,6 +90,46 @@ describe("JsonlEventStore", () => {
     expect(out).toEqual([]);
   });
 
+  test("read skips blank lines in the file without error", async () => {
+    // Manually write a JSONL file with blank lines embedded, then read it back.
+    const { appendFileSync } = await import("node:fs");
+    const lines = [
+      JSON.stringify(makeEvent("a", 1, makeIdGenerator())),
+      "", // blank line
+      JSON.stringify(makeEvent("b", 2, makeIdGenerator())),
+      "\n", // whitespace-only line
+      JSON.stringify(makeEvent("c", 3, makeIdGenerator())),
+    ];
+    appendFileSync(path, lines.join("\n") + "\n", "utf-8");
+
+    const store = new JsonlEventStore(path);
+    const got: EventEnvelope[] = [];
+    for await (const e of store.read()) got.push(e);
+    await store.close();
+    expect(got.map((e) => e.topic)).toEqual(["a", "b", "c"]);
+  });
+
+  test("read with since filter skips events with id strictly greater than since", async () => {
+    // This covers the parsed.id <= since guard (skip when id == since).
+    const store = new JsonlEventStore(path);
+    const gen = makeIdGenerator();
+    const events = [
+      makeEvent("a", 1, gen),
+      makeEvent("b", 2, gen),
+      makeEvent("c", 3, gen),
+    ];
+    for (const e of events) await store.append(e);
+    await store.close();
+
+    // Replay from the id of the *second* event — it must be excluded (id == since).
+    const sinceId = events[1]!.id;
+    const replay = new JsonlEventStore(path);
+    const got: EventEnvelope[] = [];
+    for await (const e of replay.read(sinceId)) got.push(e);
+    await replay.close();
+    expect(got.map((e) => e.topic)).toEqual(["c"]);
+  });
+
   test("append after close throws", async () => {
     const store = new JsonlEventStore(path);
     const gen = makeIdGenerator();
@@ -104,5 +144,35 @@ describe("JsonlEventStore", () => {
     await appendEventOnce(path, makeEvent("b", 2, gen));
     const events = await readAllEvents(path);
     expect(events.map((e) => e.topic)).toEqual(["a", "b"]);
+  });
+
+  test("simpleAppend: lightweight direct fs append without a store instance", async () => {
+    const gen = makeIdGenerator();
+    await simpleAppend(path, makeEvent("x", { k: "v" }, gen));
+    await simpleAppend(path, makeEvent("y", { k2: "v2" }, gen));
+    const events = await readAllEvents(path);
+    expect(events.map((e) => e.topic)).toEqual(["x", "y"]);
+    expect(events[0]!.data).toEqual({ k: "v" });
+    expect(events[1]!.data).toEqual({ k2: "v2" });
+  });
+
+  test("simpleAppend: creates parent directories recursively", async () => {
+    const nested = join(dir, "deeply", "nested", "dir", "log.jsonl");
+    const gen = makeIdGenerator();
+    await simpleAppend(nested, makeEvent("z", 99, gen));
+    const events = await readAllEvents(nested);
+    expect(events.map((e) => e.topic)).toEqual(["z"]);
+  });
+
+  test("appendEventOnce and simpleAppend are interchangeable for single appends", async () => {
+    const pathA = join(dir, "a.jsonl");
+    const pathB = join(dir, "b.jsonl");
+    const gen = makeIdGenerator();
+    await appendEventOnce(pathA, makeEvent("a", 1, gen));
+    await simpleAppend(pathB, makeEvent("b", 2, gen));
+    const eventsA = await readAllEvents(pathA);
+    const eventsB = await readAllEvents(pathB);
+    expect(eventsA[0]!.data).toBe(1);
+    expect(eventsB[0]!.data).toBe(2);
   });
 });

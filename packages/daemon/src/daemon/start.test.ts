@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { startDaemon, type RunningDaemon } from "./start.ts";
@@ -96,5 +96,33 @@ describe("daemon integration", () => {
     const text = await res.text();
     expect(text).toContain("event: hello");
     expect(text).toContain("event: ping");
+  });
+});
+
+describe("startDaemon error handling", () => {
+  let home: string;
+
+  beforeEach(() => {
+    home = mkdtempSync(join(tmpdir(), "aloop-start-error-"));
+  });
+
+  afterEach(() => {
+    rmSync(home, { recursive: true, force: true });
+  });
+
+  test("throws when daemon.yml contains invalid content", async () => {
+    const paths = resolveDaemonPaths({ ALOOP_HOME: home });
+    writeFileSync(paths.daemonConfigFile, "http:\n  port: not_a_number\n");
+
+    await expect(startDaemon({ port: 0, paths })).rejects.toThrow(/daemon.yml invalid/);
+  });
+
+  test("throws when overrides.yml contains invalid content", async () => {
+    const paths = resolveDaemonPaths({ ALOOP_HOME: home });
+    // Write a minimal valid daemon.yml so we pass that check
+    writeFileSync(paths.daemonConfigFile, "");
+    writeFileSync(paths.overridesFile, "allow: not_an_array\n");
+
+    await expect(startDaemon({ port: 0, paths })).rejects.toThrow(/overrides.yml invalid/);
   });
 });

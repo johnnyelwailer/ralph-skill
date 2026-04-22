@@ -98,4 +98,53 @@ describe("welford", () => {
     const s = fold(xs);
     expect(welfordSampleStdDev(s)).toBeCloseTo(Math.sqrt(welfordSampleVariance(s)), 12);
   });
+
+  test("merge is associative: (a+b)+c equals a+(b+c)", () => {
+    const a = fold([1, 2, 3]);
+    const b = fold([4, 5, 6]);
+    const c = fold([7, 8, 9]);
+    const merged = welfordMerge(welfordMerge(a, b), c);
+    const whole = fold([1, 2, 3, 4, 5, 6, 7, 8, 9]);
+    expect(merged.count).toBe(whole.count);
+    expect(merged.mean).toBeCloseTo(whole.mean, 12);
+    expect(merged.m2).toBeCloseTo(whole.m2, 10);
+  });
+
+  test("merge of three empty states returns empty state", () => {
+    const merged = welfordMerge(welfordMerge(welfordInit(), welfordInit()), welfordInit());
+    expect(merged.count).toBe(0);
+    expect(merged.mean).toBe(0);
+    expect(merged.m2).toBe(0);
+  });
+
+  test("merge of two partially-filled states with different counts", () => {
+    const a = fold([10, 20]);
+    const b = fold([100, 200, 300, 400]);
+    const merged = welfordMerge(a, b);
+    const whole = fold([10, 20, 100, 200, 300, 400]);
+    expect(merged.count).toBe(whole.count);
+    expect(merged.mean).toBeCloseTo(whole.mean, 12);
+    expect(merged.m2).toBeCloseTo(whole.m2, 10);
+  });
+
+  test("merge of two states where one has count=1 is correct", () => {
+    const a = fold([42]);
+    const b = fold([10, 20, 30]);
+    const merged = welfordMerge(a, b);
+    const whole = fold([42, 10, 20, 30]);
+    expect(merged.count).toBe(whole.count);
+    expect(merged.mean).toBeCloseTo(whole.mean, 12);
+    expect(merged.m2).toBeCloseTo(whole.m2, 10);
+  });
+
+  test("population variance of merged states matches naive two-pass calculation", () => {
+    const xs = [3, 6, 9, 12, 15];
+    const half = Math.floor(xs.length / 2);
+    const a = fold(xs.slice(0, half));
+    const b = fold(xs.slice(half));
+    const merged = welfordMerge(a, b);
+    const naiveMean = xs.reduce((s, x) => s + x, 0) / xs.length;
+    const naiveVar = xs.reduce((s, x) => s + (x - naiveMean) ** 2, 0) / xs.length;
+    expect(welfordPopulationVariance(merged)).toBeCloseTo(naiveVar, 10);
+  });
 });
