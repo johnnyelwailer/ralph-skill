@@ -1,10 +1,14 @@
 import type { ConfigStore } from "@aloop/daemon-config";
 import type { RouterDeps } from "@aloop/daemon-http";
 import type { InMemoryProviderHealthStore, ProviderRegistry } from "@aloop/provider";
+import {
+  handleProjects as handleProjectsRoute,
+  handleProviders as handleProvidersRoute,
+  handleScheduler as handleSchedulerRoute,
+} from "@aloop/daemon-routes";
 import type { SchedulerService } from "@aloop/scheduler";
 import type { EventWriter, ProjectRegistry } from "@aloop/state-sqlite";
 import { handleDaemon as handleDaemonRoute } from "../routes/daemon.ts";
-import { handleProviders as handleProvidersRoute } from "../routes/providers.ts";
 
 export type MakeRouterDepsInput = {
   readonly registry: ProjectRegistry;
@@ -18,10 +22,16 @@ export type MakeRouterDepsInput = {
 
 export function makeRouterDeps(input: MakeRouterDepsInput): RouterDeps {
   return {
-    registry: input.registry,
-    scheduler: input.scheduler,
     handleDaemon: (req, pathname) =>
       handleDaemonRoute(req, { startedAt: input.startedAt, config: input.config }, pathname),
+    handleProjects: (req, pathname) =>
+      handleProjectsRoute(
+        req,
+        {
+          registry: input.registry,
+        },
+        pathname,
+      ),
     handleProviders: (req, pathname) =>
       handleProvidersRoute(
         req,
@@ -30,6 +40,14 @@ export function makeRouterDeps(input: MakeRouterDepsInput): RouterDeps {
           events: input.events,
           providerRegistry: input.providerRegistry,
           providerHealth: input.providerHealth,
+        },
+        pathname,
+      ),
+    handleScheduler: (req, pathname) =>
+      handleSchedulerRoute(
+        req,
+        {
+          scheduler: input.scheduler,
         },
         pathname,
       ),

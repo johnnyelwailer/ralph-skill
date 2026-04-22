@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { SchedulerService } from "@aloop/scheduler";
-import { handleScheduler, type SchedulerDeps } from "./scheduler.ts";
+import { handleScheduler, type SchedulerDeps } from "@aloop/daemon-routes";
 
 function makeDeps(overrides: Partial<SchedulerService> = {}): SchedulerDeps {
   const scheduler = {

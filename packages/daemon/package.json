@@ -22,6 +22,7 @@
     "@aloop/core": "workspace:*",
     "@aloop/daemon-config": "workspace:*",
     "@aloop/daemon-http": "workspace:*",
+    "@aloop/daemon-routes": "workspace:*",
     "@aloop/provider": "workspace:*",
     "@aloop/provider-opencode": "workspace:*",
     "@aloop/scheduler": "workspace:*",

@@ -1,16 +1,17 @@
-import type { SchedulerService } from "@aloop/scheduler";
-import type { ProjectRegistry } from "@aloop/state-sqlite";
-import { handleProjects } from "./projects.ts";
-import { handleScheduler } from "./scheduler.ts";
-
 export type RouterDeps = {
-  readonly registry: ProjectRegistry;
-  readonly scheduler: SchedulerService;
   readonly handleDaemon: (
     req: Request,
     pathname: string,
   ) => Response | Promise<Response | undefined> | undefined;
+  readonly handleProjects: (
+    req: Request,
+    pathname: string,
+  ) => Response | Promise<Response | undefined> | undefined;
   readonly handleProviders: (
+    req: Request,
+    pathname: string,
+  ) => Response | Promise<Response | undefined> | undefined;
+  readonly handleScheduler: (
     req: Request,
     pathname: string,
   ) => Response | Promise<Response | undefined> | undefined;
@@ -42,13 +43,13 @@ export function makeFetchHandler(
       });
     }
 
-    const projectsResponse = await handleProjects(req, { registry: deps.registry }, pathname);
+    const projectsResponse = await deps.handleProjects(req, pathname);
     if (projectsResponse) return projectsResponse;
 
     const providersResponse = await deps.handleProviders(req, pathname);
     if (providersResponse) return providersResponse;
 
-    const schedulerResponse = await handleScheduler(req, { scheduler: deps.scheduler }, pathname);
+    const schedulerResponse = await deps.handleScheduler(req, pathname);
     if (schedulerResponse) return schedulerResponse;
 
     return new Response(
