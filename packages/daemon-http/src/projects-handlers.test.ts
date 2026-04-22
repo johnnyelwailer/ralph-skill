@@ -169,6 +169,33 @@ describe("createProject", () => {
     const res = await createProject(req, deps);
     expect(res.status).toBe(400);
   });
+
+  test("returns 400 when abs_path is an empty string", async () => {
+    const deps = makeDeps();
+    const req = new Request("http://x/v1/projects", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ abs_path: "" }),
+    });
+    const res = await createProject(req, deps);
+    expect(res.status).toBe(400);
+    const body = await resJson<{ error: { code: string } }>(res);
+    expect(body.error.code).toBe("bad_request");
+  });
+
+  test("non-string name falls back to basename of abs_path (TypeScript coercion)", async () => {
+    const deps = makeDeps();
+    const req = new Request("http://x/v1/projects", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ abs_path: "/test", name: 42 }),
+    });
+    const res = await createProject(req, deps);
+    expect(res.status).toBe(201);
+    // input.name?.trim() returns undefined for a number, so basename("/test") is used
+    const body = await resJson<{ name: string }>(res);
+    expect(body.name).toBe("test");
+  });
 });
 
 // ─── getProject ──────────────────────────────────────────────────────────────
