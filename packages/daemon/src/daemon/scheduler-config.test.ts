@@ -1,8 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { makeSchedulerConfig } from "./scheduler-config.ts";
-import type { ConfigStore } from "@aloop/daemon-config";
+import type { ConfigStore, DaemonConfig } from "@aloop/daemon-config";
 import type { EventWriter } from "@aloop/state-sqlite";
-import type { DaemonConfig } from "@aloop/config-schema";
 
 const BASE_DAEMON_CONFIG: DaemonConfig = {
   http: { bind: "127.0.0.1", port: 7777, autostart: true },
@@ -65,8 +64,13 @@ function mockConfigStore(
 
 function mockEventWriter(): EventWriter {
   return {
-    append: async () => ({ applied: 0, eventIds: [] }),
-    flush: async () => {},
+    append: async <T>(topic: string, data: T) => ({
+      _v: 1,
+      id: "evt_test",
+      timestamp: new Date(0).toISOString(),
+      topic,
+      data,
+    }),
   };
 }
 

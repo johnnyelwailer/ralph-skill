@@ -1,42 +1,57 @@
 import { describe, expect, test } from "bun:test";
 import { compilePipeline, parsePipeline } from "./pipeline.ts";
+import type { PipelineConfig } from "./types.ts";
+
+type PipelineParseResult = ReturnType<typeof parsePipeline>;
+
+function expectParseOk(result: PipelineParseResult) {
+  expect(result.ok).toBe(true);
+  if (!result.ok) throw new Error(`expected parse success, got: ${result.errors.join("; ")}`);
+  return result.value;
+}
+
+function expectParseErrors(result: PipelineParseResult) {
+  expect(result.ok).toBe(false);
+  if (result.ok) throw new Error("expected parse failure");
+  return result.errors;
+}
 
 describe("parsePipeline", () => {
   describe("invalid YAML", () => {
     test("returns yaml-parse error for malformed YAML", () => {
       // Two lines with mismatched indentation triggers a YAML parse error
       const result = parsePipeline("foo: 1\n  bar: 2");
-      expect(result.ok).toBe(false);
-      expect(result.errors[0]).toStartWith("yaml parse error:");
+      const errors = expectParseErrors(result);
+      expect(errors[0]).toStartWith("yaml parse error:");
     });
   });
 
   describe("empty / null source", () => {
     test("rejects empty string", () => {
       const result = parsePipeline("");
-      expect(result.ok).toBe(false);
-      expect(result.errors).toContain("pipeline.yml is empty or null");
+      const errors = expectParseErrors(result);
+      expect(errors).toContain("pipeline.yml is empty or null");
     });
 
     test("rejects null (explicit ~)", () => {
       // yaml.parse("~") === null in YAML 1.1 / yaml spec
       const result = parsePipeline("~\n");
-      expect(result.ok).toBe(false);
-      expect(result.errors).toContain("pipeline.yml is empty or null");
+      const errors = expectParseErrors(result);
+      expect(errors).toContain("pipeline.yml is empty or null");
     });
 
     test("rejects top-level array", () => {
       const result = parsePipeline("- phase1\n- phase2");
-      expect(result.ok).toBe(false);
-      expect(result.errors).toContain(
+      const errors = expectParseErrors(result);
+      expect(errors).toContain(
         "pipeline.yml must be a YAML mapping at the top level",
       );
     });
 
     test("rejects top-level scalar", () => {
       const result = parsePipeline("just a string");
-      expect(result.ok).toBe(false);
-      expect(result.errors).toContain(
+      const errors = expectParseErrors(result);
+      expect(errors).toContain(
         "pipeline.yml must be a YAML mapping at the top level",
       );
     });
@@ -46,16 +61,16 @@ describe("parsePipeline", () => {
     test("returns error for unknown top-level key", () => {
       const yaml = "pipeline:\n  - agent: test\nunknownField: true";
       const result = parsePipeline(yaml);
-      expect(result.ok).toBe(false);
-      expect(result.errors).toContain("unknown top-level field: unknownField");
+      const errors = expectParseErrors(result);
+      expect(errors).toContain("unknown top-level field: unknownField");
     });
 
     test("collects multiple unknown fields in one error list", () => {
       const yaml = "pipeline:\n  - agent: test\nfoo: 1\nbar: 2";
       const result = parsePipeline(yaml);
-      expect(result.ok).toBe(false);
-      expect(result.errors).toContain("unknown top-level field: foo");
-      expect(result.errors).toContain("unknown top-level field: bar");
+      const errors = expectParseErrors(result);
+      expect(errors).toContain("unknown top-level field: foo");
+      expect(errors).toContain("unknown top-level field: bar");
     });
   });
 
@@ -63,20 +78,20 @@ describe("parsePipeline", () => {
     test("returns error when pipeline key is missing", () => {
       const yaml = "finalizer:\n  - cleanup";
       const result = parsePipeline(yaml);
-      expect(result.ok).toBe(false);
-      expect(result.errors).toContain("pipeline field is required");
+      const errors = expectParseErrors(result);
+      expect(errors).toContain("pipeline field is required");
     });
 
     test("returns error when pipeline is an empty array", () => {
       const result = parsePipeline("pipeline: []");
-      expect(result.ok).toBe(false);
-      expect(result.errors).toContain("pipeline: must contain at least one phase");
+      const errors = expectParseErrors(result);
+      expect(errors).toContain("pipeline: must contain at least one phase");
     });
 
     test("returns error when pipeline is not an array", () => {
       const result = parsePipeline("pipeline: 'not an array'");
-      expect(result.ok).toBe(false);
-      expect(result.errors).toContain(
+      const errors = expectParseErrors(result);
+      expect(errors).toContain(
         "pipeline: expected an array of phase objects",
       );
     });
@@ -86,8 +101,8 @@ describe("parsePipeline", () => {
     test("returns error when phase is missing agent", () => {
       const yaml = "pipeline:\n  - repeat: 3";
       const result = parsePipeline(yaml);
-      expect(result.ok).toBe(false);
-      expect(result.errors).toContain(
+      const errors = expectParseErrors(result);
+      expect(errors).toContain(
         "pipeline[0].agent: required, must be a non-empty string",
       );
     });
@@ -95,8 +110,8 @@ describe("parsePipeline", () => {
     test("returns error when phase agent is empty string", () => {
       const yaml = "pipeline:\n  - agent: ''";
       const result = parsePipeline(yaml);
-      expect(result.ok).toBe(false);
-      expect(result.errors).toContain(
+      const errors = expectParseErrors(result);
+      expect(errors).toContain(
         "pipeline[0].agent: required, must be a non-empty string",
       );
     });
@@ -105,8 +120,8 @@ describe("parsePipeline", () => {
       // Two phases: first valid, second with repeat: 0
       const yaml = "pipeline:\n  - agent: build\n  - agent: test\n    repeat: 0";
       const result = parsePipeline(yaml);
-      expect(result.ok).toBe(false);
-      expect(result.errors).toContain(
+      const errors = expectParseErrors(result);
+      expect(errors).toContain(
         "pipeline[1].repeat: must be a positive integer",
       );
     });
@@ -114,8 +129,8 @@ describe("parsePipeline", () => {
     test("returns error when repeat is a float", () => {
       const yaml = "pipeline:\n  - agent: build\n  - agent: test\n    repeat: 1.5";
       const result = parsePipeline(yaml);
-      expect(result.ok).toBe(false);
-      expect(result.errors).toContain(
+      const errors = expectParseErrors(result);
+      expect(errors).toContain(
         "pipeline[1].repeat: must be a positive integer",
       );
     });
@@ -123,8 +138,8 @@ describe("parsePipeline", () => {
     test("returns error when timeout is not a string", () => {
       const yaml = "pipeline:\n  - agent: build\n  - agent: test\n    timeout: 123";
       const result = parsePipeline(yaml);
-      expect(result.ok).toBe(false);
-      expect(result.errors).toContain(
+      const errors = expectParseErrors(result);
+      expect(errors).toContain(
         'pipeline[1].timeout: must be a string like "30m" or "2h"',
       );
     });
@@ -132,8 +147,8 @@ describe("parsePipeline", () => {
     test("returns error when model is an empty string", () => {
       const yaml = "pipeline:\n  - agent: build\n  - agent: test\n    model: ''";
       const result = parsePipeline(yaml);
-      expect(result.ok).toBe(false);
-      expect(result.errors).toContain(
+      const errors = expectParseErrors(result);
+      expect(errors).toContain(
         "pipeline[1].model: must be a non-empty string",
       );
     });
@@ -142,8 +157,8 @@ describe("parsePipeline", () => {
   describe("valid pipeline", () => {
     test("parses minimal phase", () => {
       const result = parsePipeline("pipeline:\n  - agent: build");
-      expect(result.ok).toBe(true);
-      expect(result.value).toEqual({
+      const parsed = expectParseOk(result);
+      expect(parsed).toEqual({
         pipeline: [{ agent: "build" }],
       });
     });
@@ -159,8 +174,8 @@ describe("parsePipeline", () => {
     reasoning: high
     timeout: 2h`,
       );
-      expect(result.ok).toBe(true);
-      expect(result.value!.pipeline[0]).toEqual({
+      const parsed = expectParseOk(result);
+      expect(parsed.pipeline[0]).toEqual({
         agent: "review",
         repeat: 3,
         onFailure: { type: "retry" },
@@ -175,33 +190,33 @@ describe("parsePipeline", () => {
       const result = parsePipeline(
         "pipeline:\n  - agent: build\nfinalizer:\n  - cleanup",
       );
-      expect(result.ok).toBe(true);
-      expect(result.value!.finalizer).toEqual(["cleanup"]);
+      const parsed = expectParseOk(result);
+      expect(parsed.finalizer).toEqual(["cleanup"]);
     });
 
     test("parses triggers", () => {
       const result = parsePipeline(
         "pipeline:\n  - agent: build\ntriggers:\n  push: main",
       );
-      expect(result.ok).toBe(true);
-      expect(result.value!.triggers).toEqual({ push: "main" });
+      const parsed = expectParseOk(result);
+      expect(parsed.triggers).toEqual({ push: "main" });
     });
 
     test("parses multiple phases", () => {
       const result = parsePipeline(
         "pipeline:\n  - agent: build\n  - agent: test",
       );
-      expect(result.ok).toBe(true);
-      expect(result.value!.pipeline).toHaveLength(2);
-      expect(result.value!.pipeline[0]!.agent).toBe("build");
-      expect(result.value!.pipeline[1]!.agent).toBe("test");
+      const parsed = expectParseOk(result);
+      expect(parsed.pipeline).toHaveLength(2);
+      expect(parsed.pipeline[0]!.agent).toBe("build");
+      expect(parsed.pipeline[1]!.agent).toBe("test");
     });
   });
 });
 
 describe("compilePipeline", () => {
   test("single phase expands to one cycle entry with PROMPT convention", () => {
-    const config = { pipeline: [{ agent: "build" }] };
+    const config: PipelineConfig = { pipeline: [{ agent: "build" }] };
     const plan = compilePipeline(config);
     expect(plan.cycle).toEqual(["PROMPT_build.md"]);
     expect(plan.finalizer).toEqual([]);
@@ -214,7 +229,7 @@ describe("compilePipeline", () => {
   });
 
   test("multiple phases produce multiple cycle entries", () => {
-    const config = { pipeline: [{ agent: "build" }, { agent: "test" }, { agent: "deploy" }] };
+    const config: PipelineConfig = { pipeline: [{ agent: "build" }, { agent: "test" }, { agent: "deploy" }] };
     const plan = compilePipeline(config);
     expect(plan.cycle).toEqual([
       "PROMPT_build.md",
@@ -224,7 +239,7 @@ describe("compilePipeline", () => {
   });
 
   test("repeat: N expands to N entries in the cycle", () => {
-    const config = { pipeline: [{ agent: "lint", repeat: 3 }] };
+    const config: PipelineConfig = { pipeline: [{ agent: "lint", repeat: 3 }] };
     const plan = compilePipeline(config);
     expect(plan.cycle).toEqual([
       "PROMPT_lint.md",
@@ -234,13 +249,13 @@ describe("compilePipeline", () => {
   });
 
   test("repeat: 1 still produces exactly one entry", () => {
-    const config = { pipeline: [{ agent: "build", repeat: 1 }] };
+    const config: PipelineConfig = { pipeline: [{ agent: "build", repeat: 1 }] };
     const plan = compilePipeline(config);
     expect(plan.cycle).toEqual(["PROMPT_build.md"]);
   });
 
   test("onFailure: retry emits a retry transition at the correct cycle position", () => {
-    const config = {
+    const config: PipelineConfig = {
       pipeline: [
         { agent: "build" },
         { agent: "test", onFailure: { type: "retry" } },
@@ -252,7 +267,7 @@ describe("compilePipeline", () => {
   });
 
   test("onFailure: goto <agent> emits a goto transition", () => {
-    const config = {
+    const config: PipelineConfig = {
       pipeline: [
         { agent: "build" },
         { agent: "test", onFailure: { type: "goto", target: "build" } },
@@ -263,7 +278,7 @@ describe("compilePipeline", () => {
   });
 
   test("onFailure on a repeated phase attaches transition to every position it occupies", () => {
-    const config = {
+    const config: PipelineConfig = {
       pipeline: [{ agent: "build", repeat: 3, onFailure: { type: "retry" } }],
     };
     const plan = compilePipeline(config);
@@ -281,7 +296,7 @@ describe("compilePipeline", () => {
   });
 
   test("passes finalizer through to LoopPlan", () => {
-    const config = {
+    const config: PipelineConfig = {
       pipeline: [{ agent: "build" }],
       finalizer: ["cleanup", "notify"],
     };
@@ -290,7 +305,7 @@ describe("compilePipeline", () => {
   });
 
   test("passes triggers through to LoopPlan", () => {
-    const config = {
+    const config: PipelineConfig = {
       pipeline: [{ agent: "build" }],
       triggers: { push: "main", PR: "develop" },
     };
@@ -299,14 +314,14 @@ describe("compilePipeline", () => {
   });
 
   test("defaults finalizer to [] and triggers to {}", () => {
-    const config = { pipeline: [{ agent: "build" }] };
+    const config: PipelineConfig = { pipeline: [{ agent: "build" }] };
     const plan = compilePipeline(config);
     expect(plan.finalizer).toEqual([]);
     expect(plan.triggers).toEqual({});
   });
 
   test("ignored fields (provider, model, reasoning, timeout) do not appear in cycle", () => {
-    const config = {
+    const config: PipelineConfig = {
       pipeline: [
         {
           agent: "review",
@@ -324,7 +339,7 @@ describe("compilePipeline", () => {
   });
 
   test("transition keys are always string (cyclePosition is not serialized as number key)", () => {
-    const config = {
+    const config: PipelineConfig = {
       pipeline: [
         { agent: "a" },
         { agent: "b", onFailure: { type: "retry" } },

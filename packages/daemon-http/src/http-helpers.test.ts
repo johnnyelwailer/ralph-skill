@@ -8,19 +8,23 @@ import {
   parseJsonBody,
 } from "./http-helpers.ts";
 
+async function resJson<T>(res: Response): Promise<T> {
+  return JSON.parse(await res.text()) as T;
+}
+
 describe("jsonResponse", () => {
   test("returns 200 with JSON body", async () => {
     const res = jsonResponse(200, { foo: "bar" });
     expect(res.status).toBe(200);
     expect(res.headers.get("content-type")).toBe("application/json");
-    const body = await res.json();
+    const body = await resJson<{ foo: string }>(res);
     expect(body).toEqual({ foo: "bar" });
   });
 
   test("returns arbitrary status code", async () => {
     const res = jsonResponse(201, { id: 1 });
     expect(res.status).toBe(201);
-    const body = await res.json();
+    const body = await resJson<{ id: number }>(res);
     expect(body).toEqual({ id: 1 });
   });
 });
@@ -29,7 +33,9 @@ describe("errorResponse", () => {
   test("returns envelope with all fields", async () => {
     const res = errorResponse(500, "internal_error", "Something went wrong", { id: 1 });
     expect(res.status).toBe(500);
-    const body = await res.json();
+    const body = await resJson<{
+      error: { _v: number; code: string; message: string; details: { id: number } };
+    }>(res);
     expect(body).toEqual({
       error: {
         _v: 1,
@@ -42,7 +48,7 @@ describe("errorResponse", () => {
 
   test("defaults details to empty object", async () => {
     const res = errorResponse(400, "bad_request", "invalid input");
-    const body = await res.json();
+    const body = await resJson<{ error: { details: Record<string, unknown> } }>(res);
     expect(body.error.details).toEqual({});
   });
 });
@@ -51,7 +57,9 @@ describe("badRequest", () => {
   test("returns 400 with code bad_request", async () => {
     const res = badRequest("missing field", { field: "name" });
     expect(res.status).toBe(400);
-    const body = await res.json();
+    const body = await resJson<{
+      error: { code: string; message: string; details: { field: string } };
+    }>(res);
     expect(body.error.code).toBe("bad_request");
     expect(body.error.message).toBe("missing field");
     expect(body.error.details).toEqual({ field: "name" });
@@ -62,7 +70,9 @@ describe("notFoundResponse", () => {
   test("returns 404 with not_found code and path", async () => {
     const res = notFoundResponse("/v1/unknown");
     expect(res.status).toBe(404);
-    const body = await res.json();
+    const body = await resJson<{
+      error: { code: string; message: string; details: { path: string } };
+    }>(res);
     expect(body.error.code).toBe("not_found");
     expect(body.error.message).toBe("No route: /v1/unknown");
     expect(body.error.details).toEqual({ path: "/v1/unknown" });
@@ -73,7 +83,7 @@ describe("methodNotAllowed", () => {
   test("returns 405 with method_not_allowed code", async () => {
     const res = methodNotAllowed();
     expect(res.status).toBe(405);
-    const body = await res.json();
+    const body = await resJson<{ error: { code: string } }>(res);
     expect(body.error.code).toBe("method_not_allowed");
   });
 });
@@ -106,7 +116,9 @@ describe("parseJsonBody", () => {
     expect(result).toEqual({
       error: expect.objectContaining({ status: 400 }),
     });
-    const body = await (result as { error: Response }).error.json();
+    const body = await resJson<{ error: { code: string; message: string } }>(
+      (result as { error: Response }).error,
+    );
     expect(body.error.code).toBe("bad_request");
     expect(body.error.message).toBe("request body must be a JSON object");
   });
@@ -120,7 +132,9 @@ describe("parseJsonBody", () => {
     expect(result).toEqual({
       error: expect.objectContaining({ status: 400 }),
     });
-    const body = await (result as { error: Response }).error.json();
+    const body = await resJson<{ error: { message: string } }>(
+      (result as { error: Response }).error,
+    );
     expect(body.error.message).toBe("request body must be a JSON object");
   });
 
@@ -133,7 +147,9 @@ describe("parseJsonBody", () => {
     expect(result).toEqual({
       error: expect.objectContaining({ status: 400 }),
     });
-    const body = await (result as { error: Response }).error.json();
+    const body = await resJson<{ error: { code: string; message: string } }>(
+      (result as { error: Response }).error,
+    );
     expect(body.error.code).toBe("bad_request");
     expect(body.error.message).toBe("invalid JSON body");
   });

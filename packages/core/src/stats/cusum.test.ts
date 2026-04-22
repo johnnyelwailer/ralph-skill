@@ -33,7 +33,7 @@ describe("cusumUpdate", () => {
       }
       state = result.state;
     }
-    expect.fail("upward alarm should have fired within 5 steps");
+    throw new Error("upward alarm should have fired within 5 steps");
   });
 
   test("alarm is 'downward' when sLo exceeds h (negative drift)", () => {
@@ -49,7 +49,7 @@ describe("cusumUpdate", () => {
       }
       state = result.state;
     }
-    expect.fail("downward alarm should have fired within 5 steps");
+    throw new Error("downward alarm should have fired within 5 steps");
   });
 
   test("both sHi and sLo can accumulate simultaneously from mixed values", () => {

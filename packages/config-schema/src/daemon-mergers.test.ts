@@ -6,8 +6,6 @@ import {
   DAEMON_DEFAULTS,
   loadDaemonConfig,
 } from "./daemon.ts";
-import { resolveDaemonPaths } from "@aloop/daemon-config";
-import { createConfigStore } from "@aloop/daemon-config";
 import {
   mergeHttp,
   mergeWatchdog,

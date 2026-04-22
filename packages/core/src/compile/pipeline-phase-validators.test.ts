@@ -6,7 +6,7 @@ import {
 } from "./pipeline-phase-validators.ts";
 
 describe("validateReasoning", () => {
-  const cases: Array<{ value: unknown; expectValid: boolean }> = [
+  const cases: Array<[unknown, boolean]> = [
     ["none", true],
     ["low", true],
     ["medium", true],

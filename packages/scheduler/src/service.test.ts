@@ -410,7 +410,7 @@ describe("SchedulerService expirePermits", () => {
     const events = await readAllEvents(h.logPath);
     const denyEvents = events.filter((e) => e.topic === "scheduler.permit.deny");
     expect(denyEvents.length).toBe(1);
-    const denyData = denyEvents[0].data as Record<string, unknown>;
+    const denyData = denyEvents[0]!.data as Record<string, unknown>;
     expect(denyData).toMatchObject({
       session_id: "s_quota_deny",
       reason: "rate_limit_exceeded",
@@ -438,7 +438,7 @@ describe("SchedulerService deny events", () => {
     const events = await readAllEvents(h.logPath);
     const denyEvents = events.filter((e) => e.topic === "scheduler.permit.deny");
     expect(denyEvents.length).toBe(1);
-    const denyData = denyEvents[0].data as Record<string, unknown>;
+    const denyData = denyEvents[0]!.data as Record<string, unknown>;
     expect(denyData).toMatchObject({
       session_id: "s_deny_evt",
       reason: "provider_denied",
@@ -457,7 +457,7 @@ describe("SchedulerService deny events", () => {
     const events = await readAllEvents(h.logPath);
     const denyEvents = events.filter((e) => e.topic === "scheduler.permit.deny");
     expect(denyEvents.length).toBe(1);
-    const denyData = denyEvents[0].data as Record<string, unknown>;
+    const denyData = denyEvents[0]!.data as Record<string, unknown>;
     expect(denyData).toMatchObject({
       session_id: "s_c2",
       reason: "concurrency_cap_reached",
