@@ -1,4 +1,4 @@
-import type { ProviderFailureClass } from "./health.ts";
+import type { ProviderFailureClass } from "@aloop/provider";
 
 export type ClassifiedFailure = {
   readonly classification: ProviderFailureClass;

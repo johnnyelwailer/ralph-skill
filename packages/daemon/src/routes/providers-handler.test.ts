@@ -4,11 +4,11 @@ import type { EventWriter } from "@aloop/state-sqlite";
 import type { ConfigStore } from "@aloop/daemon-config";
 import { DAEMON_DEFAULTS, OVERRIDES_DEFAULT } from "@aloop/daemon-config";
 import {
-  createOpencodeAdapter,
   InMemoryProviderHealthStore,
   ProviderRegistry,
   type ProviderAdapter,
 } from "@aloop/provider";
+import { createOpencodeAdapter } from "@aloop/provider-opencode";
 
 const PATH_OVERRIDES = "/v1/providers/overrides";
 const PATH_RESOLVE_CHAIN = "/v1/providers/resolve-chain";

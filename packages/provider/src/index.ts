@@ -23,8 +23,6 @@ export {
   parseProviderRef,
   providerIdFromRef,
 } from "./ref.ts";
-export { createOpencodeAdapter, type CreateOpencodeAdapterOptions } from "./opencode.ts";
-export { classifyOpencodeFailure, type ClassifiedFailure } from "./opencode-classify.ts";
 export {
   ProviderRegistry,
   type ResolvedProvider,
