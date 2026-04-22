@@ -56,7 +56,16 @@ export async function handleProviders(
       return badRequest("x-aloop-auth-handle header is required for quota probe");
     }
     const quota = await adapter.probeQuota(authHandle);
-    deps.providerHealth.setQuota(providerId, quota);
+    const health = deps.providerHealth.setQuota(providerId, quota);
+    await deps.events.append("provider.quota", {
+      provider_id: providerId,
+      remaining: quota.remaining,
+      total: quota.total,
+      reset_at: quota.resetsAt,
+      currency: quota.currency,
+      probed_at: quota.probedAt,
+    });
+    await deps.events.append("provider.health", health);
     return jsonResponse(200, { _v: 1, provider_id: providerId, quota });
   }
 

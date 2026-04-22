@@ -198,6 +198,20 @@ describe("handleProviders", () => {
       const body = await resJson<{ quota: { remaining: number } }>(result!);
       expect(body.quota.remaining).toBe(123);
       expect(deps.providerHealth.get("claude").quotaRemaining).toBe(123);
+      expect(deps.events.appended).toHaveLength(2);
+      expect(deps.events.appended[0]).toMatchObject({
+        topic: "provider.quota",
+        data: {
+          provider_id: "claude",
+          remaining: 123,
+          total: 1000,
+          currency: "tokens",
+        },
+      });
+      expect(deps.events.appended[1]).toMatchObject({
+        topic: "provider.health",
+        data: { providerId: "claude", quotaRemaining: 123 },
+      });
     });
   });
 
