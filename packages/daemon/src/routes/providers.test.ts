@@ -35,6 +35,19 @@ describe("/v1/providers/overrides", () => {
     expect(body.force).toBeNull();
   });
 
+  test("GET /v1/providers returns registered providers with health", async () => {
+    const res = await fetch(`${baseUrl}/v1/providers`);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      _v: number;
+      items: Array<{ id: string; health: { status: string } }>;
+    };
+    expect(body._v).toBe(1);
+    expect(body.items.map((item) => item.id)).toContain("opencode");
+    const opencode = body.items.find((item) => item.id === "opencode");
+    expect(opencode?.health.status).toBe("unknown");
+  });
+
   test("PUT persists and returns the new overrides", async () => {
     const res = await fetch(`${baseUrl}/v1/providers/overrides`, {
       method: "PUT",
@@ -65,5 +78,14 @@ describe("/v1/providers/overrides", () => {
     expect(body.allow).toBeNull();
     expect(body.deny).toBeNull();
     expect(body.force).toBeNull();
+  });
+
+  test("GET /v1/providers/opencode/quota returns 501 when probe is unavailable", async () => {
+    const res = await fetch(`${baseUrl}/v1/providers/opencode/quota`, {
+      headers: { "x-aloop-auth-handle": "auth_1" },
+    });
+    expect(res.status).toBe(501);
+    const body = (await res.json()) as { error: { code: string } };
+    expect(body.error.code).toBe("quota_probe_unavailable");
   });
 });

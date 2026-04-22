@@ -8,10 +8,13 @@ export {
   type ProviderFailureClass,
   type FailureUpdateOptions,
 } from "./health.ts";
+export { InMemoryProviderHealthStore } from "./health-store.ts";
 export {
   parseProviderRef,
   providerIdFromRef,
 } from "./ref.ts";
+export { createOpencodeAdapter, type CreateOpencodeAdapterOptions } from "./opencode.ts";
+export { classifyOpencodeFailure, type ClassifiedFailure } from "./opencode-classify.ts";
 export {
   ProviderRegistry,
   type ResolvedProvider,

@@ -19,6 +19,11 @@ import {
   OVERRIDES_DEFAULT,
   resolveDaemonPaths,
 } from "@aloop/daemon-config";
+import {
+  createOpencodeAdapter,
+  InMemoryProviderHealthStore,
+  ProviderRegistry,
+} from "@aloop/provider";
 import { SchedulerService, type SchedulerConfigView } from "@aloop/scheduler";
 import { makeFetchHandler } from "./router.ts";
 
@@ -43,11 +48,18 @@ function makeDeps() {
     overrides: () => config.overrides(),
     updateLimits: async () => ({ ok: true, limits: config.daemon().scheduler }),
   };
+  const providerRegistry = new ProviderRegistry();
+  providerRegistry.register(createOpencodeAdapter());
+  const providerHealth = new InMemoryProviderHealthStore(
+    providerRegistry.list().map((adapter) => adapter.id),
+  );
   return {
     registry: new ProjectRegistry(db),
     config,
     events,
     scheduler: new SchedulerService(new PermitRegistry(db), schedulerConfig, events),
+    providerRegistry,
+    providerHealth,
     handleDaemon: (req: Request, pathname: string) => {
       if (req.method !== "GET" || pathname !== "/v1/daemon/health") return undefined;
       return new Response(JSON.stringify({ _v: 1, status: "ok", uptime_seconds: 0 }), {

@@ -22,6 +22,7 @@
     "@aloop/core": "workspace:*",
     "@aloop/daemon-config": "workspace:*",
     "@aloop/daemon-http": "workspace:*",
+    "@aloop/provider": "workspace:*",
     "@aloop/scheduler": "workspace:*",
     "@aloop/state-sqlite": "workspace:*"
   }

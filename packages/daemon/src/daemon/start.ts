@@ -19,6 +19,7 @@ import { SchedulerService, startSchedulerWatchdog, type RunningWatchdog } from "
 import { makeSchedulerConfig } from "./scheduler-config.ts";
 import { handleDaemon as handleDaemonRoute } from "../routes/daemon.ts";
 import type { ConfigStore, DaemonConfig, DaemonPaths, OverridesConfig } from "@aloop/daemon-config";
+import { createOpencodeAdapter, InMemoryProviderHealthStore, ProviderRegistry } from "@aloop/provider";
 
 export type StartDaemonOptions = {
   /** Override the HTTP port from daemon.yml. Pass 0 for an ephemeral port. */
@@ -39,6 +40,8 @@ export type RunningDaemon = {
   config: ConfigStore;
   events: EventWriter;
   scheduler: SchedulerService;
+  providerRegistry: ProviderRegistry;
+  providerHealth: InMemoryProviderHealthStore;
   startedAt: number;
   stop(): Promise<void>;
 };
@@ -89,11 +92,16 @@ export async function startDaemon(opts: StartDaemonOptions = {}): Promise<Runnin
     nextId: makeIdGenerator(),
   });
   const scheduler = new SchedulerService(permits, makeSchedulerConfig(config, events), events);
+  const providerRegistry = new ProviderRegistry();
+  providerRegistry.register(createOpencodeAdapter());
+  const providerHealth = new InMemoryProviderHealthStore(providerRegistry.list().map((adapter) => adapter.id));
   const routerDeps: RouterDeps = {
     registry,
     config,
     scheduler,
     events,
+    providerRegistry,
+    providerHealth,
     handleDaemon: (req, pathname) =>
       handleDaemonRoute(req, { startedAt, config }, pathname),
   };
@@ -105,7 +113,6 @@ export async function startDaemon(opts: StartDaemonOptions = {}): Promise<Runnin
       expirePermits: () => scheduler.expirePermits(),
     });
   } catch (err) {
-    // Unwind anything that did start, then release the lock so a retry can bind.
     await http?.stop().catch(() => {});
     await socket?.stop().catch(() => {});
     await eventStore?.close().catch(() => {});
@@ -123,6 +130,8 @@ export async function startDaemon(opts: StartDaemonOptions = {}): Promise<Runnin
     config,
     events,
     scheduler,
+    providerRegistry,
+    providerHealth,
     startedAt,
     async stop() {
       watchdog?.stop();
