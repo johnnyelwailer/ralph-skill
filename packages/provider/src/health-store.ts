@@ -15,6 +15,10 @@ export class InMemoryProviderHealthStore {
     return [...this.states.values()].sort((a, b) => a.providerId.localeCompare(b.providerId));
   }
 
+  peek(providerId: string): ProviderHealth | undefined {
+    return this.states.get(providerId);
+  }
+
   get(providerId: string): ProviderHealth {
     const existing = this.states.get(providerId);
     if (existing) return existing;

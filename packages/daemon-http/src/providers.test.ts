@@ -11,6 +11,7 @@ import {
 } from "@aloop/provider";
 
 const PATH_OVERRIDES = "/v1/providers/overrides";
+const PATH_RESOLVE_CHAIN = "/v1/providers/resolve-chain";
 type OverridesBody = {
   _v: number;
   allow: readonly string[] | null;
@@ -85,7 +86,7 @@ function makeRequest(method: string, body?: unknown): Request {
   });
 }
 
-function makeProviderAdapterWithProbe(): ProviderAdapter {
+function makeProviderAdapterWithProbe(opts: { errorMessage?: string } = {}): ProviderAdapter {
   return {
     id: "claude",
     capabilities: {
@@ -101,13 +102,16 @@ function makeProviderAdapterWithProbe(): ProviderAdapter {
     resolveModel(ref) {
       return { providerId: "claude", modelId: ref };
     },
-    probeQuota: async () => ({
-      remaining: 123,
-      total: 1000,
-      resetsAt: new Date(1_700_000_000_000).toISOString(),
-      probedAt: new Date(1_700_000_000_000).toISOString(),
-      currency: "tokens",
-    }),
+    probeQuota: async () => {
+      if (opts.errorMessage) throw new Error(opts.errorMessage);
+      return {
+        remaining: 123,
+        total: 1000,
+        resetsAt: new Date(1_700_000_000_000).toISOString(),
+        probedAt: new Date(1_700_000_000_000).toISOString(),
+        currency: "tokens",
+      };
+    },
     async *sendTurn() {
       yield { type: "text", content: { delta: "ok" } };
       yield { type: "usage", content: { providerId: "claude", modelId: "claude" }, final: true };
@@ -119,6 +123,7 @@ function makeProvidersDeps(options: {
   config?: ConfigStore;
   events?: ReturnType<typeof makeEventWriter>;
   withQuotaProbe?: boolean;
+  quotaProbeErrorMessage?: string;
 } = {}): ProvidersDeps & { events: ReturnType<typeof makeEventWriter> } {
   const providerRegistry = new ProviderRegistry();
   providerRegistry.register(
@@ -127,7 +132,13 @@ function makeProvidersDeps(options: {
     }),
   );
   if (options.withQuotaProbe) {
-    providerRegistry.register(makeProviderAdapterWithProbe());
+    providerRegistry.register(
+      makeProviderAdapterWithProbe(
+        options.quotaProbeErrorMessage === undefined
+          ? {}
+          : { errorMessage: options.quotaProbeErrorMessage },
+      ),
+    );
   }
   const providerHealth = new InMemoryProviderHealthStore(
     providerRegistry.list().map((adapter) => adapter.id),
@@ -189,6 +200,7 @@ describe("handleProviders", () => {
 
     test("returns probe result and updates quota in health store", async () => {
       const deps = makeProvidersDeps({ withQuotaProbe: true });
+      deps.providerHealth.noteFailure("claude", "auth");
       const req = new Request("http://localhost/v1/providers/claude/quota", {
         method: "GET",
         headers: { "x-aloop-auth-handle": "auth_1" },
@@ -198,6 +210,120 @@ describe("handleProviders", () => {
       const body = await resJson<{ quota: { remaining: number } }>(result!);
       expect(body.quota.remaining).toBe(123);
       expect(deps.providerHealth.get("claude").quotaRemaining).toBe(123);
+      expect(deps.providerHealth.get("claude").status).toBe("healthy");
+      expect(deps.events.appended).toHaveLength(2);
+      expect(deps.events.appended[0]).toMatchObject({
+        topic: "provider.quota",
+        data: {
+          provider_id: "claude",
+          remaining: 123,
+          total: 1000,
+          currency: "tokens",
+        },
+      });
+      expect(deps.events.appended[1]).toMatchObject({
+        topic: "provider.health",
+        data: { providerId: "claude", quotaRemaining: 123, status: "healthy" },
+      });
+    });
+
+    test("records probe failure in provider health and returns auth-specific error", async () => {
+      const deps = makeProvidersDeps({
+        withQuotaProbe: true,
+        quotaProbeErrorMessage: "unauthorized: invalid api key",
+      });
+      const req = new Request("http://localhost/v1/providers/claude/quota", {
+        method: "GET",
+        headers: { "x-aloop-auth-handle": "auth_1" },
+      });
+      const result = await handleProviders(req, deps, "/v1/providers/claude/quota");
+      expect(result!.status).toBe(401);
+      const body = await resJson<{ error: { code: string; details: { classification: string } } }>(result!);
+      expect(body.error.code).toBe("provider_auth_failed");
+      expect(body.error.details.classification).toBe("auth");
+      expect(deps.providerHealth.get("claude").status).toBe("degraded");
+      expect(deps.providerHealth.get("claude").failureReason).toBe("auth");
+      expect(deps.events.appended).toHaveLength(1);
+      expect(deps.events.appended[0]).toMatchObject({
+        topic: "provider.health",
+        data: { providerId: "claude", status: "degraded", failureReason: "auth" },
+      });
+    });
+
+    test("maps timeout failures to 504", async () => {
+      const deps = makeProvidersDeps({
+        withQuotaProbe: true,
+        quotaProbeErrorMessage: "request timed out",
+      });
+      const req = new Request("http://localhost/v1/providers/claude/quota", {
+        method: "GET",
+        headers: { "x-aloop-auth-handle": "auth_1" },
+      });
+      const result = await handleProviders(req, deps, "/v1/providers/claude/quota");
+      expect(result!.status).toBe(504);
+      const body = await resJson<{ error: { code: string; details: { classification: string } } }>(result!);
+      expect(body.error.code).toBe("provider_probe_timeout");
+      expect(body.error.details.classification).toBe("timeout");
+    });
+  });
+
+  describe("POST /v1/providers/resolve-chain", () => {
+    test("returns 400 when session_id is missing", async () => {
+      const deps = makeProvidersDeps({ withQuotaProbe: true });
+      const req = new Request(`http://localhost${PATH_RESOLVE_CHAIN}`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      const result = await handleProviders(req, deps, PATH_RESOLVE_CHAIN);
+      expect(result!.status).toBe(400);
+    });
+
+    test("applies allow/deny overrides to the resolved chain", async () => {
+      const config = makeConfigStore({ allow: ["opencode"], deny: ["claude"], force: null });
+      const deps = makeProvidersDeps({ withQuotaProbe: true, config });
+      const req = new Request(`http://localhost${PATH_RESOLVE_CHAIN}`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ session_id: "s_1" }),
+      });
+      const result = await handleProviders(req, deps, PATH_RESOLVE_CHAIN);
+      expect(result!.status).toBe(200);
+      const body = await resJson<{ resolved_chain: string[]; excluded_overrides: string[] }>(result!);
+      expect(body.resolved_chain).toEqual(["opencode"]);
+      expect(body.excluded_overrides).toEqual(["claude"]);
+    });
+
+    test("filters providers that are unavailable by health", async () => {
+      const deps = makeProvidersDeps({ withQuotaProbe: true });
+      const now = Date.now();
+      deps.providerHealth.noteFailure("opencode", "auth", now);
+      const req = new Request(`http://localhost${PATH_RESOLVE_CHAIN}`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ session_id: "s_2" }),
+      });
+      const result = await handleProviders(req, deps, PATH_RESOLVE_CHAIN);
+      expect(result!.status).toBe(200);
+      const body = await resJson<{ resolved_chain: string[]; excluded_health: string[] }>(result!);
+      expect(body.resolved_chain).toEqual(["claude"]);
+      expect(body.excluded_health).toEqual(["opencode"]);
+    });
+
+    test("does not mutate provider health for unknown provider refs", async () => {
+      const deps = makeProvidersDeps();
+      const before = deps.providerHealth.list().length;
+      const req = new Request(`http://localhost${PATH_RESOLVE_CHAIN}`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          session_id: "s_3",
+          provider_chain: ["mystery/provider@1"],
+        }),
+      });
+      const result = await handleProviders(req, deps, PATH_RESOLVE_CHAIN);
+      expect(result!.status).toBe(200);
+      expect(deps.providerHealth.list().length).toBe(before);
     });
   });
 

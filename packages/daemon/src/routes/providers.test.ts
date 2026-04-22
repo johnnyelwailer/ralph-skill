@@ -88,4 +88,33 @@ describe("/v1/providers/overrides", () => {
     const body = (await res.json()) as { error: { code: string } };
     expect(body.error.code).toBe("quota_probe_unavailable");
   });
+
+  test("POST /v1/providers/resolve-chain returns current resolved chain", async () => {
+    const res = await fetch(`${baseUrl}/v1/providers/resolve-chain`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ session_id: "s_1" }),
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { _v: number; resolved_chain: string[] };
+    expect(body._v).toBe(1);
+    expect(body.resolved_chain).toEqual(["opencode"]);
+  });
+
+  test("POST /v1/providers/resolve-chain reflects live overrides", async () => {
+    await fetch(`${baseUrl}/v1/providers/overrides`, {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ deny: ["opencode"] }),
+    });
+    const res = await fetch(`${baseUrl}/v1/providers/resolve-chain`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ session_id: "s_2" }),
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { resolved_chain: string[]; excluded_overrides: string[] };
+    expect(body.resolved_chain).toEqual([]);
+    expect(body.excluded_overrides).toEqual(["opencode"]);
+  });
 });

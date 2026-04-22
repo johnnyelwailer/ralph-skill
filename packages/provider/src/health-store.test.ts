@@ -57,4 +57,11 @@ describe("InMemoryProviderHealthStore", () => {
     const items = store.list();
     expect(items.map((h) => h.providerId)).toEqual(["opencode", "zed"]);
   });
+
+  test("peek reads existing state without creating unknown providers", () => {
+    const store = new InMemoryProviderHealthStore(["opencode"], NOW);
+    expect(store.peek("opencode")?.providerId).toBe("opencode");
+    expect(store.peek("missing")).toBeUndefined();
+    expect(store.list().map((state) => state.providerId)).toEqual(["opencode"]);
+  });
 });
