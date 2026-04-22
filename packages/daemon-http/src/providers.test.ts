@@ -261,6 +261,79 @@ describe("handleProviders", () => {
     });
   });
 
+  describe("PUT /v1/providers/overrides error handling", () => {
+    test("rethrows when setOverrides throws a non-Error value", async () => {
+      const badConfigStore = {
+        overrides() {
+          return OVERRIDES_DEFAULT;
+        },
+        setOverrides(_v: unknown) {
+          // Simulate a broken ConfigStore that throws a non-Error
+          throw "unexpected string error";
+        },
+      };
+      const deps = {
+        config: badConfigStore as unknown as ConfigStore,
+        events: makeEventWriter(),
+      };
+      // The handler does not catch non-Error throwables — the rejection propagates
+      await expect(
+        handleProviders(
+          makeRequest("PUT", { allow: ["opencode"], deny: null, force: null }),
+          deps,
+          PATH,
+        ),
+      ).rejects.toThrow("unexpected string error");
+    });
+
+    test("rethrows when setOverrides throws an Error", async () => {
+      const throwingConfigStore = {
+        overrides() {
+          return OVERRIDES_DEFAULT;
+        },
+        setOverrides(_v: unknown) {
+          throw new Error("database write failed");
+        },
+      };
+      const deps = {
+        config: throwingConfigStore as unknown as ConfigStore,
+        events: makeEventWriter(),
+      };
+      await expect(
+        handleProviders(
+          makeRequest("PUT", { allow: null, deny: null, force: "codex" }),
+          deps,
+          PATH,
+        ),
+      ).rejects.toThrow("database write failed");
+    });
+
+    test("event is not emitted when setOverrides throws", async () => {
+      const throwingConfigStore = {
+        overrides() {
+          return OVERRIDES_DEFAULT;
+        },
+        setOverrides(_v: unknown) {
+          throw new Error("write failure");
+        },
+      };
+      const events = makeEventWriter();
+      const deps = {
+        config: throwingConfigStore as unknown as ConfigStore,
+        events,
+      };
+      await expect(
+        handleProviders(
+          makeRequest("PUT", { allow: null, deny: null, force: "anthropic" }),
+          deps,
+          PATH,
+        ),
+      ).rejects.toThrow("write failure");
+      // No event should be appended since the throw happened before append
+      expect(events.appended).toHaveLength(0);
+    });
+  });
+
   describe("method not allowed", () => {
     test("returns 405 for POST", async () => {
       const deps = { config: makeConfigStore(), events: makeEventWriter() };
