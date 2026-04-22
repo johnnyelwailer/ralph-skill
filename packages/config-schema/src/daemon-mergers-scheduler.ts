@@ -1,7 +1,12 @@
-import { isMapping } from "./yaml.ts";
-import { nonNegIntField, pctField, posIntField, posNumField } from "./validators.ts";
+import {
+  isMapping,
+  nonNegIntField,
+  pctField,
+  pick,
+  posIntField,
+  posNumField,
+} from "@aloop/config-schema-utils";
 import { DAEMON_DEFAULTS, type DaemonConfig } from "./daemon-types.ts";
-import { pick } from "./daemon-mergers-pick.ts";
 
 export function mergeScheduler(raw: unknown, errors: string[]): DaemonConfig["scheduler"] {
   const def = DAEMON_DEFAULTS.scheduler;

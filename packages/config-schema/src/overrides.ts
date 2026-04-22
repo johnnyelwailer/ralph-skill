@@ -1,7 +1,7 @@
 import { writeFileSync } from "node:fs";
 import type { ParseResult } from "@aloop/core";
+import { isMapping, loadYamlFile } from "@aloop/config-schema-utils";
 import { stringify as yamlStringify } from "yaml";
-import { isMapping, loadYamlFile } from "./yaml.ts";
 
 /**
  * Live provider overrides. Source: ~/.aloop/overrides.yml. Applied by the

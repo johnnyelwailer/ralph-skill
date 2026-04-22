@@ -1,13 +1,16 @@
-import { isMapping } from "./yaml.ts";
 import {
   boolField,
   durationField,
+  isMapping,
   nonNegIntField,
+  pick,
   portField,
   stringField,
-} from "./validators.ts";
-import { DAEMON_DEFAULTS, type DaemonConfig } from "./daemon-types.ts";
-import { pick } from "./daemon-mergers-pick.ts";
+} from "@aloop/config-schema-utils";
+import {
+  DAEMON_DEFAULTS,
+  type DaemonConfig,
+} from "./daemon-types.ts";
 
 export { mergeScheduler } from "./daemon-mergers-scheduler.ts";
 
