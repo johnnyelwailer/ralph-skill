@@ -99,6 +99,15 @@ describe("listProjects", () => {
     expect(body.error.code).toBe("bad_request");
   });
 
+  test("returns 400 for empty string status query param", async () => {
+    const req = new Request("http://localhost/v1/projects?status=");
+    const res = listProjects(req, deps);
+    expect(res.status).toBe(400);
+    const body = await (res as Response).json();
+    expect(body.error.code).toBe("bad_request");
+    expect(body.error.message).toContain("invalid status");
+  });
+
   test("items use the canonical projectResponse envelope with _v=1", async () => {
     deps.registry.create({ absPath: "/c", name: "proj-c" });
 
