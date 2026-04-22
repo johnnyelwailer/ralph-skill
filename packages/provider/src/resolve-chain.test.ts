@@ -201,3 +201,65 @@ describe("resolveProviderChain", () => {
     expect(resolved.chain).toEqual(["opencode"]);
   });
 });
+
+describe("safeProviderId fallback in resolveProviderChain", () => {
+  // safeProviderId silently falls back to the raw ref string when parseProviderRef throws.
+  // This means malformed refs (that would throw from parseProviderRef) are used as-is as provider IDs.
+  // This is intentional backward-compatibility behavior.
+
+  test("malformed ref causing providerIdFromRef to throw is used as raw provider ID", () => {
+    const health = new InMemoryProviderHealthStore(["not-a-valid-ref"]);
+    // "not-a-valid-ref@" has an empty version (split gives ["not-a-valid-ref", ""])
+    // which triggers "version cannot be empty" from parseProviderRef
+    const resolved = resolveProviderChain(
+      ["not-a-valid-ref@"],
+      { allow: null, deny: null, force: null },
+      health,
+    );
+    // The raw string was used as the provider ID since it couldn't be parsed
+    expect(resolved.chain).toEqual(["not-a-valid-ref@"]);
+  });
+
+  test("double @ sign causes parseProviderRef to throw, raw ref used as provider ID", () => {
+    const health = new InMemoryProviderHealthStore(["claude@4@7"]);
+    const resolved = resolveProviderChain(
+      ["claude@4@7"],
+      { allow: null, deny: null, force: null },
+      health,
+    );
+    // parseProviderRef throws "too many @ separators" — safeProviderId catches and returns raw ref
+    expect(resolved.chain).toEqual(["claude@4@7"]);
+  });
+
+  test("empty string ref causes parseProviderRef to throw, raw ref used as provider ID", () => {
+    const health = new InMemoryProviderHealthStore([""]);
+    // parseProviderRef throws "provider ref cannot be empty" for empty string
+    const resolved = resolveProviderChain(
+      [""],
+      { allow: null, deny: null, force: null },
+      health,
+    );
+    // safeProviderId catches the throw and returns "", which is then filtered by trim().length === 0 check
+    // Actually empty string is filtered out... let me check the actual behavior
+    // Looking at safeProviderId: it returns ref (empty string) when parseProviderRef throws
+    // Then in resolveProviderChain: overridden = force ? [force] : [...refs]
+    // But empty string is filtered by the override filter: if (overrides.allow && !overrides.allow.includes(providerId))
+    // For empty string providerId "", when allow is null, this passes through
+    // But then healthStore.peek("") - unknown provider defaults to available
+    // So the empty string actually ends up in the chain.
+    expect(resolved.chain).toEqual([""]);
+  });
+
+  test("whitespace-only ref causes parseProviderRef throw, used as raw provider ID", () => {
+    const health = new InMemoryProviderHealthStore(["   "]);
+    const resolved = resolveProviderChain(
+      ["   "],
+      { allow: null, deny: null, force: null },
+      health,
+    );
+    // parseProviderRef trims to "" which fails "provider ref cannot be empty"
+    // safeProviderId returns "   " as-is
+    // healthStore.peek("   ") → unknown → available
+    expect(resolved.chain).toEqual(["   "]);
+  });
+});
