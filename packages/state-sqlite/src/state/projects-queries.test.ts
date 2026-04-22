@@ -2,10 +2,15 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import {
+  canonicalizeProjectPath,
+  getProjectById,
+  getProjectByPath,
+  listProjectsFromDb,
+  type ProjectStatus,
+} from "@aloop/state-projects";
 import { openDatabase } from "./database.ts";
 import { migrate, loadBundledMigrations } from "./migrations.ts";
-import { canonicalizeProjectPath, getProjectById, getProjectByPath, listProjectsFromDb } from "./projects-queries.ts";
-import type { ProjectStatus } from "./project-types.ts";
 
 describe("canonicalizeProjectPath", () => {
   test("resolves relative paths to absolute", () => {
