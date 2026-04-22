@@ -199,6 +199,56 @@ describe("handleProviderQuota", () => {
     expect(body.error.code).toBe("provider_probe_timeout");
   });
 
+  test("failed probe due to concurrent_cap returns 409", async () => {
+    const registry = new ProviderRegistry();
+    registry.register(makeAdapter("concurrent-cap", {
+      supportsQuotaProbe: true,
+      probeQuotaImpl: async () => {
+        throw new Error("another session is already running");
+      },
+    }));
+    const deps: ProviderQuotaDeps = {
+      events: makeDeps().events,
+      providerRegistry: registry,
+      providerHealth: new InMemoryProviderHealthStore(["concurrent-cap"]),
+    };
+
+    const req = new Request("http://x/v1/providers/concurrent-cap/quota", {
+      method: "GET",
+      headers: { "x-aloop-auth-handle": "user@example.com" },
+    });
+    const res = await handleProviderQuota(req, deps, "/v1/providers/concurrent-cap/quota");
+    expect(res!.status).toBe(409);
+    const body = (await res!.json()) as { error: { code: string; details: { classification: string } } };
+    expect(body.error.code).toBe("provider_concurrent_cap");
+    expect(body.error.details.classification).toBe("concurrent_cap");
+  });
+
+  test("failed probe due to unknown reason returns 502", async () => {
+    const registry = new ProviderRegistry();
+    registry.register(makeAdapter("unknown-failure", {
+      supportsQuotaProbe: true,
+      probeQuotaImpl: async () => {
+        throw new Error("something went wrong");
+      },
+    }));
+    const deps: ProviderQuotaDeps = {
+      events: makeDeps().events,
+      providerRegistry: registry,
+      providerHealth: new InMemoryProviderHealthStore(["unknown-failure"]),
+    };
+
+    const req = new Request("http://x/v1/providers/unknown-failure/quota", {
+      method: "GET",
+      headers: { "x-aloop-auth-handle": "user@example.com" },
+    });
+    const res = await handleProviderQuota(req, deps, "/v1/providers/unknown-failure/quota");
+    expect(res!.status).toBe(502);
+    const body = (await res!.json()) as { error: { code: string; details: { classification: string } } };
+    expect(body.error.code).toBe("quota_probe_failed");
+    expect(body.error.details.classification).toBe("unknown");
+  });
+
   test("successful probe transitions provider health to healthy", async () => {
     const deps = makeDeps();
     const req = new Request("http://x/v1/providers/probe-capable/quota", {
