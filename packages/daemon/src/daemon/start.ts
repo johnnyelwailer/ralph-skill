@@ -14,13 +14,14 @@ import {
 } from "@aloop/state-sqlite";
 import { createConfigStore, loadDaemonConfig, loadOverridesConfig, resolveDaemonPaths } from "@aloop/daemon-config";
 import { startHttp, startSocket, type RunningHttp, type RunningSocket } from "@aloop/daemon-http";
+import { createOpencodeAdapter } from "@aloop/provider-opencode";
 import { acquireLock, releaseLock } from "./lock.ts";
 import { SchedulerService, startSchedulerWatchdog, type RunningWatchdog } from "@aloop/scheduler";
 import { makeSchedulerConfig } from "./scheduler-config.ts";
 import { createProviderQuotaProbe } from "./provider-probes.ts";
 import { makeRouterDeps } from "./router-deps.ts";
 import type { ConfigStore, DaemonConfig, DaemonPaths, OverridesConfig } from "@aloop/daemon-config";
-import { createOpencodeAdapter, InMemoryProviderHealthStore, ProviderRegistry } from "@aloop/provider";
+import { InMemoryProviderHealthStore, ProviderRegistry } from "@aloop/provider";
 
 export type StartDaemonOptions = {
   /** Override the HTTP port from daemon.yml. Pass 0 for an ephemeral port. */

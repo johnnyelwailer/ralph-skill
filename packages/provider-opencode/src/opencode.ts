@@ -1,5 +1,5 @@
-import type { ProviderAdapter, ProviderRef, ResolvedModel } from "./types.ts";
-import { parseProviderRef } from "./ref.ts";
+import type { ProviderAdapter, ProviderRef, ResolvedModel } from "@aloop/provider";
+import { parseProviderRef } from "@aloop/provider";
 import { classifyOpencodeFailure } from "./opencode-classify.ts";
 import { runOpencodeCli, type OpencodeRunTurn } from "./opencode-runner.ts";
 
