@@ -1,6 +1,9 @@
-import { createUnknownHealth, isProviderAvailable } from "./health.ts";
+import {
+  createUnknownHealth,
+  isProviderAvailable,
+  type InMemoryProviderHealthStore,
+} from "@aloop/provider-health";
 import { providerIdFromRef } from "./ref.ts";
-import type { InMemoryProviderHealthStore } from "./health-store.ts";
 
 export type ResolvedProviderChain = {
   chain: string[];

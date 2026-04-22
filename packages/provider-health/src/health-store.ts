@@ -1,6 +1,10 @@
 import { applyProviderFailure, applyProviderSuccess, createUnknownHealth } from "./health.ts";
 import type { ProviderFailureClass, ProviderHealth } from "./health.ts";
-import type { QuotaSnapshot } from "./types.ts";
+
+export type ProviderQuotaSnapshot = {
+  readonly remaining: number;
+  readonly resetsAt: string | null;
+};
 
 export class InMemoryProviderHealthStore {
   private readonly states = new Map<string, ProviderHealth>();
@@ -48,7 +52,11 @@ export class InMemoryProviderHealthStore {
     return next;
   }
 
-  setQuota(providerId: string, quota: QuotaSnapshot, nowMs: number = Date.now()): ProviderHealth {
+  setQuota(
+    providerId: string,
+    quota: ProviderQuotaSnapshot,
+    nowMs: number = Date.now(),
+  ): ProviderHealth {
     const current = this.get(providerId);
     const next: ProviderHealth = {
       ...current,

@@ -1,9 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { InMemoryProviderHealthStore } from "./health-store.ts";
-import {
-  parseRequestedProviderChain,
-  resolveProviderChain,
-} from "./resolve-chain.ts";
+import { InMemoryProviderHealthStore } from "@aloop/provider-health";
+import { parseRequestedProviderChain, resolveProviderChain } from "./resolve-chain.ts";
 
 describe("parseRequestedProviderChain", () => {
   test("accepts undefined and returns null chain", () => {
