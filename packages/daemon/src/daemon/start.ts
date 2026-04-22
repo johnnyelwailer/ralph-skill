@@ -12,7 +12,7 @@ import {
   type Database,
   type EventWriter,
 } from "@aloop/state-sqlite";
-import { createConfigStore, loadDaemonConfig, loadOverridesConfig, resolveDaemonPaths } from "@aloop/daemon-config";
+import { resolveDaemonPaths } from "@aloop/daemon-config";
 import { startHttp, startSocket, type RunningHttp, type RunningSocket } from "@aloop/daemon-http";
 import { createOpencodeAdapter } from "@aloop/provider-opencode";
 import { acquireLock, releaseLock } from "./lock.ts";
@@ -20,6 +20,7 @@ import { SchedulerService, startSchedulerWatchdog, type RunningWatchdog } from "
 import { makeSchedulerConfig } from "./scheduler-config.ts";
 import { createProviderQuotaProbe } from "./provider-probes.ts";
 import { makeRouterDeps } from "./router-deps.ts";
+import { loadInitialConfig } from "./start-config.ts";
 import type { ConfigStore, DaemonConfig, DaemonPaths, OverridesConfig } from "@aloop/daemon-config";
 import { InMemoryProviderHealthStore, ProviderRegistry } from "@aloop/provider";
 
@@ -53,23 +54,7 @@ export async function startDaemon(opts: StartDaemonOptions = {}): Promise<Runnin
   const dbPath = opts.dbPath ?? join(paths.stateDir, "db.sqlite");
   mkdirSync(paths.home, { recursive: true });
   mkdirSync(paths.stateDir, { recursive: true });
-  const daemonResult = loadDaemonConfig(paths.daemonConfigFile);
-  if (!daemonResult.ok) {
-    throw new Error(
-      `daemon.yml invalid (${paths.daemonConfigFile}):\n  ${daemonResult.errors.join("\n  ")}`,
-    );
-  }
-  const overridesResult = loadOverridesConfig(paths.overridesFile);
-  if (!overridesResult.ok) {
-    throw new Error(
-      `overrides.yml invalid (${paths.overridesFile}):\n  ${overridesResult.errors.join("\n  ")}`,
-    );
-  }
-  const config = createConfigStore({
-    daemon: daemonResult.value,
-    overrides: overridesResult.value,
-    paths,
-  });
+  const config = loadInitialConfig(paths);
   const hostname = opts.hostname ?? config.daemon().http.bind;
   const port = opts.port ?? config.daemon().http.port;
   const lock = acquireLock(paths.pidFile);
