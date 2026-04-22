@@ -234,6 +234,32 @@ describe("POST /v1/scheduler/permits", () => {
     expect(res!.status).toBe(400);
   });
 
+  test("returns 400 when ttl_seconds is an empty string", async () => {
+    const deps = makeDeps();
+    const req = new Request("http://x/v1/scheduler/permits", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ session_id: "s1", provider_candidate: "prov1", ttl_seconds: "" }),
+    });
+    const res = await handleScheduler(req, deps, "/v1/scheduler/permits");
+    expect(res!.status).toBe(400);
+    const body = await resJson<{ error: { code: string } }>(res!);
+    expect(body.error.code).toBe("bad_request");
+  });
+
+  test("returns 400 when ttl_seconds is zero", async () => {
+    const deps = makeDeps();
+    const req = new Request("http://x/v1/scheduler/permits", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ session_id: "s1", provider_candidate: "prov1", ttl_seconds: 0 }),
+    });
+    const res = await handleScheduler(req, deps, "/v1/scheduler/permits");
+    expect(res!.status).toBe(400);
+    const body = await resJson<{ error: { code: string } }>(res!);
+    expect(body.error.code).toBe("bad_request");
+  });
+
   test("returns 400 for invalid JSON body", async () => {
     const deps = makeDeps();
     const req = new Request("http://x/v1/scheduler/permits", {
