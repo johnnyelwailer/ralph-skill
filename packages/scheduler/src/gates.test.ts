@@ -1,7 +1,14 @@
 import { describe, expect, test } from "bun:test";
-import { applyOverrides, checkSystemGate } from "./gates.ts";
+import { applyOverrides, checkSystemGate, checkBurnRateGate } from "./gates.ts";
 import type { SchedulerLimits } from "./decisions.ts";
-import type { SchedulerProbes } from "./probes.ts";
+import type { SchedulerProbes, BurnRateSample } from "./probes.ts";
+
+class MockEventWriter {
+  readonly events: Array<{ topic: string; data: Record<string, unknown> }> = [];
+  async append(topic: string, data: Record<string, unknown>): Promise<void> {
+    this.events.push({ topic, data });
+  }
+}
 
 // ─── applyOverrides ─────────────────────────────────────────────────────────
 
@@ -293,5 +300,169 @@ describe("checkSystemGate", () => {
     });
     const result = checkSystemGate(sample, zeroLimits);
     expect(result.ok).toBe(false);
+  });
+});
+
+// ─── checkBurnRateGate ──────────────────────────────────────────────────────
+
+describe("checkBurnRateGate", () => {
+  const defaultBurn: SchedulerLimits["burnRate"] = {
+    maxTokensSinceCommit: 2_000_000,
+    minCommitsPerHour: 2,
+  };
+
+  test("returns ok=true when both metrics are within limits", async () => {
+    const events = new MockEventWriter();
+    const sample: BurnRateSample = {
+      tokensSinceLastCommit: 500_000,
+      commitsPerHour: 5,
+    };
+    const result = await checkBurnRateGate(events, "sess_1", sample, defaultBurn);
+    expect(result.ok).toBe(true);
+    expect(events.events).toHaveLength(0);
+  });
+
+  test("returns ok=true when tokensSinceLastCommit is exactly at the threshold", async () => {
+    const events = new MockEventWriter();
+    const sample: BurnRateSample = {
+      tokensSinceLastCommit: 2_000_000,
+      commitsPerHour: 10,
+    };
+    const result = await checkBurnRateGate(events, "sess_1", sample, defaultBurn);
+    expect(result.ok).toBe(true);
+    expect(events.events).toHaveLength(0);
+  });
+
+  test("returns ok=true when commitsPerHour is exactly at the minimum", async () => {
+    const events = new MockEventWriter();
+    const sample: BurnRateSample = {
+      tokensSinceLastCommit: 0,
+      commitsPerHour: 2,
+    };
+    const result = await checkBurnRateGate(events, "sess_1", sample, defaultBurn);
+    expect(result.ok).toBe(true);
+    expect(events.events).toHaveLength(0);
+  });
+
+  test("returns ok=false when tokensSinceLastCommit exceeds threshold", async () => {
+    const events = new MockEventWriter();
+    const sample: BurnRateSample = {
+      tokensSinceLastCommit: 2_000_001,
+      commitsPerHour: 10,
+    };
+    const result = await checkBurnRateGate(events, "sess_1", sample, defaultBurn);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.details).toEqual({
+        observed_tokens_since_commit: 2_000_001,
+        threshold_tokens_since_commit: 2_000_000,
+      });
+    }
+  });
+
+  test("emits scheduler.burn_rate_exceeded event when tokens threshold is breached", async () => {
+    const events = new MockEventWriter();
+    const sample: BurnRateSample = {
+      tokensSinceLastCommit: 5_000_000,
+      commitsPerHour: 10,
+    };
+    await checkBurnRateGate(events, "sess_tok", sample, defaultBurn);
+    expect(events.events).toHaveLength(1);
+    expect(events.events[0]!.topic).toBe("scheduler.burn_rate_exceeded");
+    expect(events.events[0]!.data).toEqual({
+      session_id: "sess_tok",
+      observed: 5_000_000,
+      threshold: 2_000_000,
+    });
+  });
+
+  test("returns ok=false when commitsPerHour is below minimum", async () => {
+    const events = new MockEventWriter();
+    const sample: BurnRateSample = {
+      tokensSinceLastCommit: 0,
+      commitsPerHour: 1,
+    };
+    const result = await checkBurnRateGate(events, "sess_1", sample, defaultBurn);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.details).toEqual({
+        observed_commits_per_hour: 1,
+        threshold_commits_per_hour: 2,
+      });
+    }
+  });
+
+  test("emits scheduler.burn_rate_exceeded event when commits threshold is breached", async () => {
+    const events = new MockEventWriter();
+    const sample: BurnRateSample = {
+      tokensSinceLastCommit: 0,
+      commitsPerHour: 0,
+    };
+    await checkBurnRateGate(events, "sess_commits", sample, defaultBurn);
+    expect(events.events).toHaveLength(1);
+    expect(events.events[0]!.topic).toBe("scheduler.burn_rate_exceeded");
+    expect(events.events[0]!.data).toEqual({
+      session_id: "sess_commits",
+      observed: 0,
+      threshold: 2,
+    });
+  });
+
+  test("tokens check takes priority — commits not checked if tokens already exceeded", async () => {
+    // Both are exceeded but only the tokens event should fire (function returns early)
+    const events = new MockEventWriter();
+    const sample: BurnRateSample = {
+      tokensSinceLastCommit: 99_000_000,
+      commitsPerHour: 0,
+    };
+    const result = await checkBurnRateGate(events, "sess_both", sample, defaultBurn);
+    expect(result.ok).toBe(false);
+    expect(events.events).toHaveLength(1);
+    expect(events.events[0]!.data).toEqual({
+      session_id: "sess_both",
+      observed: 99_000_000,
+      threshold: 2_000_000,
+    });
+  });
+
+  test("session_id is included in the emitted event", async () => {
+    const events = new MockEventWriter();
+    const sample: BurnRateSample = {
+      tokensSinceLastCommit: 99_000_000,
+      commitsPerHour: 99,
+    };
+    await checkBurnRateGate(events, "session_abc_123", sample, defaultBurn);
+    expect(events.events[0]!.data.session_id).toBe("session_abc_123");
+  });
+
+  test("zero thresholds are respected — zero tokens allowed, zero commits not allowed", async () => {
+    const zeroBurn: SchedulerLimits["burnRate"] = {
+      maxTokensSinceCommit: 0,
+      minCommitsPerHour: 0,
+    };
+
+    // zero tokens == exactly at threshold, should pass
+    const events1 = new MockEventWriter();
+    const r1 = await checkBurnRateGate(events1, "s1", { tokensSinceLastCommit: 0, commitsPerHour: 99 }, zeroBurn);
+    expect(r1.ok).toBe(true);
+
+    // zero commits == exactly at minimum, should pass
+    const events2 = new MockEventWriter();
+    const r2 = await checkBurnRateGate(events2, "s2", { tokensSinceLastCommit: 0, commitsPerHour: 0 }, zeroBurn);
+    expect(r2.ok).toBe(true);
+  });
+
+  test("large thresholds — verifies no integer overflow on big token counts", async () => {
+    const events = new MockEventWriter();
+    const bigBurn: SchedulerLimits["burnRate"] = {
+      maxTokensSinceCommit: Number.MAX_SAFE_INTEGER,
+      minCommitsPerHour: 0,
+    };
+    const sample: BurnRateSample = {
+      tokensSinceLastCommit: Number.MAX_SAFE_INTEGER,
+      commitsPerHour: 0,
+    };
+    const result = await checkBurnRateGate(events, "s_big", sample, bigBurn);
+    expect(result.ok).toBe(true);
   });
 });
