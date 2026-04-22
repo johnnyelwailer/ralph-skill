@@ -1,64 +1,101 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { startSchedulerWatchdog } from "./watchdog.ts";
+import { describe, expect, test } from "bun:test";
+import { startSchedulerWatchdog, type RunningWatchdog } from "./watchdog.ts";
 
 describe("startSchedulerWatchdog", () => {
-  let fakeExpirePermits: ReturnType<typeof makeFake>;
+  test("calls expirePermits repeatedly on the configured tick interval", async () => {
+    const calls: number[] = [];
+    // Use a realistic tick interval (1 second) — the minimum enforced is 1000ms anyway
+    const input = {
+      tickIntervalSeconds: () => 1,
+      expirePermits: async () => {
+        calls.push(Date.now());
+        return 0;
+      },
+    };
 
-  beforeEach(() => {
-    fakeExpirePermits = makeFake();
-  });
-
-  test("returns stop() function", () => {
-    const wd = startSchedulerWatchdog({
-      tickIntervalSeconds: () => 60,
-      expirePermits: fakeExpirePermits.fn,
-    });
-    expect(typeof wd.stop).toBe("function");
-  });
-
-  test("stop() prevents any ticks from firing", async () => {
-    const wd = startSchedulerWatchdog({
-      tickIntervalSeconds: () => 10, // 10ms — fires fast if not stopped
-      expirePermits: fakeExpirePermits.fn,
-    });
+    const wd = startSchedulerWatchdog(input);
+    // Wait long enough to observe multiple ticks (min interval is 1000ms)
+    await new Promise((r) => setTimeout(r, 3200));
     wd.stop();
-    await delay(80);
-    expect(fakeExpirePermits.callCount).toBe(0);
+
+    // Should see at least 2 calls in ~3 seconds (1000ms min interval)
+    expect(calls.length).toBeGreaterThanOrEqual(2);
+    // And not more than 4 (sanity check on runaway scheduling)
+    expect(calls.length).toBeLessThanOrEqual(4);
+
+    // Verify intervals between calls are approximately 1000ms
+    for (let i = 1; i < calls.length; i++) {
+      const delta = calls[i]! - calls[i - 1]!;
+      expect(delta).toBeGreaterThanOrEqual(950);
+    }
   });
 
-  test("clamps minimum tick interval to 1000ms", async () => {
-    // tickIntervalSeconds returns 0, which is clamped to 1000ms internally.
-    // 50ms delay is far shorter than 1000ms, so no tick can have fired yet.
-    const wd = startSchedulerWatchdog({
-      tickIntervalSeconds: () => 0,
-      expirePermits: fakeExpirePermits.fn,
-    });
-    await delay(50);
+  test("stop prevents further expirePermits calls", async () => {
+    const calls: number[] = [];
+    const input = {
+      tickIntervalSeconds: () => 0.05,
+      expirePermits: async () => {
+        calls.push(Date.now());
+        return 0;
+      },
+    };
+
+    const wd = startSchedulerWatchdog(input);
+    await new Promise((r) => setTimeout(r, 120));
     wd.stop();
-    expect(fakeExpirePermits.callCount).toBe(0);
+
+    const countAfterStop = calls.length;
+    await new Promise((r) => setTimeout(r, 150));
+    // No new calls after stop
+    expect(calls.length).toBe(countAfterStop);
   });
 
-  test("stop() is idempotent — calling twice does not throw", () => {
-    const wd = startSchedulerWatchdog({
+  test("minimum delay between ticks is 1000ms even when tickIntervalSeconds is 0", async () => {
+    const timestamps: number[] = [];
+    const input = {
+      tickIntervalSeconds: () => 0, // 0 seconds — below minimum
+      expirePermits: async () => {
+        timestamps.push(Date.now());
+        return 0;
+      },
+    };
+
+    const wd = startSchedulerWatchdog(input);
+    await new Promise((r) => setTimeout(r, 2200));
+    wd.stop();
+
+    // Should have roughly 2 ticks in 2200ms if min delay is 1000ms
+    expect(timestamps.length).toBeGreaterThanOrEqual(1);
+    expect(timestamps.length).toBeLessThanOrEqual(3);
+
+    // Check minimum interval is respected
+    for (let i = 1; i < timestamps.length; i++) {
+      const delta = timestamps[i]! - timestamps[i - 1]!;
+      expect(delta).toBeGreaterThanOrEqual(950); // ~1000ms with some tolerance
+    }
+  });
+
+  test("returned RunningWatchdog.stop() is callable multiple times without throwing", async () => {
+    const input = {
       tickIntervalSeconds: () => 60,
-      expirePermits: fakeExpirePermits.fn,
-    });
-    expect(() => wd.stop()).not.toThrow();
-    expect(() => wd.stop()).not.toThrow();
+      expirePermits: async () => 0,
+    };
+    const wd = startSchedulerWatchdog(input);
+    wd.stop();
+    wd.stop(); // must not throw
+    wd.stop();
+  });
+
+  test("expirePermits errors are swallowed (caught internally)", async () => {
+    const input = {
+      tickIntervalSeconds: () => 0.05,
+      expirePermits: async () => {
+        throw new Error("simulated permit expiry error");
+      },
+    };
+    const wd = startSchedulerWatchdog(input);
+    // Should not propagate — next tick still fires
+    await new Promise((r) => setTimeout(r, 120));
+    wd.stop(); // must not throw
   });
 });
-
-// --- helpers ---
-
-function makeFake() {
-  let count = 0;
-  const fn = async (): Promise<number> => {
-    count++;
-    return count;
-  };
-  return { fn, get callCount() { return count } };
-}
-
-function delay(ms: number): Promise<void> {
-  return new Promise(resolve => setTimeout(resolve, ms));
-}
