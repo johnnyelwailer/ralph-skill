@@ -13,16 +13,14 @@ import {
   type ProviderRegistry,
 } from "@aloop/provider";
 import {
-  quotaProbeFailureHttp,
-} from "./providers-failure-classify.ts";
-import {
   badRequest,
   errorResponse,
   jsonResponse,
   methodNotAllowed,
   notFoundResponse,
   parseJsonBody,
-} from "./http-helpers.ts";
+  quotaProbeFailureHttp,
+} from "./providers-http.ts";
 
 export type ProvidersDeps = {
   readonly config: ConfigStore;

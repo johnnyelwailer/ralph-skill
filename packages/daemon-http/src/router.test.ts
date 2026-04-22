@@ -1,65 +1,48 @@
 import { describe, expect, test } from "bun:test";
 import { Database } from "bun:sqlite";
 import {
-  createEventWriter,
-  EventCountsProjector,
-  JsonlEventStore,
   loadBundledMigrations,
   migrate,
-  PermitProjector,
   PermitRegistry,
   ProjectRegistry,
 } from "@aloop/state-sqlite";
-import { mkdtempSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import {
-  createConfigStore,
-  DAEMON_DEFAULTS,
-  OVERRIDES_DEFAULT,
-  resolveDaemonPaths,
-} from "@aloop/daemon-config";
-import {
-  createOpencodeAdapter,
-  InMemoryProviderHealthStore,
-  ProviderRegistry,
-} from "@aloop/provider";
 import { SchedulerService, type SchedulerConfigView } from "@aloop/scheduler";
 import { makeFetchHandler } from "./router.ts";
 
 function makeDeps() {
   const db = new Database(":memory:");
   migrate(db, loadBundledMigrations());
-  const home = mkdtempSync(join(tmpdir(), "aloop-router-"));
-  const paths = resolveDaemonPaths({ ALOOP_HOME: home });
-  const config = createConfigStore({
-    daemon: DAEMON_DEFAULTS,
-    overrides: OVERRIDES_DEFAULT,
-    paths,
-  });
-  const events = createEventWriter({
-    db,
-    store: new JsonlEventStore(paths.logFile),
-    projectors: [new EventCountsProjector(), new PermitProjector()],
-    nextId: () => `evt_${crypto.randomUUID()}`,
-  });
   const schedulerConfig: SchedulerConfigView = {
-    scheduler: () => config.daemon().scheduler,
-    overrides: () => config.overrides(),
-    updateLimits: async () => ({ ok: true, limits: config.daemon().scheduler }),
+    scheduler: () => ({
+      concurrencyCap: 3,
+      permitTtlDefaultSeconds: 600,
+      permitTtlMaxSeconds: 3600,
+      systemLimits: { cpuMaxPct: 80, memMaxPct: 85, loadMax: 4.0 },
+      burnRate: { maxTokensSinceCommit: 1_000_000, minCommitsPerHour: 1 },
+    }),
+    overrides: () => ({ allow: null, deny: null, force: null }),
+    updateLimits: async () => ({
+      ok: true,
+      limits: {
+        concurrencyCap: 3,
+        permitTtlDefaultSeconds: 600,
+        permitTtlMaxSeconds: 3600,
+        systemLimits: { cpuMaxPct: 80, memMaxPct: 85, loadMax: 4.0 },
+        burnRate: { maxTokensSinceCommit: 1_000_000, minCommitsPerHour: 1 },
+      },
+    }),
   };
-  const providerRegistry = new ProviderRegistry();
-  providerRegistry.register(createOpencodeAdapter());
-  const providerHealth = new InMemoryProviderHealthStore(
-    providerRegistry.list().map((adapter) => adapter.id),
-  );
   return {
     registry: new ProjectRegistry(db),
-    config,
-    events,
-    scheduler: new SchedulerService(new PermitRegistry(db), schedulerConfig, events),
-    providerRegistry,
-    providerHealth,
+    scheduler: new SchedulerService(new PermitRegistry(db), schedulerConfig, {
+      append: async (topic, data) => ({
+        _v: 1,
+        id: `evt_${crypto.randomUUID()}`,
+        topic,
+        data,
+        timestamp: new Date().toISOString(),
+      }),
+    }),
     handleDaemon: (req: Request, pathname: string) => {
       if (req.method !== "GET" || pathname !== "/v1/daemon/health") return undefined;
       return new Response(JSON.stringify({ _v: 1, status: "ok", uptime_seconds: 0 }), {
@@ -67,6 +50,7 @@ function makeDeps() {
         headers: { "content-type": "application/json" },
       });
     },
+    handleProviders: () => undefined,
   };
 }
 
