@@ -392,6 +392,33 @@ describe("SchedulerService expirePermits", () => {
     expect(events.some((e) => e.topic === "scheduler.permit.expired")).toBe(true);
     await h.close();
   });
+
+  test("provider quota denial emits scheduler.permit.deny event with retry_after_seconds", async () => {
+    const h = makeHarness(home, {
+      probes: {
+        systemSample: () => ({ cpuPct: 10, memPct: 10, loadAvg: 0.1 }),
+        providerQuota: async () => ({
+          ok: false,
+          reason: "rate_limit_exceeded",
+          retryAfterSeconds: 300,
+          remaining: 0,
+        }),
+      },
+    });
+    await h.service.acquirePermit({ sessionId: "s_quota_deny", providerCandidate: "opencode" });
+
+    const events = await readAllEvents(h.logPath);
+    const denyEvents = events.filter((e) => e.topic === "scheduler.permit.deny");
+    expect(denyEvents.length).toBe(1);
+    const denyData = denyEvents[0].data as Record<string, unknown>;
+    expect(denyData).toMatchObject({
+      session_id: "s_quota_deny",
+      reason: "rate_limit_exceeded",
+      gate: "provider",
+      retry_after_seconds: 300,
+    });
+    await h.close();
+  });
 });
 
 // ─── Deny events ────────────────────────────────────────────────────────────
