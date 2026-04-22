@@ -10,6 +10,16 @@ export {
 } from "./health.ts";
 export { InMemoryProviderHealthStore } from "./health-store.ts";
 export {
+  classifyProviderProbeFailure,
+  errorMessage,
+} from "./probe-failure.ts";
+export {
+  parseRequestedProviderChain,
+  resolveProviderChain,
+  type ProviderOverrides,
+  type ResolvedProviderChain,
+} from "./resolve-chain.ts";
+export {
   parseProviderRef,
   providerIdFromRef,
 } from "./ref.ts";

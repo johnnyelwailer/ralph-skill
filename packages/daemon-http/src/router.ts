@@ -1,19 +1,16 @@
-import type { ConfigStore } from "@aloop/daemon-config";
 import type { SchedulerService } from "@aloop/scheduler";
-import type { EventWriter, ProjectRegistry } from "@aloop/state-sqlite";
-import type { InMemoryProviderHealthStore, ProviderRegistry } from "@aloop/provider";
-import { handleProviders } from "./providers.ts";
+import type { ProjectRegistry } from "@aloop/state-sqlite";
 import { handleProjects } from "./projects.ts";
 import { handleScheduler } from "./scheduler.ts";
 
 export type RouterDeps = {
   readonly registry: ProjectRegistry;
-  readonly config: ConfigStore;
   readonly scheduler: SchedulerService;
-  readonly events: EventWriter;
-  readonly providerRegistry: ProviderRegistry;
-  readonly providerHealth: InMemoryProviderHealthStore;
   readonly handleDaemon: (
+    req: Request,
+    pathname: string,
+  ) => Response | Promise<Response | undefined> | undefined;
+  readonly handleProviders: (
     req: Request,
     pathname: string,
   ) => Response | Promise<Response | undefined> | undefined;
@@ -48,16 +45,7 @@ export function makeFetchHandler(
     const projectsResponse = await handleProjects(req, { registry: deps.registry }, pathname);
     if (projectsResponse) return projectsResponse;
 
-    const providersResponse = await handleProviders(
-      req,
-      {
-        config: deps.config,
-        events: deps.events,
-        providerRegistry: deps.providerRegistry,
-        providerHealth: deps.providerHealth,
-      },
-      pathname,
-    );
+    const providersResponse = await deps.handleProviders(req, pathname);
     if (providersResponse) return providersResponse;
 
     const schedulerResponse = await handleScheduler(req, { scheduler: deps.scheduler }, pathname);

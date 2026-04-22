@@ -5,14 +5,13 @@ import {
 } from "@aloop/daemon-config";
 import type { EventWriter } from "@aloop/state-sqlite";
 import {
+  classifyProviderProbeFailure,
+  errorMessage,
+  parseRequestedProviderChain,
+  resolveProviderChain,
   type InMemoryProviderHealthStore,
   type ProviderRegistry,
 } from "@aloop/provider";
-import {
-  errorMessage,
-  classifyProviderProbeFailure,
-  quotaProbeFailureHttp,
-} from "./providers-failure-classify.ts";
 import {
   badRequest,
   errorResponse,
@@ -20,8 +19,8 @@ import {
   methodNotAllowed,
   notFoundResponse,
   parseJsonBody,
-} from "./http-helpers.ts";
-import { parseRequestedChain, resolveChain } from "./providers-resolve-chain.ts";
+  quotaProbeFailureHttp,
+} from "./providers-http.ts";
 
 export type ProvidersDeps = {
   readonly config: ConfigStore;
@@ -99,10 +98,10 @@ export async function handleProviders(
     if (typeof body.session_id !== "string" || body.session_id.trim().length === 0) {
       return badRequest("session_id is required");
     }
-    const requestedChain = parseRequestedChain(body.provider_chain);
+    const requestedChain = parseRequestedProviderChain(body.provider_chain);
     if (!requestedChain.ok) return badRequest(requestedChain.error);
     const baseChain = requestedChain.value ?? deps.providerRegistry.list().map((adapter) => adapter.id);
-    const resolved = resolveChain(baseChain, deps.config.overrides(), deps.providerHealth);
+    const resolved = resolveProviderChain(baseChain, deps.config.overrides(), deps.providerHealth);
     return jsonResponse(200, {
       _v: 1,
       session_id: body.session_id,

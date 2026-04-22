@@ -5,16 +5,13 @@ import { startHttp, type StartHttpOptions } from "./http.ts";
 function makeDeps() {
   return {
     registry: {} as any,
-    config: {} as any,
     scheduler: {} as any,
-    events: {} as any,
-    providerRegistry: {} as any,
-    providerHealth: {} as any,
     handleDaemon: (req: Request, pathname: string) =>
       new Response(JSON.stringify({ _v: 1, status: "ok" }), {
         status: 200,
         headers: { "content-type": "application/json" },
       }),
+    handleProviders: () => undefined,
   };
 }
 
