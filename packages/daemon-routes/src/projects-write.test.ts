@@ -29,6 +29,14 @@ function makePatchRequest(id: string, body: Record<string, unknown>): Request {
   });
 }
 
+function makeInvalidJsonRequest(method: "POST" | "PATCH", url: string): Request {
+  return new Request(url, {
+    method,
+    body: "not valid json {{{",
+    headers: { "content-type": "application/json" },
+  });
+}
+
 describe("createProject", () => {
   let dir: string;
   let deps: Deps;
@@ -93,6 +101,30 @@ describe("createProject", () => {
     expect(body.error.code).toBe("project_already_registered");
     expect(body.error.details.abs_path).toBe("/duplicate/path");
   });
+
+  test("returns 400 when body is JSON null", async () => {
+    const req = new Request("http://localhost/v1/projects", {
+      method: "POST",
+      body: "null",
+      headers: { "content-type": "application/json" },
+    });
+    const res = await createProject(req, deps);
+    expect(res.status).toBe(400);
+    const body = await (res as Response).json();
+    expect(body.error.code).toBe("bad_request");
+  });
+
+  test("returns 400 when body is a JSON array", async () => {
+    const req = new Request("http://localhost/v1/projects", {
+      method: "POST",
+      body: "[1, 2, 3]",
+      headers: { "content-type": "application/json" },
+    });
+    const res = await createProject(req, deps);
+    expect(res.status).toBe(400);
+    const body = await (res as Response).json();
+    expect(body.error.code).toBe("bad_request");
+  });
 });
 
 describe("patchProject", () => {
@@ -154,6 +186,51 @@ describe("patchProject", () => {
     const body = await (res as Response).json();
     expect(body.error.code).toBe("bad_request");
     expect(body.error.message).toContain("no updatable fields");
+  });
+
+  test("returns 400 when body is invalid JSON", async () => {
+    const req = new Request(`http://localhost/v1/projects/${projectId}`, {
+      method: "PATCH",
+      body: "not valid json {{{",
+      headers: { "content-type": "application/json" },
+    });
+    const res = await patchProject(projectId, req, deps);
+    expect(res.status).toBe(400);
+    const body = await (res as Response).json();
+    expect(body.error.code).toBe("bad_request");
+  });
+
+  test("returns 400 when body is JSON null", async () => {
+    const req = new Request(`http://localhost/v1/projects/${projectId}`, {
+      method: "PATCH",
+      body: "null",
+      headers: { "content-type": "application/json" },
+    });
+    const res = await patchProject(projectId, req, deps);
+    expect(res.status).toBe(400);
+    const body = await (res as Response).json();
+    expect(body.error.code).toBe("bad_request");
+  });
+
+  test("returns 400 when body is a JSON array", async () => {
+    const req = new Request(`http://localhost/v1/projects/${projectId}`, {
+      method: "PATCH",
+      body: "[1, 2, 3]",
+      headers: { "content-type": "application/json" },
+    });
+    const res = await patchProject(projectId, req, deps);
+    expect(res.status).toBe(400);
+    const body = await (res as Response).json();
+    expect(body.error.code).toBe("bad_request");
+  });
+
+  test("returns 400 when status is an empty string", async () => {
+    const req = makePatchRequest(projectId, { status: "" });
+    const res = await patchProject(projectId, req, deps);
+    expect(res.status).toBe(400);
+    const body = await (res as Response).json();
+    expect(body.error.code).toBe("bad_request");
+    expect(body.error.message).toContain("invalid status");
   });
 
   test("returns 404 when project not found", async () => {
