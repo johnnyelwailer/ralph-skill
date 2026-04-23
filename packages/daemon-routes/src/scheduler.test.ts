@@ -173,6 +173,23 @@ describe("POST /v1/scheduler/permits", () => {
     expect(body.reason).toBe("no capacity");
   });
 
+  test("returns 200 with retryAfterSeconds when permit is denied with a retry_after value", async () => {
+    const deps = makeDeps();
+    deps.scheduler.acquirePermit = () =>
+      Promise.resolve({ granted: false, reason: "rate_limited", retryAfterSeconds: 60 });
+    const req = new Request("http://x/v1/scheduler/permits", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ session_id: "s1", provider_candidate: "prov1" }),
+    });
+    const res = await handleScheduler(req, deps, "/v1/scheduler/permits");
+    expect(res!.status).toBe(200);
+    const body = await resJson<{ _v: number; granted: boolean; reason?: string; retryAfterSeconds?: number }>(res!);
+    expect(body.granted).toBe(false);
+    expect(body.reason).toBe("rate_limited");
+    expect(body.retryAfterSeconds).toBe(60);
+  });
+
   test("returns 200 with ttl_seconds passed through", async () => {
     const deps = makeDeps();
     deps.scheduler.acquirePermit = ({ ttlSeconds }: { sessionId: string; providerCandidate: string; ttlSeconds?: number }) =>
