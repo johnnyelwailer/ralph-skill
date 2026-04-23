@@ -281,6 +281,105 @@ describe("archiveProject", () => {
 
 // ─── purgeProject ────────────────────────────────────────────────────────────
 
+// ─── createProject unexpected error ─────────────────────────────────────────
+
+describe("createProject re-throws unknown errors", () => {
+  let dir: string;
+  let deps: Deps;
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), "aloop-proj-write-"));
+    deps = makeDeps(dir);
+  });
+
+  afterEach(() => {
+    const reg = deps.registry as unknown as { _db: { close(): void } };
+    reg._db?.close();
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  test("re-throws unexpected errors from registry.create", async () => {
+    // Monkey-patch registry.create to throw a non-ProjectAlreadyRegisteredError
+    const reg = deps.registry as unknown as {
+      _db: { close(): void };
+      create: () => never;
+    };
+    reg.create = () => {
+      throw new Error("database connection lost");
+    };
+
+    const req = makeRequest({ abs_path: "/test/path" });
+    await expect(createProject(req, deps)).rejects.toThrow("database connection lost");
+  });
+});
+
+// ─── patchProject unexpected error ─────────────────────────────────────────
+
+describe("patchProject re-throws unknown errors", () => {
+  let dir: string;
+  let deps: Deps;
+  let projectId: string;
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), "aloop-proj-write-"));
+    deps = makeDeps(dir);
+    projectId = deps.registry.create({ absPath: "/patchable", name: "original-name" }).id;
+  });
+
+  afterEach(() => {
+    const reg = deps.registry as unknown as { _db: { close(): void } };
+    reg._db?.close();
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  test("re-throws unexpected errors from registry.updateName", async () => {
+    const reg = deps.registry as unknown as {
+      _db: { close(): void };
+      updateName: () => never;
+    };
+    reg.updateName = () => {
+      throw new Error("corrupted project record");
+    };
+
+    const req = makePatchRequest(projectId, { name: "new-name" });
+    await expect(patchProject(projectId, req, deps)).rejects.toThrow("corrupted project record");
+  });
+});
+
+// ─── archiveProject re-throws unknown errors ─────────────────────────────────
+
+describe("archiveProject re-throws unknown errors", () => {
+  let dir: string;
+  let deps: Deps;
+  let projectId: string;
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), "aloop-proj-write-"));
+    deps = makeDeps(dir);
+    projectId = deps.registry.create({ absPath: "/archivable", name: "to-archive" }).id;
+  });
+
+  afterEach(() => {
+    const reg = deps.registry as unknown as { _db: { close(): void } };
+    reg._db?.close();
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  test("re-throws unexpected errors from registry.archive", () => {
+    const reg = deps.registry as unknown as {
+      _db: { close(): void };
+      archive: () => never;
+    };
+    reg.archive = () => {
+      throw new Error("disk I/O error");
+    };
+
+    expect(() => archiveProject(projectId, deps)).toThrow("disk I/O error");
+  });
+});
+
+// ─── purgeProject ───────────────────────────────────────────────────────────
+
 describe("purgeProject", () => {
   let dir: string;
   let deps: Deps;
