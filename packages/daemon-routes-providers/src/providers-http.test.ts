@@ -139,6 +139,17 @@ describe("parseJsonBody", () => {
     expect(err.status).toBe(400);
   });
 
+  test("returns error for JSON null body", async () => {
+    // typeof null === "object" in JavaScript, so the guard must explicitly check === null
+    const req = new Request("http://x", { method: "POST", body: "null" });
+    const result = await parseJsonBody(req);
+    expect(result).toEqual({ error: expect.any(Response) });
+    const err = (result as { error: Response }).error;
+    expect(err.status).toBe(400);
+    const body = await err.json();
+    expect((body as { error: { code: string } }).error.code).toBe("bad_request");
+  });
+
   test("returns error when body throws on text() access", async () => {
     const req = new Request("http://x", {
       method: "POST",
