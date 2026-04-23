@@ -115,6 +115,55 @@ describe("PermitProjector", () => {
     db.close();
   });
 
+  test("apply handles scheduler.permit.release event — removes permit by id", async () => {
+    const dbPath = join(dir, "db.sqlite");
+    const logPath = join(dir, "aloopd.log");
+    const { db } = openDatabase(dbPath);
+    migrate(db, loadBundledMigrations());
+
+    const store = new JsonlEventStore(logPath);
+    const events = createEventWriter({
+      db,
+      store,
+      projectors: [new EventCountsProjector(), new PermitProjector()],
+      nextId: makeIdGenerator(),
+    });
+    const permits = new PermitRegistry(db);
+
+    // Grant two permits, then release one via scheduler.permit.release
+    await events.append("scheduler.permit.grant", {
+      permit_id: "perm_r_a",
+      session_id: "s_r1",
+      provider_id: "opencode",
+      ttl_seconds: 600,
+      granted_at: "2026-01-01T00:00:00.000Z",
+      expires_at: "2026-01-01T00:10:00.000Z",
+    });
+    await events.append("scheduler.permit.grant", {
+      permit_id: "perm_r_b",
+      session_id: "s_r2",
+      provider_id: "codex",
+      ttl_seconds: 600,
+      granted_at: "2026-01-01T00:01:00.000Z",
+      expires_at: "2026-01-01T00:11:00.000Z",
+    });
+    expect(permits.countActive()).toBe(2);
+
+    // Release perm_r_a via the release topic (used by scheduler on session end)
+    await events.append("scheduler.permit.release", {
+      permit_id: "perm_r_a",
+    });
+    expect(permits.countActive()).toBe(1);
+
+    // Only perm_r_b remains
+    const remaining = permits.list();
+    expect(remaining).toHaveLength(1);
+    expect(remaining[0]!.id).toBe("perm_r_b");
+
+    await store.close();
+    db.close();
+  });
+
   test("runProjector flushes partial batch (< 500 events) correctly", async () => {
     const dbPath = join(dir, "db.sqlite");
     const logPath = join(dir, "aloopd.log");
