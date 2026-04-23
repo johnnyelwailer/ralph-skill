@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { compilePipeline, parsePipeline } from "./pipeline.ts";
+import { compilePipeline, loadPipelineFromFile, parsePipeline } from "./pipeline.ts";
 import type { PipelineConfig } from "./types.ts";
 
 type PipelineParseResult = ReturnType<typeof parsePipeline>;
@@ -397,5 +397,53 @@ describe("compilePipeline", () => {
     const plan = compilePipeline(config);
     expect(plan.cycle).toHaveLength(5);
     expect(plan.iteration).toBe(1);
+  });
+});
+
+describe("loadPipelineFromFile", () => {
+  test("returns ok=true with parsed config for a valid pipeline file", () => {
+    const result = loadPipelineFromFile(
+      new URL("./testdata/valid-pipeline.yml", import.meta.url).pathname,
+    );
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.pipeline).toHaveLength(1);
+      expect(result.value.pipeline[0]!.agent).toBe("build");
+    }
+  });
+
+  test("returns ok=false with ENOENT error when file does not exist", () => {
+    const result = loadPipelineFromFile("/nonexistent/path/to/pipeline.yml");
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.errors[0]!).toContain("cannot read pipeline file");
+      expect(result.errors[0]!).toContain("ENOENT");
+    }
+  });
+
+  test("returns ok=false when file contains invalid YAML", async () => {
+    // Write a temp file with malformed YAML
+    const { writeFileSync, unlinkSync } = await import("node:fs");
+    const { join } = await import("node:path");
+    const tmpFile = join("/tmp", `aloop-test-invalid-${Date.now()}.yml`);
+    writeFileSync(tmpFile, "invalid: yaml: content:\n  bad: indentation");
+    const result = loadPipelineFromFile(tmpFile);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.errors[0]!).toStartWith("yaml parse error:");
+    }
+    unlinkSync(tmpFile);
+  });
+
+  test("loadPipelineFromFile result can be passed to compilePipeline", () => {
+    const parsed = loadPipelineFromFile(
+      new URL("./testdata/valid-pipeline.yml", import.meta.url).pathname,
+    );
+    expect(parsed.ok).toBe(true);
+    if (parsed.ok) {
+      const plan = compilePipeline(parsed.value);
+      expect(plan.cycle).toHaveLength(1);
+      expect(plan.cycle[0]!).toBe("PROMPT_build.md");
+    }
   });
 });
