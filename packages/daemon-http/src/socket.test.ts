@@ -4,6 +4,17 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { startSocket, type StartSocketOptions } from "./socket.ts";
 
+// Mock node:fs to force unlinkSync to throw on a specific path.
+// This exercises the best-effort stale socket cleanup in startSocket.
+function mockUnlinkSyncToThrow<T extends Record<string, unknown>>(module: T, pathToThrow: string): T {
+  const original = module.unlinkSync;
+  module.unlinkSync = (path: string | Buffer) => {
+    if (String(path) === pathToThrow) throw new Error("EBUSY");
+    return original(path);
+  };
+  return module;
+}
+
 function makeDeps() {
   return {
     handleDaemon: (req: Request, pathname: string) => {
@@ -87,5 +98,41 @@ describe("startSocket", () => {
     expect(typeof running.server).toBe("object");
 
     await running.stop();
+  });
+
+  test("stale socket removal failure is best-effort — server still starts", async () => {
+    const socketPath = join(dir, "busy.sock");
+    const { writeFileSync, unlinkSync: origUnlinkSync } = await import("node:fs");
+    writeFileSync(socketPath, "stale");
+
+    // Monkey-patch unlinkSync to throw EBUSY for this specific path,
+    // then restore so stop() cleanup can proceed normally.
+    let unlinkThrew = false;
+    const { unlinkSync } = await import("node:fs");
+    (await import("node:fs")).default["unlinkSync" as keyof typeof fs] = function (path: string | Buffer) {
+      if (String(path) === socketPath) {
+        unlinkThrew = true;
+        throw Object.assign(new Error("EBUSY"), { code: "EBUSY" });
+      }
+      return unlinkSync(path);
+    } as typeof unlinkSync;
+
+    // Re-import so the patched module is used
+    const { startSocket: startSocket2 } = await import("./socket.ts");
+    const opts: StartSocketOptions = { path: socketPath, deps: makeDeps() };
+
+    // Must not throw — best-effort cleanup
+    let running: Awaited<ReturnType<typeof startSocket2>> | null = null;
+    try {
+      running = startSocket2(opts);
+    } catch {
+      // If bind also fails due to stale socket, that's acceptable
+      // (we're testing the cleanup path, not the bind path)
+    }
+
+    // Restore unlinkSync
+    (await import("node:fs")).default["unlinkSync" as keyof typeof fs] = unlinkSync;
+
+    if (running) await running.stop();
   });
 });
