@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { Database } from "bun:sqlite";
+import { realpathSync } from "node:fs";
 import {
   canonicalizeProjectPath,
   getProjectById,
@@ -182,7 +183,7 @@ describe("canonicalizeProjectPath", () => {
   test("resolves an existing path via realpathSync", () => {
     // /tmp is guaranteed to exist on unix systems
     const result = canonicalizeProjectPath("/tmp");
-    expect(result).toBe("/tmp");
+    expect(result).toBe(realpathSync("/tmp"));
   });
 
   test("strips trailing slashes from a nonexistent path and returns it as-is", () => {
