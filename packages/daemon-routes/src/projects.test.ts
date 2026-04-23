@@ -310,3 +310,158 @@ describe("pathname not starting with /v1/projects", () => {
     expect(res).toBeUndefined();
   });
 });
+
+// ─── listProjects edge cases ────────────────────────────────────────────────
+
+describe("GET /v1/projects filtering", () => {
+  test("returns 400 for invalid status query param", async () => {
+    const deps = makeDeps();
+    const res = await handleProjects(
+      new Request("http://x/v1/projects?status=invalid_status"),
+      deps,
+      "/v1/projects",
+    );
+    expect(res).toBeDefined();
+    expect(res!.status).toBe(400);
+    const body = await resJson<{ error: { code: string; details: { statusParam: string } } }>(res!);
+    expect(body.error.code).toBe("bad_request");
+    expect(body.error.details.statusParam).toBe("invalid_status");
+  });
+
+  test("returns only projects matching status filter", async () => {
+    const deps = makeDeps();
+    deps.registry.create({ absPath: "/ready-project" });
+    const archived = deps.registry.create({ absPath: "/archived-project" });
+    deps.registry.archive(archived.id);
+    const res = await handleProjects(
+      new Request("http://x/v1/projects?status=archived"),
+      deps,
+      "/v1/projects",
+    );
+    expect(res!.status).toBe(200);
+    const body = await resJson<{ items: Array<{ status: string }> }>(res!);
+    expect(body.items.every((p) => p.status === "archived")).toBe(true);
+  });
+
+  test("returns only project matching exact path filter", async () => {
+    const deps = makeDeps();
+    deps.registry.create({ absPath: "/home/user/alpha" });
+    deps.registry.create({ absPath: "/home/user/beta" });
+    deps.registry.create({ absPath: "/other/path" });
+    const res = await handleProjects(
+      new Request("http://x/v1/projects?path=/home/user/alpha"),
+      deps,
+      "/v1/projects",
+    );
+    expect(res!.status).toBe(200);
+    const body = await resJson<{ items: Array<{ abs_path: string }> }>(res!);
+    expect(body.items.length).toBe(1);
+    expect(body.items[0]!.abs_path).toBe("/home/user/alpha");
+  });
+});
+
+// ─── createProject error paths ───────────────────────────────────────────────
+
+describe("POST /v1/projects error handling", () => {
+  test("returns 400 for invalid JSON body", async () => {
+    const deps = makeDeps();
+    const req = new Request("http://x/v1/projects", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: "not json",
+    });
+    const res = await handleProjects(req, deps, "/v1/projects");
+    expect(res!.status).toBe(400);
+    const body = await resJson<{ error: { code: string } }>(res!);
+    expect(body.error.code).toBe("bad_request");
+  });
+
+  test("returns 400 for JSON null body", async () => {
+    const deps = makeDeps();
+    const req = new Request("http://x/v1/projects", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: "null",
+    });
+    const res = await handleProjects(req, deps, "/v1/projects");
+    expect(res!.status).toBe(400);
+    const body = await resJson<{ error: { code: string } }>(res!);
+    expect(body.error.code).toBe("bad_request");
+  });
+
+  test("returns 400 for JSON array body", async () => {
+    const deps = makeDeps();
+    const req = new Request("http://x/v1/projects", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: "[1, 2, 3]",
+    });
+    const res = await handleProjects(req, deps, "/v1/projects");
+    expect(res!.status).toBe(400);
+    const body = await resJson<{ error: { code: string } }>(res!);
+    expect(body.error.code).toBe("bad_request");
+  });
+
+  test("returns 409 when abs_path is already registered", async () => {
+    const deps = makeDeps();
+    deps.registry.create({ absPath: "/test/path" });
+    const req = new Request("http://x/v1/projects", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ abs_path: "/test/path" }),
+    });
+    const res = await handleProjects(req, deps, "/v1/projects");
+    expect(res!.status).toBe(409);
+    const body = await resJson<{ error: { code: string; details: { abs_path: string } } }>(res!);
+    expect(body.error.code).toBe("project_already_registered");
+    expect(body.error.details.abs_path).toBe("/test/path");
+  });
+});
+
+// ─── patchProject error paths ──────────────────────────────────────────────
+
+describe("PATCH /v1/projects/:id error handling", () => {
+  test("returns 400 for invalid status value", async () => {
+    const deps = makeDeps();
+    const created = deps.registry.create({ absPath: "/test/path" });
+    const req = new Request(`http://x/v1/projects/${created.id}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ status: "invalid_status" }),
+    });
+    const res = await handleProjects(req, deps, `/v1/projects/${created.id}`);
+    expect(res!.status).toBe(400);
+    const body = await resJson<{ error: { code: string; details: { status: string } } }>(res!);
+    expect(body.error.code).toBe("bad_request");
+    expect(body.error.details.status).toBe("invalid_status");
+  });
+
+  test("returns 400 when no updatable fields provided", async () => {
+    const deps = makeDeps();
+    const created = deps.registry.create({ absPath: "/test/path" });
+    const req = new Request(`http://x/v1/projects/${created.id}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({}),
+    });
+    const res = await handleProjects(req, deps, `/v1/projects/${created.id}`);
+    expect(res!.status).toBe(400);
+    const body = await resJson<{ error: { code: string } }>(res!);
+    expect(body.error.code).toBe("bad_request");
+    expect(body.error.message).toContain("no updatable fields");
+  });
+
+  test("returns 400 for invalid JSON body", async () => {
+    const deps = makeDeps();
+    const created = deps.registry.create({ absPath: "/test/path" });
+    const req = new Request(`http://x/v1/projects/${created.id}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: "not json",
+    });
+    const res = await handleProjects(req, deps, `/v1/projects/${created.id}`);
+    expect(res!.status).toBe(400);
+    const body = await resJson<{ error: { code: string } }>(res!);
+    expect(body.error.code).toBe("bad_request");
+  });
+});

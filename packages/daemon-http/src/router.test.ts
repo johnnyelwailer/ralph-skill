@@ -122,3 +122,121 @@ describe("makeFetchHandler (unit)", () => {
     expect(body.error.message).toContain("DELETE");
   });
 });
+
+// ─── makeFetchHandler — dispatch ordering and provider/project/scheduler routes ──
+
+describe("makeFetchHandler dispatch order", () => {
+  function makeDeps() {
+    return {
+      handleDaemon: (req: Request, pathname: string) => {
+        if (pathname === "/v1/daemon/health") {
+          return new Response(JSON.stringify({ _v: 1, handler: "daemon" }), {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          });
+        }
+        return undefined;
+      },
+      handleProjects: (req: Request, pathname: string) => {
+        if (pathname === "/v1/projects") {
+          return new Response(JSON.stringify({ _v: 1, handler: "projects" }), {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          });
+        }
+        return undefined;
+      },
+      handleProviders: (req: Request, pathname: string) => {
+        if (pathname === "/v1/providers") {
+          return new Response(JSON.stringify({ _v: 1, handler: "providers" }), {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          });
+        }
+        return undefined;
+      },
+      handleScheduler: (req: Request, pathname: string) => {
+        if (pathname === "/v1/scheduler/limits") {
+          return new Response(JSON.stringify({ _v: 1, handler: "scheduler" }), {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          });
+        }
+        return undefined;
+      },
+    };
+  }
+
+  test("daemon route is checked first", async () => {
+    const fetch = makeFetchHandler(makeDeps());
+    const res = await fetch(new Request("http://x/v1/daemon/health"));
+    const body = await res.json() as { handler: string };
+    expect(body.handler).toBe("daemon");
+  });
+
+  test("projects route is checked after daemon", async () => {
+    const fetch = makeFetchHandler(makeDeps());
+    const res = await fetch(new Request("http://x/v1/projects"));
+    const body = await res.json() as { handler: string };
+    expect(body.handler).toBe("projects");
+  });
+
+  test("providers route is checked after projects", async () => {
+    const fetch = makeFetchHandler(makeDeps());
+    const res = await fetch(new Request("http://x/v1/providers"));
+    const body = await res.json() as { handler: string };
+    expect(body.handler).toBe("providers");
+  });
+
+  test("scheduler route is checked last among route handlers", async () => {
+    const fetch = makeFetchHandler(makeDeps());
+    const res = await fetch(new Request("http://x/v1/scheduler/limits"));
+    const body = await res.json() as { handler: string };
+    expect(body.handler).toBe("scheduler");
+  });
+
+  test("unknown route falls through to 404 with not_found envelope", async () => {
+    const fetch = makeFetchHandler(makeDeps());
+    const res = await fetch(new Request("http://x/v1/does-not-exist", { method: "GET" }));
+    expect(res.status).toBe(404);
+    const body = await res.json() as { error: { _v: number; code: string; message: string } };
+    expect(body.error.code).toBe("not_found");
+    expect(body.error.message).toContain("/v1/does-not-exist");
+    expect(body.error._v).toBe(1);
+  });
+
+  test("POST request to /v1/projects is dispatched to projects handler", async () => {
+    const customDeps = makeDeps();
+    customDeps.handleProjects = (req) => {
+      if (req.method === "POST") {
+        return new Response(JSON.stringify({ _v: 1, handler: "projects", method: req.method }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      return undefined;
+    };
+    const fetch = makeFetchHandler(customDeps);
+    const res = await fetch(new Request("http://x/v1/projects", { method: "POST" }));
+    expect(res.status).toBe(200);
+    const body = await res.json() as { handler: string; method: string };
+    expect(body.handler).toBe("projects");
+    expect(body.method).toBe("POST");
+  });
+
+  test("PATCH request to /v1/projects/:id returns undefined (404 via router)", async () => {
+    const fetch = makeFetchHandler(makeDeps());
+    // projects handler returns undefined for this path — should 404
+    const res = await fetch(new Request("http://x/v1/projects/some-id", { method: "PATCH" }));
+    expect(res.status).toBe(404);
+  });
+
+  test("route handlers returning undefined results in 404", async () => {
+    const fetch = makeFetchHandler(makeDeps());
+    // /v1/daemon/config is not handled by any handler → 404
+    const res = await fetch(new Request("http://x/v1/daemon/config", { method: "GET" }));
+    expect(res.status).toBe(404);
+    const body = await res.json() as { error: { code: string } };
+    expect(body.error.code).toBe("not_found");
+  });
+});

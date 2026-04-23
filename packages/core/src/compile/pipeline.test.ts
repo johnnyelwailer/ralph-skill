@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { compilePipeline, parsePipeline } from "./pipeline.ts";
+import { compilePipeline, loadPipelineFromFile, parsePipeline } from "./pipeline.ts";
 import type { PipelineConfig } from "./types.ts";
 
 type PipelineParseResult = ReturnType<typeof parsePipeline>;
@@ -350,5 +350,100 @@ describe("compilePipeline", () => {
     const keys = Object.keys(plan.transitions);
     expect(keys).toEqual(["1", "2"]);
     expect(keys.every((k) => typeof k === "string")).toBe(true);
+  });
+
+  test("compilePipeline always sets LoopPlan runtime fields to their initial values", () => {
+    // A complex config to prove these fields are not derived from config content
+    const config: PipelineConfig = {
+      pipeline: [{ agent: "build", repeat: 2 }],
+      finalizer: ["cleanup"],
+      triggers: { push: "main" },
+    };
+    const plan = compilePipeline(config);
+    // cyclePosition — starts at 0, not derived from repeat count
+    expect(plan.cyclePosition).toBe(0);
+    // finalizerPosition — always 0 at plan creation
+    expect(plan.finalizerPosition).toBe(0);
+    // iteration — always 1 at plan creation; runtime advances it
+    expect(plan.iteration).toBe(1);
+    // allTasksMarkedDone — always false at plan creation; runtime sets true
+    expect(plan.allTasksMarkedDone).toBe(false);
+    // version — always 1 for v1 schema
+    expect(plan.version).toBe(1);
+    // _v — schema version marker
+    expect(plan._v).toBe(1);
+  });
+
+  test("finalizerPosition is 0 even when finalizer array is non-empty", () => {
+    // finalizerPosition tracks position within the finalizer array during
+    // execution — it starts at 0 regardless of how many finalizer steps exist
+    const config: PipelineConfig = {
+      pipeline: [{ agent: "build" }],
+      finalizer: ["cleanup", "notify", "archive"],
+    };
+    const plan = compilePipeline(config);
+    expect(plan.finalizer).toEqual(["cleanup", "notify", "archive"]);
+    expect(plan.finalizerPosition).toBe(0);
+  });
+
+  test("iteration is 1 for a pipeline with multiple phases and repeats", () => {
+    // iteration is a runtime counter; compilePipeline always initializes to 1
+    const config: PipelineConfig = {
+      pipeline: [
+        { agent: "build", repeat: 3 },
+        { agent: "test", repeat: 2 },
+      ],
+    };
+    const plan = compilePipeline(config);
+    expect(plan.cycle).toHaveLength(5);
+    expect(plan.iteration).toBe(1);
+  });
+});
+
+describe("loadPipelineFromFile", () => {
+  test("returns ok=true with parsed config for a valid pipeline file", () => {
+    const result = loadPipelineFromFile(
+      new URL("./testdata/valid-pipeline.yml", import.meta.url).pathname,
+    );
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.pipeline).toHaveLength(1);
+      expect(result.value.pipeline[0]!.agent).toBe("build");
+    }
+  });
+
+  test("returns ok=false with ENOENT error when file does not exist", () => {
+    const result = loadPipelineFromFile("/nonexistent/path/to/pipeline.yml");
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.errors[0]!).toContain("cannot read pipeline file");
+      expect(result.errors[0]!).toContain("ENOENT");
+    }
+  });
+
+  test("returns ok=false when file contains invalid YAML", async () => {
+    // Write a temp file with malformed YAML
+    const { writeFileSync, unlinkSync } = await import("node:fs");
+    const { join } = await import("node:path");
+    const tmpFile = join("/tmp", `aloop-test-invalid-${Date.now()}.yml`);
+    writeFileSync(tmpFile, "invalid: yaml: content:\n  bad: indentation");
+    const result = loadPipelineFromFile(tmpFile);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.errors[0]!).toStartWith("yaml parse error:");
+    }
+    unlinkSync(tmpFile);
+  });
+
+  test("loadPipelineFromFile result can be passed to compilePipeline", () => {
+    const parsed = loadPipelineFromFile(
+      new URL("./testdata/valid-pipeline.yml", import.meta.url).pathname,
+    );
+    expect(parsed.ok).toBe(true);
+    if (parsed.ok) {
+      const plan = compilePipeline(parsed.value);
+      expect(plan.cycle).toHaveLength(1);
+      expect(plan.cycle[0]!).toBe("PROMPT_build.md");
+    }
   });
 });

@@ -325,6 +325,121 @@ describe("handleProviders", () => {
       expect(result!.status).toBe(200);
       expect(deps.providerHealth.list().length).toBe(before);
     });
+
+    test("returns 400 when session_id is an empty string", async () => {
+      const deps = makeProvidersDeps({ withQuotaProbe: true });
+      const req = new Request(`http://localhost${PATH_RESOLVE_CHAIN}`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ session_id: "" }),
+      });
+      const result = await handleProviders(req, deps, PATH_RESOLVE_CHAIN);
+      expect(result!.status).toBe(400);
+      const body = await resJson<{ error: { code: string } }>(result!);
+      expect(body.error.code).toBe("bad_request");
+    });
+
+    test("returns 400 when session_id is whitespace-only", async () => {
+      const deps = makeProvidersDeps({ withQuotaProbe: true });
+      const req = new Request(`http://localhost${PATH_RESOLVE_CHAIN}`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ session_id: "   " }),
+      });
+      const result = await handleProviders(req, deps, PATH_RESOLVE_CHAIN);
+      expect(result!.status).toBe(400);
+      const body = await resJson<{ error: { code: string } }>(result!);
+      expect(body.error.code).toBe("bad_request");
+    });
+
+    test("returns 400 when session_id is not a string", async () => {
+      const deps = makeProvidersDeps({ withQuotaProbe: true });
+      const req = new Request(`http://localhost${PATH_RESOLVE_CHAIN}`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ session_id: 42 }),
+      });
+      const result = await handleProviders(req, deps, PATH_RESOLVE_CHAIN);
+      expect(result!.status).toBe(400);
+      const body = await resJson<{ error: { code: string } }>(result!);
+      expect(body.error.code).toBe("bad_request");
+    });
+
+    test("returns 400 when provider_chain is not an array", async () => {
+      const deps = makeProvidersDeps({ withQuotaProbe: true });
+      const req = new Request(`http://localhost${PATH_RESOLVE_CHAIN}`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ session_id: "s_1", provider_chain: "opencode" }),
+      });
+      const result = await handleProviders(req, deps, PATH_RESOLVE_CHAIN);
+      expect(result!.status).toBe(400);
+      const body = await resJson<{ error: { code: string } }>(result!);
+      expect(body.error.code).toBe("bad_request");
+    });
+
+    test("returns 400 when provider_chain contains non-string elements", async () => {
+      const deps = makeProvidersDeps({ withQuotaProbe: true });
+      const req = new Request(`http://localhost${PATH_RESOLVE_CHAIN}`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ session_id: "s_1", provider_chain: ["opencode", 123] }),
+      });
+      const result = await handleProviders(req, deps, PATH_RESOLVE_CHAIN);
+      expect(result!.status).toBe(400);
+      const body = await resJson<{ error: { code: string } }>(result!);
+      expect(body.error.code).toBe("bad_request");
+    });
+
+    test("returns 400 when provider_chain contains an empty string", async () => {
+      const deps = makeProvidersDeps({ withQuotaProbe: true });
+      const req = new Request(`http://localhost${PATH_RESOLVE_CHAIN}`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ session_id: "s_1", provider_chain: ["opencode", ""] }),
+      });
+      const result = await handleProviders(req, deps, PATH_RESOLVE_CHAIN);
+      expect(result!.status).toBe(400);
+      const body = await resJson<{ error: { code: string } }>(result!);
+      expect(body.error.code).toBe("bad_request");
+    });
+
+    test("returns 400 for non-JSON body", async () => {
+      const deps = makeProvidersDeps({ withQuotaProbe: true });
+      const req = new Request(`http://localhost${PATH_RESOLVE_CHAIN}`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: "not json at all",
+      });
+      const result = await handleProviders(req, deps, PATH_RESOLVE_CHAIN);
+      expect(result!.status).toBe(400);
+      const body = await resJson<{ error: { code: string } }>(result!);
+      expect(body.error.code).toBe("bad_request");
+    });
+
+    test("returns 400 when body is a JSON array", async () => {
+      const deps = makeProvidersDeps({ withQuotaProbe: true });
+      const req = new Request(`http://localhost${PATH_RESOLVE_CHAIN}`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: "[]",
+      });
+      const result = await handleProviders(req, deps, PATH_RESOLVE_CHAIN);
+      expect(result!.status).toBe(400);
+      const body = await resJson<{ error: { code: string } }>(result!);
+      expect(body.error.code).toBe("bad_request");
+    });
+
+    test("returns 405 for GET on resolve-chain", async () => {
+      const deps = makeProvidersDeps({ withQuotaProbe: true });
+      const req = new Request(`http://localhost${PATH_RESOLVE_CHAIN}`, {
+        method: "GET",
+      });
+      const result = await handleProviders(req, deps, PATH_RESOLVE_CHAIN);
+      expect(result!.status).toBe(405);
+      const body = await resJson<{ error: { code: string } }>(result!);
+      expect(body.error.code).toBe("method_not_allowed");
+    });
   });
 
   describe("GET /v1/providers/overrides", () => {
@@ -530,6 +645,79 @@ describe("handleProviders", () => {
         deps,
         PATH_OVERRIDES,
       );
+      expect(events.appended).toHaveLength(0);
+    });
+  });
+
+  describe("PUT /v1/providers/overrides error handling", () => {
+    test("rethrows when setOverrides throws a non-Error value", async () => {
+      const badConfigStore = {
+        overrides() {
+          return OVERRIDES_DEFAULT;
+        },
+        setOverrides(_v: unknown) {
+          // Simulate a broken ConfigStore that throws a non-Error
+          throw "unexpected string error";
+        },
+      };
+      const deps = {
+        config: badConfigStore as unknown as ConfigStore,
+        events: makeEventWriter(),
+      };
+      // The handler does not catch non-Error throwables — the rejection propagates
+      await expect(
+        handleProviders(
+          makeRequest("PUT", { allow: ["opencode"], deny: null, force: null }),
+          deps,
+          PATH_OVERRIDES,
+        ),
+      ).rejects.toThrow("unexpected string error");
+    });
+
+    test("rethrows when setOverrides throws an Error", async () => {
+      const throwingConfigStore = {
+        overrides() {
+          return OVERRIDES_DEFAULT;
+        },
+        setOverrides(_v: unknown) {
+          throw new Error("database write failed");
+        },
+      };
+      const deps = {
+        config: throwingConfigStore as unknown as ConfigStore,
+        events: makeEventWriter(),
+      };
+      await expect(
+        handleProviders(
+          makeRequest("PUT", { allow: null, deny: null, force: "codex" }),
+          deps,
+          PATH_OVERRIDES,
+        ),
+      ).rejects.toThrow("database write failed");
+    });
+
+    test("event is not emitted when setOverrides throws", async () => {
+      const throwingConfigStore = {
+        overrides() {
+          return OVERRIDES_DEFAULT;
+        },
+        setOverrides(_v: unknown) {
+          throw new Error("write failure");
+        },
+      };
+      const events = makeEventWriter();
+      const deps = {
+        config: throwingConfigStore as unknown as ConfigStore,
+        events,
+      };
+      await expect(
+        handleProviders(
+          makeRequest("PUT", { allow: null, deny: null, force: "anthropic" }),
+          deps,
+          PATH_OVERRIDES,
+        ),
+      ).rejects.toThrow("write failure");
+      // No event should be appended since the throw happened before append
       expect(events.appended).toHaveLength(0);
     });
   });

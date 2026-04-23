@@ -206,6 +206,32 @@ describe("normalizeLimitsPatch", () => {
     expect(patch.cpuMaxPct).toBeUndefined();
   });
 
+  test("burn_rate: null is rejected as non-map", () => {
+    const errors: string[] = [];
+    const patch = normalizeLimitsPatch({ burn_rate: null }, errors);
+    expect(errors).toContain("scheduler.burn_rate: must be a mapping");
+    expect(patch.maxTokensSinceCommit).toBeUndefined();
+  });
+
+  test("system_limits: null is rejected as non-map", () => {
+    const errors: string[] = [];
+    const patch = normalizeLimitsPatch({ system_limits: null }, errors);
+    expect(errors).toContain("scheduler.system_limits: must be a mapping");
+    expect(patch.cpuMaxPct).toBeUndefined();
+  });
+
+  test("burn_rate: [] is rejected as non-map", () => {
+    const errors: string[] = [];
+    const patch = normalizeLimitsPatch({ burn_rate: [] }, errors);
+    expect(errors).toContain("scheduler.burn_rate: must be a mapping");
+  });
+
+  test("system_limits: [] is rejected as non-map", () => {
+    const errors: string[] = [];
+    const patch = normalizeLimitsPatch({ system_limits: [] }, errors);
+    expect(errors).toContain("scheduler.system_limits: must be a mapping");
+  });
+
   test("top-level burn_rate object shadows its own nested burn_rate.min_commits_per_hour key", () => {
     // When burn_rate is an object at top level, isMap(burnRate) is true,
     // so nested extraction runs and picks from the object.

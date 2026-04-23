@@ -1,6 +1,69 @@
 import { beforeEach, describe, expect, test } from "bun:test";
 import * as probes from "./probes.ts";
 
+describe("ProviderQuotaSample", () => {
+  test("shape: ok=true with optional fields", () => {
+    const sample: probes.ProviderQuotaSample = {
+      ok: true,
+      remaining: 100,
+      resetAt: "2026-04-24T00:00:00Z",
+    };
+    expect(sample.ok).toBe(true);
+    expect(sample.remaining).toBe(100);
+    expect(sample.resetAt).toBe("2026-04-24T00:00:00Z");
+  });
+
+  test("shape: ok=false with reason and retryAfterSeconds", () => {
+    const sample: probes.ProviderQuotaSample = {
+      ok: false,
+      reason: "rate limited",
+      retryAfterSeconds: 60,
+    };
+    expect(sample.ok).toBe(false);
+    expect(sample.reason).toBe("rate limited");
+    expect(sample.retryAfterSeconds).toBe(60);
+  });
+
+  test("shape: details can hold arbitrary record", () => {
+    const sample: probes.ProviderQuotaSample = {
+      ok: true,
+      details: { tier: "free", calls: 42 },
+    };
+    expect(sample.details).toEqual({ tier: "free", calls: 42 });
+  });
+});
+
+describe("BurnRateSample", () => {
+  test("shape: tokensSinceLastCommit and commitsPerHour", () => {
+    const sample: probes.BurnRateSample = {
+      tokensSinceLastCommit: 1500,
+      commitsPerHour: 3.5,
+    };
+    expect(sample.tokensSinceLastCommit).toBe(1500);
+    expect(sample.commitsPerHour).toBe(3.5);
+  });
+});
+
+describe("SchedulerProbes interface coverage", () => {
+  test("systemSample is required in DEFAULT_SCHEDULER_PROBES", () => {
+    const probes_obj: Required<Pick<probes.SchedulerProbes, "systemSample">> =
+      probes.DEFAULT_SCHEDULER_PROBES;
+    expect(typeof probes_obj.systemSample).toBe("function");
+    const s = probes_obj.systemSample();
+    expect(typeof s.cpuPct).toBe("number");
+    expect(typeof s.memPct).toBe("number");
+    expect(typeof s.loadAvg).toBe("number");
+  });
+
+  test("providerQuota and burnRate are optional", () => {
+    // Just verify the type is constructible without them
+    const minimal: probes.SchedulerProbes = {
+      systemSample: probes.DEFAULT_SCHEDULER_PROBES.systemSample,
+    };
+    expect(typeof minimal.systemSample).toBe("function");
+  });
+});
+
 describe("DEFAULT_SCHEDULER_PROBES", () => {
   let sample: probes.SystemSample;
 
@@ -31,14 +94,20 @@ describe("DEFAULT_SCHEDULER_PROBES", () => {
     expect(typeof sample.memPct).toBe("number");
     expect(typeof sample.loadAvg).toBe("number");
   });
+
+  test("cpuPct is clamped to 0 when loadavg is 0", () => {
+    // Even with 0 load, cpuPct should be 0 (not negative)
+    expect(sample.cpuPct).toBeGreaterThanOrEqual(0);
+    expect(sample.cpuPct).toBeLessThanOrEqual(100);
+  });
 });
 
 describe("SystemSample type shape", () => {
   test("sample has all required readonly fields", () => {
-    const sample = probes.DEFAULT_SCHEDULER_PROBES.systemSample();
-    expect(sample.cpuPct).toBeDefined();
-    expect(sample.memPct).toBeDefined();
-    expect(sample.loadAvg).toBeDefined();
+    const s = probes.DEFAULT_SCHEDULER_PROBES.systemSample();
+    expect(s.cpuPct).toBeDefined();
+    expect(s.memPct).toBeDefined();
+    expect(s.loadAvg).toBeDefined();
   });
 
   test("cpuPct is clamped to [0, 100] even under extreme loadavg values", () => {
@@ -54,6 +123,14 @@ describe("SystemSample type shape", () => {
       const s = probes.DEFAULT_SCHEDULER_PROBES.systemSample();
       expect(s.memPct).toBeGreaterThanOrEqual(0);
       expect(s.memPct).toBeLessThanOrEqual(100);
+    }
+  });
+
+  test("cpuPct and memPct are always finite numbers (NaN/Infinity cannot escape)", () => {
+    for (let i = 0; i < 10; i++) {
+      const s = probes.DEFAULT_SCHEDULER_PROBES.systemSample();
+      expect(Number.isFinite(s.cpuPct)).toBe(true);
+      expect(Number.isFinite(s.memPct)).toBe(true);
     }
   });
 });

@@ -34,6 +34,28 @@ describe("InMemoryProviderHealthStore", () => {
     expect(next.quotaResetsAt).toBe("2026-01-01T01:00:00.000Z");
   });
 
+  test("get auto-creates unknown provider in unknown status", () => {
+    const store = new InMemoryProviderHealthStore(["opencode"], NOW);
+    // "claude" was never registered — accessing it should lazily create unknown state
+    const state = store.get("claude");
+    expect(state.providerId).toBe("claude");
+    expect(state.status).toBe("unknown");
+    expect(state.consecutiveFailures).toBe(0);
+  });
+
+  test("list returns providers sorted by providerId", () => {
+    const store = new InMemoryProviderHealthStore(["zeta", "alpha", "beta"], NOW);
+    const items = store.list();
+    expect(items.map((h) => h.providerId)).toEqual(["alpha", "beta", "zeta"]);
+  });
+
+  test("list includes lazily-created unknown providers", () => {
+    const store = new InMemoryProviderHealthStore(["opencode"], NOW);
+    store.get("zed"); // lazily created
+    const items = store.list();
+    expect(items.map((h) => h.providerId)).toEqual(["opencode", "zed"]);
+  });
+
   test("peek reads existing state without creating unknown providers", () => {
     const store = new InMemoryProviderHealthStore(["opencode"], NOW);
     expect(store.peek("opencode")?.providerId).toBe("opencode");

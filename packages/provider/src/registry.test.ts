@@ -56,4 +56,9 @@ describe("ProviderRegistry", () => {
     const registry = new ProviderRegistry();
     expect(() => registry.require("missing")).toThrow("not registered");
   });
+
+  test("resolve throws for unregistered provider", () => {
+    const registry = new ProviderRegistry();
+    expect(() => registry.resolve("unknown/model@1.0")).toThrow("not registered");
+  });
 });

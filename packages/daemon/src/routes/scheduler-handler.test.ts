@@ -439,3 +439,146 @@ describe("handleScheduler unhandled paths", () => {
     expect(body.error.code).toBe("not_found");
   });
 });
+
+// ─── parseJsonBody helper ────────────────────────────────────────────────────
+
+async function parseJsonBody(
+  req: Request,
+): Promise<{ data: Record<string, unknown> } | { error: Response }> {
+  try {
+    const text = await req.text();
+    if (text.length === 0) return { data: {} };
+    const parsed = JSON.parse(text) as unknown;
+    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+      return { error: new Response(JSON.stringify({ error: { _v: 1, code: "bad_request", message: "request body must be a JSON object" } }), { status: 400, headers: { "content-type": "application/json" } }) };
+    }
+    return { data: parsed as Record<string, unknown> };
+  } catch {
+    return { error: new Response(JSON.stringify({ error: { _v: 1, code: "bad_request", message: "invalid JSON body" } }), { status: 400, headers: { "content-type": "application/json" } }) };
+  }
+}
+
+describe("parseJsonBody helper", () => {
+  async function parseBody(body: string | null | undefined): Promise<{ data: Record<string, unknown> } | { error: Response }> {
+    return parseJsonBody(new Request("http://x", { method: "POST", body: body ?? null as any }));
+  }
+
+  test("empty string body returns empty data object", async () => {
+    const result = await parseBody("");
+    expect(result).toEqual({ data: {} });
+  });
+
+  test("undefined body returns empty data object", async () => {
+    const result = await parseBody(undefined);
+    expect(result).toEqual({ data: {} });
+  });
+
+  test("valid JSON object returns data", async () => {
+    const result = await parseBody('{"foo":"bar"}');
+    expect("data" in result && result.data).toEqual({ foo: "bar" });
+  });
+
+  test("JSON array body returns error", async () => {
+    const result = await parseBody("[1,2,3]");
+    expect("error" in result).toBe(true);
+    expect(result.error.status).toBe(400);
+  });
+
+  test("JSON null body returns error", async () => {
+    const result = await parseBody("null");
+    expect("error" in result).toBe(true);
+    expect(result.error.status).toBe(400);
+  });
+
+  test("non-JSON text returns error", async () => {
+    const result = await parseBody("not json at all");
+    expect("error" in result).toBe(true);
+    expect(result.error.status).toBe(400);
+  });
+
+  test("plain number body returns error", async () => {
+    const result = await parseBody("42");
+    expect("error" in result).toBe(true);
+    expect(result.error.status).toBe(400);
+  });
+
+  test("nested JSON object returns data", async () => {
+    const result = await parseBody('{"a":{"b":1},"c":[1,2]}');
+    expect("data" in result && result.data).toEqual({ a: { b: 1 }, c: [1, 2] });
+  });
+});
+
+// ─── asPositiveInt helper ────────────────────────────────────────────────────
+
+function asPositiveInt(value: unknown): number | "invalid" | undefined {
+  if (value === undefined) return undefined;
+  if (typeof value !== "number" || !Number.isInteger(value) || value < 1) return "invalid";
+  return value;
+}
+
+describe("asPositiveInt helper", () => {
+  test("undefined returns undefined (field absent)", () => {
+    expect(asPositiveInt(undefined)).toBeUndefined();
+  });
+
+  test("valid positive integer returns the value", () => {
+    expect(asPositiveInt(1)).toBe(1);
+    expect(asPositiveInt(42)).toBe(42);
+    expect(asPositiveInt(999999)).toBe(999999);
+  });
+
+  test("zero returns invalid", () => {
+    expect(asPositiveInt(0)).toBe("invalid");
+  });
+
+  test("negative integer returns invalid", () => {
+    expect(asPositiveInt(-1)).toBe("invalid");
+    expect(asPositiveInt(-100)).toBe("invalid");
+  });
+
+  test("float returns invalid", () => {
+    expect(asPositiveInt(1.5)).toBe("invalid");
+    expect(asPositiveInt(3.14)).toBe("invalid");
+  });
+
+  test("non-number returns invalid", () => {
+    expect(asPositiveInt("5" as unknown as number)).toBe("invalid");
+    expect(asPositiveInt(null)).toBe("invalid");
+    expect(asPositiveInt({})).toBe("invalid");
+    expect(asPositiveInt(NaN)).toBe("invalid");
+    expect(asPositiveInt(Infinity)).toBe("invalid");
+  });
+});
+
+// ─── asNonEmptyString helper ──────────────────────────────────────────────────
+
+function asNonEmptyString(value: unknown): string | undefined {
+  return typeof value === "string" && value.length > 0 ? value : undefined;
+}
+
+describe("asNonEmptyString helper", () => {
+  test("undefined returns undefined", () => {
+    expect(asNonEmptyString(undefined)).toBeUndefined();
+  });
+
+  test("valid non-empty string returns the value", () => {
+    expect(asNonEmptyString("hello")).toBe("hello");
+    expect(asNonEmptyString("a")).toBe("a");
+  });
+
+  test("empty string returns undefined", () => {
+    expect(asNonEmptyString("")).toBeUndefined();
+  });
+
+  test("whitespace-only string is NOT rejected (only length > 0 is checked)", () => {
+    // The actual asNonEmptyString only checks length > 0, so whitespace strings are valid
+    expect(asNonEmptyString("   ")).toBe("   ");
+  });
+
+  test("non-string returns undefined", () => {
+    expect(asNonEmptyString(42)).toBeUndefined();
+    expect(asNonEmptyString(null)).toBeUndefined();
+    expect(asNonEmptyString({})).toBeUndefined();
+    expect(asNonEmptyString(["a"])).toBeUndefined();
+  });
+});

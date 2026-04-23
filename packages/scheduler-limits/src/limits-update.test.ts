@@ -222,6 +222,18 @@ describe("updateSchedulerLimits", () => {
     }
   });
 
+  test("top-level burn_rate: 42 (non-map) is rejected with mapping error", async () => {
+    // Top-level burn_rate IS validated as a mapping in normalizeLimitsPatch (line ~90).
+    // Unlike system_limits which silently ignores non-map values, burn_rate is enforced.
+    const result = await updateSchedulerLimits(h.config, h.events, {
+      burn_rate: 42 as unknown as Record<string, unknown>,
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.errors[0]).toContain("scheduler.burn_rate: must be a mapping");
+    }
+  });
+
   test("burn_rate.min_commits_per_hour top-level is rejected as unknown field", async () => {
     const result = await updateSchedulerLimits(h.config, h.events, {
       min_commits_per_hour: 5,

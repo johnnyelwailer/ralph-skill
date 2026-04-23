@@ -115,4 +115,59 @@ describe("migrate", () => {
       rmSync(dir, { recursive: true, force: true });
     }
   });
+
+  test("loadMigrationsFromDir returns empty array for an empty directory", () => {
+    const dir = mkdtempSync(join(tmpdir(), "mig-empty-"));
+    try {
+      const migs = loadMigrationsFromDir(dir);
+      expect(migs).toEqual([]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("loadMigrationsFromDir silently skips non-.sql files", () => {
+    const dir = mkdtempSync(join(tmpdir(), "mig-skip-"));
+    try {
+      writeFileSync(join(dir, "001-valid.sql"), "CREATE TABLE t1 (id INTEGER PRIMARY KEY)");
+      writeFileSync(join(dir, "README.txt"), "not a migration");
+      writeFileSync(join(dir, "002-also-valid.sql"), "CREATE TABLE t2 (id INTEGER PRIMARY KEY)");
+      writeFileSync(join(dir, ".hidden"), "ignored");
+      const migs = loadMigrationsFromDir(dir);
+      expect(migs.map((m) => ({ version: m.version, name: m.name }))).toEqual([
+        { version: 1, name: "valid" },
+        { version: 2, name: "also-valid" },
+      ]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("loadMigrationsFromDir returns migrations sorted by version number", () => {
+    const dir = mkdtempSync(join(tmpdir(), "mig-sorted-"));
+    try {
+      writeFileSync(join(dir, "003-third.sql"), "-- third");
+      writeFileSync(join(dir, "001-first.sql"), "-- first");
+      writeFileSync(join(dir, "002-second.sql"), "-- second");
+      const migs = loadMigrationsFromDir(dir);
+      expect(migs.map((m) => m.version)).toEqual([1, 2, 3]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("loadMigrationsFromDir includes SQL content in returned migration", () => {
+    const dir = mkdtempSync(join(tmpdir(), "mig-content-"));
+    try {
+      const sql = "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT NOT NULL)";
+      writeFileSync(join(dir, "042-users-table.sql"), sql);
+      const migs = loadMigrationsFromDir(dir);
+      expect(migs).toHaveLength(1);
+      expect(migs[0]!.version).toBe(42);
+      expect(migs[0]!.name).toBe("users-table");
+      expect(migs[0]!.sql).toBe(sql);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
 });

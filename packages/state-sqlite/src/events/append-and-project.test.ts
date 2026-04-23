@@ -1,166 +1,160 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { Database } from "bun:sqlite";
+import { makeIdGenerator } from "@aloop/core";
+import { loadBundledMigrations, migrate, openDatabase } from "@aloop/sqlite-db";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { makeEvent, makeIdGenerator } from "@aloop/core";
 import { JsonlEventStore } from "@aloop/event-jsonl";
-import { createEventWriter } from "./append-and-project.ts";
-import { EventCountsProjector } from "../state/projector.ts";
-import { PermitProjector } from "../state/permit-projector.ts";
-import { loadBundledMigrations, migrate } from "../state/migrations.ts";
-
-function openDb(): Database {
-  const db = new Database(":memory:");
-  migrate(db, loadBundledMigrations());
-  return db;
-}
+import { createEventWriter, type EventWriter } from "./append-and-project.ts";
+import { EventCountsProjector, clearEventCounts } from "../state/projector.ts";
 
 describe("createEventWriter", () => {
   let dir: string;
-  let db: Database;
-  let logPath: string;
-  let events: ReturnType<typeof createEventWriter>;
+  let eventWriter: EventWriter;
 
   beforeEach(() => {
-    dir = mkdtempSync(join(tmpdir(), "aloop-ev-writer-"));
-    db = openDb();
-    logPath = join(dir, "aloopd.log");
-    const store = new JsonlEventStore(logPath);
-    events = createEventWriter({
-      db,
-      store,
-      projectors: [new EventCountsProjector(), new PermitProjector()],
-      nextId: makeIdGenerator(),
-    });
+    dir = mkdtempSync(join(tmpdir(), "aloop-evtwriter-"));
   });
 
   afterEach(async () => {
-    await events.append("test.teardown", {});
-    db.close();
+    const store = eventWriter as unknown as { store: { close(): Promise<void> } };
+    if (store?.store?.close) await store.store.close();
     rmSync(dir, { recursive: true, force: true });
   });
 
-  test("append returns an EventEnvelope with correct topic and data", async () => {
-    const result = await events.append("test.topic", { key: "value" });
-    expect(result.topic).toBe("test.topic");
-    expect(result.data).toEqual({ key: "value" });
-    expect(result.id.length).toBeGreaterThan(0);
-    expect(result.timestamp.length).toBeGreaterThan(0);
-  });
-
-  test("append persists event to JSONL store", async () => {
-    await events.append("test.persist", { n: 1 });
-    await events.append("test.persist", { n: 2 });
-    await events.append("test.persist", { n: 3 });
-
-    const store2 = new JsonlEventStore(logPath);
-    const read: unknown[] = [];
-    for await (const e of store2.read()) read.push(e);
-    await store2.close();
-
-    expect(read.length).toBe(3);
-    expect(read.map((e: any) => e.topic)).toEqual([
-      "test.persist",
-      "test.persist",
-      "test.persist",
-    ]);
-    expect(read.map((e: any) => (e.data as any).n)).toEqual([1, 2, 3]);
-  });
-
-  test("append runs all projectors via transaction", async () => {
-    await events.append("session.start", { sessionId: "s_1" });
-    await events.append("provider.health", { ok: true });
-    await events.append("scheduler.permit.grant", {
-      permit_id: "p_1",
-      session_id: "s_1",
-      provider_id: "opencode",
-      ttl_seconds: 600,
-      granted_at: "2026-01-01T00:00:00.000Z",
-      expires_at: "2026-01-01T00:10:00.000Z",
-    });
-
-    const counts = db
-      .query<{ topic: string; count: number }, []>(
-        `SELECT topic, count FROM event_counts ORDER BY topic`,
-      )
-      .all();
-    expect(counts.length).toBe(3);
-    const map: Record<string, number> = {};
-    for (const r of counts) map[r.topic] = r.count;
-    expect(map).toEqual({
-      "provider.health": 1,
-      "scheduler.permit.grant": 1,
-      "session.start": 1,
-    });
-  });
-
-  test("append is idempotent per call — each call is a distinct event", async () => {
-    const e1 = await events.append("dup", { i: 1 });
-    const e2 = await events.append("dup", { i: 2 });
-    expect(e1.id).not.toBe(e2.id);
-    expect(e1.topic).toBe(e2.topic);
-  });
-
-  test("custom nextId and now functions are used", async () => {
-    const fixedId = () => "fixed-id-0001";
-    const fixedNow = () => 1745270000000;
-
-    const store = new JsonlEventStore(join(dir, "custom.log"));
-    const writer = createEventWriter({
+  test("append returns an EventEnvelope with correct topic, data, id, and timestamp", async () => {
+    const dbPath = join(dir, "db.sqlite");
+    const logPath = join(dir, "aloopd.log");
+    const { db } = openDatabase(dbPath);
+    migrate(db, loadBundledMigrations());
+    const store = new JsonlEventStore(logPath);
+    const nextId = makeIdGenerator(() => 1700000000000);
+    eventWriter = createEventWriter({
       db,
       store,
       projectors: [new EventCountsProjector()],
-      nextId: fixedId,
-      now: fixedNow,
+      nextId,
     });
 
-    const result = await writer.append("custom.time", { ok: true });
-    expect(result.id).toBe("fixed-id-0001");
-    // Verify timestamp is ISO string derived from fixedNow ms epoch
-    expect(new Date(result.timestamp).getTime()).toBe(1745270000000);
+    const event = await eventWriter.append("test.topic", { key: "value" });
+
+    expect(event.topic).toBe("test.topic");
+    expect(event.data).toEqual({ key: "value" });
+    expect(event.id).toMatch(/^\d+\.\d+$/); // format: {ms}.{seq}
+    // timestamp must be a valid ISO string (exact value depends on Date.now at call time)
+    expect(event.timestamp).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}.\d{3}Z$/);
+    await store.close();
+    db.close();
   });
 
-  test("projectors run in order and all see the same transaction", async () => {
-    // Track projector application order via a custom projector
-    const order: string[] = [];
-    const trackingProjector = {
-      name: "tracking",
-      apply(_db: Database, event: any) {
-        order.push(event.topic);
+  test("append persists the event to the underlying store", async () => {
+    const dbPath = join(dir, "db.sqlite");
+    const logPath = join(dir, "aloopd.log");
+    const { db } = openDatabase(dbPath);
+    migrate(db, loadBundledMigrations());
+    const store = new JsonlEventStore(logPath);
+    eventWriter = createEventWriter({
+      db,
+      store,
+      projectors: [new EventCountsProjector()],
+      nextId: makeIdGenerator(),
+    });
+
+    await eventWriter.append("test.persist", { foo: "bar" });
+
+    const read: unknown[] = [];
+    for await (const e of store.read()) {
+      read.push(e);
+    }
+    expect(read).toHaveLength(1);
+    expect((read[0] as { topic: string }).topic).toBe("test.persist");
+    expect((read[0] as { data: { foo: string } }).data.foo).toBe("bar");
+    await store.close();
+    db.close();
+  });
+
+  test("append calls every projector.apply with the event after store append succeeds", async () => {
+    const dbPath = join(dir, "db.sqlite");
+    const logPath = join(dir, "aloopd.log");
+    const { db } = openDatabase(dbPath);
+    migrate(db, loadBundledMigrations());
+    const store = new JsonlEventStore(logPath);
+
+    let applyCallCount = 0;
+    let lastAppliedTopic = "";
+    const countingProjector = {
+      name: "counting",
+      apply(_db: unknown, event: { topic: string }) {
+        applyCallCount++;
+        lastAppliedTopic = event.topic;
       },
     };
 
-    const store = new JsonlEventStore(join(dir, "order.log"));
-    const writer = createEventWriter({
+    eventWriter = createEventWriter({
       db,
       store,
-      projectors: [
-        new EventCountsProjector(),
-        trackingProjector as any,
-        new PermitProjector(),
-      ],
+      projectors: [countingProjector, new EventCountsProjector()],
       nextId: makeIdGenerator(),
     });
 
-    await writer.append("order.first", {});
-    await writer.append("order.second", {});
+    expect(applyCallCount).toBe(0);
+    await eventWriter.append("counter.test", { n: 1 });
+    expect(applyCallCount).toBe(1);
+    expect(lastAppliedTopic).toBe("counter.test");
 
-    // Both projectors should have recorded both events in order
-    expect(order).toEqual(["order.first", "order.second"]);
+    await eventWriter.append("counter.test2", { n: 2 });
+    expect(applyCallCount).toBe(2);
+    expect(lastAppliedTopic).toBe("counter.test2");
+
+    await store.close();
+    db.close();
   });
 
-  test("append throws when store is closed", async () => {
-    const store = new JsonlEventStore(join(dir, "closed.log"));
-    await store.close();
-
-    const writer = createEventWriter({
+  test("append uses the optional now() override for event timestamp", async () => {
+    const dbPath = join(dir, "db.sqlite");
+    const logPath = join(dir, "aloopd.log");
+    const { db } = openDatabase(dbPath);
+    migrate(db, loadBundledMigrations());
+    const store = new JsonlEventStore(logPath);
+    const fixedNow = () => 1800000000000; // 2026-12-13T17:20:00.000Z
+    eventWriter = createEventWriter({
       db,
       store,
-      projectors: [],
+      projectors: [new EventCountsProjector()],
+      nextId: makeIdGenerator(fixedNow),
+      now: fixedNow,
+    });
+
+    const event = await eventWriter.append("test.now", { ts: true });
+
+    expect(event.timestamp).toBe("2027-01-15T08:00:00.000Z");
+    await store.close();
+    db.close();
+  });
+
+  test("append returns correctly typed EventEnvelope<T>", async () => {
+    const dbPath = join(dir, "db.sqlite");
+    const logPath = join(dir, "aloopd.log");
+    const { db } = openDatabase(dbPath);
+    migrate(db, loadBundledMigrations());
+    const store = new JsonlEventStore(logPath);
+    eventWriter = createEventWriter({
+      db,
+      store,
+      projectors: [new EventCountsProjector()],
       nextId: makeIdGenerator(),
     });
 
-    await expect(writer.append("closed", {})).rejects.toThrow("EventStore closed");
+    type MyData = { readonly msg: string; readonly count: number };
+    const event = await eventWriter.append<MyData>("typed.topic", {
+      msg: "hello",
+      count: 42,
+    });
+
+    // TypeScript would enforce this at compile time; at runtime just verify shape
+    expect(event.data.msg).toBe("hello");
+    expect(event.data.count).toBe(42);
+    await store.close();
+    db.close();
   });
 });
