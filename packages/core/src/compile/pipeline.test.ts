@@ -351,4 +351,51 @@ describe("compilePipeline", () => {
     expect(keys).toEqual(["1", "2"]);
     expect(keys.every((k) => typeof k === "string")).toBe(true);
   });
+
+  test("compilePipeline always sets LoopPlan runtime fields to their initial values", () => {
+    // A complex config to prove these fields are not derived from config content
+    const config: PipelineConfig = {
+      pipeline: [{ agent: "build", repeat: 2 }],
+      finalizer: ["cleanup"],
+      triggers: { push: "main" },
+    };
+    const plan = compilePipeline(config);
+    // cyclePosition — starts at 0, not derived from repeat count
+    expect(plan.cyclePosition).toBe(0);
+    // finalizerPosition — always 0 at plan creation
+    expect(plan.finalizerPosition).toBe(0);
+    // iteration — always 1 at plan creation; runtime advances it
+    expect(plan.iteration).toBe(1);
+    // allTasksMarkedDone — always false at plan creation; runtime sets true
+    expect(plan.allTasksMarkedDone).toBe(false);
+    // version — always 1 for v1 schema
+    expect(plan.version).toBe(1);
+    // _v — schema version marker
+    expect(plan._v).toBe(1);
+  });
+
+  test("finalizerPosition is 0 even when finalizer array is non-empty", () => {
+    // finalizerPosition tracks position within the finalizer array during
+    // execution — it starts at 0 regardless of how many finalizer steps exist
+    const config: PipelineConfig = {
+      pipeline: [{ agent: "build" }],
+      finalizer: ["cleanup", "notify", "archive"],
+    };
+    const plan = compilePipeline(config);
+    expect(plan.finalizer).toEqual(["cleanup", "notify", "archive"]);
+    expect(plan.finalizerPosition).toBe(0);
+  });
+
+  test("iteration is 1 for a pipeline with multiple phases and repeats", () => {
+    // iteration is a runtime counter; compilePipeline always initializes to 1
+    const config: PipelineConfig = {
+      pipeline: [
+        { agent: "build", repeat: 3 },
+        { agent: "test", repeat: 2 },
+      ],
+    };
+    const plan = compilePipeline(config);
+    expect(plan.cycle).toHaveLength(5);
+    expect(plan.iteration).toBe(1);
+  });
 });
