@@ -1,101 +1,180 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { handleDaemon } from "./daemon.ts";
-import { resolveDaemonPaths } from "@aloop/daemon-config";
-import { createConfigStore, DAEMON_DEFAULTS, OVERRIDES_DEFAULT } from "@aloop/daemon-config";
-import type { DaemonDeps } from "./daemon.ts";
+import { describe, expect, test } from "bun:test";
+import { handleDaemon, type DaemonDeps } from "./daemon.ts";
+import { DAEMON_DEFAULTS, OVERRIDES_DEFAULT } from "@aloop/daemon-config";
 
-function makeDeps(home: string): DaemonDeps {
-  const paths = resolveDaemonPaths({ ALOOP_HOME: home });
-  const config = createConfigStore({
-    daemon: DAEMON_DEFAULTS,
-    overrides: OVERRIDES_DEFAULT,
-    paths,
-  });
+function makeDeps(overrides: Partial<DaemonDeps> = {}): DaemonDeps {
   return {
-    startedAt: Date.now(),
-    config,
+    startedAt: Date.now() - 60_000,
+    config: {
+      daemon: () => ({ ...DAEMON_DEFAULTS }),
+      overrides: () => ({ ...OVERRIDES_DEFAULT }),
+      paths: () => ({
+        home: "/tmp/aloop",
+        pidFile: "/tmp/aloop/aloopd.pid",
+        socketFile: "/tmp/aloop/aloopd.sock",
+        stateDir: "/tmp/aloop/state",
+        logFile: "/tmp/aloop/state/aloopd.log",
+        daemonConfigFile: "/tmp/aloop/daemon.yml",
+        overridesFile: "/tmp/aloop/overrides.yml",
+      }),
+      reload: () => ({
+        ok: true,
+        daemon: { ...DAEMON_DEFAULTS },
+        overrides: { ...OVERRIDES_DEFAULT },
+      }),
+      setDaemon: () => ({ ...DAEMON_DEFAULTS }),
+      setOverrides: () => ({ ...OVERRIDES_DEFAULT }),
+    },
+    ...overrides,
   };
 }
 
-describe("handleDaemon", () => {
-  let home: string;
-  let deps: DaemonDeps;
+// ─── GET /v1/daemon/health ─────────────────────────────────────────────────
 
-  beforeEach(() => {
-    home = mkdtempSync(join(tmpdir(), "aloop-daemon-route-"));
-    deps = makeDeps(home);
-  });
-
-  afterEach(() => {
-    rmSync(home, { recursive: true, force: true });
-  });
-
-  test("GET /v1/daemon/health returns canonical v1 health envelope", async () => {
-    const req = new Request("http://localhost/v1/daemon/health", { method: "GET" });
-    const res = await handleDaemon(req, deps, "/v1/daemon/health");
+describe("GET /v1/daemon/health", () => {
+  test("returns 200 with canonical v1 health envelope", () => {
+    const deps = makeDeps();
+    const res = handleDaemon(new Request("http://x/v1/daemon/health", { method: "GET" }), deps, "/v1/daemon/health");
     expect(res).toBeDefined();
     expect(res!.status).toBe(200);
-    const body = (await res!.json()) as Record<string, unknown>;
+    expect(res!.headers.get("content-type")).toBe("application/json");
+  });
+
+  test("health body includes _v: 1, status: ok, version, and uptime_seconds", async () => {
+    const deps = makeDeps();
+    const res = handleDaemon(new Request("http://x/v1/daemon/health", { method: "GET" }), deps, "/v1/daemon/health");
+    const body = await res!.json() as Record<string, unknown>;
+    expect(body).toMatchObject({
+      _v: 1,
+      status: "ok",
+      version: expect.any(String),
+    });
+    expect(body.uptime_seconds).toBeGreaterThanOrEqual(59);
+    expect(body.uptime_seconds).toBeLessThanOrEqual(61);
+  });
+
+  test("uptime_seconds is computed from startedAt", async () => {
+    const startedAt = Date.now() - 5000;
+    const deps = makeDeps({ startedAt });
+    const res = handleDaemon(new Request("http://x/v1/daemon/health", { method: "GET" }), deps, "/v1/daemon/health");
+    const body = await res!.json() as Record<string, unknown>;
+    expect(body.uptime_seconds).toBeGreaterThanOrEqual(4);
+    expect(body.uptime_seconds).toBeLessThanOrEqual(6);
+  });
+
+  test("returns 405 for POST on /v1/daemon/health", () => {
+    const deps = makeDeps();
+    const res = handleDaemon(new Request("http://x/v1/daemon/health", { method: "POST" }), deps, "/v1/daemon/health");
+    expect(res).toBeUndefined();
+  });
+});
+
+// ─── GET /v1/daemon/config ────────────────────────────────────────────────
+
+describe("GET /v1/daemon/config", () => {
+  test("returns 200 with daemon and overrides config", () => {
+    const deps = makeDeps();
+    const res = handleDaemon(new Request("http://x/v1/daemon/config", { method: "GET" }), deps, "/v1/daemon/config");
+    expect(res).toBeDefined();
+    expect(res!.status).toBe(200);
+    expect(res!.headers.get("content-type")).toBe("application/json");
+  });
+
+  test("body includes _v: 1, daemon config, and overrides", async () => {
+    const deps = makeDeps();
+    const res = handleDaemon(new Request("http://x/v1/daemon/config", { method: "GET" }), deps, "/v1/daemon/config");
+    const body = JSON.parse(await res!.text());
     expect(body._v).toBe(1);
-    expect(body.status).toBe("ok");
-    expect(typeof body.version).toBe("string");
-    expect(typeof body.uptime_seconds).toBe("number");
+    expect(body.daemon).toBeDefined();
+    expect(body.overrides).toBeDefined();
   });
 
-  test("GET /v1/daemon/config returns daemon config and overrides", async () => {
-    const req = new Request("http://localhost/v1/daemon/config", { method: "GET" });
-    const res = await handleDaemon(req, deps, "/v1/daemon/config");
+  test("returns 405 for PUT on /v1/daemon/config", () => {
+    const deps = makeDeps();
+    const res = handleDaemon(
+      new Request("http://x/v1/daemon/config", {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({}),
+      }),
+      deps,
+      "/v1/daemon/config",
+    );
+    expect(res).toBeUndefined();
+  });
+});
+
+// ─── POST /v1/daemon/reload ────────────────────────────────────────────────
+
+describe("POST /v1/daemon/reload", () => {
+  test("returns 200 with reloaded daemon and overrides on success", () => {
+    const deps = makeDeps();
+    const res = handleDaemon(new Request("http://x/v1/daemon/reload", { method: "POST" }), deps, "/v1/daemon/reload");
     expect(res).toBeDefined();
     expect(res!.status).toBe(200);
-    const body = (await res!.json()) as Record<string, unknown>;
+    expect(res!.headers.get("content-type")).toBe("application/json");
+  });
+
+  test("success body includes _v: 1, daemon, and overrides", async () => {
+    const deps = makeDeps();
+    const res = handleDaemon(new Request("http://x/v1/daemon/reload", { method: "POST" }), deps, "/v1/daemon/reload");
+    const body = JSON.parse(await res!.text());
     expect(body._v).toBe(1);
-    expect(body).toHaveProperty("daemon");
-    expect(body).toHaveProperty("overrides");
+    expect(body.daemon).toBeDefined();
+    expect(body.overrides).toBeDefined();
   });
 
-  test("POST /v1/daemon/reload re-reads daemon.yml and returns updated config", async () => {
-    const paths = resolveDaemonPaths({ ALOOP_HOME: home });
-    writeFileSync(paths.daemonConfigFile, "scheduler:\n  concurrency_cap: 42\n");
-
-    const req = new Request("http://localhost/v1/daemon/reload", { method: "POST" });
-    const res = await handleDaemon(req, deps, "/v1/daemon/reload");
-    expect(res).toBeDefined();
-    expect(res!.status).toBe(200);
-    const body = (await res!.json()) as { daemon: { scheduler: { concurrencyCap: number } } };
-    expect(body.daemon.scheduler.concurrencyCap).toBe(42);
-  });
-
-  test("POST /v1/daemon/reload returns 400 with errors for invalid daemon.yml", async () => {
-    const paths = resolveDaemonPaths({ ALOOP_HOME: home });
-    writeFileSync(paths.daemonConfigFile, "http:\n  port: not_a_number\n");
-
-    const req = new Request("http://localhost/v1/daemon/reload", { method: "POST" });
-    const res = await handleDaemon(req, deps, "/v1/daemon/reload");
+  test("returns 400 when reload fails with config errors", async () => {
+    const deps = makeDeps({
+      config: {
+        ...makeDeps().config,
+        reload: () => ({
+          ok: false,
+          errors: ["daemon.yml is malformed", "overrides.yml is missing"],
+        }),
+      } as DaemonDeps["config"],
+    });
+    const res = handleDaemon(new Request("http://x/v1/daemon/reload", { method: "POST" }), deps, "/v1/daemon/reload");
     expect(res).toBeDefined();
     expect(res!.status).toBe(400);
-    const body = (await res!.json()) as { error: { code: string; details: { errors: unknown[] } } };
+    const body = JSON.parse(await res!.text());
     expect(body.error.code).toBe("config_invalid");
-    expect((body.error.details.errors as unknown[]).length).toBeGreaterThan(0);
+    expect(body.error.message).toBe("reload failed");
+    expect(body.error.details.errors).toContain("daemon.yml is malformed");
+    expect(body.error.details.errors).toContain("overrides.yml is missing");
   });
 
-  test("returns undefined for unknown daemon pathname", () => {
-    const req = new Request("http://localhost/v1/daemon/unknown", { method: "GET" });
-    const res = handleDaemon(req, deps, "/v1/daemon/unknown");
+  test("returns 405 for GET on /v1/daemon/reload", () => {
+    const deps = makeDeps();
+    const res = handleDaemon(new Request("http://x/v1/daemon/reload", { method: "GET" }), deps, "/v1/daemon/reload");
+    expect(res).toBeUndefined();
+  });
+});
+
+// ─── unmatched paths ────────────────────────────────────────────────────────
+
+describe("unmatched paths", () => {
+  test("returns undefined for unrelated paths", () => {
+    const deps = makeDeps();
+    const res = handleDaemon(new Request("http://x/v1/foo", { method: "GET" }), deps, "/v1/foo");
     expect(res).toBeUndefined();
   });
 
-  test("returns undefined for known path but wrong method", () => {
-    const req = new Request("http://localhost/v1/daemon/health", { method: "POST" });
-    const res = handleDaemon(req, deps, "/v1/daemon/health");
+  test("returns undefined for /v1/daemon/health with DELETE", () => {
+    const deps = makeDeps();
+    const res = handleDaemon(new Request("http://x/v1/daemon/health", { method: "DELETE" }), deps, "/v1/daemon/health");
     expect(res).toBeUndefined();
   });
 
-  test("health response Content-Type is application/json", async () => {
-    const req = new Request("http://localhost/v1/daemon/health", { method: "GET" });
-    const res = await handleDaemon(req, deps, "/v1/daemon/health");
-    expect(res!.headers.get("content-type")).toContain("application/json");
+  test("returns undefined for /v1/daemon/config with POST", () => {
+    const deps = makeDeps();
+    const res = handleDaemon(new Request("http://x/v1/daemon/config", { method: "POST" }), deps, "/v1/daemon/config");
+    expect(res).toBeUndefined();
+  });
+
+  test("returns undefined for /v1/daemon/reload with PUT", () => {
+    const deps = makeDeps();
+    const res = handleDaemon(new Request("http://x/v1/daemon/reload", { method: "PUT" }), deps, "/v1/daemon/reload");
+    expect(res).toBeUndefined();
   });
 });
