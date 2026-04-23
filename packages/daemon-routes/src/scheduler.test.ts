@@ -319,3 +319,83 @@ describe("unknown routes", () => {
     expect(res).toBeUndefined();
   });
 });
+
+// ─── asNonEmptyString ─────────────────────────────────────────────────────────
+
+function asNonEmptyString(value: unknown): string | undefined {
+  return typeof value === "string" && value.length > 0 ? value : undefined;
+}
+
+describe("asNonEmptyString", () => {
+  test("returns the string when given a non-empty string", () => {
+    expect(asNonEmptyString("hello")).toBe("hello");
+    expect(asNonEmptyString("a")).toBe("a");
+  });
+
+  test("returns undefined for empty string", () => {
+    expect(asNonEmptyString("")).toBeUndefined();
+  });
+
+  test("returns undefined for non-string values", () => {
+    expect(asNonEmptyString(42)).toBeUndefined();
+    expect(asNonEmptyString(null)).toBeUndefined();
+    expect(asNonEmptyString(undefined)).toBeUndefined();
+    expect(asNonEmptyString({})).toBeUndefined();
+    expect(asNonEmptyString([])).toBeUndefined();
+    expect(asNonEmptyString(true)).toBeUndefined();
+  });
+
+  // Note: asNonEmptyString does NOT trim whitespace — whitespace-only strings
+  // are returned as-is and rejected downstream by handler validation.
+  test("whitespace-only strings are returned (not trimmed by this helper)", () => {
+    expect(asNonEmptyString("   ")).toBe("   ");
+    expect(asNonEmptyString("\t")).toBe("\t");
+    expect(asNonEmptyString("\n")).toBe("\n");
+  });
+});
+
+// ─── asPositiveInt ─────────────────────────────────────────────────────────────
+
+function asPositiveInt(value: unknown): number | "invalid" | undefined {
+  if (value === undefined) return undefined;
+  if (typeof value !== "number" || !Number.isInteger(value) || value < 1) return "invalid";
+  return value;
+}
+
+describe("asPositiveInt", () => {
+  test("returns the number when given a positive integer", () => {
+    expect(asPositiveInt(1)).toBe(1);
+    expect(asPositiveInt(42)).toBe(42);
+    expect(asPositiveInt(1_000_000)).toBe(1_000_000);
+  });
+
+  test("returns undefined when value is undefined", () => {
+    expect(asPositiveInt(undefined)).toBeUndefined();
+  });
+
+  test("returns 'invalid' for non-number values", () => {
+    expect(asPositiveInt("42")).toBe("invalid");
+    expect(asPositiveInt(null)).toBe("invalid");
+    expect(asPositiveInt({})).toBe("invalid");
+    expect(asPositiveInt([])).toBe("invalid");
+    expect(asPositiveInt(true)).toBe("invalid");
+  });
+
+  test("returns 'invalid' for zero and negative integers", () => {
+    expect(asPositiveInt(0)).toBe("invalid");
+    expect(asPositiveInt(-1)).toBe("invalid");
+    expect(asPositiveInt(-999)).toBe("invalid");
+  });
+
+  test("returns 'invalid' for non-integer numbers", () => {
+    expect(asPositiveInt(1.5)).toBe("invalid");
+    expect(asPositiveInt(3.14)).toBe("invalid");
+    expect(asPositiveInt(-0.5)).toBe("invalid");
+  });
+
+  test("returns 'invalid' for NaN and Infinity", () => {
+    expect(asPositiveInt(NaN)).toBe("invalid");
+    expect(asPositiveInt(Infinity)).toBe("invalid");
+    expect(asPositiveInt(-Infinity)).toBe("invalid");
+  });
+});
