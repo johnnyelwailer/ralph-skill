@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { openDatabase, ProjectRegistry } from "@aloop/state-sqlite";
-import { createProject, patchProject } from "./projects-write.ts";
+import { archiveProject, createProject, purgeProject, patchProject } from "./projects-write.ts";
 import type { Deps } from "./projects-common.ts";
 
 function makeDeps(dir: string): Deps {
@@ -163,5 +163,77 @@ describe("patchProject", () => {
     const body = await (res as Response).json();
     expect(body.error.code).toBe("project_not_found");
     expect(body.error.details.id).toBe("no-such-id");
+  });
+});
+
+// ─── archiveProject ──────────────────────────────────────────────────────────
+
+describe("archiveProject", () => {
+  let dir: string;
+  let deps: Deps;
+  let projectId: string;
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), "aloop-proj-write-"));
+    deps = makeDeps(dir);
+    projectId = deps.registry.create({ absPath: "/archivable", name: "to-archive" }).id;
+  });
+
+  afterEach(() => {
+    const reg = deps.registry as unknown as { _db: { close(): void } };
+    reg._db?.close();
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  test("returns 200 with archived project", async () => {
+    const res = archiveProject(projectId, deps);
+    expect(res.status).toBe(200);
+    const body = await (res as Response).json();
+    expect(body.status).toBe("archived");
+    expect(body.id).toBe(projectId);
+  });
+
+  test("returns 404 when project not found", async () => {
+    const res = archiveProject("no-such-id", deps);
+    expect(res.status).toBe(404);
+    const body = await (res as Response).json();
+    expect(body.error.code).toBe("project_not_found");
+    expect(body.error.details.id).toBe("no-such-id");
+  });
+});
+
+// ─── purgeProject ────────────────────────────────────────────────────────────
+
+describe("purgeProject", () => {
+  let dir: string;
+  let deps: Deps;
+  let projectId: string;
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), "aloop-proj-write-"));
+    deps = makeDeps(dir);
+    projectId = deps.registry.create({ absPath: "/purgable", name: "to-purge" }).id;
+  });
+
+  afterEach(() => {
+    const reg = deps.registry as unknown as { _db: { close(): void } };
+    reg._db?.close();
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  test("returns 204 and removes the project", () => {
+    const res = purgeProject(projectId, deps);
+    expect(res.status).toBe(204);
+    // project is gone from registry
+    expect(deps.registry.get(projectId)).toBeUndefined();
+  });
+
+  test("returns 404 when project not found", () => {
+    const res = purgeProject("no-such-id", deps);
+    expect(res.status).toBe(404);
+    (res as Response).json().then((body) => {
+      expect(body.error.code).toBe("project_not_found");
+      expect(body.error.details.id).toBe("no-such-id");
+    });
   });
 });
