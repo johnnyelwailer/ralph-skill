@@ -9,8 +9,6 @@ import {
 const NOW = Date.parse("2026-01-01T00:00:00.000Z");
 
 describe("createUnknownHealth", () => {
-
-describe("createUnknownHealth", () => {
   test("starts in unknown status", () => {
     const state = createUnknownHealth("opencode", NOW);
     expect(state.providerId).toBe("opencode");

@@ -1,8 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import {
-  ProjectAlreadyRegisteredError,
-  ProjectNotFoundError,
-} from "./project-types.ts";
+import { ProjectAlreadyRegisteredError, ProjectNotFoundError } from "@aloop/state-projects";
 
 describe("ProjectNotFoundError", () => {
   test("code is project_not_found", () => {
