@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { DAEMON_DEFAULTS, OVERRIDES_DEFAULT, type ConfigStore } from "@aloop/daemon-config";
 import { InMemoryProviderHealthStore, ProviderRegistry } from "@aloop/provider";
 import { handleProviders, type ProvidersDeps } from "./providers.ts";
+import { parseJsonBody } from "./providers-http.ts";
 
 function makeConfigStore(): ConfigStore {
   let overrides = { ...OVERRIDES_DEFAULT };
@@ -282,5 +283,121 @@ describe("POST /v1/providers/resolve-chain", () => {
     );
     expect(res).toBeDefined();
     expect(res!.status).toBe(405);
+  });
+
+  test("returns 400 when session_id is a number instead of string", async () => {
+    const deps = makeDeps();
+    const res = await handleProviders(
+      new Request("http://x/v1/providers/resolve-chain", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ session_id: 12345 }),
+      }),
+      deps,
+      "/v1/providers/resolve-chain",
+    );
+    expect(res!.status).toBe(400);
+  });
+
+  test("returns 400 when provider_chain is a number instead of array", async () => {
+    const deps = makeDeps();
+    const res = await handleProviders(
+      new Request("http://x/v1/providers/resolve-chain", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ session_id: "sess_valid", provider_chain: 42 }),
+      }),
+      deps,
+      "/v1/providers/resolve-chain",
+    );
+    expect(res!.status).toBe(400);
+  });
+
+  test("returns 400 when provider_chain is a string instead of array", async () => {
+    const deps = makeDeps();
+    const res = await handleProviders(
+      new Request("http://x/v1/providers/resolve-chain", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ session_id: "sess_ok", provider_chain: "opencode" }),
+      }),
+      deps,
+      "/v1/providers/resolve-chain",
+    );
+    expect(res!.status).toBe(400);
+  });
+});
+
+// ─── PUT /v1/providers/overrides JSON body edge cases ──────────────────────
+
+describe("PUT /v1/providers/overrides JSON body validation", () => {
+  test("returns 400 for JSON array body", async () => {
+    const deps = makeDeps();
+    const res = await handleProviders(
+      new Request("http://x/v1/providers/overrides", {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(["not", "an", "object"]),
+      }),
+      deps,
+      "/v1/providers/overrides",
+    );
+    expect(res!.status).toBe(400);
+    const body = (await res!.json()) as { error: { code: string } };
+    expect(body.error.code).toBe("bad_request");
+  });
+
+  test("returns 400 for JSON null body", async () => {
+    const deps = makeDeps();
+    const res = await handleProviders(
+      new Request("http://x/v1/providers/overrides", {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: "null",
+      }),
+      deps,
+      "/v1/providers/overrides",
+    );
+    expect(res!.status).toBe(400);
+    const body = (await res!.json()) as { error: { code: string } };
+    expect(body.error.code).toBe("bad_request");
+  });
+
+  test("returns 400 for invalid JSON text", async () => {
+    const deps = makeDeps();
+    const res = await handleProviders(
+      new Request("http://x/v1/providers/overrides", {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: "not valid json {{{",
+      }),
+      deps,
+      "/v1/providers/overrides",
+    );
+    expect(res!.status).toBe(400);
+    const body = (await res!.json()) as { error: { code: string } };
+    expect(body.error.code).toBe("bad_request");
+  });
+});
+
+// ─── parseJsonBody throws on req.text() failure ─────────────────────────────
+
+describe("parseJsonBody handles text() failure", () => {
+  test("returns 400 error when req.text() throws", async () => {
+    // A Request whose body throws on text() access
+    const badReq = new Request("http://x", {
+      method: "POST",
+      body: {
+        async text() {
+          throw new Error("read error");
+        },
+      } as Body,
+    });
+    const result = await parseJsonBody(badReq);
+    expect(result).toEqual({ error: expect.any(Response) });
+    const err = (result as { error: Response }).error;
+    expect(err.status).toBe(400);
+    const body = await err.json();
+    expect((body as { error: { code: string } }).error.code).toBe("bad_request");
   });
 });
