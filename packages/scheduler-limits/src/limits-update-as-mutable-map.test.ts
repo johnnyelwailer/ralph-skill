@@ -6,13 +6,43 @@ import { updateSchedulerLimits } from "./limits-update";
 // We verify its edge-case behaviour through the public API.
 
 describe("asMutableMap edge cases via updateSchedulerLimits", () => {
-  test("returns ok=false when scheduler yaml serialises to a non-object value (null)", async () => {
-    // We can't directly pass null through updateSchedulerLimits, but we can
-    // verify the code path that would exercise asMutableMap({}) returning {}.
-    // An empty object patch is valid and exercises the asMutableMap codepath.
+  test("empty patch {} is valid — exercises asMutableMap on nested config objects", async () => {
+    // normalizeLimitsPatch returns {} for {}, so Object.keys(patch).length === 0.
+    // But the test "empty patch {} is accepted" in limits-update.test.ts shows ok=true
+    // because the current daemon defaults ARE valid. This verifies the asMutableMap({})
+    // fallback path does not throw when system_limits/burn_rate are objects.
     const h = makeHarness();
     const result = await updateSchedulerLimits(h.config, h.events, {});
     expect(result.ok).toBe(true);
+    await h.close();
+  });
+
+  test("partial patch with only nested system_limits exercises asMutableMap on system_limits", async () => {
+    // When system_limits exists in the config and is a valid object,
+    // asMutableMap returns it directly. When only burn_rate fields are patched,
+    // the system_limits path still exists in the config as a valid object.
+    const h = makeHarness();
+    // Update only burn_rate fields — system_limits in config remains a valid object
+    const result = await updateSchedulerLimits(h.config, h.events, {
+      burn_rate: { min_commits_per_hour: 1 },
+    });
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.limits.burnRate.minCommitsPerHour).toBe(1);
+    }
+    await h.close();
+  });
+
+  test("partial patch with only nested burn_rate exercises asMutableMap on burn_rate", async () => {
+    const h = makeHarness();
+    // Update only system_limits — burn_rate in config remains a valid object
+    const result = await updateSchedulerLimits(h.config, h.events, {
+      system_limits: { cpu_max_pct: 50 },
+    });
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.limits.systemLimits.cpuMaxPct).toBe(50);
+    }
     await h.close();
   });
 });
