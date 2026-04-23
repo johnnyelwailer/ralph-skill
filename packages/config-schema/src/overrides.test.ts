@@ -87,6 +87,17 @@ describe("loadOverridesConfig", () => {
     expect(r).toEqual({ ok: true, value: OVERRIDES_DEFAULT });
   });
 
+  test("returns an error when file contains malformed YAML", () => {
+    const path = join(dir, "bad.yml");
+    writeFileSync(path, "allow:\n  - opencode\n  nope: [");
+
+    const r = loadOverridesConfig(path);
+    expect(r.ok).toBe(false);
+    if (!r.ok) {
+      expect(r.errors[0]).toContain("yaml parse error");
+    }
+  });
+
   test("loads and parses an existing file", () => {
     const path = join(dir, "overrides.yml");
     writeFileSync(path, "allow:\n  - opencode\n  - copilot\nforce: claude/opus@4.7\n");
