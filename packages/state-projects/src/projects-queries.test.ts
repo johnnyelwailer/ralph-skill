@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { Database } from "bun:sqlite";
 import {
+  canonicalizeProjectPath,
   getProjectById,
   getProjectByPath,
   listProjectsFromDb,
@@ -174,5 +175,29 @@ describe("listProjectsFromDb", () => {
     );
     const project = getProjectById(db, "p6")!;
     expect(project.lastActiveAt).toBeNull();
+  });
+});
+
+describe("canonicalizeProjectPath", () => {
+  test("resolves an existing path via realpathSync", () => {
+    // /tmp is guaranteed to exist on unix systems
+    const result = canonicalizeProjectPath("/tmp");
+    expect(result).toBe("/tmp");
+  });
+
+  test("strips trailing slashes from a nonexistent path and returns it as-is", () => {
+    const result = canonicalizeProjectPath("/nonexistent/path/to/project///");
+    expect(result).toBe("/nonexistent/path/to/project");
+  });
+
+  test("returns a normalized path when realpathSync throws (nonexistent dir)", () => {
+    // When realpathSync fails, the catch branch strips trailing slashes
+    const result = canonicalizeProjectPath("/tmp/also-does-not-exist///");
+    expect(result).toBe("/tmp/also-does-not-exist");
+  });
+
+  test("result is always absolute (starts with /)", () => {
+    const result = canonicalizeProjectPath("/tmp");
+    expect(result.startsWith("/")).toBe(true);
   });
 });
