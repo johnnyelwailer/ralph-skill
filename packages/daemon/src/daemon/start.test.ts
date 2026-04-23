@@ -126,3 +126,78 @@ describe("startDaemon error handling", () => {
     await expect(startDaemon({ port: 0, paths })).rejects.toThrow(/overrides.yml invalid/);
   });
 });
+
+describe("RunningDaemon.stop()", () => {
+  let home: string;
+
+  beforeEach(() => {
+    home = mkdtempSync(join(tmpdir(), "aloop-stop-test-"));
+  });
+
+  afterEach(async () => {
+    rmSync(home, { recursive: true, force: true });
+  });
+
+  test("stop() is callable without throwing", async () => {
+    const daemon = await startDaemon({
+      port: 0,
+      paths: resolveDaemonPaths({ ALOOP_HOME: home }),
+    });
+    await expect(daemon.stop()).resolves.toBeUndefined();
+  });
+
+  test("stop() can be called multiple times without throwing", async () => {
+    const daemon = await startDaemon({
+      port: 0,
+      paths: resolveDaemonPaths({ ALOOP_HOME: home }),
+    });
+    await daemon.stop();
+    // Second call should also resolve cleanly
+    await expect(daemon.stop()).resolves.toBeUndefined();
+  });
+
+  test("after stop(), HTTP server is no longer listening", async () => {
+    const daemon = await startDaemon({
+      port: 0,
+      paths: resolveDaemonPaths({ ALOOP_HOME: home }),
+    });
+    const url = `http://${daemon.http.hostname}:${daemon.http.port}/v1/daemon/health`;
+    // Verify server is up
+    const before = await fetch(url);
+    expect(before.status).toBe(200);
+
+    await daemon.stop();
+
+    // Server should be closed — fetch should fail (connection refused or timeout)
+    await expect(fetch(url)).rejects.toThrow();
+  });
+
+  test("after stop(), the pid lock is released and a new daemon can start", async () => {
+    const paths = resolveDaemonPaths({ ALOOP_HOME: home });
+    const first = await startDaemon({
+      port: 0,
+      paths,
+    });
+    await first.stop();
+
+    // A new daemon should be able to acquire the lock immediately
+    const second = await startDaemon({
+      port: 0,
+      paths,
+    });
+    expect(second.http.port).toBeTruthy();
+    await second.stop();
+  });
+
+  test("after stop(), events store is closed", async () => {
+    const daemon = await startDaemon({
+      port: 0,
+      paths: resolveDaemonPaths({ ALOOP_HOME: home }),
+    });
+    const events = daemon.events;
+    await daemon.stop();
+
+    // Appending after stop should fail since the store is closed
+    await expect(events.append("test.topic", {})).rejects.toThrow();
+  });
+});
