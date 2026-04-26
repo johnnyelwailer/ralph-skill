@@ -210,6 +210,18 @@ describe("pctField", () => {
     expect(pctField(Infinity, "path.name", 99, errors)).toBe(99);
     expect(errors).toContain("path.name: must be a number in [0, 100]");
   });
+
+  test("records error and returns default for non-number type", () => {
+    const errors: string[] = [];
+    expect(pctField("50" as unknown as number, "path.name", 99, errors)).toBe(99);
+    expect(errors).toContain("path.name: must be a number in [0, 100]");
+    const errors2: string[] = [];
+    expect(pctField({ value: 50 } as unknown as number, "path.name", 99, errors2)).toBe(99);
+    expect(errors2).toContain("path.name: must be a number in [0, 100]");
+    const errors3: string[] = [];
+    expect(pctField(true as unknown as number, "path.name", 99, errors3)).toBe(99);
+    expect(errors3).toContain("path.name: must be a number in [0, 100]");
+  });
 });
 
 describe("portField", () => {
@@ -250,6 +262,18 @@ describe("portField", () => {
     const errors: string[] = [];
     expect(portField(80.5, "path.name", 8080, errors)).toBe(8080);
     expect(errors).toContain("path.name: must be an integer in [0, 65535] or null");
+  });
+
+  test("records error and returns default for non-number type", () => {
+    const errors: string[] = [];
+    expect(portField("8080" as unknown as number, "path.name", 8080, errors)).toBe(8080);
+    expect(errors).toContain("path.name: must be an integer in [0, 65535] or null");
+    const errors2: string[] = [];
+    expect(portField({ port: 8080 } as unknown as number, "path.name", 8080, errors2)).toBe(8080);
+    expect(errors2).toContain("path.name: must be an integer in [0, 65535] or null");
+    const errors3: string[] = [];
+    expect(portField(true as unknown as number, "path.name", 8080, errors3)).toBe(8080);
+    expect(errors3).toContain("path.name: must be an integer in [0, 65535] or null");
   });
 });
 
