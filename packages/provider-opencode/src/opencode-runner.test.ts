@@ -199,3 +199,77 @@ describe("runOpencodeCli", () => {
     }
   });
 });
+
+describe("sanitizeProviderEnvironment", () => {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  let prevClaudecode: string | undefined;
+
+  beforeEach(() => {
+    // Snapshot CLAUDECODE before each test so we can restore it
+    prevClaudecode = process.env.CLAUDECODE;
+    // Ensure it is set for tests that verify removal
+    process.env.CLAUDECODE = "test-session-token";
+    process.env.OPENAI_API_KEY = "sk-existing-key";
+    process.env.NODE_ENV = "test";
+  });
+
+  afterEach(() => {
+    // Restore whatever CLAUDECODE value was there (or delete it)
+    if (prevClaudecode !== undefined) {
+      process.env.CLAUDECODE = prevClaudecode;
+    } else {
+      delete process.env.CLAUDECODE;
+    }
+    delete process.env.OPENAI_API_KEY;
+    delete process.env.NODE_ENV;
+  });
+
+  test("returns a plain object that is a copy of process.env", () => {
+    const { sanitizeProviderEnvironment } = require("./opencode-runner.ts");
+    const env = sanitizeProviderEnvironment(undefined);
+    expect(env).toBeDefined();
+    expect(typeof env).toBe("object");
+    // Must be a new object, not the same reference
+    expect(env).not.toBe(process.env);
+  });
+
+  test("always removes CLAUDECODE even when it is not set", () => {
+    delete process.env.CLAUDECODE;
+    const { sanitizeProviderEnvironment } = require("./opencode-runner.ts");
+    const env = sanitizeProviderEnvironment(undefined);
+    expect(env.CLAUDECODE).toBeUndefined();
+  });
+
+  test("removes CLAUDECODE when it is present in process.env", () => {
+    const { sanitizeProviderEnvironment } = require("./opencode-runner.ts");
+    const env = sanitizeProviderEnvironment(undefined);
+    expect(env.CLAUDECODE).toBeUndefined();
+  });
+
+  test("preserves all other environment variables", () => {
+    const { sanitizeProviderEnvironment } = require("./opencode-runner.ts");
+    const env = sanitizeProviderEnvironment(undefined);
+    expect(env.OPENAI_API_KEY).toBe("sk-existing-key");
+    expect(env.NODE_ENV).toBe("test");
+  });
+
+  test("merges extra env vars, overriding process.env values", () => {
+    const { sanitizeProviderEnvironment } = require("./opencode-runner.ts");
+    const env = sanitizeProviderEnvironment({ OPENAI_API_KEY: "sk-overridden" });
+    expect(env.OPENAI_API_KEY).toBe("sk-overridden");
+  });
+
+  test("extra vars not present in process.env are added", () => {
+    const { sanitizeProviderEnvironment } = require("./opencode-runner.ts");
+    const env = sanitizeProviderEnvironment({ OPENAI_API_KEY: "sk-test", ANTHROPIC_API_KEY: "sk-ant" });
+    expect(env.ANTHROPIC_API_KEY).toBe("sk-ant");
+  });
+
+  test("undefined extra returns only the sanitized process.env snapshot", () => {
+    const { sanitizeProviderEnvironment } = require("./opencode-runner.ts");
+    const env = sanitizeProviderEnvironment(undefined);
+    expect(env.OPENAI_API_KEY).toBe("sk-existing-key");
+    expect(env.NODE_ENV).toBe("test");
+    expect(env.CLAUDECODE).toBeUndefined();
+  });
+});
