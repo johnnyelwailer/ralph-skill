@@ -413,3 +413,35 @@ describe("purgeProject", () => {
     });
   });
 });
+
+// ─── purgeProject re-throws unknown errors ─────────────────────────────────
+
+describe("purgeProject re-throws unknown errors", () => {
+  let dir: string;
+  let deps: Deps;
+  let projectId: string;
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), "aloop-proj-write-"));
+    deps = makeDeps(dir);
+    projectId = deps.registry.create({ absPath: "/purgable", name: "to-purge" }).id;
+  });
+
+  afterEach(() => {
+    const reg = deps.registry as unknown as { _db: { close(): void } };
+    reg._db?.close();
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  test("re-throws unexpected errors from registry.purge", () => {
+    const reg = deps.registry as unknown as {
+      _db: { close(): void };
+      purge: () => never;
+    };
+    reg.purge = () => {
+      throw new Error("disk I/O error");
+    };
+
+    expect(() => purgeProject(projectId, deps)).toThrow("disk I/O error");
+  });
+});
