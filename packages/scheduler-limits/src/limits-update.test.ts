@@ -15,6 +15,7 @@ import { join } from "node:path";
 import {
   DAEMON_DEFAULTS,
   createConfigStore,
+  daemonConfigToRaw,
   resolveDaemonPaths,
   type ConfigStore,
 } from "@aloop/daemon-config";
@@ -250,5 +251,20 @@ describe("updateSchedulerLimits", () => {
     const events = await readAllEvents(h.logPath);
     const changedEvents = events.filter((e) => e.topic === "scheduler.limits.changed");
     expect(changedEvents.length).toBe(2);
+  });
+
+  test("returns errors from parseDaemonConfig when config state is invalid", async () => {
+    // Corrupt a non-scheduler top-level field (http.bind) which normalizeLimitsPatch
+    // does NOT touch, so the corruption survives the merge and parseDaemonConfig fails.
+    // This exercises the `parsed.ok === false` branch at line 51 of limits-update.ts.
+    const raw = daemonConfigToRaw(h.config.daemon());
+    // http.bind must be a string; corrupting it to a number triggers stringField validation error.
+    raw.http = { ...raw.http, bind: 999 as unknown as string };
+    h.config.setDaemon({ ...h.config.daemon(), http: { ...h.config.daemon().http, bind: 999 as unknown as string } });
+    const result = await updateSchedulerLimits(h.config, h.events, { concurrency_cap: 7 });
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.errors.length).toBeGreaterThan(0);
+    }
   });
 });
