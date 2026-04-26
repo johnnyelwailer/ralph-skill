@@ -1,6 +1,9 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { Database } from "bun:sqlite";
-import { realpathSync } from "node:fs";
+import { realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
   canonicalizeProjectPath,
   getProjectById,
@@ -180,8 +183,17 @@ describe("listProjectsFromDb", () => {
 });
 
 describe("canonicalizeProjectPath", () => {
+  let dir: string;
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), "aloop-canonicalize-"));
+  });
+
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true });
+  });
+
   test("resolves an existing path via realpathSync", () => {
-    // /tmp is guaranteed to exist on unix systems
     const result = canonicalizeProjectPath("/tmp");
     expect(result).toBe(realpathSync("/tmp"));
   });
@@ -192,7 +204,6 @@ describe("canonicalizeProjectPath", () => {
   });
 
   test("returns a normalized path when realpathSync throws (nonexistent dir)", () => {
-    // When realpathSync fails, the catch branch strips trailing slashes
     const result = canonicalizeProjectPath("/tmp/also-does-not-exist///");
     expect(result).toBe("/tmp/also-does-not-exist");
   });
@@ -200,5 +211,27 @@ describe("canonicalizeProjectPath", () => {
   test("result is always absolute (starts with /)", () => {
     const result = canonicalizeProjectPath("/tmp");
     expect(result.startsWith("/")).toBe(true);
+  });
+
+  test("resolves a valid symlink to its target", () => {
+    const target = join(dir, "target");
+    const link = join(dir, "link");
+    writeFileSync(target, "");
+    symlinkSync(target, link);
+    const result = canonicalizeProjectPath(link);
+    expect(result).toBe(target);
+  });
+
+  test("strips trailing slashes when realpathSync throws on broken symlink", () => {
+    const broken = join(dir, "broken");
+    const link = join(dir, "link");
+    symlinkSync(broken, link);
+    const result = canonicalizeProjectPath(link);
+    expect(result).toBe(link.replace(/\/+$/, "") || link);
+  });
+
+  test("strips trailing slashes for non-existent nested path", () => {
+    const result = canonicalizeProjectPath(join(dir, "nonexistent-subdir", "path"));
+    expect(result).toBe(join(dir, "nonexistent-subdir", "path").replace(/\/+$/, ""));
   });
 });
