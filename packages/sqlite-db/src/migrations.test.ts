@@ -126,6 +126,11 @@ describe("migrate", () => {
     }
   });
 
+  test("loadMigrationsFromDir throws when directory does not exist", () => {
+    const dir = join(tmpdir(), "this-directory-does-not-exist-at-all-", String(Date.now()));
+    expect(() => loadMigrationsFromDir(dir)).toThrow();
+  });
+
   test("loadMigrationsFromDir silently skips non-.sql files", () => {
     const dir = mkdtempSync(join(tmpdir(), "mig-skip-"));
     try {
