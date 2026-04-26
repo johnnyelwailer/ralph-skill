@@ -2,44 +2,53 @@ import { describe, expect, test } from "bun:test";
 import { pick } from "./daemon-mergers-pick.ts";
 
 describe("pick", () => {
-  test("returns value for snake_case key when present", () => {
-    const obj = { max_tokens: 1000 };
-    expect(pick(obj, "max_tokens", "maxTokens")).toBe(1000);
+  test("returns snake_case value when present", () => {
+    const obj = { tick_interval: 30, tickIntervalSeconds: 60 };
+    expect(pick(obj, "tick_interval", "tickIntervalSeconds")).toBe(30);
   });
 
-  test("returns value for camelCase key when present", () => {
-    const obj = { maxTokens: 2000 };
-    expect(pick(obj, "max_tokens", "maxTokens")).toBe(2000);
+  test("returns camelCase value when snake_case is absent", () => {
+    const obj = { tickIntervalSeconds: 60 };
+    expect(pick(obj, "tick_interval", "tickIntervalSeconds")).toBe(60);
   });
 
-  test("prefers snake_case when both keys are present", () => {
-    const obj = { max_tokens: 1000, maxTokens: 2000 };
-    expect(pick(obj, "max_tokens", "maxTokens")).toBe(1000);
+  test("prefers snake_case over camelCase when both are present", () => {
+    const obj = { concurrency_cap: 3, concurrencyCap: 5 };
+    expect(pick(obj, "concurrency_cap", "concurrencyCap")).toBe(3);
   });
 
-  test("returns undefined when neither key exists", () => {
-    const obj = { other_key: "foo" };
-    expect(pick(obj, "max_tokens", "maxTokens")).toBeUndefined();
+  test("returns undefined when neither key is present", () => {
+    const obj = { other_key: 1 };
+    expect(pick(obj, "missing_snake", "missingCamel")).toBeUndefined();
   });
 
-  test("handles empty object", () => {
-    expect(pick({}, "max_tokens", "maxTokens")).toBeUndefined();
+  test("returns undefined for empty object", () => {
+    expect(pick({}, "key_snake", "keyCamel")).toBeUndefined();
   });
 
-  test("works with boolean value", () => {
-    expect(pick({ bool_val: true }, "bool_val", "boolVal")).toBe(true);
+  test("returns falsy snake_case value (0) when present", () => {
+    const obj = { tick_interval: 0 };
+    expect(pick(obj, "tick_interval", "tickIntervalSeconds")).toBe(0);
   });
 
-  test("works with numeric zero value", () => {
-    expect(pick({ num_val: 0 }, "num_val", "numVal")).toBe(0);
+  test("returns falsy camelCase value (false) when snake_case is absent", () => {
+    const obj = { enabled: false };
+    expect(pick(obj, "is_enabled", "enabled")).toBe(false);
   });
 
-  test("works with array value", () => {
-    expect(pick({ arr_val: [1, 2] }, "arr_val", "arrVal")).toEqual([1, 2]);
+  test("handles numeric snake_case value", () => {
+    const obj = { cpu_max_pct: 80 };
+    expect(pick(obj, "cpu_max_pct", "cpuMaxPct")).toBe(80);
   });
 
-  test("works with object value", () => {
-    const val = { nested: true };
-    expect(pick({ obj_val: val }, "obj_val", "objVal")).toEqual(val);
+  test("handles nested object as value", () => {
+    const obj = { burn_rate: { min_commits_per_hour: 10 } };
+    const result = pick(obj, "burn_rate", "burnRate") as { min_commits_per_hour: number } | undefined;
+    expect(result).toEqual({ min_commits_per_hour: 10 });
+  });
+
+  test("works with string values", () => {
+    const obj = { log_level: "debug" };
+    expect(pick(obj, "log_level", "logLevel")).toBe("debug");
   });
 });
