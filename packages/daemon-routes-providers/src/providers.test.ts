@@ -1,8 +1,35 @@
 import { describe, expect, test } from "bun:test";
 import { DAEMON_DEFAULTS, OVERRIDES_DEFAULT, type ConfigStore } from "@aloop/daemon-config";
-import { InMemoryProviderHealthStore, ProviderRegistry } from "@aloop/provider";
+import { InMemoryProviderHealthStore, ProviderRegistry, type ProviderAdapter } from "@aloop/provider";
 import { handleProviders, type ProvidersDeps } from "./providers.ts";
 import { parseJsonBody } from "./providers-http.ts";
+import { handleProviderQuota } from "./providers-quota.ts";
+
+function makeAdapter(id: string, opts: {
+  supportsQuotaProbe: boolean;
+  probeQuotaImpl?: () => Promise<{ remaining: number; total: number | null; resetsAt: string | null; probedAt: string }>;
+}): ProviderAdapter {
+  return {
+    id,
+    capabilities: {
+      streaming: false,
+      vision: false,
+      toolUse: false,
+      reasoningEffort: false,
+      quotaProbe: opts.supportsQuotaProbe,
+      sessionResume: false,
+      costReporting: false,
+      maxContextTokens: null,
+    },
+    resolveModel: () => ({ providerId: id, modelId: id }),
+    async *sendTurn() {
+      yield { type: "usage", content: { tokensIn: 1, tokensOut: 1 }, final: true };
+    },
+    ...(opts.supportsQuotaProbe && opts.probeQuotaImpl
+      ? { probeQuota: opts.probeQuotaImpl }
+      : {}),
+  };
+}
 
 function makeConfigStore(): ConfigStore {
   let overrides = { ...OVERRIDES_DEFAULT };
@@ -42,6 +69,36 @@ function makeDeps(): ProvidersDeps {
     },
     providerRegistry,
     providerHealth: new InMemoryProviderHealthStore(providerRegistry.list().map((it) => it.id)),
+  };
+}
+
+function makeQuotaDeps(): ProvidersDeps {
+  const providerRegistry = new ProviderRegistry();
+  providerRegistry.register(makeAdapter("probe-capable", {
+    supportsQuotaProbe: true,
+    probeQuotaImpl: async () => ({
+      remaining: 1000,
+      total: 2000,
+      resetsAt: null,
+      probedAt: new Date().toISOString(),
+    }),
+  }));
+  providerRegistry.register(makeAdapter("probe-incapable", {
+    supportsQuotaProbe: false,
+  }));
+  return {
+    config: makeConfigStore(),
+    events: {
+      append: async (topic, data) => ({
+        _v: 1,
+        id: "evt_test",
+        timestamp: new Date(0).toISOString(),
+        topic,
+        data,
+      }),
+    },
+    providerRegistry,
+    providerHealth: new InMemoryProviderHealthStore(providerRegistry.list().map((a) => a.id)),
   };
 }
 
@@ -377,6 +434,95 @@ describe("PUT /v1/providers/overrides JSON body validation", () => {
     expect(res!.status).toBe(400);
     const body = (await res!.json()) as { error: { code: string } };
     expect(body.error.code).toBe("bad_request");
+  });
+});
+
+// ─── GET /v1/providers/:id/quota ──────────────────────────────────────────────
+
+describe("GET /v1/providers/:id/quota via handleProviders", () => {
+  // This path is delegated to handleProviderQuota — tests verify the delegation
+  // and the cases that handleProviderQuota does NOT cover in isolation.
+
+  test("returns 200 with quota data for a known provider", async () => {
+    const deps = makeQuotaDeps();
+    const res = await handleProviders(
+      new Request("http://x/v1/providers/probe-capable/quota", {
+        headers: { "x-aloop-auth-handle": "test-user" },
+      }),
+      deps,
+      "/v1/providers/probe-capable/quota",
+    );
+    expect(res).toBeDefined();
+    expect(res!.status).toBe(200);
+    const body = (await res!.json()) as { _v: number; provider_id: string; quota: { remaining: number } };
+    expect(body._v).toBe(1);
+    expect(body.provider_id).toBe("probe-capable");
+    expect(body.quota.remaining).toBe(1000);
+  });
+
+  test("returns 400 when x-aloop-auth-handle header is missing", async () => {
+    const deps = makeQuotaDeps();
+    const res = await handleProviders(
+      new Request("http://x/v1/providers/probe-capable/quota"),
+      deps,
+      "/v1/providers/probe-capable/quota",
+    );
+    expect(res).toBeDefined();
+    expect(res!.status).toBe(400);
+  });
+
+  test("returns 400 when x-aloop-auth-handle header is empty string", async () => {
+    const deps = makeQuotaDeps();
+    const res = await handleProviders(
+      new Request("http://x/v1/providers/probe-capable/quota", {
+        headers: { "x-aloop-auth-handle": "   " },
+      }),
+      deps,
+      "/v1/providers/probe-capable/quota",
+    );
+    expect(res).toBeDefined();
+    expect(res!.status).toBe(400);
+  });
+
+  test("returns 404 for an unknown provider id", async () => {
+    const deps = makeQuotaDeps();
+    const res = await handleProviders(
+      new Request("http://x/v1/providers/nonexistent/quota", {
+        headers: { "x-aloop-auth-handle": "test-user" },
+      }),
+      deps,
+      "/v1/providers/nonexistent/quota",
+    );
+    expect(res).toBeDefined();
+    expect(res!.status).toBe(404);
+  });
+
+  test("returns 405 for non-GET method on quota path", async () => {
+    const deps = makeQuotaDeps();
+    const res = await handleProviders(
+      new Request("http://x/v1/providers/probe-capable/quota", {
+        method: "POST",
+        headers: { "x-aloop-auth-handle": "test-user" },
+      }),
+      deps,
+      "/v1/providers/probe-capable/quota",
+    );
+    expect(res).toBeDefined();
+    expect(res!.status).toBe(405);
+  });
+
+  test("URL-decodes provider id in the pathname", async () => {
+    const deps = makeQuotaDeps();
+    const res = await handleProviders(
+      new Request("http://x/v1/providers/probe-capable%2Falias/quota", {
+        headers: { "x-aloop-auth-handle": "test-user" },
+      }),
+      deps,
+      "/v1/providers/probe-capable%2Falias/quota",
+    );
+    expect(res).toBeDefined();
+    // probe-capable%2Falias is URL-decoded to "probe-capable/alias" — not in the registry → 404
+    expect(res!.status).toBe(404);
   });
 });
 
