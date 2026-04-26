@@ -62,4 +62,59 @@ describe("InMemoryProviderHealthStore", () => {
     expect(store.peek("unknown")).toBeUndefined();
     expect(store.list().map((s) => s.providerId)).toEqual(["opencode"]);
   });
+
+  test("setQuota preserves other fields (status, lastFailure, lastSuccess, etc.)", () => {
+    const store = new InMemoryProviderHealthStore(["opencode"], NOW);
+    // "auth" always results in "degraded" (no cooldown logic applies)
+    store.noteFailure("opencode", "auth", NOW + 1_000);
+    const before = store.get("opencode");
+    expect(before.status).toBe("degraded");
+    expect(before.lastFailure).toBeTruthy();
+
+    // setQuota should only touch quota fields and updatedAt
+    store.setQuota(
+      "opencode",
+      { remaining: 500, resetsAt: "2026-01-01T02:00:00.000Z" },
+      NOW + 5_000,
+    );
+
+    const after = store.get("opencode");
+    expect(after.quotaRemaining).toBe(500);
+    expect(after.quotaResetsAt).toBe("2026-01-01T02:00:00.000Z");
+    expect(after.status).toBe("degraded"); // preserved
+    expect(after.lastFailure).toBe(before.lastFailure); // preserved
+    expect(after.consecutiveFailures).toBe(1); // preserved
+    expect(after.updatedAt).toBe("2026-01-01T00:00:05.000Z"); // updated
+  });
+
+  test("noteFailure applies increasing backoff from options", () => {
+    const store = new InMemoryProviderHealthStore(["opencode"], NOW);
+    const backoffSchedule = [0, 10_000, 30_000, 60_000] as const;
+
+    // First failure: consecutive=1, backoff[1]=10s → cooldownUntil = NOW + 10s
+    const state1 = store.noteFailure("opencode", "rate_limit", NOW + 1_000, {
+      backoffMsByFailureCount: backoffSchedule,
+    });
+    expect(state1.status).toBe("cooldown");
+    expect(state1.consecutiveFailures).toBe(1);
+    expect(state1.cooldownUntil).toBe("2026-01-01T00:00:11.000Z"); // NOW + 10s
+
+    // Second failure: consecutive=2, backoff[2]=30s → cooldownUntil = NOW + 30s
+    const state2 = store.noteFailure("opencode", "rate_limit", NOW + 2_000, {
+      backoffMsByFailureCount: backoffSchedule,
+    });
+    expect(state2.status).toBe("cooldown");
+    expect(state2.consecutiveFailures).toBe(2);
+    expect(state2.cooldownUntil).toBe("2026-01-01T00:00:32.000Z"); // NOW + 30s
+  });
+
+  test("noteFailure records quota hints from options", () => {
+    const store = new InMemoryProviderHealthStore(["opencode"], NOW);
+    const state = store.noteFailure("opencode", "rate_limit", NOW + 1_000, {
+      quotaRemaining: 0,
+      quotaResetsAtMs: NOW + 3_600_000,
+    });
+    expect(state.quotaRemaining).toBe(0);
+    expect(state.quotaResetsAt).toBe("2026-01-01T01:00:00.000Z");
+  });
 });
