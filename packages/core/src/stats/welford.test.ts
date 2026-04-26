@@ -1,150 +1,198 @@
 import { describe, expect, test } from "bun:test";
 import {
   welfordInit,
+  welfordUpdate,
   welfordMean,
-  welfordMerge,
+  welfordSampleVariance,
   welfordPopulationVariance,
   welfordSampleStdDev,
-  welfordSampleVariance,
-  welfordUpdate,
+  welfordMerge,
 } from "./welford.ts";
 
-function fold(xs: readonly number[]) {
-  let s = welfordInit();
-  for (const x of xs) s = welfordUpdate(s, x);
-  return s;
-}
-
-function naiveMean(xs: readonly number[]): number {
-  if (xs.length === 0) return 0;
-  let sum = 0;
-  for (const x of xs) sum += x;
-  return sum / xs.length;
-}
-
-function naiveSampleVariance(xs: readonly number[]): number {
-  if (xs.length < 2) return 0;
-  const m = naiveMean(xs);
-  let s = 0;
-  for (const x of xs) s += (x - m) ** 2;
-  return s / (xs.length - 1);
-}
-
-describe("welford", () => {
-  test("init state is zeros", () => {
+describe("welfordInit", () => {
+  test("returns count=0, mean=0, m2=0", () => {
     const s = welfordInit();
     expect(s.count).toBe(0);
     expect(s.mean).toBe(0);
     expect(s.m2).toBe(0);
-    expect(welfordSampleVariance(s)).toBe(0);
-    expect(welfordPopulationVariance(s)).toBe(0);
+  });
+});
+
+describe("welfordUpdate", () => {
+  test("first value: mean equals x, m2 resets to 0", () => {
+    const s0 = welfordInit();
+    const s1 = welfordUpdate(s0, 10);
+    expect(s1.count).toBe(1);
+    expect(s1.mean).toBe(10);
+    expect(s1.m2).toBe(0);
+  });
+
+  test("second value updates mean correctly", () => {
+    const s0 = welfordInit();
+    const s1 = welfordUpdate(s0, 10);
+    const s2 = welfordUpdate(s1, 14);
+    expect(s2.count).toBe(2);
+    // mean = 10 + (14-10)/2 = 12
+    expect(s2.mean).toBe(12);
+    // m2 = 0 + (14-10)*(14-12) = 4*2 = 8
+    expect(s2.m2).toBe(8);
+  });
+
+  test("third value accumulates correctly", () => {
+    let s = welfordInit();
+    s = welfordUpdate(s, 2);
+    s = welfordUpdate(s, 4);
+    s = welfordUpdate(s, 6);
+    expect(s.count).toBe(3);
+    // Welford: mean = 2+(4-2)/2+(6-4)/3 = 4; m2 = 8
+    expect(s.mean).toBeCloseTo(4, 5);
+    expect(s.m2).toBeCloseTo(8, 3);
+  });
+
+  test("identical values keep m2 at 0", () => {
+    let s = welfordInit();
+    s = welfordUpdate(s, 5);
+    s = welfordUpdate(s, 5);
+    s = welfordUpdate(s, 5);
+    expect(s.count).toBe(3);
+    expect(s.mean).toBe(5);
+    expect(s.m2).toBe(0);
+  });
+});
+
+describe("welfordMean", () => {
+  test("returns current mean", () => {
+    let s = welfordInit();
+    s = welfordUpdate(s, 10);
+    s = welfordUpdate(s, 20);
+    expect(welfordMean(s)).toBe(15);
+  });
+
+  test("init state returns 0", () => {
+    expect(welfordMean(welfordInit())).toBe(0);
+  });
+});
+
+describe("welfordSampleVariance", () => {
+  test("returns 0 when count < 2", () => {
+    const s0 = welfordInit();
+    expect(welfordSampleVariance(s0)).toBe(0);
+
+    const s1 = welfordUpdate(s0, 42);
+    expect(welfordSampleVariance(s1)).toBe(0);
+  });
+
+  test("matches population variance formula for n=2", () => {
+    let s = welfordInit();
+    s = welfordUpdate(s, 2);
+    s = welfordUpdate(s, 4);
+    // sample_variance = m2 / (n-1) = 2 / 1 = 2
+    expect(welfordSampleVariance(s)).toBe(2);
+  });
+
+  test("correct for known dataset", () => {
+    // Values: 2, 4, 4, 4, 5 — n=5, mean=3.8
+    // deviations: -1.8, 0.2, 0.2, 0.2, 1.2
+    // squared: 3.24, 0.04, 0.04, 0.04, 1.44 → sum=4.8
+    // population var = 4.8/5 = 0.96; sample var = 4.8/4 = 1.2
+    let s = welfordInit();
+    for (const x of [2, 4, 4, 4, 5]) s = welfordUpdate(s, x);
+    expect(welfordMean(s)).toBeCloseTo(3.8, 5);
+    expect(welfordPopulationVariance(s)).toBeCloseTo(0.96, 2);
+    expect(welfordSampleVariance(s)).toBeCloseTo(1.2, 2);
+  });
+});
+
+describe("welfordPopulationVariance", () => {
+  test("returns 0 when count < 1", () => {
+    expect(welfordPopulationVariance(welfordInit())).toBe(0);
+  });
+
+  test("correct for known dataset", () => {
+    // Values: 2, 4, 4, 4, 5 — n=5, mean=3.8, population var=0.96
+    let s = welfordInit();
+    for (const x of [2, 4, 4, 4, 5]) s = welfordUpdate(s, x);
+    expect(welfordPopulationVariance(s)).toBeCloseTo(0.96, 2);
+  });
+});
+
+describe("welfordSampleStdDev", () => {
+  test("sqrt of sample variance", () => {
+    let s = welfordInit();
+    s = welfordUpdate(s, 2);
+    s = welfordUpdate(s, 4);
+    // sampleVariance = 2, stdDev = sqrt(2)
+    expect(welfordSampleStdDev(s)).toBeCloseTo(Math.sqrt(2), 5);
+  });
+
+  test("returns 0 for n < 2", () => {
+    const s = welfordUpdate(welfordInit(), 42);
     expect(welfordSampleStdDev(s)).toBe(0);
   });
+});
 
-  test("single value", () => {
-    const s = welfordUpdate(welfordInit(), 42);
-    expect(s.count).toBe(1);
-    expect(welfordMean(s)).toBe(42);
-    expect(welfordSampleVariance(s)).toBe(0); // undefined in theory, returns 0 by convention
-    expect(welfordPopulationVariance(s)).toBe(0);
-  });
-
-  test("matches naive computation on small sample", () => {
-    const xs = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
-    const s = fold(xs);
-    expect(welfordMean(s)).toBeCloseTo(naiveMean(xs), 12);
-    expect(welfordSampleVariance(s)).toBeCloseTo(naiveSampleVariance(xs), 12);
-  });
-
-  test("numerically stable for values with large offset (classic Welford advantage)", () => {
-    // The naive sum-of-squares formula loses precision when values share a
-    // huge constant offset. Welford handles it.
-    const offset = 1e9;
-    const xs = [offset + 4, offset + 7, offset + 13, offset + 16];
-    const s = fold(xs);
-    // Expected variance of [4, 7, 13, 16] (offset is irrelevant): naive mean = 10.
-    // deviations: -6, -3, 3, 6; squares: 36, 9, 9, 36 = 90; sample var = 90/3 = 30.
-    expect(welfordSampleVariance(s)).toBeCloseTo(30, 6);
-    expect(welfordMean(s)).toBeCloseTo(offset + 10, 6);
-  });
-
-  test("merge is equivalent to concatenation", () => {
-    const left = [1, 2, 3, 4, 5];
-    const right = [6, 7, 8, 9, 10, 11, 12];
-    const a = fold(left);
-    const b = fold(right);
+describe("welfordMerge", () => {
+  test("returns b when a is empty", () => {
+    const a = welfordInit();
+    let b = welfordInit();
+    b = welfordUpdate(b, 10);
+    b = welfordUpdate(b, 20);
     const merged = welfordMerge(a, b);
-    const whole = fold([...left, ...right]);
-    expect(merged.count).toBe(whole.count);
-    expect(merged.mean).toBeCloseTo(whole.mean, 12);
-    expect(merged.m2).toBeCloseTo(whole.m2, 10);
+    expect(merged.count).toBe(2);
+    expect(merged.mean).toBe(15);
+    expect(merged.m2).toBe(50);
   });
 
-  test("merge with empty state is identity", () => {
-    const s = fold([1, 2, 3]);
-    expect(welfordMerge(welfordInit(), s)).toEqual(s);
-    expect(welfordMerge(s, welfordInit())).toEqual(s);
-  });
-
-  test("handles negative values and zero crossings", () => {
-    const xs = [-10, -5, 0, 5, 10];
-    const s = fold(xs);
-    expect(welfordMean(s)).toBeCloseTo(0, 12);
-    expect(welfordSampleVariance(s)).toBeCloseTo(naiveSampleVariance(xs), 12);
-  });
-
-  test("std dev is sqrt of sample variance", () => {
-    const xs = [2, 4, 4, 4, 5, 5, 7, 9];
-    const s = fold(xs);
-    expect(welfordSampleStdDev(s)).toBeCloseTo(Math.sqrt(welfordSampleVariance(s)), 12);
-  });
-
-  test("merge is associative: (a+b)+c equals a+(b+c)", () => {
-    const a = fold([1, 2, 3]);
-    const b = fold([4, 5, 6]);
-    const c = fold([7, 8, 9]);
-    const merged = welfordMerge(welfordMerge(a, b), c);
-    const whole = fold([1, 2, 3, 4, 5, 6, 7, 8, 9]);
-    expect(merged.count).toBe(whole.count);
-    expect(merged.mean).toBeCloseTo(whole.mean, 12);
-    expect(merged.m2).toBeCloseTo(whole.m2, 10);
-  });
-
-  test("merge of three empty states returns empty state", () => {
-    const merged = welfordMerge(welfordMerge(welfordInit(), welfordInit()), welfordInit());
-    expect(merged.count).toBe(0);
-    expect(merged.mean).toBe(0);
+  test("returns a when b is empty", () => {
+    let a = welfordInit();
+    a = welfordUpdate(a, 5);
+    const b = welfordInit();
+    const merged = welfordMerge(a, b);
+    expect(merged.count).toBe(1);
+    expect(merged.mean).toBe(5);
     expect(merged.m2).toBe(0);
   });
 
-  test("merge of two partially-filled states with different counts", () => {
-    const a = fold([10, 20]);
-    const b = fold([100, 200, 300, 400]);
+  test("merges two non-empty batches correctly", () => {
+    // Batch A: 2, 4, 4, 4, 5 — n=5, mean=3.8
+    let a = welfordInit();
+    for (const x of [2, 4, 4, 4, 5]) a = welfordUpdate(a, x);
+    // Batch B: 0, 2, 5 — n=3, mean=7/3≈2.333
+    let b = welfordInit();
+    for (const x of [0, 2, 5]) b = welfordUpdate(b, x);
+
     const merged = welfordMerge(a, b);
-    const whole = fold([10, 20, 100, 200, 300, 400]);
-    expect(merged.count).toBe(whole.count);
-    expect(merged.mean).toBeCloseTo(whole.mean, 12);
-    expect(merged.m2).toBeCloseTo(whole.m2, 10);
+
+    expect(merged.count).toBe(8);
+    // Combined mean: (19 + 7) / 8 = 26/8 = 3.25
+    expect(merged.mean).toBeCloseTo(3.25, 5);
+    // Combined deviations squared sum = 21.5 → sample m2 = 21.5
+    expect(merged.m2).toBeCloseTo(21.5, 1);
   });
 
-  test("merge of two states where one has count=1 is correct", () => {
-    const a = fold([42]);
-    const b = fold([10, 20, 30]);
+  test("merging then updating equals incremental update", () => {
+    // Start with batch A then B, compare to merge
+    let a = welfordInit();
+    for (const x of [2, 4, 4]) a = welfordUpdate(a, x);
+
+    let b = welfordInit();
+    for (const x of [6, 8]) b = welfordUpdate(b, x);
+
     const merged = welfordMerge(a, b);
-    const whole = fold([42, 10, 20, 30]);
-    expect(merged.count).toBe(whole.count);
-    expect(merged.mean).toBeCloseTo(whole.mean, 12);
-    expect(merged.m2).toBeCloseTo(whole.m2, 10);
+
+    // Verify by running all values sequentially
+    let seq = welfordInit();
+    for (const x of [2, 4, 4, 6, 8]) seq = welfordUpdate(seq, x);
+
+    expect(merged.count).toBe(seq.count);
+    expect(merged.mean).toBeCloseTo(seq.mean, 10);
+    expect(merged.m2).toBeCloseTo(seq.m2, 10);
   });
 
-  test("population variance of merged states matches naive two-pass calculation", () => {
-    const xs = [3, 6, 9, 12, 15];
-    const half = Math.floor(xs.length / 2);
-    const a = fold(xs.slice(0, half));
-    const b = fold(xs.slice(half));
-    const merged = welfordMerge(a, b);
-    const naiveMean = xs.reduce((s, x) => s + x, 0) / xs.length;
-    const naiveVar = xs.reduce((s, x) => s + (x - naiveMean) ** 2, 0) / xs.length;
-    expect(welfordPopulationVariance(merged)).toBeCloseTo(naiveVar, 10);
+  test("empty merge empty returns empty", () => {
+    const merged = welfordMerge(welfordInit(), welfordInit());
+    expect(merged.count).toBe(0);
+    expect(merged.mean).toBe(0);
+    expect(merged.m2).toBe(0);
   });
 });

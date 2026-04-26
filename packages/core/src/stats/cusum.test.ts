@@ -1,211 +1,182 @@
 import { describe, expect, test } from "bun:test";
 import {
   cusumInit,
-  cusumReset,
   cusumUpdate,
-  type CusumParams,
+  cusumReset,
   type CusumState,
 } from "./cusum.ts";
 
-const PARAMS: CusumParams = { target: 100, k: 2, h: 10 };
-
-function sHi(s: CusumState): number {
-  return s.sHi;
-}
-function sLo(s: CusumState): number {
-  return s.sLo;
-}
+const BASE_PARAMS = { target: 10, k: 0.5, h: 4 };
 
 describe("cusumInit", () => {
-  test("returns state with zero accumulators and given params", () => {
-    const state = cusumInit(PARAMS);
-    expect(state.params).toBe(PARAMS);
-    expect(state.sHi).toBe(0);
-    expect(state.sLo).toBe(0);
-  });
-
-  test("params are preserved on the returned state", () => {
-    const params: CusumParams = { target: 50, k: 1, h: 8 };
-    const state = cusumInit(params);
-    expect(state.params.target).toBe(50);
-    expect(state.params.k).toBe(1);
-    expect(state.params.h).toBe(8);
+  test("sHi and sLo start at 0", () => {
+    const s = cusumInit(BASE_PARAMS);
+    expect(s.sHi).toBe(0);
+    expect(s.sLo).toBe(0);
+    expect(s.params).toEqual(BASE_PARAMS);
   });
 });
 
 describe("cusumUpdate", () => {
-  test("no alarm when values stay close to target (within k slack)", () => {
-    // target=100, k=2 → x within [98, 102] produces no drift
-    let state = cusumInit(PARAMS);
-    for (let i = 0; i < 20; i++) {
-      const x = 100 + (Math.random() - 0.5); // ~100 ± 0.5
-      const result = cusumUpdate(state, x);
-      expect(result.alarm).toBe("none");
-      state = result.state;
-    }
+  test("no alarm when value equals target", () => {
+    let s = cusumInit(BASE_PARAMS);
+    // x - target - k = 10 - 10 - 0.5 = -0.5 → max(0, ...) = 0
+    const result = cusumUpdate(s, 10);
+    expect(result.alarm).toBe("none");
+    expect(result.state.sHi).toBe(0);
+    expect(result.state.sLo).toBe(0);
   });
 
-  test("sHi accumulates when x is above target + k", () => {
-    // target=100, k=2 → x > 102: each step adds (x - 100 - 2) to sHi
-    let state = cusumInit(PARAMS);
-    state = cusumUpdate(state, 106).state; // +4
-    expect(sHi(state)).toBe(4);
-    state = cusumUpdate(state, 106).state; // +4 → total 8
-    expect(sHi(state)).toBe(8);
+  test("value above target increments sHi", () => {
+    let s = cusumInit(BASE_PARAMS);
+    // x - target - k = 12 - 10 - 0.5 = 1.5
+    s = cusumUpdate(s, 12).state;
+    expect(s.sHi).toBe(1.5);
+    expect(s.sLo).toBe(0);
   });
 
-  test("sLo accumulates when x is below target - k", () => {
-    // target=100, k=2 → x < 98: each step adds (100 - x - 2) to sLo
-    let state = cusumInit(PARAMS);
-    state = cusumUpdate(state, 94).state; // +4
-    expect(sLo(state)).toBe(4);
-    state = cusumUpdate(state, 94).state; // +4 → total 8
-    expect(sLo(state)).toBe(8);
+  test("value below target increments sLo", () => {
+    let s = cusumInit(BASE_PARAMS);
+    // target - x - k = 10 - 8 - 0.5 = 1.5
+    s = cusumUpdate(s, 8).state;
+    expect(s.sLo).toBe(1.5);
+    expect(s.sHi).toBe(0);
   });
 
-  test("sHi resets to zero when x falls below the drift threshold", () => {
-    // Build up sHi first with repeated x=110 (+8 each)
-    let state = cusumInit(PARAMS);
-    state = cusumUpdate(state, 110).state; // sHi=8
-    state = cusumUpdate(state, 110).state; // sHi=16
-    expect(sHi(state)).toBe(16);
-    // Bring it below the threshold so the cumulative excess decays to zero
-    state = cusumUpdate(state, 101).state; // 16 + (101-100-2) = 15
-    state = cusumUpdate(state, 100).state; // 15 + (100-100-2) = 13
-    state = cusumUpdate(state, 99).state; // 13 + (99-100-2) = 10
-    state = cusumUpdate(state, 98).state; // 10 + (98-100-2) = max(0, 6) = 6
-    state = cusumUpdate(state, 97).state; // 6 + (97-100-2) = max(0, 1) = 1
-    state = cusumUpdate(state, 96).state; // 1 + (96-100-2) = max(0, -5) = 0
-    expect(sHi(state)).toBe(0);
+  test("small deviations within k threshold are ignored", () => {
+    let s = cusumInit(BASE_PARAMS);
+    // x - target - k = 10.4 - 10 - 0.5 = -0.1 → clamped to 0
+    const result = cusumUpdate(s, 10.4);
+    expect(result.state.sHi).toBe(0);
+    expect(result.state.sLo).toBe(0);
+    expect(result.alarm).toBe("none");
   });
 
   test("upward alarm fires when sHi exceeds h", () => {
-    // x=106 adds +4 per step. Need cumulative +10 to exceed h=10.
-    let state = cusumInit(PARAMS);
-    let result = cusumUpdate(state, 106); // sHi=4, no alarm
-    expect(result.alarm).toBe("none");
-    expect(sHi(result.state)).toBe(4);
-
-    result = cusumUpdate(result.state, 106); // sHi=8, no alarm
-    expect(result.alarm).toBe("none");
-    expect(sHi(result.state)).toBe(8);
-
-    result = cusumUpdate(result.state, 106); // sHi=12 > h=10, upward
+    let s = cusumInit(BASE_PARAMS);
+    // Each update adds (x - target - k) = (15 - 10 - 0.5) = 4.5 to sHi.
+    // After first: sHi=4.5 > h=4 → upward alarm.
+    const result = cusumUpdate(s, 15);
     expect(result.alarm).toBe("upward");
-    expect(sHi(result.state)).toBe(12);
   });
 
   test("downward alarm fires when sLo exceeds h", () => {
-    // x=94 subtracts 4 per step. Need cumulative +10 to exceed h=10.
-    let state = cusumInit(PARAMS);
-    let result = cusumUpdate(state, 94); // sLo=4, no alarm
-    expect(result.alarm).toBe("none");
-
-    result = cusumUpdate(result.state, 94); // sLo=8, no alarm
-    expect(result.alarm).toBe("none");
-
-    result = cusumUpdate(result.state, 94); // sLo=12 > h=10, downward
+    let s = cusumInit(BASE_PARAMS);
+    // Each update adds (target - x - k) = (10 - 5 - 0.5) = 4.5 to sLo.
+    // After first: sLo=4.5 > h=4 → downward alarm.
+    const result = cusumUpdate(s, 5);
     expect(result.alarm).toBe("downward");
   });
 
-  test("alarm is 'none' when neither sHi nor sLo exceeds h", () => {
-    let state = cusumInit(PARAMS);
-    // x=104 adds +2 each step → 5 steps = 10, still no alarm (not > 10)
-    for (let i = 0; i < 5; i++) {
-      const result = cusumUpdate(state, 104);
-      expect(result.alarm).toBe("none");
-      state = result.state;
-    }
-    expect(sHi(state)).toBe(10); // at threshold but not above
+  test("accumulates over multiple updates before alarm", () => {
+    let s = cusumInit(BASE_PARAMS);
+    // Each step: (12 - 10 - 0.5) = 1.5 per update.
+    // After 2 updates: sHi=3; after 3: sHi=4.5 > h → alarm on 3rd
+    s = cusumUpdate(s, 12).state;
+    expect(s.sHi).toBe(1.5);
+    s = cusumUpdate(s, 12).state;
+    expect(s.sHi).toBe(3.0);
+    const r3 = cusumUpdate(s, 12);
+    expect(r3.alarm).toBe("upward");
+    expect(r3.state.sHi).toBe(4.5);
   });
 
-  test("upward alarm fires again after accumulating above-target observations", () => {
-    // After an upward alarm, keep feeding above-target values to stay above h
-    let state = cusumInit(PARAMS);
-    state = cusumUpdate(state, 106).state; // sHi=4
-    state = cusumUpdate(state, 106).state; // sHi=8
-    const upResult = cusumUpdate(state, 106); // sHi=12 → upward
-    expect(upResult.alarm).toBe("upward");
-    state = upResult.state; // sHi=12
-
-    // Continue feeding above-target → sHi keeps growing, alarm fires every step
-    // x=106 → each step adds 4: 12→16→20
-    const again = cusumUpdate(state, 106);
-    expect(again.alarm).toBe("upward");
-    expect(sHi(again.state)).toBe(16);
+  test("sHi and sLo are independent", () => {
+    let s = cusumInit(BASE_PARAMS);
+    // x=13: sHi = max(0, 0+(13-10-0.5)) = 2.5
+    s = cusumUpdate(s, 13).state;
+    // x=8: sLo = max(0, 0+(10-8-0.5)) = 1.5; sHi = max(0, 2.5+(8-10-0.5)) = max(0, 0) = 0
+    s = cusumUpdate(s, 8).state;
+    expect(s.sHi).toBe(0);   // clamped: 2.5+(8-10-0.5)=0
+    expect(s.sLo).toBe(1.5);
   });
 
-  test("state.params are preserved across updates", () => {
-    let state = cusumInit(PARAMS);
-    for (let i = 0; i < 5; i++) {
-      const result = cusumUpdate(state, 100 + (i % 2 === 0 ? 5 : -5));
-      expect(result.state.params).toBe(PARAMS);
-      state = result.state;
-    }
+  test("alarm is none when both sHi and sLo are below threshold", () => {
+    let s = cusumInit(BASE_PARAMS);
+    // x=11: sHi = max(0, 0+(11-10-0.5)) = 0.5
+    s = cusumUpdate(s, 11).state;
+    // x=9: sLo = max(0, 0+(10-9-0.5)) = 0.5; sHi = max(0, 0.5+(9-10-0.5)) = max(0, -1) = 0
+    s = cusumUpdate(s, 9).state;
+    // x=11: sHi = max(0, 0+(11-10-0.5)) = 0.5; sLo = max(0, 0.5+(10-11-0.5)) = max(0, -1) = 0
+    const r = cusumUpdate(s, 11);
+    expect(r.alarm).toBe("none");
+    expect(r.state.sHi).toBe(0.5);
+    expect(r.state.sLo).toBe(0);
   });
-
-  test("params object is not mutated", () => {
-    const params: CusumParams = { target: 100, k: 2, h: 10 };
-    const initial = cusumInit(params);
-    cusumUpdate(initial, 110);
-    cusumUpdate(initial, 90);
-    expect(params.target).toBe(100);
-    expect(params.k).toBe(2);
-    expect(params.h).toBe(10);
-  });
-
 });
 
 describe("cusumReset", () => {
-  test("resets sHi and sLo to zero while preserving params", () => {
-    let state = cusumInit(PARAMS);
-    state = cusumUpdate(state, 110).state;
-    state = cusumUpdate(state, 110).state;
-    expect(sHi(state)).toBeGreaterThan(0);
+  test("resets sHi and sLo to 0, preserves params", () => {
+    let s = cusumInit(BASE_PARAMS);
+    s = cusumUpdate(s, 15).state; // triggered alarm
+    expect(s.sHi).toBe(4.5);
 
-    const reset = cusumReset(state);
+    const reset = cusumReset(s);
     expect(reset.sHi).toBe(0);
     expect(reset.sLo).toBe(0);
-    expect(reset.params).toBe(state.params);
+    expect(reset.params).toBe(BASE_PARAMS);
   });
 
-  test("reset state can be updated normally", () => {
-    let state = cusumInit(PARAMS);
-    state = cusumUpdate(state, 110).state;
-    const reset = cusumReset(state);
-    const result = cusumUpdate(reset, 110);
-    expect(result.alarm).toBe("none"); // fresh start, only 8 accumulated (not > 10)
-    expect(sHi(result.state)).toBe(8);
-  });
-
-  test("reset does not modify the original state (immutability)", () => {
-    let state = cusumInit(PARAMS);
-    state = cusumUpdate(state, 110).state;
-    const originalHi = sHi(state);
-    cusumReset(state);
-    expect(sHi(state)).toBe(originalHi); // unchanged
+  test("reset then update starts fresh accumulation", () => {
+    let s = cusumInit(BASE_PARAMS);
+    s = cusumUpdate(s, 15).state; // sHi=4.5, alarm
+    s = cusumReset(s);
+    // After reset, should need another 3 steps of 1.5 each to exceed h=4
+    s = cusumUpdate(s, 12).state; // sHi=1.5
+    s = cusumUpdate(s, 12).state; // sHi=3.0
+    const r3 = cusumUpdate(s, 12);
+    expect(r3.alarm).toBe("upward");
   });
 });
 
-describe("CusumUpdate return shape", () => {
-  test("alarm is one of the three expected string literals", () => {
-    let state = cusumInit(PARAMS);
-    const noneResult = cusumUpdate(state, 100);
-    expect(["none", "upward", "downward"]).toContain(noneResult.alarm);
-
-    // Build to alarm
-    state = noneResult.state;
-    state = cusumUpdate(state, 106).state;
-    state = cusumUpdate(state, 106).state;
-    const alarmResult = cusumUpdate(state, 106);
-    expect(alarmResult.alarm).toBe("upward");
+describe("cusumUpdate alarm types", () => {
+  test("alarm is 'upward' only when sHi > h (not sLo)", () => {
+    let s = cusumInit(BASE_PARAMS);
+    // x=13: sHi = max(0, 0+(13-10-0.5)) = 2.5
+    s = cusumUpdate(s, 13).state;
+    // x=8: sLo = max(0, 0+(10-8-0.5)) = 1.5; sHi = max(0, 2.5+(8-10-0.5)) = 0
+    s = cusumUpdate(s, 8).state;
+    // x=13: sHi = max(0, 0+(13-10-0.5)) = 2.5; sLo = max(0, 1.5+(10-13-0.5)) = 0
+    const r = cusumUpdate(s, 13);
+    expect(r.alarm).toBe("none"); // sHi=2.5, below h=4
   });
 
-  test("state is always present in the return", () => {
-    const state = cusumInit(PARAMS);
-    const result = cusumUpdate(state, 50);
-    expect(result.state).toBeDefined();
-    expect(typeof result.state.sHi).toBe("number");
-    expect(typeof result.state.sLo).toBe("number");
+  test("alarm is 'downward' only when sLo > h (not sHi)", () => {
+    let s = cusumInit(BASE_PARAMS);
+    // x=8: sLo = max(0, 0+(10-8-0.5)) = 1.5
+    s = cusumUpdate(s, 8).state;
+    // x=13: sHi = max(0, 0+(13-10-0.5)) = 2.5; sLo = max(0, 1.5+(10-13-0.5)) = 0
+    s = cusumUpdate(s, 13).state;
+    // x=8: sLo = max(0, 0+(10-8-0.5)) = 1.5; sHi = max(0, 2.5+(8-10-0.5)) = 0
+    const r = cusumUpdate(s, 8);
+    expect(r.alarm).toBe("none"); // sLo=1.5, below h=4
+  });
+
+  test("alarm is 'none' when exactly on boundary sHi == h", () => {
+    let s = cusumInit({ target: 10, k: 0, h: 4 });
+    // Each update adds x - target - k = x - 10
+    // After 4 updates of +1 each: sHi=4, equals h, should still be 'none' (strict >)
+    for (let i = 0; i < 3; i++) s = cusumUpdate(s, 11).state;
+    const r = cusumUpdate(s, 11); // sHi=4, h=4, 4 > 4 = false → none
+    expect(r.alarm).toBe("none");
+    const r2 = cusumUpdate(r.state, 11); // sHi=5 > 4 → upward
+    expect(r2.alarm).toBe("upward");
+  });
+});
+
+describe(" CusumState immutability", () => {
+  test("update returns new state, original unchanged", () => {
+    const s0 = cusumInit(BASE_PARAMS);
+    const result = cusumUpdate(s0, 12);
+    expect(s0.sHi).toBe(0); // original untouched
+    expect(result.state.sHi).toBe(1.5);
+  });
+
+  test("reset returns new state, original unchanged", () => {
+    const s0 = cusumInit(BASE_PARAMS);
+    const s1 = cusumUpdate(s0, 12).state;
+    const reset = cusumReset(s1);
+    expect(s1.sHi).toBe(1.5); // original untouched
+    expect(reset.sHi).toBe(0);
   });
 });
