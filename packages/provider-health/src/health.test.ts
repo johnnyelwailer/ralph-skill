@@ -37,6 +37,83 @@ describe("applyProviderSuccess", () => {
     expect(next.failureReason).toBeNull();
     expect(next.cooldownUntil).toBeNull();
   });
+
+  test("lastFailure is preserved (not cleared) by applyProviderSuccess", () => {
+    const prev = applyProviderFailure(
+      createUnknownHealth("claude", NOW),
+      "auth",
+      NOW + 5_000,
+    );
+    const next = applyProviderSuccess(prev, NOW + 10_000);
+    // applyProviderSuccess does NOT clear lastFailure — it preserves the prior value
+    expect(next.lastFailure).toBe(prev.lastFailure);
+    expect(next.lastFailure).toBe("2026-01-01T00:00:05.000Z");
+  });
+
+  test("quotaRemaining is preserved (not reset) after success", () => {
+    const prev = applyProviderFailure(
+      createUnknownHealth("claude", NOW),
+      "rate_limit",
+      NOW + 5_000,
+      { quotaRemaining: 0, quotaResetsAtMs: NOW + 60_000 },
+    );
+    const next = applyProviderSuccess(prev, NOW + 10_000);
+    // quotaRemaining is NOT nulled out by applyProviderSuccess
+    expect(next.quotaRemaining).toBe(0);
+    expect(next.quotaResetsAt).toBe(new Date(NOW + 60_000).toISOString());
+  });
+
+  test("updatedAt reflects nowMs, not prev.updatedAt", () => {
+    const prev = createUnknownHealth("opencode", NOW);
+    expect(prev.updatedAt).toBe("2026-01-01T00:00:00.000Z");
+    const next = applyProviderSuccess(prev, NOW + 99_000);
+    expect(next.updatedAt).toBe("2026-01-01T00:01:39.000Z");
+  });
+
+  test("lastSuccess is set to nowMs", () => {
+    const prev = createUnknownHealth("opencode", NOW);
+    expect(prev.lastSuccess).toBeNull();
+    const next = applyProviderSuccess(prev, NOW + 5_000);
+    expect(next.lastSuccess).toBe("2026-01-01T00:00:05.000Z");
+  });
+
+  test("transitions from degraded to healthy", () => {
+    const degraded = applyProviderFailure(
+      createUnknownHealth("claude", NOW),
+      "auth",
+      NOW + 1_000,
+    );
+    expect(degraded.status).toBe("degraded");
+    const next = applyProviderSuccess(degraded, NOW + 5_000);
+    expect(next.status).toBe("healthy");
+    expect(next.consecutiveFailures).toBe(0);
+    expect(next.failureReason).toBeNull();
+  });
+
+  test("transitions from cooldown to healthy", () => {
+    const cooldown = applyProviderFailure(
+      createUnknownHealth("opencode", NOW),
+      "timeout",
+      NOW + 1_000,
+    );
+    const second = applyProviderFailure(cooldown, "timeout", NOW + 2_000);
+    expect(second.status).toBe("cooldown");
+    const next = applyProviderSuccess(second, NOW + 10_000);
+    expect(next.status).toBe("healthy");
+    expect(next.cooldownUntil).toBeNull();
+    expect(next.consecutiveFailures).toBe(0);
+  });
+
+  test("on already-healthy state, preserves all fields except status/updatedAt", () => {
+    const healthy = createUnknownHealth("opencode", NOW);
+    const next = applyProviderSuccess(healthy, NOW + 1_000);
+    expect(next.status).toBe("healthy");
+    expect(next.providerId).toBe("opencode");
+    expect(next.lastFailure).toBeNull();
+    expect(next.quotaRemaining).toBeNull();
+    expect(next.quotaResetsAt).toBeNull();
+    expect(next.updatedAt).toBe("2026-01-01T00:00:01.000Z");
+  });
 });
 
 describe("applyProviderFailure", () => {
