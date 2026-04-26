@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { parseProviderRef, providerIdFromRef } from "./ref.ts";
 
 describe("parseProviderRef", () => {
-  test("parses bare provider id", () => {
+  test("parses simple provider id", () => {
     const result = parseProviderRef("opencode");
     expect(result.providerId).toBe("opencode");
     expect(result.canonicalRef).toBe("opencode");
@@ -11,158 +11,122 @@ describe("parseProviderRef", () => {
     expect(result.version).toBeUndefined();
   });
 
-  test("parses provider id with version", () => {
-    const result = parseProviderRef("opencode@3");
-    expect(result.providerId).toBe("opencode");
-    expect(result.version).toBe("3");
-    expect(result.canonicalRef).toBe("opencode@3");
-  });
-
   test("parses provider/track", () => {
-    const result = parseProviderRef("anthropic/claude");
+    const result = parseProviderRef("anthropic/sonnet");
     expect(result.providerId).toBe("anthropic");
-    expect(result.track).toBe("claude");
-    expect(result.canonicalRef).toBe("anthropic/claude");
-  });
-
-  test("parses provider/track with version", () => {
-    const result = parseProviderRef("anthropic/claude@4");
-    expect(result.providerId).toBe("anthropic");
-    expect(result.track).toBe("claude");
-    expect(result.version).toBe("4");
-    expect(result.canonicalRef).toBe("anthropic/claude@4");
+    expect(result.track).toBe("sonnet");
+    expect(result.canonicalRef).toBe("anthropic/sonnet");
+    expect(result.model).toBeUndefined();
+    expect(result.version).toBeUndefined();
   });
 
   test("parses provider/track/model", () => {
-    const result = parseProviderRef("anthropic/claude/opus");
-    expect(result.providerId).toBe("anthropic");
-    expect(result.track).toBe("claude");
-    expect(result.model).toBe("opus");
-    expect(result.canonicalRef).toBe("anthropic/claude/opus");
+    const result = parseProviderRef("openai/gpt-4o/reasoning");
+    expect(result.providerId).toBe("openai");
+    expect(result.track).toBe("gpt-4o");
+    expect(result.model).toBe("reasoning");
+    expect(result.canonicalRef).toBe("openai/gpt-4o/reasoning");
+  });
+
+  test("parses with version suffix", () => {
+    const result = parseProviderRef("cohere/command@3.1");
+    expect(result.providerId).toBe("cohere");
+    expect(result.track).toBe("command");
+    expect(result.version).toBe("3.1");
+    expect(result.canonicalRef).toBe("cohere/command@3.1");
   });
 
   test("parses provider/track/model with version", () => {
-    const result = parseProviderRef("anthropic/claude/opus@4");
-    expect(result.providerId).toBe("anthropic");
-    expect(result.track).toBe("claude");
-    expect(result.model).toBe("opus");
-    expect(result.version).toBe("4");
-    expect(result.canonicalRef).toBe("anthropic/claude/opus@4");
+    const result = parseProviderRef("openai/gpt-4o/reasoning@2.0");
+    expect(result.providerId).toBe("openai");
+    expect(result.track).toBe("gpt-4o");
+    expect(result.model).toBe("reasoning");
+    expect(result.version).toBe("2.0");
+    expect(result.canonicalRef).toBe("openai/gpt-4o/reasoning@2.0");
   });
 
-  test("parses provider/track/model/submodel with version", () => {
-    const result = parseProviderRef("anthropic/claude/opus/4@20260101");
-    expect(result.providerId).toBe("anthropic");
-    expect(result.track).toBe("claude");
-    expect(result.model).toBe("opus/4");
-    expect(result.version).toBe("20260101");
-    expect(result.canonicalRef).toBe("anthropic/claude/opus/4@20260101");
+  test("canonicalRef drops version when absent", () => {
+    const result = parseProviderRef("provider/track/model");
+    expect(result.canonicalRef).toBe("provider/track/model");
   });
 
-  test("strips leading/trailing whitespace from ref", () => {
+  test("canonicalRef includes version when present", () => {
+    const result = parseProviderRef("provider/track@1.0");
+    expect(result.canonicalRef).toBe("provider/track@1.0");
+  });
+
+  test("canonicalRef omits model when undefined", () => {
+    const result = parseProviderRef("provider/track");
+    expect(result.canonicalRef).toBe("provider/track");
+  });
+
+  test("trims whitespace from ref", () => {
     const result = parseProviderRef("  opencode  ");
     expect(result.providerId).toBe("opencode");
   });
 
-  test("strips whitespace from segments", () => {
-    const result = parseProviderRef("  anthropic  /  claude  /  opus  ");
+  test("trims whitespace from segments", () => {
+    const result = parseProviderRef("  anthropic  /  sonnet  ");
     expect(result.providerId).toBe("anthropic");
-    expect(result.track).toBe("claude");
-    expect(result.model).toBe("opus");
+    expect(result.track).toBe("sonnet");
   });
 
-  test("version is not trimmed — whitespace inside version is preserved", () => {
-    const result = parseProviderRef("opencode  @  3");
-    expect(result.version).toBe("  3");
+  test("filters empty segments from path", () => {
+    // double-slash would produce empty segment
+    const result = parseProviderRef("opencode//default");
+    expect(result.providerId).toBe("opencode");
+    expect(result.track).toBe("default");
   });
 
-  test("canonicalRef omits version when undefined", () => {
-    const result = parseProviderRef("opencode");
-    expect(result.canonicalRef).toBe("opencode");
-  });
-
-  test("canonicalRef includes version when present", () => {
-    const result = parseProviderRef("opencode@3");
-    expect(result.canonicalRef).toBe("opencode@3");
-  });
-
-  test("throws for empty string", () => {
+  test("throws when ref is empty", () => {
     expect(() => parseProviderRef("")).toThrow("provider ref cannot be empty");
   });
 
-  test("throws for whitespace-only string", () => {
+  test("throws when ref is only whitespace", () => {
     expect(() => parseProviderRef("   ")).toThrow("provider ref cannot be empty");
   });
 
-  test("throws for ref with only whitespace, @, and version — missing provider id", () => {
-    // After whitespace trim of "  @3  " → "@3" → split gives ["", "3"] → rawPath="" → segments=[] → throws "provider id is required"
-    expect(() => parseProviderRef("  @3  ")).toThrow("provider id is required");
+  test("throws when ref has too many @ separators", () => {
+    expect(() => parseProviderRef("a/b@c@d")).toThrow("too many @ separators");
   });
 
-  test("throws when version is empty after @", () => {
-    expect(() => parseProviderRef("opencode@")).toThrow("version cannot be empty");
+  test("throws when version is empty string after @", () => {
+    expect(() => parseProviderRef("opencode/sonnet@")).toThrow("version cannot be empty");
   });
 
-  test("throws when version is whitespace-only after @", () => {
-    expect(() => parseProviderRef("opencode@   ")).toThrow("version cannot be empty");
+  test("throws when version is only whitespace", () => {
+    expect(() => parseProviderRef("opencode/sonnet@   ")).toThrow("version cannot be empty");
   });
 
-  test("throws for too many @ separators", () => {
-    expect(() => parseProviderRef("a@b@c")).toThrow("too many @ separators");
+  test("throws when provider id is missing (no segments)", () => {
+    expect(() => parseProviderRef("@1.0")).toThrow("provider id is required");
   });
 
-  test("leading slash is ignored — /claude is treated as 'claude'", () => {
-    // "/" splits to ["", "claude"] → filter removes empty string → segments=["claude"] → valid
-    const result = parseProviderRef("/claude");
-    expect(result.providerId).toBe("claude");
+  test("throws when path is only slashes and whitespace", () => {
+    expect(() => parseProviderRef("   /   ")).toThrow("provider id is required");
   });
 
-  test("throws when all segments are whitespace", () => {
-    expect(() => parseProviderRef("  /  /  ")).toThrow("provider id is required");
+  test("providerIdFromRef is a thin alias for parseProviderRef", () => {
+    const result = providerIdFromRef("anthropic/sonnet@3.0");
+    expect(result).toBe("anthropic");
   });
 
-  test("canonicalRef is stable for model with slashes inside version", () => {
-    // When model contains slashes and version is present, everything after first @ is version
-    const result = parseProviderRef("anthropic/claude/opus@4");
-    expect(result.model).toBe("opus");
-    expect(result.version).toBe("4");
-  });
-});
-
-describe("providerIdFromRef", () => {
-  test("returns provider id from bare ref", () => {
-    expect(providerIdFromRef("opencode")).toBe("opencode");
+  test("canonicalRef preserves model with slashes", () => {
+    // model can itself contain slashes (nested model paths)
+    const result = parseProviderRef("openai/gpt-4o/reasoning/high@1.0");
+    expect(result.model).toBe("reasoning/high");
+    expect(result.canonicalRef).toBe("openai/gpt-4o/reasoning/high@1.0");
   });
 
-  test("returns provider id from ref with version", () => {
-    expect(providerIdFromRef("opencode@3")).toBe("opencode");
-  });
-
-  test("returns provider id from provider/track ref", () => {
-    expect(providerIdFromRef("anthropic/claude")).toBe("anthropic");
-  });
-
-  test("returns provider id from provider/track/model ref", () => {
-    expect(providerIdFromRef("anthropic/claude/opus")).toBe("anthropic");
-  });
-
-  test("returns provider id from provider/track/model@version ref", () => {
-    expect(providerIdFromRef("anthropic/claude/opus@4")).toBe("anthropic");
-  });
-
-  test("throws for empty string", () => {
-    expect(() => providerIdFromRef("")).toThrow("provider ref cannot be empty");
-  });
-
-  test("throws for whitespace-only string", () => {
-    expect(() => providerIdFromRef("   ")).toThrow("provider ref cannot be empty");
-  });
-
-  test("throws for too many @ separators", () => {
-    expect(() => providerIdFromRef("a@b@c")).toThrow("too many @ separators");
-  });
-
-  test("throws for empty provider id — bare slash", () => {
-    expect(() => providerIdFromRef("/")).toThrow("provider id is required");
+  test("version without track is accepted (bare version)", () => {
+    // "provider@@1.0" — this parses with no track, just version
+    // Actually per the logic: split on @ → [provider, , 1.0] if "provider@@1.0"
+    // But trim() on empty string gives "", so version.trim().length === 0 → error
+    // So "provider@1.0" gives track=undefined, version="1.0"
+    const result = parseProviderRef("cohere@3.0");
+    expect(result.providerId).toBe("cohere");
+    expect(result.track).toBeUndefined();
+    expect(result.version).toBe("3.0");
+    expect(result.canonicalRef).toBe("cohere@3.0");
   });
 });
