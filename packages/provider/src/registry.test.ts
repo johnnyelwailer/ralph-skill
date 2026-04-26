@@ -61,4 +61,11 @@ describe("ProviderRegistry", () => {
     const registry = new ProviderRegistry();
     expect(() => registry.resolve("unknown/model@1.0")).toThrow("not registered");
   });
+
+  test("get returns undefined for a never-registered provider id", () => {
+    const registry = new ProviderRegistry();
+    registry.register(makeAdapter("registered"));
+    expect(registry.get("registered")?.id).toBe("registered");
+    expect(registry.get("not-registered")).toBeUndefined();
+  });
 });
