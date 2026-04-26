@@ -157,4 +157,37 @@ describe("createEventWriter", () => {
     await store.close();
     db.close();
   });
+
+  test("append propagates store.append rejection without calling projectors", async () => {
+    const dbPath = join(dir, "db.sqlite");
+    const logPath = join(dir, "aloopd.log");
+    const { db } = openDatabase(dbPath);
+    migrate(db, loadBundledMigrations());
+    const store = new JsonlEventStore(logPath);
+
+    let projectorApplyCalled = false;
+    const failingProjector = {
+      name: "failing",
+      apply() { projectorApplyCalled = true; },
+    };
+
+    const rejectingStore = {
+      async append() { throw new Error("store write failed"); },
+      async *read() { yield* store.read(); },
+      async close() { await store.close(); },
+    };
+
+    eventWriter = createEventWriter({
+      db,
+      store: rejectingStore,
+      projectors: [failingProjector],
+      nextId: makeIdGenerator(),
+    });
+
+    await expect(
+      eventWriter.append("test.reject", { ok: false }),
+    ).rejects.toThrow("store write failed");
+    expect(projectorApplyCalled).toBe(false);
+    db.close();
+  });
 });
