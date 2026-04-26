@@ -1,178 +1,302 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { makeEvent, makeIdGenerator, type EventEnvelope } from "@aloop/core";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, rmSync } from "node:fs";
+import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { appendEventOnce, JsonlEventStore, readAllEvents, simpleAppend } from "./jsonl.ts";
+import { JsonlEventStore, appendEventOnce, readAllEvents, simpleAppend } from "./jsonl.ts";
+import type { EventEnvelope } from "@aloop/core";
+
+function makeEvent(id: string, topic = "test.event", data: unknown = {}): EventEnvelope {
+  return { _v: 1, id, timestamp: new Date().toISOString(), topic, data };
+}
 
 describe("JsonlEventStore", () => {
   let dir: string;
   let path: string;
 
   beforeEach(() => {
-    dir = mkdtempSync(join(tmpdir(), "aloop-evt-"));
-    path = join(dir, "log.jsonl");
+    dir = mkdtempSync(join(tmpdir(), "aloop-jsonl-"));
+    path = join(dir, "events.jsonl");
   });
 
   afterEach(() => {
     rmSync(dir, { recursive: true, force: true });
   });
 
-  test("append then read returns events in monotonic order", async () => {
-    const store = new JsonlEventStore(path);
-    const gen = makeIdGenerator();
-    const events: EventEnvelope[] = [
-      makeEvent("a", { n: 1 }, gen),
-      makeEvent("b", { n: 2 }, gen),
-      makeEvent("c", { n: 3 }, gen),
-    ];
-    for (const e of events) await store.append(e);
-    await store.close();
+  describe("append", () => {
+    test("creates the file and writes one event per line", async () => {
+      const store = new JsonlEventStore(path);
+      await store.append(makeEvent("0001", "test.a", { x: 1 }));
+      await store.close();
 
-    const read = await readAllEvents(path);
-    expect(read.map((e) => e.topic)).toEqual(["a", "b", "c"]);
-    expect(read.map((e) => e.id)).toEqual(events.map((e) => e.id));
+      expect(existsSync(path)).toBe(true);
+      const content = await Bun.file(path).text();
+      const lines = content.split("\n").filter((l) => l.length > 0);
+      expect(lines).toHaveLength(1);
+      const parsed = JSON.parse(lines[0]!);
+      expect(parsed.id).toBe("0001");
+      expect(parsed.topic).toBe("test.a");
+      expect(parsed.data).toEqual({ x: 1 });
+    });
+
+    test("appends a second event on a new line without overwriting", async () => {
+      const store = new JsonlEventStore(path);
+      await store.append(makeEvent("0001", "test.a"));
+      await store.append(makeEvent("0002", "test.b"));
+      await store.close();
+
+      const lines = (await Bun.file(path).text()).split("\n").filter((l) => l.length > 0);
+      expect(lines).toHaveLength(2);
+      expect(JSON.parse(lines[0]!).id).toBe("0001");
+      expect(JSON.parse(lines[1]!).id).toBe("0002");
+    });
+
+    test("creates parent directories recursively", async () => {
+      const deepPath = join(dir, "a", "b", "c", "events.jsonl");
+      const store = new JsonlEventStore(deepPath);
+      await store.append(makeEvent("0001"));
+      await store.close();
+
+      expect(existsSync(deepPath)).toBe(true);
+    });
+
+    test("throws when appending after close", async () => {
+      const store = new JsonlEventStore(path);
+      await store.close();
+      await expect(store.append(makeEvent("0001"))).rejects.toThrow("EventStore closed");
+    });
+
+    test("lazy-opens file handle on first append", async () => {
+      const store = new JsonlEventStore(path);
+      expect(existsSync(path)).toBe(false);
+      await store.append(makeEvent("0001"));
+      expect(existsSync(path)).toBe(true);
+      await store.close();
+    });
   });
 
-  test("since filter skips events with id <= given value", async () => {
-    const store = new JsonlEventStore(path);
-    const gen = makeIdGenerator();
-    const events = [
-      makeEvent("a", 1, gen),
-      makeEvent("b", 2, gen),
-      makeEvent("c", 3, gen),
-    ];
-    for (const e of events) await store.append(e);
-    await store.close();
+  describe("read", () => {
+    test("returns empty iterable when file does not exist", async () => {
+      const store = new JsonlEventStore(path);
+      const events: EventEnvelope[] = [];
+      for await (const e of store.read()) events.push(e);
+      await store.close();
+      expect(events).toHaveLength(0);
+    });
 
-    const replay = new JsonlEventStore(path);
-    const got: EventEnvelope[] = [];
-    for await (const e of replay.read(events[0]!.id)) got.push(e);
-    await replay.close();
-    expect(got.map((e) => e.topic)).toEqual(["b", "c"]);
+    test("yields all events in order", async () => {
+      const store = new JsonlEventStore(path);
+      await store.append(makeEvent("0001", "a"));
+      await store.append(makeEvent("0002", "b"));
+      await store.append(makeEvent("0003", "c"));
+      await store.close();
+
+      const events: EventEnvelope[] = [];
+      const store2 = new JsonlEventStore(path);
+      for await (const e of store2.read()) events.push(e);
+      await store2.close();
+
+      expect(events).toHaveLength(3);
+      expect(events[0]!.id).toBe("0001");
+      expect(events[1]!.id).toBe("0002");
+      expect(events[2]!.id).toBe("0003");
+    });
+
+    test("skips empty lines in the file", async () => {
+      // Write a file with an empty line between two valid events
+      await Bun.write(
+        path,
+        JSON.stringify(makeEvent("0001")) + "\n\n" + JSON.stringify(makeEvent("0002")) + "\n",
+      );
+
+      const events: EventEnvelope[] = [];
+      const store = new JsonlEventStore(path);
+      for await (const e of store.read()) events.push(e);
+      await store.close();
+
+      expect(events).toHaveLength(2);
+      expect(events[0]!.id).toBe("0001");
+      expect(events[1]!.id).toBe("0002");
+    });
+
+    test("filters by since (exclusive, by event id)", async () => {
+      const store = new JsonlEventStore(path);
+      await store.append(makeEvent("0001"));
+      await store.append(makeEvent("0002"));
+      await store.append(makeEvent("0003"));
+      await store.close();
+
+      const events: EventEnvelope[] = [];
+      const store2 = new JsonlEventStore(path);
+      for await (const e of store2.read("0001")) events.push(e);
+      await store2.close();
+
+      // "since" is exclusive, so 0001 is not included
+      expect(events).toHaveLength(2);
+      expect(events[0]!.id).toBe("0002");
+      expect(events[1]!.id).toBe("0003");
+    });
+
+    test("read yields events from a pre-populated file", async () => {
+      // Pre-populate a file with known events (simulating existing log)
+      const store = new JsonlEventStore(path);
+      await store.append(makeEvent("0001", "a"));
+      await store.append(makeEvent("0002", "b"));
+      await store.close();
+
+      // Read from a fresh store instance pointing to the same file
+      const reader = new JsonlEventStore(path);
+      const events: EventEnvelope[] = [];
+      for await (const e of reader.read()) events.push(e);
+      await reader.close();
+
+      expect(events).toHaveLength(2);
+      expect(events[0]!.id).toBe("0001");
+      expect(events[1]!.id).toBe("0002");
+    });
+
+    test("since with id equal to last event returns empty", async () => {
+      const store = new JsonlEventStore(path);
+      await store.append(makeEvent("0001"));
+      await store.append(makeEvent("0002"));
+      await store.close();
+
+      const events: EventEnvelope[] = [];
+      const store2 = new JsonlEventStore(path);
+      for await (const e of store2.read("0002")) events.push(e);
+      await store2.close();
+
+      expect(events).toHaveLength(0);
+    });
+
+    test("read is iterable even after store is closed", async () => {
+      const store = new JsonlEventStore(path);
+      await store.append(makeEvent("0001"));
+      await store.close();
+
+      // Read from a new store instance pointing to the same file
+      const reader = new JsonlEventStore(path);
+      const events: EventEnvelope[] = [];
+      for await (const e of reader.read()) events.push(e);
+      await reader.close();
+
+      expect(events).toHaveLength(1);
+    });
   });
 
-  test("file on disk is JSONL — one parseable object per line", async () => {
-    const store = new JsonlEventStore(path);
-    const gen = makeIdGenerator();
-    await store.append(makeEvent("a", 1, gen));
-    await store.append(makeEvent("b", 2, gen));
-    await store.close();
+  describe("close", () => {
+    test("close is idempotent (safe to call twice)", async () => {
+      const store = new JsonlEventStore(path);
+      await store.append(makeEvent("0001"));
+      await store.close();
+      await store.close(); // should not throw
+    });
 
-    const raw = readFileSync(path, "utf-8");
-    const lines = raw.split("\n").filter((l) => l.length > 0);
-    expect(lines.length).toBe(2);
-    for (const l of lines) {
-      expect(() => JSON.parse(l)).not.toThrow();
-    }
+    test("close before any append does not throw", async () => {
+      const store = new JsonlEventStore(path);
+      await store.close();
+    });
   });
 
-  test("appends from two store instances interleave correctly", async () => {
-    // Not about concurrency safety — about the file being append-only.
-    const storeA = new JsonlEventStore(path);
-    const storeB = new JsonlEventStore(path);
-    const gen = makeIdGenerator();
-    await storeA.append(makeEvent("a", 1, gen));
-    await storeB.append(makeEvent("b", 2, gen));
-    await storeA.append(makeEvent("c", 3, gen));
-    await storeA.close();
-    await storeB.close();
+  describe("readAllEvents", () => {
+    test("reads all events from an existing file", async () => {
+      // Manually write two events
+      await Bun.write(
+        path,
+        JSON.stringify(makeEvent("0001", "a")) + "\n" + JSON.stringify(makeEvent("0002", "b")) + "\n",
+      );
 
-    const events = await readAllEvents(path);
-    expect(events.map((e) => e.topic)).toEqual(["a", "b", "c"]);
+      const events = await readAllEvents(path);
+      expect(events).toHaveLength(2);
+      expect(events[0]!.id).toBe("0001");
+      expect(events[1]!.id).toBe("0002");
+    });
+
+    test("returns empty array for non-existent file", async () => {
+      const events = await readAllEvents(join(dir, "nonexistent.jsonl"));
+      expect(events).toHaveLength(0);
+    });
+  });
+});
+
+describe("appendEventOnce", () => {
+  let dir: string;
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), "aloop-once-"));
   });
 
-  test("read on a missing file yields nothing rather than throwing", async () => {
-    const store = new JsonlEventStore(join(dir, "does-not-exist.jsonl"));
-    const out: EventEnvelope[] = [];
-    for await (const e of store.read()) out.push(e);
-    await store.close();
-    expect(out).toEqual([]);
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true });
   });
 
-  test("read skips blank lines in the file without error", async () => {
-    // Manually write a JSONL file with blank lines embedded, then read it back.
-    const { appendFileSync } = await import("node:fs");
-    const lines = [
-      JSON.stringify(makeEvent("a", 1, makeIdGenerator())),
-      "", // blank line
-      JSON.stringify(makeEvent("b", 2, makeIdGenerator())),
-      "\n", // whitespace-only line
-      JSON.stringify(makeEvent("c", 3, makeIdGenerator())),
-    ];
-    appendFileSync(path, lines.join("\n") + "\n", "utf-8");
+  test("appends a single event to a new file", async () => {
+    const p = join(dir, "events.jsonl");
+    await appendEventOnce(p, makeEvent("0001", "once"));
 
-    const store = new JsonlEventStore(path);
-    const got: EventEnvelope[] = [];
-    for await (const e of store.read()) got.push(e);
-    await store.close();
-    expect(got.map((e) => e.topic)).toEqual(["a", "b", "c"]);
+    const lines = (await Bun.file(p).text()).split("\n").filter((l) => l.length > 0);
+    expect(lines).toHaveLength(1);
+    expect(JSON.parse(lines[0]!).id).toBe("0001");
   });
 
-  test("read with since filter skips events with id strictly greater than since", async () => {
-    // This covers the parsed.id <= since guard (skip when id == since).
-    const store = new JsonlEventStore(path);
-    const gen = makeIdGenerator();
-    const events = [
-      makeEvent("a", 1, gen),
-      makeEvent("b", 2, gen),
-      makeEvent("c", 3, gen),
-    ];
-    for (const e of events) await store.append(e);
-    await store.close();
+  test("creates parent directories recursively", async () => {
+    const p = join(dir, "a", "b", "c", "events.jsonl");
+    await appendEventOnce(p, makeEvent("0001"));
 
-    // Replay from the id of the *second* event — it must be excluded (id == since).
-    const sinceId = events[1]!.id;
-    const replay = new JsonlEventStore(path);
-    const got: EventEnvelope[] = [];
-    for await (const e of replay.read(sinceId)) got.push(e);
-    await replay.close();
-    expect(got.map((e) => e.topic)).toEqual(["c"]);
+    expect(existsSync(p)).toBe(true);
   });
 
-  test("append after close throws", async () => {
-    const store = new JsonlEventStore(path);
-    const gen = makeIdGenerator();
-    await store.append(makeEvent("a", 1, gen));
-    await store.close();
-    await expect(store.append(makeEvent("b", 2, gen))).rejects.toThrow(/closed/);
+  test("appends to an existing file without overwriting", async () => {
+    const p = join(dir, "events.jsonl");
+    await Bun.write(p, JSON.stringify(makeEvent("0001", "first")) + "\n");
+    await appendEventOnce(p, makeEvent("0002", "second"));
+
+    const lines = (await Bun.file(p).text()).split("\n").filter((l) => l.length > 0);
+    expect(lines).toHaveLength(2);
+  });
+});
+
+describe("simpleAppend", () => {
+  let dir: string;
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), "aloop-simple-"));
   });
 
-  test("appendEventOnce: standalone durable append", async () => {
-    const gen = makeIdGenerator();
-    await appendEventOnce(path, makeEvent("a", 1, gen));
-    await appendEventOnce(path, makeEvent("b", 2, gen));
-    const events = await readAllEvents(path);
-    expect(events.map((e) => e.topic)).toEqual(["a", "b"]);
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true });
   });
 
-  test("simpleAppend: lightweight direct fs append without a store instance", async () => {
-    const gen = makeIdGenerator();
-    await simpleAppend(path, makeEvent("x", { k: "v" }, gen));
-    await simpleAppend(path, makeEvent("y", { k2: "v2" }, gen));
-    const events = await readAllEvents(path);
-    expect(events.map((e) => e.topic)).toEqual(["x", "y"]);
-    expect(events[0]!.data).toEqual({ k: "v" });
-    expect(events[1]!.data).toEqual({ k2: "v2" });
+  test("appends event to file without overwriting existing content", async () => {
+    const p = join(dir, "events.jsonl");
+    await simpleAppend(p, makeEvent("0001", "a"));
+    await simpleAppend(p, makeEvent("0002", "b"));
+
+    const lines = (await Bun.file(p).text()).split("\n").filter((l) => l.length > 0);
+    expect(lines).toHaveLength(2);
+    expect(JSON.parse(lines[0]!).id).toBe("0001");
+    expect(JSON.parse(lines[1]!).id).toBe("0002");
   });
 
-  test("simpleAppend: creates parent directories recursively", async () => {
-    const nested = join(dir, "deeply", "nested", "dir", "log.jsonl");
-    const gen = makeIdGenerator();
-    await simpleAppend(nested, makeEvent("z", 99, gen));
-    const events = await readAllEvents(nested);
-    expect(events.map((e) => e.topic)).toEqual(["z"]);
+  test("creates parent directories recursively", async () => {
+    const p = join(dir, "x", "y", "events.jsonl");
+    await simpleAppend(p, makeEvent("0001"));
+
+    expect(existsSync(p)).toBe(true);
   });
 
-  test("appendEventOnce and simpleAppend are interchangeable for single appends", async () => {
-    const pathA = join(dir, "a.jsonl");
-    const pathB = join(dir, "b.jsonl");
-    const gen = makeIdGenerator();
-    await appendEventOnce(pathA, makeEvent("a", 1, gen));
-    await simpleAppend(pathB, makeEvent("b", 2, gen));
-    const eventsA = await readAllEvents(pathA);
-    const eventsB = await readAllEvents(pathB);
-    expect(eventsA[0]!.data).toBe(1);
-    expect(eventsB[0]!.data).toBe(2);
+  test("writes a valid JSON line with newline terminator", async () => {
+    const p = join(dir, "events.jsonl");
+    await simpleAppend(p, makeEvent("0001", "test"));
+
+    const content = await Bun.file(p).text();
+    // Content should be a single line ending with \n
+    const lines = content.split("\n");
+    expect(lines[0]).toBeTruthy();
+    expect(lines[1]).toBe("");
+    // The first line should be valid JSON
+    expect(() => JSON.parse(lines[0]!)).not.toThrow();
+    const parsed = JSON.parse(lines[0]!);
+    expect(parsed.id).toBe("0001");
   });
 });
