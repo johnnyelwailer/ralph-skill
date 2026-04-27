@@ -239,6 +239,38 @@ describe("acquirePermitDecision", () => {
       expect((result as any).retryAfterSeconds).toBe(60);
     });
 
+    test("includes resetAt in details when quota provides it", async () => {
+      const events = new MockEventWriter();
+      const probes: SchedulerProbes = {
+        providerQuota: () => ({
+          ok: false,
+          reason: "rate_limited",
+          remaining: 0,
+          resetAt: "2026-04-27T12:00:00Z",
+        }),
+      };
+      const deps = makeDeps({ events, probes });
+      const result = await acquirePermitDecision(deps, makeInput());
+      expect(result.granted).toBe(false);
+      expect((result as any).details.reset_at).toBe("2026-04-27T12:00:00Z");
+    });
+
+    test("merges extra details from quota response into deny details", async () => {
+      const events = new MockEventWriter();
+      const probes: SchedulerProbes = {
+        providerQuota: () => ({
+          ok: false,
+          reason: "token_limit",
+          details: { model: "gpt-4o", window: "1h" },
+        }),
+      };
+      const deps = makeDeps({ events, probes });
+      const result = await acquirePermitDecision(deps, makeInput());
+      expect(result.granted).toBe(false);
+      expect((result as any).details.model).toBe("gpt-4o");
+      expect((result as any).details.window).toBe("1h");
+    });
+
     test("allows request when providerQuota returns ok=true", async () => {
       const events = new MockEventWriter();
       const probes: SchedulerProbes = {
