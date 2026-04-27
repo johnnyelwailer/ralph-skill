@@ -134,6 +134,45 @@ describe("handleProviders", () => {
     expect(res).toBeDefined();
     expect(res!.status).toBe(405);
   });
+
+  test("GET /v1/providers with registered providers includes capabilities and health in each item", async () => {
+    // Covers the map() callback lines 37-40: adapter.capabilities and health lookup
+    const deps = makeQuotaDeps();
+    const res = await handleProviders(
+      new Request("http://x/v1/providers", { method: "GET" }),
+      deps,
+      "/v1/providers",
+    );
+    expect(res).toBeDefined();
+    expect(res!.status).toBe(200);
+    const body = await res!.json() as { _v: number; items: Array<{ id: string; capabilities: unknown; health: unknown }> };
+    expect(body.items.length).toBe(2);
+    // The "probe-incapable" adapter has capabilities with quotaProbe: false
+    const incapable = body.items.find((i) => i.id === "probe-incapable");
+    expect(incapable).toBeDefined();
+    expect((incapable!.capabilities as { quotaProbe: boolean }).quotaProbe).toBe(false);
+    // Health is an object from InMemoryProviderHealthStore
+    expect(typeof incapable!.health).toBe("object");
+  });
+
+  test("POST /v1/providers/resolve-chain with empty provider_chain resolves all registered providers", async () => {
+    // Covers resolve-chain path with empty array input
+    const deps = makeQuotaDeps();
+    const res = await handleProviders(
+      new Request("http://x/v1/providers/resolve-chain", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ session_id: "sess_empty", provider_chain: [] }),
+      }),
+      deps,
+      "/v1/providers/resolve-chain",
+    );
+    expect(res).toBeDefined();
+    expect(res!.status).toBe(200);
+    const body = await res!.json() as { input_chain: unknown[]; resolved_chain: unknown[] };
+    expect(body.input_chain).toEqual([]);
+    expect(Array.isArray(body.resolved_chain)).toBe(true);
+  });
 });
 
 // ─── /v1/providers/overrides ────────────────────────────────────────────────
