@@ -344,6 +344,19 @@ describe("patchProject re-throws unknown errors", () => {
     const req = makePatchRequest(projectId, { name: "new-name" });
     await expect(patchProject(projectId, req, deps)).rejects.toThrow("corrupted project record");
   });
+
+  test("re-throws unexpected errors from registry.updateStatus", async () => {
+    const reg = deps.registry as unknown as {
+      _db: { close(): void };
+      updateStatus: () => never;
+    };
+    reg.updateStatus = () => {
+      throw new Error("disk I/O error");
+    };
+
+    const req = makePatchRequest(projectId, { status: "ready" });
+    await expect(patchProject(projectId, req, deps)).rejects.toThrow("disk I/O error");
+  });
 });
 
 // ─── archiveProject re-throws unknown errors ─────────────────────────────────
