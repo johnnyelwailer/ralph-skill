@@ -50,3 +50,29 @@ describe("ProviderRegistry", () => {
     expect(registry.list()).toEqual([]);
   });
 });
+
+describe("resolve", () => {
+  test("resolve parses ref and returns adapter when registered", () => {
+    const registry = new ProviderRegistry();
+    const adapter = { id: "opencode", name: "OpenCode" } as any;
+    registry.register(adapter);
+    const result = registry.resolve("opencode");
+    expect(result.ref.providerId).toBe("opencode");
+    expect(result.adapter).toBe(adapter);
+  });
+
+  test("resolve throws when provider id in ref is not registered", () => {
+    const registry = new ProviderRegistry();
+    expect(() => registry.resolve("nope")).toThrow(
+      "provider adapter not registered: nope",
+    );
+  });
+
+  test("resolve parses provider id from ref and require-throws when not registered", () => {
+    const registry = new ProviderRegistry();
+    // The ref "opencode" parses to providerId "opencode", but nothing is registered.
+    expect(() => registry.resolve("opencode")).toThrow(
+      "provider adapter not registered: opencode",
+    );
+  });
+});
