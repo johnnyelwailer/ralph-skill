@@ -290,12 +290,12 @@ describe("handleProviderQuota", () => {
     expect(health.failureReason).toBe("rate_limit");
   });
 
-  test("appends provider.quota and provider.health events on successful probe", async () => {
-    const appendedTopics: string[] = [];
+  test("appends provider.quota and provider.health events on successful probe with correct data", async () => {
+    const appendedEvents: Array<{ topic: string; data: Record<string, unknown> }> = [];
     const deps = makeDeps({
       events: {
         append: async (topic, data) => {
-          appendedTopics.push(topic);
+          appendedEvents.push({ topic, data });
           return {
             _v: 1,
             id: "evt_test",
@@ -313,8 +313,24 @@ describe("handleProviderQuota", () => {
     });
     await handleProviderQuota(req, deps, "/v1/providers/probe-capable/quota");
 
-    expect(appendedTopics).toContain("provider.quota");
-    expect(appendedTopics).toContain("provider.health");
+    expect(appendedEvents.map((e) => e.topic)).toContain("provider.quota");
+    expect(appendedEvents.map((e) => e.topic)).toContain("provider.health");
+
+    // Verify provider.quota event data shape and values
+    const quotaEvent = appendedEvents.find((e) => e.topic === "provider.quota")!;
+    expect(quotaEvent.data.provider_id).toBe("probe-capable");
+    expect(quotaEvent.data.remaining).toBe(500);
+    expect(quotaEvent.data.total).toBe(1000);
+    expect(quotaEvent.data.reset_at).toBeNull();
+    expect(quotaEvent.data.currency).toBeUndefined(); // not set on this adapter's response
+    expect(typeof quotaEvent.data.probed_at).toBe("string"); // ISO timestamp from adapter
+
+    // Verify provider.health event data shape after successful probe
+    const healthEvent = appendedEvents.find((e) => e.topic === "provider.health")!;
+    // Health state uses camelCase field names (providerId, status, consecutiveFailures)
+    expect(healthEvent.data.providerId).toBe("probe-capable");
+    expect(healthEvent.data.status).toBe("healthy");
+    expect(healthEvent.data.consecutiveFailures).toBe(0);
   });
 
   test("failed probe appends provider.health but not provider.quota (no partial side effects)", async () => {
