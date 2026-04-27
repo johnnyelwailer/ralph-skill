@@ -92,4 +92,38 @@ describe("resolve", () => {
       "provider adapter not registered: opencode",
     );
   });
+
+  test("resolve propagates Error from parseProviderRef for malformed refs", () => {
+    const registry = new ProviderRegistry();
+    // An empty-string ref causes parseProviderRef to throw before require is called.
+    // The Error from parseProviderRef ("provider ref cannot be empty") must propagate
+    // rather than being swallowed or replaced by a require-throw.
+    expect(() => registry.resolve("  ")).toThrow(
+      "provider ref cannot be empty",
+    );
+  });
+
+  test("resolve propagates Error for ref with too many @ separators", () => {
+    const registry = new ProviderRegistry();
+    expect(() => registry.resolve("opencode@v1@extra")).toThrow(
+      /too many @ separators/,
+    );
+  });
+
+  test("resolve propagates Error for ref with empty version", () => {
+    const registry = new ProviderRegistry();
+    expect(() => registry.resolve("opencode@   ")).toThrow(
+      /version cannot be empty/,
+    );
+  });
+
+  test("resolve propagates Error for ref with no provider id", () => {
+    const registry = new ProviderRegistry();
+    expect(() => registry.resolve("   ")).toThrow(
+      "provider ref cannot be empty",
+    );
+    expect(() => registry.resolve("//")).toThrow(
+      /provider id is required/,
+    );
+  });
 });
