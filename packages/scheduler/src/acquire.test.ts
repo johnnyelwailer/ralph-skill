@@ -255,6 +255,37 @@ describe("acquirePermitDecision", () => {
       expect((result as any).details.reset_at).toBe("2026-04-27T12:00:00Z");
     });
 
+    test("uses default reason when quota.reason is absent", async () => {
+      const events = new MockEventWriter();
+      const probes: SchedulerProbes = {
+        providerQuota: () => ({
+          ok: false,
+          remaining: 0,
+        }),
+      };
+      const deps = makeDeps({ events, probes });
+      const result = await acquirePermitDecision(deps, makeInput());
+      expect(result.granted).toBe(false);
+      expect((result as any).reason).toBe("provider_quota_exceeded");
+    });
+
+    test("includes resetAt but omits remaining when quota.resetAt is set but remaining is absent", async () => {
+      // Covers acquire.ts: extra spread branch for resetAt when remaining is undefined.
+      const events = new MockEventWriter();
+      const probes: SchedulerProbes = {
+        providerQuota: () => ({
+          ok: false,
+          reason: "rate_limited",
+          resetAt: "2026-04-27T12:00:00Z",
+        }),
+      };
+      const deps = makeDeps({ events, probes });
+      const result = await acquirePermitDecision(deps, makeInput());
+      expect(result.granted).toBe(false);
+      expect((result as any).details.reset_at).toBe("2026-04-27T12:00:00Z");
+      expect((result as any).details).not.toHaveProperty("remaining");
+    });
+
     test("merges extra details from quota response into deny details", async () => {
       const events = new MockEventWriter();
       const probes: SchedulerProbes = {
