@@ -205,4 +205,48 @@ describe("EventCountsProjector", () => {
       .get();
     expect(total?.n).toBe(1200);
   });
+
+  test("runProjector propagates error when projector.apply throws", async () => {
+    const db = openDb();
+    const gen = makeIdGenerator();
+    const events: EventEnvelope[] = [
+      makeEvent("a", {}, gen),
+      makeEvent("b", {}, gen),
+      makeEvent("c", {}, gen),
+    ];
+
+    // A projector that throws when it sees event "b"
+    const throwingProjector = new (class implements Projector {
+      readonly name = "throwing";
+      apply(_db: Database, event: EventEnvelope): void {
+        if (event.topic === "b") throw new Error("boom at topic b");
+      }
+    })();
+
+    async function* iter() {
+      for (const e of events) yield e;
+    }
+
+    await expect(runProjector(db, throwingProjector, iter())).rejects.toThrow("boom at topic b");
+  });
+
+  test("runProjector propagates error from async iterator next()", async () => {
+    const db = openDb();
+    const gen = makeIdGenerator();
+    const events: EventEnvelope[] = [
+      makeEvent("x", {}, gen),
+      makeEvent("y", {}, gen),
+    ];
+
+    // An async iterator that throws when iterated
+    async function* badIter(): AsyncGenerator<EventEnvelope> {
+      yield events[0]!;
+      throw new Error("iterator error");
+    }
+
+    const projector = new EventCountsProjector();
+    await expect(runProjector(db, projector, badIter())).rejects.toThrow("iterator error");
+  });
 });
+
+import type { Projector } from "./projector.ts";
