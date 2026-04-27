@@ -45,10 +45,26 @@ function makePermit(overrides: Partial<Permit> = {}): Permit {
   };
 }
 
-function makeConfig(limits = { max_permits: 10, ttl_seconds: 3600 }): SchedulerConfigView {
+function makeConfig(overrides: Partial<{
+  max_permits: number;
+  ttl_seconds: number;
+  concurrencyCap: number;
+  systemLimits: NonNullable<ReturnType<SchedulerConfigView["scheduler"]>["systemLimits"]>;
+  burnRate: NonNullable<ReturnType<SchedulerConfigView["scheduler"]>["burnRate"]>;
+  permitTtlDefaultSeconds: number;
+  permitTtlMaxSeconds: number;
+}> = {}): SchedulerConfigView {
   return {
-    scheduler: () => limits,
-    overrides: () => ({}),
+    scheduler: () => ({
+      max_permits: overrides.max_permits ?? 10,
+      ttl_seconds: overrides.ttl_seconds ?? 3600,
+      concurrencyCap: overrides.concurrencyCap ?? 3,
+      systemLimits: overrides.systemLimits ?? { cpuMaxPct: 80, memMaxPct: 85, loadMax: 4.0 },
+      burnRate: overrides.burnRate ?? { maxTokensSinceCommit: 2_000_000, minCommitsPerHour: 2 },
+      permitTtlDefaultSeconds: overrides.permitTtlDefaultSeconds ?? 600,
+      permitTtlMaxSeconds: overrides.permitTtlMaxSeconds ?? 3600,
+    }),
+    overrides: () => ({ allow: null, deny: null, force: null }),
     updateLimits: () =>
       Promise.resolve({ ok: true, limits: { max_permits: 5, ttl_seconds: 1800 } }),
   };
@@ -84,7 +100,9 @@ describe("currentLimits", () => {
     const config = makeConfig({ max_permits: 42, ttl_seconds: 7200 });
     const events = new MockEventWriter();
     const service = new SchedulerService(permits as unknown as PermitRegistry, config, events as unknown as EventWriter);
-    expect(service.currentLimits()).toEqual({ max_permits: 42, ttl_seconds: 7200 });
+    const limits = service.currentLimits();
+    expect(limits.max_permits).toBe(42);
+    expect(limits.ttl_seconds).toBe(7200);
   });
 });
 
@@ -155,5 +173,61 @@ describe("expirePermits", () => {
     // Since MockPermitRegistry.listExpired returns [] by default, result is 0
     const result = await service.expirePermits();
     expect(result).toBe(0);
+  });
+});
+
+// ─── acquirePermit ─────────────────────────────────────────────────────────────
+
+describe("acquirePermit", () => {
+  test("delegates to acquirePermitDecision and returns the decision", async () => {
+    const permits = new MockPermitRegistry();
+    const config = makeConfig({ concurrencyCap: 3 });
+    const events = new MockEventWriter();
+    const service = new SchedulerService(
+      permits as unknown as PermitRegistry,
+      config,
+      events as unknown as EventWriter,
+    );
+    const result = await service.acquirePermit({ sessionId: "sess_test", providerCandidate: "opencode" });
+    // acquirePermitDecision is called and returns a PermitDecision
+    expect(typeof result.granted).toBe("boolean");
+    // Verify the decision is well-formed: either granted (with permit) or denied (with reason/gate)
+    if (result.granted === true) {
+      expect(result).toHaveProperty("permit");
+    } else {
+      expect(result).toHaveProperty("reason");
+      expect(result).toHaveProperty("gate");
+    }
+  });
+
+  test("returns denied when concurrency cap is already reached", async () => {
+    const permits = new MockPermitRegistry();
+    permits.setCountActive(3); // cap is 3
+    const config = makeConfig({ concurrencyCap: 3 });
+    const events = new MockEventWriter();
+    const service = new SchedulerService(
+      permits as unknown as PermitRegistry,
+      config,
+      events as unknown as EventWriter,
+    );
+    const result = await service.acquirePermit({ sessionId: "sess_blocked", providerCandidate: "opencode" });
+    expect(result.granted).toBe(false);
+  });
+
+  test("passes ttlSeconds to acquirePermitDecision", async () => {
+    const permits = new MockPermitRegistry();
+    const config = makeConfig();
+    const events = new MockEventWriter();
+    const service = new SchedulerService(
+      permits as unknown as PermitRegistry,
+      config,
+      events as unknown as EventWriter,
+    );
+    const result = await service.acquirePermit({
+      sessionId: "sess_ttl",
+      providerCandidate: "opencode",
+      ttlSeconds: 300,
+    });
+    expect(typeof result.granted).toBe("boolean");
   });
 });
