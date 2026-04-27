@@ -316,4 +316,45 @@ describe("handleProviderQuota", () => {
     expect(appendedTopics).toContain("provider.quota");
     expect(appendedTopics).toContain("provider.health");
   });
+
+  test("failed probe appends provider.health but not provider.quota (no partial side effects)", async () => {
+    const appendedTopics: string[] = [];
+    const registry = new ProviderRegistry();
+    registry.register(
+      makeAdapter("fail-probe", {
+        supportsQuotaProbe: true,
+        probeQuotaImpl: async () => {
+          throw new Error("rate limit exceeded");
+        },
+      }),
+    );
+    const deps: ProviderQuotaDeps = {
+      events: {
+        append: async (topic, data) => {
+          appendedTopics.push(topic);
+          return {
+            _v: 1,
+            id: "evt_test",
+            timestamp: new Date(0).toISOString(),
+            topic,
+            data,
+          };
+        },
+      },
+      providerRegistry: registry,
+      providerHealth: new InMemoryProviderHealthStore(["fail-probe"]),
+    };
+
+    const req = new Request("http://x/v1/providers/fail-probe/quota", {
+      method: "GET",
+      headers: { "x-aloop-auth-handle": "user@example.com" },
+    });
+    const res = await handleProviderQuota(req, deps, "/v1/providers/fail-probe/quota");
+    expect(res!.status).toBe(429);
+
+    // provider.health is appended so the failure is recorded
+    expect(appendedTopics).toContain("provider.health");
+    // provider.quota is NOT appended — no partial side effects from the error path
+    expect(appendedTopics).not.toContain("provider.quota");
+  });
 });
