@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { mkdirSync } from "node:fs";
 import {
   createConfigStore,
   DAEMON_DEFAULTS,
@@ -279,6 +280,47 @@ describe("createConfigStore", () => {
         // overrides fell back to defaults since the file was empty
         expect(result.overrides.allow).toBe(null);
       }
+    });
+  });
+
+  describe("setDaemon throws when writeFileSync fails", () => {
+    test("setDaemon re-throws ENOENT when the config file path is a directory", () => {
+      const store = createConfigStore({
+        daemon: DAEMON_DEFAULTS,
+        overrides: OVERRIDES_DEFAULT,
+        paths,
+      });
+      // Point the daemon config file at an actual directory — writeFileSync will throw.
+      const badPaths = {
+        ...paths,
+        daemonConfigFile: paths.configDir, // configDir is a directory, not a file
+      };
+      const badStore = createConfigStore({
+        daemon: DAEMON_DEFAULTS,
+        overrides: OVERRIDES_DEFAULT,
+        paths: badPaths,
+      });
+      expect(() => badStore.setDaemon(DAEMON_DEFAULTS)).toThrow();
+    });
+  });
+
+  describe("setOverrides throws when writeFileSync fails", () => {
+    test("setOverrides re-throws ENOENT when the overrides file path is a directory", () => {
+      const store = createConfigStore({
+        daemon: DAEMON_DEFAULTS,
+        overrides: OVERRIDES_DEFAULT,
+        paths,
+      });
+      const badPaths = {
+        ...paths,
+        overridesFile: paths.configDir, // configDir is a directory, not a file
+      };
+      const badStore = createConfigStore({
+        daemon: DAEMON_DEFAULTS,
+        overrides: OVERRIDES_DEFAULT,
+        paths: badPaths,
+      });
+      expect(() => badStore.setOverrides(OVERRIDES_DEFAULT)).toThrow();
     });
   });
 });
