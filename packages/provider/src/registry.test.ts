@@ -49,6 +49,23 @@ describe("ProviderRegistry", () => {
     const registry = new ProviderRegistry();
     expect(registry.list()).toEqual([]);
   });
+
+  test("list returns readonly snapshot of current adapters", () => {
+    const registry = new ProviderRegistry();
+    const a1 = { id: "p1", name: "P1" } as any;
+    const a2 = { id: "p2", name: "P2" } as any;
+    registry.register(a1);
+    registry.register(a2);
+
+    const list1 = registry.list();
+    expect(list1).toEqual([a1, a2]);
+    // list() returns a new snapshot each call — callers get an isolated copy
+    const list2 = registry.list();
+    expect(list2).toEqual([a1, a2]);
+    expect(list1).not.toBe(list2);
+    expect(list1.length).toBe(2);
+    expect(list2.length).toBe(2);
+  });
 });
 
 describe("resolve", () => {
