@@ -49,6 +49,14 @@ describe("parseYamlString", () => {
     expect(errors[0]).toContain("yaml parse error");
   });
 
+  test("re-throws TypeError for non-string input to yaml parser", () => {
+    // The yaml library throws TypeError when source is not a string.
+    // parseYamlString only catches YAMLParseError, so non-YAMLParseError
+    // exceptions propagate — covering the throw err branch at yaml.ts:33.
+    expect(() => parseYamlString(42 as unknown as string)).toThrow(TypeError);
+    expect(() => parseYamlString(true as unknown as string)).toThrow(TypeError);
+  });
+
   test("returns error for YAML that is not a mapping at top level", () => {
     // A list is valid YAML but isMapping returns false for it
     const result = parseYamlString("- item1\n- item2");
