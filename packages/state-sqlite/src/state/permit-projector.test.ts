@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { makeIdGenerator } from "@aloop/core";
+import { makeEvent, makeIdGenerator } from "@aloop/core";
 import { loadBundledMigrations, migrate, openDatabase } from "@aloop/sqlite-db";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -12,6 +12,32 @@ import { EventCountsProjector, runProjector } from "./projector.ts";
 
 describe("PermitProjector", () => {
   let dir: string;
+
+  function openDb() {
+    const dbPath = join(dir, "db.sqlite");
+    const { db } = openDatabase(dbPath);
+    migrate(db, loadBundledMigrations());
+    return db;
+  }
+
+  function makeGrant(permitId: string, sessionId: string, providerId: string, expiresAt: string) {
+    return makeEvent("scheduler.permit.grant", {
+      permit_id: permitId,
+      session_id: sessionId,
+      provider_id: providerId,
+      ttl_seconds: 600,
+      granted_at: "2026-01-01T00:00:00.000Z",
+      expires_at: expiresAt,
+    }, makeIdGenerator());
+  }
+
+  function makeRelease(permitId: string) {
+    return makeEvent("scheduler.permit.release", { permit_id: permitId }, makeIdGenerator());
+  }
+
+  function makeExpired(permitId: string) {
+    return makeEvent("scheduler.permit.expired", { permit_id: permitId }, makeIdGenerator());
+  }
 
   beforeEach(() => {
     dir = mkdtempSync(join(tmpdir(), "aloop-permits-"));
@@ -219,6 +245,54 @@ describe("PermitProjector", () => {
     expect(permits.countActive()).toBe(3);
 
     await store.close();
+    db.close();
+  });
+
+  test("apply grant path inserts permit and returns early", () => {
+    // Covers the early return at line 32 of permit-projector.ts
+    const db = openDb();
+    const projector = new PermitProjector();
+    projector.apply(db, makeGrant("p1", "s1", "opencode", "2026-01-01T00:10:00.000Z"));
+    const registry = new PermitRegistry(db);
+    expect(registry.countActive()).toBe(1);
+    expect(registry.get("p1")!.sessionId).toBe("s1");
+    db.close();
+  });
+
+  test("apply release path calls projectPermitRemoval with correct id", () => {
+    // Covers lines 36-41: scheduler.permit.release branch
+    const db = openDb();
+    const projector = new PermitProjector();
+    // First insert a permit via the grant path
+    projector.apply(db, makeGrant("p_release", "s1", "codex", "2026-01-01T00:10:00.000Z"));
+    expect(new PermitRegistry(db).countActive()).toBe(1);
+    // Apply a release event — projector should remove it
+    projector.apply(db, makeRelease("p_release"));
+    expect(new PermitRegistry(db).countActive()).toBe(0);
+    db.close();
+  });
+
+  test("apply expired path calls projectPermitRemoval with correct id", () => {
+    // Covers lines 36-41: scheduler.permit.expired branch
+    const db = openDb();
+    const projector = new PermitProjector();
+    projector.apply(db, makeGrant("p_expired", "s2", "claude", "2026-01-01T00:10:00.000Z"));
+    expect(new PermitRegistry(db).countActive()).toBe(1);
+    projector.apply(db, makeExpired("p_expired"));
+    expect(new PermitRegistry(db).countActive()).toBe(0);
+    db.close();
+  });
+
+  test("apply ignores unknown topics (no-op, no throw)", () => {
+    // Covers the implicit fall-through when neither grant nor release/expired matches
+    const db = openDb();
+    const projector = new PermitProjector();
+    projector.apply(db, makeGrant("p_ignore", "s3", "opencode", "2026-01-01T00:10:00.000Z"));
+    expect(new PermitRegistry(db).countActive()).toBe(1);
+    // An arbitrary unknown topic — must be silently ignored
+    projector.apply(db, makeEvent("some.other.topic", { permit_id: "p_ignore" }, makeIdGenerator()));
+    // Original permit must remain untouched
+    expect(new PermitRegistry(db).countActive()).toBe(1);
     db.close();
   });
 });
