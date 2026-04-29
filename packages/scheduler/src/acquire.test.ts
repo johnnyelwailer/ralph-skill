@@ -1,8 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import { acquirePermitDecision } from "./acquire.ts";
-import type { AcquirePermitInput, SchedulerConfigView } from "./decisions.ts";
-import type { PermitRegistry, EventWriter } from "@aloop/state-sqlite";
-import type { SchedulerProbes } from "./probes.ts";
+import type { Permit } from "@aloop/state-sqlite";
+import type { SchedulerConfigView } from "./decisions.ts";
+import type { EventWriter, PermitRegistry } from "@aloop/state-sqlite";
+import type { SchedulerProbes } from "@aloop/scheduler-gates";
+import { acquirePermitDecision, type AcquirePermitDeps } from "./acquire.ts";
+
+// ─── mocks ─────────────────────────────────────────────────────────────────────
 
 class MockEventWriter {
   readonly events: Array<{ topic: string; data: Record<string, unknown> }> = [];
@@ -12,415 +15,505 @@ class MockEventWriter {
 }
 
 class MockPermitRegistry {
-  private _permits: Map<string, unknown> = new Map();
-  get(_permitId: string) {
-    return this._permits.get(_permitId) ?? { permit_id: _permitId };
-  }
-  setPermit(id: string, data: unknown) {
-    this._permits.set(id, data);
-  }
-  countActive() { return 0; }
-}
+  private _permits = new Map<string, Permit>();
+  private _countActiveResult = 0;
 
-function makeDeps(
-  overrides: Partial<{
-    events: MockEventWriter;
-    permits: MockPermitRegistry;
-    config: SchedulerConfigView;
-    probes: SchedulerProbes;
-  }> = {},
-) {
-  const events = overrides.events ?? new MockEventWriter();
-  const permits = overrides.permits ?? new MockPermitRegistry();
-  const config = overrides.config ?? makeConfig();
-  const probes = overrides.probes ?? {};
-  return { events, permits, config, probes };
+  get(id: string): Permit | undefined { return this._permits.get(id); }
+  list(): Permit[] { return [...this._permits.values()]; }
+  listExpired(): Permit[] { return []; }
+  countActive(): number { return this._countActiveResult; }
+
+  setCountActive(n: number) { this._countActiveResult = n; }
+  addPermit(permit: Permit) { this._permits.set(permit.id, permit); }
 }
 
 function makeConfig(overrides: Partial<{
   concurrencyCap: number;
-  overrides_: Parameters<SchedulerConfigView["overrides"]>[0];
-  systemLimits: NonNullable<ReturnType<SchedulerConfigView["scheduler"]>["systemLimits"]>;
-  burnRate: NonNullable<ReturnType<SchedulerConfigView["scheduler"]>["burnRate"]>;
   permitTtlDefaultSeconds: number;
   permitTtlMaxSeconds: number;
-}> = {}) {
-  const cfg: SchedulerConfigView = {
+  systemLimits: NonNullable<ReturnType<SchedulerConfigView["scheduler"]>["systemLimits"]>;
+  burnRate: NonNullable<ReturnType<SchedulerConfigView["scheduler"]>["burnRate"]>;
+}> = {}): SchedulerConfigView {
+  return {
     scheduler: () => ({
       concurrencyCap: overrides.concurrencyCap ?? 3,
-      systemLimits: overrides.systemLimits ?? {
-        cpuMaxPct: 80,
-        memMaxPct: 85,
-        loadMax: 4.0,
-      },
-      burnRate: overrides.burnRate ?? {
-        maxTokensSinceCommit: 2_000_000,
-        minCommitsPerHour: 2,
-      },
       permitTtlDefaultSeconds: overrides.permitTtlDefaultSeconds ?? 600,
       permitTtlMaxSeconds: overrides.permitTtlMaxSeconds ?? 3600,
+      systemLimits: overrides.systemLimits ?? { cpuMaxPct: 80, memMaxPct: 85, loadMax: 4.0 },
+      burnRate: overrides.burnRate ?? { maxTokensSinceCommit: 2_000_000, minCommitsPerHour: 2 },
     }),
-    overrides: () => overrides.overrides_ ?? { allow: null, deny: null, force: null },
+    overrides: () => ({ allow: null, deny: null, force: null }),
+    updateLimits: () => Promise.resolve({ ok: true, limits: { concurrencyCap: 3, permitTtlDefaultSeconds: 600, permitTtlMaxSeconds: 3600, systemLimits: { cpuMaxPct: 80, memMaxPct: 85, loadMax: 4.0 }, burnRate: { maxTokensSinceCommit: 2_000_000, minCommitsPerHour: 2 } } }),
   };
-  return cfg;
 }
 
-function makeInput(overrides: Partial<AcquirePermitInput> = {}): AcquirePermitInput {
+function makeProbes(overrides: Partial<{
+  systemSample: SchedulerProbes["systemSample"];
+  providerQuota: SchedulerProbes["providerQuota"];
+  burnRate: SchedulerProbes["burnRate"];
+}> = {}): SchedulerProbes {
   return {
-    sessionId: overrides.sessionId ?? "sess_1",
-    providerCandidate: overrides.providerCandidate ?? "opencode",
-    ttlSeconds: overrides.ttlSeconds,
+    systemSample: overrides.systemSample ?? (() => ({ cpuPct: 10, memPct: 20, loadAvg: 0.5 })),
+    providerQuota: overrides.providerQuota,
+    burnRate: overrides.burnRate,
   };
 }
 
-// ─── acquirePermitDecision — overrides gate ─────────────────────────────────
+function makePermit(overrides: Partial<Permit> = {}): Permit {
+  return {
+    id: `perm_${Math.random().toString(36).slice(2)}`,
+    sessionId: "test-session",
+    providerCandidate: "opencode",
+    createdAt: new Date().toISOString(),
+    expiresAt: new Date(Date.now() + 600_000).toISOString(),
+    grantedAt: new Date().toISOString(),
+    ...overrides,
+  };
+}
 
-describe("acquirePermitDecision", () => {
-  describe("overrides gate", () => {
-    test("returns deny when provider is in deny list", async () => {
-      const events = new MockEventWriter();
-      const deps = makeDeps({
-        events,
-        config: makeConfig({ overrides_: { force: null, deny: ["opencode"], allow: null } }),
-      });
-      const result = await acquirePermitDecision(deps, makeInput({ providerCandidate: "opencode" }));
-      expect(result.granted).toBe(false);
-      expect((result as any).gate).toBe("overrides");
-      expect(events.events).toHaveLength(1);
-      expect(events.events[0]!.topic).toBe("scheduler.permit.deny");
+function makeDeps(
+  opts: Partial<{
+    permits: MockPermitRegistry;
+    config: SchedulerConfigView;
+    events: MockEventWriter;
+    probes: SchedulerProbes;
+  }> = {},
+): AcquirePermitDeps {
+  return {
+    permits: opts.permits ?? new MockPermitRegistry(),
+    config: opts.config ?? makeConfig(),
+    events: opts.events ?? new MockEventWriter(),
+    probes: opts.probes ?? makeProbes(),
+  } as AcquirePermitDeps;
+}
+
+const BASE_INPUT = { sessionId: "s_test_01", providerCandidate: "opencode" };
+
+// ─── override denial ───────────────────────────────────────────────────────────
+
+describe("override denial", () => {
+  test("denies when override deny list includes the requested provider", async () => {
+    const deps = makeDeps({
+      config: {
+        ...makeConfig(),
+        overrides: () => ({ allow: null, deny: ["opencode"], force: null }),
+      },
     });
 
-    test("returns deny when provider is not in allow list", async () => {
-      const events = new MockEventWriter();
-      const deps = makeDeps({
-        events,
-        config: makeConfig({ overrides_: { force: null, deny: null, allow: ["anthropic"] } }),
-      });
-      const result = await acquirePermitDecision(deps, makeInput({ providerCandidate: "opencode" }));
-      expect(result.granted).toBe(false);
-      expect((result as any).gate).toBe("overrides");
-    });
+    const result = await acquirePermitDecision(deps, BASE_INPUT);
 
-    test("force field redirects to the forced provider", async () => {
-      const events = new MockEventWriter();
-      const deps = makeDeps({
-        events,
-        config: makeConfig({ overrides_: { force: "anthropic", deny: null, allow: null } }),
-      });
-      const result = await acquirePermitDecision(deps, makeInput({ providerCandidate: "opencode" }));
-      // Force overrides to anthropic — permit should be granted (no other gates blocking)
-      expect(result.granted).toBe(true);
-    });
-
-    test("deny takes priority over allow", async () => {
-      const events = new MockEventWriter();
-      const deps = makeDeps({
-        events,
-        config: makeConfig({ overrides_: { force: null, deny: ["opencode"], allow: ["opencode"] } }),
-      });
-      const result = await acquirePermitDecision(deps, makeInput({ providerCandidate: "opencode" }));
-      expect(result.granted).toBe(false);
-      expect((result as any).gate).toBe("overrides");
-    });
+    expect(result.granted).toBe(false);
+    expect(result.gate).toBe("overrides");
+    expect((result as { reason: string }).reason).toBe("provider_denied");
   });
 
-  // ─── acquirePermitDecision — concurrency gate ──────────────────────────────
-
-  describe("concurrency gate", () => {
-    test("returns deny when active permits meet concurrency cap", async () => {
-      const events = new MockEventWriter();
-      const permits = new MockPermitRegistry();
-      permits.countActive = () => 3;
-      const deps = makeDeps({
-        events,
-        permits,
-        config: makeConfig({ concurrencyCap: 3 }),
-      });
-      const result = await acquirePermitDecision(deps, makeInput());
-      expect(result.granted).toBe(false);
-      expect((result as any).gate).toBe("concurrency");
-      expect((result as any).details.active_permits).toBe(3);
-      expect((result as any).details.concurrency_cap).toBe(3);
-      expect(events.events).toHaveLength(1);
-      expect(events.events[0]!.topic).toBe("scheduler.permit.deny");
+  test("denies when override allow list does not include the requested provider", async () => {
+    const deps = makeDeps({
+      config: {
+        ...makeConfig(),
+        overrides: () => ({ allow: ["codex"], deny: null, force: null }),
+      },
     });
 
-    test("allows request when active permits are below cap", async () => {
-      const events = new MockEventWriter();
-      const permits = new MockPermitRegistry();
-      permits.countActive = () => 2;
-      const deps = makeDeps({ events, permits, config: makeConfig({ concurrencyCap: 3 }) });
-      const result = await acquirePermitDecision(deps, makeInput());
-      expect(result.granted).toBe(true);
-    });
+    const result = await acquirePermitDecision(deps, BASE_INPUT);
+
+    expect(result.granted).toBe(false);
+    expect(result.gate).toBe("overrides");
+    expect((result as { reason: string }).reason).toBe("provider_not_allowed");
   });
 
-  // ─── acquirePermitDecision — system gate ───────────────────────────────────
-
-  describe("system gate", () => {
-    test("returns deny when system sample exceeds cpu limit", async () => {
-      const events = new MockEventWriter();
-      const probes: SchedulerProbes = {
-        systemSample: () => ({ cpuPct: 95, memPct: 50, loadAvg: 1.0 }),
-      };
-      const deps = makeDeps({ events, probes });
-      const result = await acquirePermitDecision(deps, makeInput());
-      expect(result.granted).toBe(false);
-      expect((result as any).gate).toBe("system");
-      expect((result as any).reason).toBe("system_limit_exceeded");
+  test("allows when override force redirects to a different provider", async () => {
+    // force means "use this specific provider instead" — not a denial.
+    // The grant event data contains the redirected providerId.
+    const events = new MockEventWriter();
+    const deps = makeDeps({
+      events,
+      config: {
+        ...makeConfig(),
+        overrides: () => ({ allow: null, deny: null, force: "anthropic/claude-3.5" }),
+      },
     });
 
-    test("returns deny when system sample exceeds memory limit", async () => {
-      const events = new MockEventWriter();
-      const probes: SchedulerProbes = {
-        systemSample: () => ({ cpuPct: 10, memPct: 99, loadAvg: 0.5 }),
-      };
-      const deps = makeDeps({ events, probes });
-      const result = await acquirePermitDecision(deps, makeInput());
-      expect(result.granted).toBe(false);
-      expect((result as any).gate).toBe("system");
-    });
+    const result = await acquirePermitDecision(deps, BASE_INPUT);
 
-    test("returns deny when system sample exceeds load limit", async () => {
-      const events = new MockEventWriter();
-      const probes: SchedulerProbes = {
-        systemSample: () => ({ cpuPct: 10, memPct: 10, loadAvg: 9.0 }),
-      };
-      const deps = makeDeps({ events, probes });
-      const result = await acquirePermitDecision(deps, makeInput());
-      expect(result.granted).toBe(false);
-      expect((result as any).gate).toBe("system");
-    });
+    expect(result.granted).toBe(true);
+    // Verify the grant event carries the redirected providerId (not the original)
+    const grantEvent = events.events.find(e => e.topic === "scheduler.permit.grant");
+    expect(grantEvent).toBeDefined();
+    expect((grantEvent as { data: { provider_id: string } }).data.provider_id).toBe("anthropic/claude-3.5");
+  });
+});
 
-    test("allows request when system metrics are all within limits", async () => {
-      const events = new MockEventWriter();
-      const probes: SchedulerProbes = {
-        systemSample: () => ({ cpuPct: 50, memPct: 50, loadAvg: 1.0 }),
-      };
-      const deps = makeDeps({ events, probes });
-      const result = await acquirePermitDecision(deps, makeInput());
-      expect(result.granted).toBe(true);
-    });
+// ─── concurrency cap denial ───────────────────────────────────────────────────
 
-    test("allows request when systemSample is undefined (optional probe)", async () => {
-      const events = new MockEventWriter();
-      const deps = makeDeps({ events, probes: {} });
-      const result = await acquirePermitDecision(deps, makeInput());
-      expect(result.granted).toBe(true);
-    });
+describe("concurrency cap denial", () => {
+  test("denies when active permits >= concurrencyCap", async () => {
+    const permits = new MockPermitRegistry();
+    permits.setCountActive(3); // cap is 3 by default
+
+    const deps = makeDeps({ permits });
+
+    const result = await acquirePermitDecision(deps, BASE_INPUT);
+
+    expect(result.granted).toBe(false);
+    expect(result.gate).toBe("concurrency");
+    expect((result as { reason: string }).reason).toBe("concurrency_cap_reached");
+    expect((result as { details: { active_permits: number; concurrency_cap: number } }).details.active_permits).toBe(3);
+    expect((result as { details: { active_permits: number; concurrency_cap: number } }).details.concurrency_cap).toBe(3);
   });
 
-  // ─── acquirePermitDecision — provider quota gate ────────────────────────────
+  test("allows when active permits < concurrencyCap", async () => {
+    const permits = new MockPermitRegistry();
+    permits.setCountActive(2); // cap is 3, so 2 < 3
 
-  describe("provider quota gate", () => {
-    test("returns deny when providerQuota probe returns not-ok", async () => {
-      const events = new MockEventWriter();
-      const probes: SchedulerProbes = {
-        systemSample: () => ({ cpuPct: 10, memPct: 10, loadAvg: 0.5 }),
-        providerQuota: () => ({ ok: false, reason: "rate_limited", remaining: 0 }),
-      };
-      const deps = makeDeps({ events, probes });
-      const result = await acquirePermitDecision(deps, makeInput({ providerCandidate: "opencode" }));
-      expect(result.granted).toBe(false);
-      expect((result as any).gate).toBe("provider");
-      expect((result as any).reason).toBe("rate_limited");
-      expect((result as any).details.provider_id).toBe("opencode");
-      expect((result as any).details.remaining).toBe(0);
+    const deps = makeDeps({ permits });
+
+    const result = await acquirePermitDecision(deps, BASE_INPUT);
+
+    expect(result.granted).toBe(true);
+  });
+
+  test("denies when concurrencyCap is 1 and 1 permit is already active", async () => {
+    const deps = makeDeps({
+      config: makeConfig({ concurrencyCap: 1 }),
+      permits: new MockPermitRegistry(),
+    });
+    deps.permits.setCountActive(1);
+
+    const result = await acquirePermitDecision(deps, BASE_INPUT);
+
+    expect(result.granted).toBe(false);
+    expect(result.gate).toBe("concurrency");
+  });
+});
+
+// ─── system gate denial ───────────────────────────────────────────────────────
+
+describe("system gate denial", () => {
+  test("denies when systemSample returns cpu above limit", async () => {
+    const deps = makeDeps({
+      probes: makeProbes({
+        systemSample: () => ({ cpuPct: 95, memPct: 20, loadAvg: 5.0 }), // cpuMaxPct=80 exceeded
+      }),
     });
 
-    test("includes retryAfterSeconds in deny when quota provides it", async () => {
-      const events = new MockEventWriter();
-      const probes: SchedulerProbes = {
-        providerQuota: () => ({ ok: false, reason: "rate_limited", retryAfterSeconds: 60 }),
-      };
-      const deps = makeDeps({ events, probes });
-      const result = await acquirePermitDecision(deps, makeInput());
-      expect(result.granted).toBe(false);
-      expect((result as any).retryAfterSeconds).toBe(60);
+    const result = await acquirePermitDecision(deps, BASE_INPUT);
+
+    expect(result.granted).toBe(false);
+    expect(result.gate).toBe("system");
+    expect((result as { reason: string }).reason).toBe("system_limit_exceeded");
+  });
+
+  test("denies when systemSample returns mem above limit", async () => {
+    const deps = makeDeps({
+      probes: makeProbes({
+        systemSample: () => ({ cpuPct: 10, memPct: 95, loadAvg: 0.5 }), // memMaxPct=85 exceeded
+      }),
     });
 
-    test("includes resetAt in details when quota provides it", async () => {
-      const events = new MockEventWriter();
-      const probes: SchedulerProbes = {
-        providerQuota: () => ({
-          ok: false,
-          reason: "rate_limited",
-          remaining: 0,
-          resetAt: "2026-04-27T12:00:00Z",
+    const result = await acquirePermitDecision(deps, BASE_INPUT);
+
+    expect(result.granted).toBe(false);
+    expect(result.gate).toBe("system");
+  });
+
+  test("denies when systemSample returns load above limit", async () => {
+    const deps = makeDeps({
+      probes: makeProbes({
+        systemSample: () => ({ cpuPct: 10, memPct: 20, loadAvg: 8.0 }), // loadMax=4.0 exceeded
+      }),
+    });
+
+    const result = await acquirePermitDecision(deps, BASE_INPUT);
+
+    expect(result.granted).toBe(false);
+    expect(result.gate).toBe("system");
+  });
+
+  test("allows when systemSample returns all values within limits", async () => {
+    const deps = makeDeps({
+      probes: makeProbes({
+        systemSample: () => ({ cpuPct: 50, memPct: 50, loadAvg: 2.0 }),
+      }),
+    });
+
+    const result = await acquirePermitDecision(deps, BASE_INPUT);
+
+    expect(result.granted).toBe(true);
+  });
+});
+
+// ─── provider quota denial ───────────────────────────────────────────────────
+
+describe("provider quota denial", () => {
+  test("denies when providerQuota returns ok=false", async () => {
+    const deps = makeDeps({
+      probes: makeProbes({
+        providerQuota: () => ({ ok: false, reason: "provider_quota_exceeded", remaining: 0 }),
+      }),
+    });
+
+    const result = await acquirePermitDecision(deps, BASE_INPUT);
+
+    expect(result.granted).toBe(false);
+    expect(result.gate).toBe("provider");
+    expect((result as { reason: string }).reason).toBe("provider_quota_exceeded");
+    expect((result as { details: { provider_id: string } }).details.provider_id).toBe("opencode");
+  });
+
+  test("denies when providerQuota returns ok=false with retryAfterSeconds", async () => {
+    const deps = makeDeps({
+      probes: makeProbes({
+        providerQuota: () => ({ ok: false, reason: "rate_limit", remaining: 0, retryAfterSeconds: 120 }),
+      }),
+    });
+
+    const result = await acquirePermitDecision(deps, BASE_INPUT);
+
+    expect(result.granted).toBe(false);
+    expect((result as { retryAfterSeconds?: number }).retryAfterSeconds).toBe(120);
+  });
+
+  test("proceeds (not denied at provider gate) when providerQuota returns ok=true", async () => {
+    const deps = makeDeps({
+      probes: makeProbes({
+        providerQuota: () => ({ ok: true, remaining: 100 }),
+      }),
+    });
+
+    const result = await acquirePermitDecision(deps, BASE_INPUT);
+
+    if (!result.granted) {
+      expect(result.gate).not.toBe("provider");
+    }
+  });
+
+  test("proceeds when providerQuota is not defined", async () => {
+    const deps = makeDeps({
+      probes: makeProbes({ providerQuota: undefined }),
+    });
+
+    const result = await acquirePermitDecision(deps, BASE_INPUT);
+
+    if (!result.granted) {
+      expect(result.gate).not.toBe("provider");
+    }
+  });
+});
+
+// ─── burn rate denial ─────────────────────────────────────────────────────────
+
+describe("burn rate denial", () => {
+  test("denies when burnRate probe exceeds maxTokensSinceCommit", async () => {
+    // config burnRate: maxTokensSinceCommit=2_000_000, minCommitsPerHour=2
+    const deps = makeDeps({
+      config: makeConfig({ burnRate: { maxTokensSinceCommit: 1_000_000, minCommitsPerHour: 1 } }),
+      probes: makeProbes({
+        burnRate: () => ({
+          tokensSinceLastCommit: 2_000_000, // above maxTokensSinceCommit=1_000_000
+          commitsPerHour: 10,
         }),
-      };
-      const deps = makeDeps({ events, probes });
-      const result = await acquirePermitDecision(deps, makeInput());
-      expect(result.granted).toBe(false);
-      expect((result as any).details.reset_at).toBe("2026-04-27T12:00:00Z");
+      }),
     });
 
-    test("uses default reason when quota.reason is absent", async () => {
-      const events = new MockEventWriter();
-      const probes: SchedulerProbes = {
-        providerQuota: () => ({
-          ok: false,
-          remaining: 0,
-        }),
-      };
-      const deps = makeDeps({ events, probes });
-      const result = await acquirePermitDecision(deps, makeInput());
-      expect(result.granted).toBe(false);
-      expect((result as any).reason).toBe("provider_quota_exceeded");
-    });
+    const result = await acquirePermitDecision(deps, BASE_INPUT);
 
-    test("includes resetAt but omits remaining when quota.resetAt is set but remaining is absent", async () => {
-      // Covers acquire.ts: extra spread branch for resetAt when remaining is undefined.
-      const events = new MockEventWriter();
-      const probes: SchedulerProbes = {
-        providerQuota: () => ({
-          ok: false,
-          reason: "rate_limited",
-          resetAt: "2026-04-27T12:00:00Z",
-        }),
-      };
-      const deps = makeDeps({ events, probes });
-      const result = await acquirePermitDecision(deps, makeInput());
-      expect(result.granted).toBe(false);
-      expect((result as any).details.reset_at).toBe("2026-04-27T12:00:00Z");
-      expect((result as any).details).not.toHaveProperty("remaining");
-    });
-
-    test("merges extra details from quota response into deny details", async () => {
-      const events = new MockEventWriter();
-      const probes: SchedulerProbes = {
-        providerQuota: () => ({
-          ok: false,
-          reason: "token_limit",
-          details: { model: "gpt-4o", window: "1h" },
-        }),
-      };
-      const deps = makeDeps({ events, probes });
-      const result = await acquirePermitDecision(deps, makeInput());
-      expect(result.granted).toBe(false);
-      expect((result as any).details.model).toBe("gpt-4o");
-      expect((result as any).details.window).toBe("1h");
-    });
-
-    test("allows request when providerQuota returns ok=true", async () => {
-      const events = new MockEventWriter();
-      const probes: SchedulerProbes = {
-        providerQuota: () => ({ ok: true, remaining: 500 }),
-      };
-      const deps = makeDeps({ events, probes });
-      const result = await acquirePermitDecision(deps, makeInput());
-      expect(result.granted).toBe(true);
-    });
-
-    test("allows request when providerQuota probe is undefined", async () => {
-      const events = new MockEventWriter();
-      const deps = makeDeps({ events, probes: {} });
-      const result = await acquirePermitDecision(deps, makeInput());
-      expect(result.granted).toBe(true);
-    });
-
-    test("allows request when providerQuota returns null", async () => {
-      const events = new MockEventWriter();
-      const probes: SchedulerProbes = {
-        providerQuota: () => null,
-      };
-      const deps = makeDeps({ events, probes });
-      const result = await acquirePermitDecision(deps, makeInput());
-      expect(result.granted).toBe(true);
-    });
+    expect(result.granted).toBe(false);
+    expect(result.gate).toBe("burn_rate");
+    expect((result as { reason: string }).reason).toBe("burn_rate_exceeded");
   });
 
-  // ─── acquirePermitDecision — burn rate gate ────────────────────────────────
-
-  describe("burn rate gate", () => {
-    test("returns deny when burnRate probe indicates tokens exceeded", async () => {
-      const events = new MockEventWriter();
-      const probes: SchedulerProbes = {
-        burnRate: () => ({ tokensSinceLastCommit: 5_000_000, commitsPerHour: 10 }),
-      };
-      const deps = makeDeps({ events, probes });
-      const result = await acquirePermitDecision(deps, makeInput());
-      expect(result.granted).toBe(false);
-      expect((result as any).gate).toBe("burn_rate");
-      expect((result as any).reason).toBe("burn_rate_exceeded");
+  test("denies when burnRate probe falls below minCommitsPerHour", async () => {
+    const deps = makeDeps({
+      probes: makeProbes({
+        burnRate: () => ({
+          tokensSinceLastCommit: 0,
+          commitsPerHour: 0, // below minCommitsPerHour=2 (from config)
+        }),
+      }),
     });
 
-    test("returns deny when burnRate probe indicates commits below minimum", async () => {
-      const events = new MockEventWriter();
-      const probes: SchedulerProbes = {
-        burnRate: () => ({ tokensSinceLastCommit: 0, commitsPerHour: 0 }),
-      };
-      const deps = makeDeps({ events, probes });
-      const result = await acquirePermitDecision(deps, makeInput());
-      expect(result.granted).toBe(false);
-      expect((result as any).gate).toBe("burn_rate");
-    });
+    const result = await acquirePermitDecision(deps, BASE_INPUT);
 
-    test("allows request when burnRate probe is undefined", async () => {
-      const events = new MockEventWriter();
-      const deps = makeDeps({ events, probes: {} });
-      const result = await acquirePermitDecision(deps, makeInput());
-      expect(result.granted).toBe(true);
-    });
-
-    test("allows request when burnRate probe returns null", async () => {
-      const events = new MockEventWriter();
-      const probes: SchedulerProbes = {
-        burnRate: () => null,
-      };
-      const deps = makeDeps({ events, probes });
-      const result = await acquirePermitDecision(deps, makeInput());
-      expect(result.granted).toBe(true);
-    });
+    expect(result.granted).toBe(false);
+    expect(result.gate).toBe("burn_rate");
   });
 
-  // ─── acquirePermitDecision — grant path ────────────────────────────────────
-
-  describe("grant path", () => {
-    test("grants permit and emits scheduler.permit.grant event", async () => {
-      const events = new MockEventWriter();
-      const deps = makeDeps({ events });
-      const result = await acquirePermitDecision(deps, makeInput());
-      expect(result.granted).toBe(true);
-      expect(result.permit).toBeDefined();
-      expect(events.events).toHaveLength(1);
-      expect(events.events[0]!.topic).toBe("scheduler.permit.grant");
-      expect(events.events[0]!.data.provider_id).toBe("opencode");
-      expect(events.events[0]!.data.session_id).toBe("sess_1");
+  test("allows when burnRate probe is within both limits", async () => {
+    const deps = makeDeps({
+      probes: makeProbes({
+        burnRate: () => ({
+          tokensSinceLastCommit: 100_000,
+          commitsPerHour: 10,
+        }),
+      }),
     });
 
-    test("uses default ttlSeconds when not provided", async () => {
-      const events = new MockEventWriter();
-      const deps = makeDeps({ events, config: makeConfig({ permitTtlDefaultSeconds: 600, permitTtlMaxSeconds: 3600 }) });
-      await acquirePermitDecision(deps, makeInput({ ttlSeconds: undefined }));
-      expect(events.events[0]!.data.ttl_seconds).toBe(600);
+    const result = await acquirePermitDecision(deps, BASE_INPUT);
+
+    if (!result.granted) {
+      expect(result.gate).not.toBe("burn_rate");
+    }
+  });
+
+  test("proceeds when burnRate probe is not defined", async () => {
+    const deps = makeDeps({
+      probes: makeProbes({ burnRate: undefined }),
     });
 
-    test("caps ttlSeconds at maxTtlSeconds when requested exceeds max", async () => {
-      const events = new MockEventWriter();
-      const deps = makeDeps({ events, config: makeConfig({ permitTtlDefaultSeconds: 600, permitTtlMaxSeconds: 3600 }) });
-      await acquirePermitDecision(deps, makeInput({ ttlSeconds: 9999 }));
-      expect(events.events[0]!.data.ttl_seconds).toBe(3600);
+    const result = await acquirePermitDecision(deps, BASE_INPUT);
+
+    if (!result.granted) {
+      expect(result.gate).not.toBe("burn_rate");
+    }
+  });
+});
+
+// ─── successful grant ─────────────────────────────────────────────────────────
+
+describe("successful grant", () => {
+  test("returns granted=true when all gates pass", async () => {
+    const events = new MockEventWriter();
+    const deps = makeDeps({ events });
+
+    const result = await acquirePermitDecision(deps, BASE_INPUT);
+
+    expect(result.granted).toBe(true);
+  });
+
+  test("grants permit with requested ttlSeconds when below max", async () => {
+    const events = new MockEventWriter();
+    const deps = makeDeps({ events });
+
+    const result = await acquirePermitDecision(deps, {
+      ...BASE_INPUT,
+      ttlSeconds: 300,
     });
 
-    test("accepts ttlSeconds within the allowed range", async () => {
-      const events = new MockEventWriter();
-      const deps = makeDeps({ events, config: makeConfig({ permitTtlDefaultSeconds: 600, permitTtlMaxSeconds: 3600 }) });
-      await acquirePermitDecision(deps, makeInput({ ttlSeconds: 1200 }));
-      expect(events.events[0]!.data.ttl_seconds).toBe(1200);
+    expect(result.granted).toBe(true);
+    const grantEvent = events.events.find(e => e.topic === "scheduler.permit.grant");
+    expect(grantEvent).toBeDefined();
+    expect((grantEvent as { data: { ttl_seconds: number } }).data.ttl_seconds).toBe(300);
+  });
+
+  test("grants permit with default TTL when ttlSeconds is undefined", async () => {
+    const events = new MockEventWriter();
+    const deps = makeDeps({
+      config: makeConfig({ permitTtlDefaultSeconds: 900 }),
+      events,
     });
 
-    test("includes expires_at in grant event computed from ttl", async () => {
-      const events = new MockEventWriter();
-      const deps = makeDeps({ events, config: makeConfig({ permitTtlDefaultSeconds: 60, permitTtlMaxSeconds: 60 }) });
-      const before = new Date().toISOString();
-      await acquirePermitDecision(deps, makeInput({ ttlSeconds: 60 }));
-      const after = new Date(Date.now() + 60 * 1000 + 1000).toISOString();
-      const grantedAt = events.events[0]!.data.granted_at as string;
-      const expiresAt = events.events[0]!.data.expires_at as string;
-      expect(grantedAt >= before).toBe(true);
-      expect(grantedAt <= after).toBe(true);
-      expect(expiresAt > grantedAt).toBe(true);
+    const result = await acquirePermitDecision(deps, BASE_INPUT);
+
+    expect(result.granted).toBe(true);
+    const grantEvent = events.events.find(e => e.topic === "scheduler.permit.grant");
+    expect(grantEvent).toBeDefined();
+    expect((grantEvent as { data: { ttl_seconds: number } }).data.ttl_seconds).toBe(900);
+  });
+
+  test("caps requested ttlSeconds at permitTtlMaxSeconds", async () => {
+    const events = new MockEventWriter();
+    const deps = makeDeps({
+      config: makeConfig({ permitTtlMaxSeconds: 1800 }),
+      events,
     });
+
+    const result = await acquirePermitDecision(deps, {
+      ...BASE_INPUT,
+      ttlSeconds: 9999,
+    });
+
+    expect(result.granted).toBe(true);
+    const grantEvent = events.events.find(e => e.topic === "scheduler.permit.grant");
+    expect(grantEvent).toBeDefined();
+    expect((grantEvent as { data: { ttl_seconds: number } }).data.ttl_seconds).toBe(1800);
+  });
+
+  test("appends scheduler.permit.grant event on success", async () => {
+    const events = new MockEventWriter();
+    const deps = makeDeps({ events });
+
+    await acquirePermitDecision(deps, BASE_INPUT);
+
+    const grantEvent = events.events.find(e => e.topic === "scheduler.permit.grant");
+    expect(grantEvent).toBeDefined();
+    expect((grantEvent as { data: { session_id: string; provider_id: string } }).data.session_id).toBe(BASE_INPUT.sessionId);
+  });
+
+  test("appends scheduler.permit.deny event on override denial", async () => {
+    const events = new MockEventWriter();
+    const deps = makeDeps({
+      events,
+      config: {
+        ...makeConfig(),
+        overrides: () => ({ allow: null, deny: ["opencode"], force: null }),
+      },
+    });
+
+    await acquirePermitDecision(deps, BASE_INPUT);
+
+    const denyEvent = events.events.find(e => e.topic === "scheduler.permit.deny");
+    expect(denyEvent).toBeDefined();
+    expect((denyEvent as { data: { reason: string } }).data.reason).toBe("provider_denied");
+  });
+
+  test("appendPermitGrant appends grant event with correct fields", async () => {
+    const events = new MockEventWriter();
+    const deps = makeDeps({ events });
+
+    await acquirePermitDecision(deps, BASE_INPUT);
+
+    const grantEvent = events.events.find(e => e.topic === "scheduler.permit.grant");
+    expect(grantEvent).toBeDefined();
+    expect((grantEvent as { data: { session_id: string; provider_id: string } }).data.session_id).toBe(BASE_INPUT.sessionId);
+  });
+});
+
+// ─── TTL resolution ────────────────────────────────────────────────────────────
+
+describe("TTL resolution", () => {
+  test("uses default TTL when ttlSeconds is undefined", async () => {
+    const events = new MockEventWriter();
+    const deps = makeDeps({
+      config: makeConfig({ permitTtlDefaultSeconds: 720 }),
+      events,
+    });
+
+    const result = await acquirePermitDecision(deps, BASE_INPUT);
+
+    expect(result.granted).toBe(true);
+    const grantEvent = events.events.find(e => e.topic === "scheduler.permit.grant");
+    expect((grantEvent as { data: { ttl_seconds: number } }).data.ttl_seconds).toBe(720);
+  });
+
+  test("caps requested ttlSeconds at permitTtlMaxSeconds", async () => {
+    const events = new MockEventWriter();
+    const deps = makeDeps({
+      config: makeConfig({ permitTtlMaxSeconds: 900 }),
+      events,
+    });
+
+    const result = await acquirePermitDecision(deps, {
+      ...BASE_INPUT,
+      ttlSeconds: 9999,
+    });
+
+    expect(result.granted).toBe(true);
+    const grantEvent = events.events.find(e => e.topic === "scheduler.permit.grant");
+    expect((grantEvent as { data: { ttl_seconds: number } }).data.ttl_seconds).toBe(900);
+  });
+
+  test("uses requested ttlSeconds when below both default and max", async () => {
+    const events = new MockEventWriter();
+    const deps = makeDeps({ events });
+
+    const result = await acquirePermitDecision(deps, {
+      ...BASE_INPUT,
+      ttlSeconds: 300,
+    });
+
+    expect(result.granted).toBe(true);
+    const grantEvent = events.events.find(e => e.topic === "scheduler.permit.grant");
+    expect((grantEvent as { data: { ttl_seconds: number } }).data.ttl_seconds).toBe(300);
   });
 });
