@@ -3,6 +3,10 @@ export type RouterDeps = {
     req: Request,
     pathname: string,
   ) => Response | Promise<Response | undefined> | undefined;
+  readonly handleMetrics: (
+    req: Request,
+    pathname: string,
+  ) => Response | Promise<Response | undefined> | undefined;
   readonly handleProjects: (
     req: Request,
     pathname: string,
@@ -34,6 +38,9 @@ export function makeFetchHandler(
 
     const daemonResponse = await deps.handleDaemon(req, pathname);
     if (daemonResponse) return daemonResponse;
+
+    const metricsResponse = await deps.handleMetrics(req, pathname);
+    if (metricsResponse) return metricsResponse;
 
     if (req.method === "GET" && pathname === "/v1/events/echo") {
       // SSE echo scaffold — proves the transport works. Real event bus is M2+.
