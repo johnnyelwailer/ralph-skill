@@ -30,7 +30,7 @@ pipeline:
   - agent: test
     repeat: 3
 finalizer:
-  - cleanup
+  - agent: cleanup
 triggers:
   push: main
 `;
@@ -42,7 +42,7 @@ triggers:
     expect(parsed.pipeline[0]!.agent).toBe("build");
     expect(parsed.pipeline[1]!.agent).toBe("test");
     expect(parsed.pipeline[1]!.repeat).toBe(3);
-    expect(parsed.finalizer).toEqual(["cleanup"]);
+    expect(parsed.finalizer).toEqual([{ agent: "cleanup" }]);
     expect(parsed.triggers).toEqual({ push: "main" });
 
     rmSync(dir, { recursive: true, force: true });

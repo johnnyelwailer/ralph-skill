@@ -76,7 +76,7 @@ describe("parsePipeline", () => {
 
   describe("required pipeline field", () => {
     test("returns error when pipeline key is missing", () => {
-      const yaml = "finalizer:\n  - cleanup";
+      const yaml = "finalizer:\n  - agent: cleanup";
       const result = parsePipeline(yaml);
       const errors = expectParseErrors(result);
       expect(errors).toContain("pipeline field is required");
@@ -186,12 +186,23 @@ describe("parsePipeline", () => {
       });
     });
 
-    test("parses finalizer", () => {
+    test("parses finalizer with full phase objects", () => {
       const result = parsePipeline(
-        "pipeline:\n  - agent: build\nfinalizer:\n  - cleanup",
+        `pipeline:
+  - agent: build
+finalizer:
+  - agent: spec-gap
+  - agent: docs
+    provider: claude
+    reasoning: high
+  - agent: proof`,
       );
       const parsed = expectParseOk(result);
-      expect(parsed.finalizer).toEqual(["cleanup"]);
+      expect(parsed.finalizer).toEqual([
+        { agent: "spec-gap" },
+        { agent: "docs", provider: "claude", reasoning: "high" },
+        { agent: "proof" },
+      ]);
     });
 
     test("parses triggers", () => {
@@ -295,13 +306,29 @@ describe("compilePipeline", () => {
     });
   });
 
-  test("passes finalizer through to LoopPlan", () => {
+  test("passes finalizer through to LoopPlan as compiled PROMPT filenames", () => {
     const config: PipelineConfig = {
       pipeline: [{ agent: "build" }],
-      finalizer: ["cleanup", "notify"],
+      finalizer: [
+        { agent: "spec-gap" },
+        { agent: "docs" },
+      ],
     };
     const plan = compilePipeline(config);
-    expect(plan.finalizer).toEqual(["cleanup", "notify"]);
+    expect(plan.finalizer).toEqual(["PROMPT_spec-gap.md", "PROMPT_docs.md"]);
+  });
+
+  test("finalizer phases compile provider and reasoning are ignored (not in loop-plan)", () => {
+    // Finalizer phases support the same fields as pipeline phases for parsing,
+    // but compilePipeline only extracts the agent name for the PROMPT convention.
+    const config: PipelineConfig = {
+      pipeline: [{ agent: "build" }],
+      finalizer: [
+        { agent: "proof", provider: "claude", reasoning: "high", timeout: "30m" },
+      ],
+    };
+    const plan = compilePipeline(config);
+    expect(plan.finalizer).toEqual(["PROMPT_proof.md"]);
   });
 
   test("passes triggers through to LoopPlan", () => {
@@ -356,7 +383,7 @@ describe("compilePipeline", () => {
     // A complex config to prove these fields are not derived from config content
     const config: PipelineConfig = {
       pipeline: [{ agent: "build", repeat: 2 }],
-      finalizer: ["cleanup"],
+      finalizer: [{ agent: "proof" }],
       triggers: { push: "main" },
     };
     const plan = compilePipeline(config);
@@ -379,10 +406,18 @@ describe("compilePipeline", () => {
     // execution — it starts at 0 regardless of how many finalizer steps exist
     const config: PipelineConfig = {
       pipeline: [{ agent: "build" }],
-      finalizer: ["cleanup", "notify", "archive"],
+      finalizer: [
+        { agent: "spec-gap" },
+        { agent: "docs" },
+        { agent: "proof" },
+      ],
     };
     const plan = compilePipeline(config);
-    expect(plan.finalizer).toEqual(["cleanup", "notify", "archive"]);
+    expect(plan.finalizer).toEqual([
+      "PROMPT_spec-gap.md",
+      "PROMPT_docs.md",
+      "PROMPT_proof.md",
+    ]);
     expect(plan.finalizerPosition).toBe(0);
   });
 
