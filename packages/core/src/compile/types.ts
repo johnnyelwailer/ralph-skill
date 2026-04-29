@@ -54,3 +54,25 @@ export type LoopPlan = {
 export type ParseResult<T> =
   | { readonly ok: true; readonly value: T }
   | { readonly ok: false; readonly errors: readonly string[] };
+
+export type AffectsCompletedWork = "yes" | "no" | "unknown";
+
+/**
+ * A queue entry injected by the steering system. Written to the session's
+ * queue/ dir as a JSON file with frontmatter. The loop picks up steering entries
+ * next iteration; they preempt the current cycle and reset cyclePosition to 0.
+ */
+export type SteeringQueueEntry = {
+  readonly id: string;
+  readonly instruction: string;
+  readonly affects_completed_work: AffectsCompletedWork;
+  readonly created_at: string;
+};
+
+/**
+ * Affects how the runtime treats completed work when a steering entry is
+ * injected mid-cycle.
+ */
+export type SteeringOptions = {
+  readonly affects_completed_work?: AffectsCompletedWork;
+};

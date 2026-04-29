@@ -4,11 +4,14 @@ export {
   parsePipeline,
 } from "./compile/pipeline.ts";
 export type {
+  AffectsCompletedWork,
   LoopPlan,
   ParseResult,
   PipelineConfig,
   PipelinePhase,
   ProviderRef,
+  SteeringOptions,
+  SteeringQueueEntry,
   TransitionKeyword,
 } from "./compile/types.ts";
 export { type EventStore } from "./events/store.ts";
