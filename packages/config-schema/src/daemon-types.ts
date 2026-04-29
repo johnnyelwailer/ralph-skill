@@ -41,6 +41,11 @@ export type DaemonConfig = {
   readonly logging: {
     readonly level: "debug" | "info" | "warn" | "error";
   };
+  /** Feature flags — gate experimental or not-yet-stable API surfaces. */
+  readonly features: {
+    /** Enable PUT /v1/daemon/config — write daemon config at runtime (hot-reload). Default: false. */
+    readonly daemonConfigWrite: boolean;
+  };
 };
 
 export const DAEMON_DEFAULTS: DaemonConfig = {
@@ -63,4 +68,5 @@ export const DAEMON_DEFAULTS: DaemonConfig = {
     abandonedSetupDays: 14,
   },
   logging: { level: "info" },
+  features: { daemonConfigWrite: false },
 };

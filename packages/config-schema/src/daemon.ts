@@ -4,6 +4,7 @@ import { writeFileSync } from "node:fs";
 import { stringify as yamlStringify } from "yaml";
 import { DAEMON_DEFAULTS, type DaemonConfig } from "./daemon-types.ts";
 import {
+  mergeFeatures,
   mergeHttp,
   mergeLogging,
   mergeRetention,
@@ -13,7 +14,7 @@ import {
 
 export { DAEMON_DEFAULTS, type DaemonConfig };
 
-const TOP_LEVEL_KEYS = ["http", "scheduler", "watchdog", "retention", "logging"] as const;
+const TOP_LEVEL_KEYS = ["http", "scheduler", "watchdog", "retention", "logging", "features"] as const;
 
 /** Load daemon.yml from disk. Missing file → returns DEFAULTS (typed ok). */
 export function loadDaemonConfig(path: string): ParseResult<DaemonConfig> {
@@ -49,6 +50,7 @@ export function parseDaemonConfig(raw: unknown): ParseResult<DaemonConfig> {
     watchdog: mergeWatchdog(raw.watchdog, errors),
     retention: mergeRetention(raw.retention, errors),
     logging: mergeLogging(raw.logging, errors),
+    features: mergeFeatures(raw.features, errors),
   };
 
   if (errors.length > 0) return { ok: false, errors };
@@ -97,6 +99,9 @@ export function daemonConfigToRaw(config: DaemonConfig): Record<string, unknown>
     },
     logging: {
       level: config.logging.level,
+    },
+    features: {
+      daemon_config_write: config.features?.daemonConfigWrite ?? false,
     },
   };
 }

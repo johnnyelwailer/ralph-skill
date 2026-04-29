@@ -12,6 +12,30 @@ import {
   type DaemonConfig,
 } from "./daemon-types.ts";
 
+/** Merge the `features` section of daemon.yml. */
+export function mergeFeatures(raw: unknown, errors: string[]): DaemonConfig["features"] {
+  const def = DAEMON_DEFAULTS.features;
+  if (raw === undefined) return def;
+  if (!isMapping(raw)) {
+    errors.push("features: must be a mapping");
+    return def;
+  }
+  const result: DaemonConfig["features"] = { ...def };
+  for (const key of Object.keys(raw)) {
+    if (key === "daemon_config_write" || key === "daemonConfigWrite") {
+      const val = pick(raw, "daemon_config_write", "daemonConfigWrite");
+      if (typeof val === "boolean") {
+        result.daemonConfigWrite = val;
+      } else if (val !== undefined) {
+        errors.push("features.daemon_config_write: must be a boolean");
+      }
+    } else {
+      errors.push(`unknown features field: ${key}`);
+    }
+  }
+  return result;
+}
+
 export { mergeScheduler } from "./daemon-mergers-scheduler.ts";
 
 const LOG_LEVELS = new Set(["debug", "info", "warn", "error"]);

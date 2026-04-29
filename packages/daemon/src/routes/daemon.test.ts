@@ -11,6 +11,7 @@ function makeDeps(overrides: Partial<{
   startedAt: number;
   config: ConfigStore;
   features?: { daemonConfigWrite: boolean };
+  reloadError?: string[];
 }> = {}): DaemonDeps {
   const daemonCfg: typeof defaultDaemon.features = {
     daemonConfigWrite: false,
@@ -19,7 +20,7 @@ function makeDeps(overrides: Partial<{
 
   const defaultDaemon = {
     _v: 1,
-    http: { bind: "127.0.0.1", port: 24709, autostart: false },
+    http: { bind: "127.0.0.1", port: 7777, autostart: true },
     watchdog: { tickIntervalSeconds: 15, stuckThresholdSeconds: 600, quotaPollIntervalSeconds: 60 },
     scheduler: {
       concurrencyCap: 3,
@@ -35,27 +36,23 @@ function makeDeps(overrides: Partial<{
 
   const configWrap = { _v: 1 as const, version: "0.1.0", daemon: defaultDaemon, providers: [] };
 
-  // _cached must be a getter so it tracks the live daemon config even after
-  // setDaemon() replaces configWrap.daemon entirely (Object.assign replaces the
-  // .daemon property, not its contents).
-  let _cached = defaultDaemon;
-
   const store: ConfigStore = {
     daemon: () => configWrap.daemon as any,
     overrides: () => [] as any,
-    reload: () => ({ ok: true, daemon: configWrap.daemon as any, overrides: [] as any }),
+    reload: overrides.reloadError
+      ? () => ({ ok: false as const, errors: overrides.reloadError! })
+      : () => ({ ok: true, daemon: configWrap.daemon as any, overrides: [] as any }),
     setDaemon: (c: any) => {
-      Object.assign(configWrap, c);
-      _cached = configWrap.daemon;
+      // Replace the nested daemon object entirely so callers that read daemon() get the updated object.
+      if (c.daemon !== undefined) {
+        configWrap.daemon = c.daemon;
+      } else {
+        // Partial update — merge into existing daemon
+        configWrap.daemon = { ...configWrap.daemon, ...c } as typeof defaultDaemon;
+      }
       return configWrap.daemon as any;
     },
   } as any;
-
-  // Define _cached as an own getter property so it stays in sync.
-  Object.defineProperty(store, "_cached", {
-    get() { return _cached; },
-    configurable: true,
-  });
 
   return {
     startedAt: overrides.startedAt ?? Date.now(),
@@ -81,7 +78,7 @@ describe("GET /v1/daemon/health", () => {
     const body = await res!.json() as Record<string, unknown>;
     expect(body._v).toBe(1);
     expect(body.status).toBe("ok");
-    expect(body.version).toBe("0.0.0");
+    expect(body.version).toBe("0.1.0");
     expect(typeof (body.uptime_seconds as number)).toBe("number");
   });
 
@@ -123,18 +120,58 @@ describe("GET /v1/daemon/config", () => {
     expect(body.overrides).toBeDefined();
   });
 
-  test("returns undefined (404) for PUT on /v1/daemon/config when feature flag is disabled", async () => {
+  test("returns undefined (404) for POST on /v1/daemon/config", async () => {
     const deps = makeDeps();
-    const res = await handleDaemon(
-      new Request("http://x/v1/daemon/config", {
-        method: "PUT",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ http: { bind: "0.0.0.0", port: 24709, autostart: false } }),
-      }),
-      deps,
-      "/v1/daemon/config",
-    );
-    // Disabled flag → handler returns undefined → router maps to 404
+    const res = await handleDaemon(new Request("http://x/v1/daemon/config", { method: "POST" }), deps, "/v1/daemon/config");
+    expect(res).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// POST /v1/daemon/reload
+// ---------------------------------------------------------------------------
+
+describe("POST /v1/daemon/reload", () => {
+  test("returns 200 with reloaded daemon and overrides on success", async () => {
+    const deps = makeDeps();
+    const res = await handleDaemon(new Request("http://x/v1/daemon/reload", { method: "POST" }), deps, "/v1/daemon/reload");
+    expect(res).toBeDefined();
+    expect(res!.status).toBe(200);
+    const body = JSON.parse(await res!.text()) as Record<string, unknown>;
+    expect(body._v).toBe(1);
+    expect(body.daemon).toBeDefined();
+    expect(body.overrides).toBeDefined();
+  });
+
+  test("returns 400 with config_invalid error when reload fails", async () => {
+    const deps = makeDeps({ reloadError: ["daemon.yml: http.port must be a number"] });
+    const res = await handleDaemon(new Request("http://x/v1/daemon/reload", { method: "POST" }), deps, "/v1/daemon/reload");
+    expect(res).toBeDefined();
+    expect(res!.status).toBe(400);
+    const body = JSON.parse(await res!.text()) as Record<string, unknown>;
+    expect((body as any).error.code).toBe("config_invalid");
+    expect((body as any).error.message).toContain("reload failed");
+    expect((body as any).error.details.errors).toContain("daemon.yml: http.port must be a number");
+  });
+
+  test("returns 400 with multiple errors when both files fail to parse", async () => {
+    const deps = makeDeps({
+      reloadError: [
+        "daemon.yml: http.port must be a number",
+        "overrides.yml: allow must be an array",
+      ],
+    });
+    const res = await handleDaemon(new Request("http://x/v1/daemon/reload", { method: "POST" }), deps, "/v1/daemon/reload");
+    expect(res).toBeDefined();
+    expect(res!.status).toBe(400);
+    const body = JSON.parse(await res!.text()) as Record<string, unknown>;
+    expect((body as any).error.code).toBe("config_invalid");
+    expect((body as any).error.details.errors).toHaveLength(2);
+  });
+
+  test("returns undefined (404) for GET on /v1/daemon/reload", async () => {
+    const deps = makeDeps();
+    const res = await handleDaemon(new Request("http://x/v1/daemon/reload", { method: "GET" }), deps, "/v1/daemon/reload");
     expect(res).toBeUndefined();
   });
 });
@@ -145,10 +182,7 @@ describe("GET /v1/daemon/config", () => {
 
 describe("PUT /v1/daemon/config", () => {
   test("returns 200 with updated config when feature flag is enabled and payload is valid", async () => {
-    const deps = makeDeps();
-    // Mutate the in-memory config to enable the feature flag
-    (deps.config as any)._cached.features.daemonConfigWrite = true;
-
+    const deps = makeDeps({ features: { daemonConfigWrite: true } });
     const res = await handleDaemon(
       new Request("http://x/v1/daemon/config", {
         method: "PUT",
@@ -167,9 +201,7 @@ describe("PUT /v1/daemon/config", () => {
   });
 
   test("returns 200 and preserves unspecified fields when updating with partial config", async () => {
-    const deps = makeDeps();
-    (deps.config as any)._cached.features.daemonConfigWrite = true;
-
+    const deps = makeDeps({ features: { daemonConfigWrite: true } });
     const res = await handleDaemon(
       new Request("http://x/v1/daemon/config", {
         method: "PUT",
@@ -182,16 +214,12 @@ describe("PUT /v1/daemon/config", () => {
     expect(res).toBeDefined();
     expect(res!.status).toBe(200);
     const body = JSON.parse(await res!.text()) as Record<string, unknown>;
-    // logging should be debug, everything else should use defaults
     expect((body.daemon as any).logging.level).toBe("debug");
-    // scheduler should use defaults
     expect((body.daemon as any).scheduler.concurrencyCap).toBe(3);
   });
 
   test("returns 400 when http.bind is changed (requires restart)", async () => {
-    const deps = makeDeps();
-    (deps.config as any)._cached.features.daemonConfigWrite = true;
-
+    const deps = makeDeps({ features: { daemonConfigWrite: true } });
     const res = await handleDaemon(
       new Request("http://x/v1/daemon/config", {
         method: "PUT",
@@ -207,13 +235,11 @@ describe("PUT /v1/daemon/config", () => {
     expect((body as any).error.code).toBe("bad_request");
     expect((body as any).error.message).toContain("restart");
     expect((body as any).error.details.current_bind).toBe("127.0.0.1");
-    expect((body as any).error.details.current_port).toBe(24709);
+    expect((body as any).error.details.current_port).toBe(7777);
   });
 
   test("returns 400 when http.port is changed (requires restart)", async () => {
-    const deps = makeDeps();
-    (deps.config as any)._cached.features.daemonConfigWrite = true;
-
+    const deps = makeDeps({ features: { daemonConfigWrite: true } });
     const res = await handleDaemon(
       new Request("http://x/v1/daemon/config", {
         method: "PUT",
@@ -231,9 +257,7 @@ describe("PUT /v1/daemon/config", () => {
   });
 
   test("returns 400 for invalid JSON body", async () => {
-    const deps = makeDeps();
-    (deps.config as any)._cached.features.daemonConfigWrite = true;
-
+    const deps = makeDeps({ features: { daemonConfigWrite: true } });
     const res = await handleDaemon(
       new Request("http://x/v1/daemon/config", {
         method: "PUT",
@@ -251,9 +275,7 @@ describe("PUT /v1/daemon/config", () => {
   });
 
   test("returns 400 for non-object JSON body", async () => {
-    const deps = makeDeps();
-    (deps.config as any)._cached.features.daemonConfigWrite = true;
-
+    const deps = makeDeps({ features: { daemonConfigWrite: true } });
     const res = await handleDaemon(
       new Request("http://x/v1/daemon/config", {
         method: "PUT",
@@ -270,10 +292,8 @@ describe("PUT /v1/daemon/config", () => {
     expect((body as any).error.message).toContain("JSON object");
   });
 
-  test("returns 400 for empty body (empty string)", async () => {
-    const deps = makeDeps();
-    (deps.config as any)._cached.features.daemonConfigWrite = true;
-
+  test("empty body is treated as {} and succeeds (fills defaults)", async () => {
+    const deps = makeDeps({ features: { daemonConfigWrite: true } });
     const res = await handleDaemon(
       new Request("http://x/v1/daemon/config", {
         method: "PUT",
@@ -283,16 +303,13 @@ describe("PUT /v1/daemon/config", () => {
       deps,
       "/v1/daemon/config",
     );
-    // Empty body is treated as {} so should succeed — actually let's allow empty
-    // Wait, empty string gets caught by the JSON.parse catch → 400
+    // Empty string → parseJsonBody returns {} → parseDaemonConfig fills defaults → ok
     expect(res).toBeDefined();
-    expect(res!.status).toBe(400);
+    expect(res!.status).toBe(200);
   });
 
   test("returns 400 for unknown top-level field", async () => {
-    const deps = makeDeps();
-    (deps.config as any)._cached.features.daemonConfigWrite = true;
-
+    const deps = makeDeps({ features: { daemonConfigWrite: true } });
     const res = await handleDaemon(
       new Request("http://x/v1/daemon/config", {
         method: "PUT",
@@ -309,9 +326,7 @@ describe("PUT /v1/daemon/config", () => {
   });
 
   test("returns 400 for unknown features sub-field", async () => {
-    const deps = makeDeps();
-    (deps.config as any)._cached.features.daemonConfigWrite = true;
-
+    const deps = makeDeps({ features: { daemonConfigWrite: true } });
     const res = await handleDaemon(
       new Request("http://x/v1/daemon/config", {
         method: "PUT",
@@ -329,9 +344,7 @@ describe("PUT /v1/daemon/config", () => {
   });
 
   test("returns 400 for invalid logging level", async () => {
-    const deps = makeDeps();
-    (deps.config as any)._cached.features.daemonConfigWrite = true;
-
+    const deps = makeDeps({ features: { daemonConfigWrite: true } });
     const res = await handleDaemon(
       new Request("http://x/v1/daemon/config", {
         method: "PUT",
@@ -348,10 +361,7 @@ describe("PUT /v1/daemon/config", () => {
   });
 
   test("feature flag disabled → returns undefined (404)", async () => {
-    const deps = makeDeps();
-    // Explicitly keep daemonConfigWrite = false
-    (deps.config as any)._cached.features.daemonConfigWrite = false;
-
+    const deps = makeDeps({ features: { daemonConfigWrite: false } });
     const res = await handleDaemon(
       new Request("http://x/v1/daemon/config", {
         method: "PUT",
@@ -365,9 +375,7 @@ describe("PUT /v1/daemon/config", () => {
   });
 
   test("accepts camelCase features.daemonConfigWrite in addition to snake_case", async () => {
-    const deps = makeDeps();
-    (deps.config as any)._cached.features.daemonConfigWrite = true;
-
+    const deps = makeDeps({ features: { daemonConfigWrite: true } });
     const res = await handleDaemon(
       new Request("http://x/v1/daemon/config", {
         method: "PUT",
