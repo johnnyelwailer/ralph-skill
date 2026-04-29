@@ -1,3 +1,4 @@
+import { join } from "node:path";
 import type { ConfigStore } from "@aloop/daemon-config";
 import type { RouterDeps } from "@aloop/daemon-http";
 import type { InMemoryProviderHealthStore, ProviderRegistry } from "@aloop/provider";
@@ -5,6 +6,8 @@ import { handleProviders as handleProvidersRoute } from "@aloop/daemon-routes-pr
 import {
   handleProjects as handleProjectsRoute,
   handleScheduler as handleSchedulerRoute,
+  handleSessions as handleSessionsRoute,
+  type SessionsDeps,
 } from "@aloop/daemon-routes";
 import type { SchedulerService } from "@aloop/scheduler";
 import type { EventWriter, ProjectRegistry } from "@aloop/state-sqlite";
@@ -48,6 +51,14 @@ export function makeRouterDeps(input: MakeRouterDepsInput): RouterDeps {
         req,
         {
           scheduler: input.scheduler,
+        },
+        pathname,
+      ),
+    handleSessions: (req, pathname) =>
+      handleSessionsRoute(
+        req,
+        {
+          sessionsDir: () => join(input.config.paths().stateDir, "sessions"),
         },
         pathname,
       ),

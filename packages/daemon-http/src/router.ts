@@ -15,6 +15,10 @@ export type RouterDeps = {
     req: Request,
     pathname: string,
   ) => Response | Promise<Response | undefined> | undefined;
+  readonly handleSessions: (
+    req: Request,
+    pathname: string,
+  ) => Response | Promise<Response | undefined> | undefined;
 };
 
 /**
@@ -51,6 +55,9 @@ export function makeFetchHandler(
 
     const schedulerResponse = await deps.handleScheduler(req, pathname);
     if (schedulerResponse) return schedulerResponse;
+
+    const sessionsResponse = await deps.handleSessions(req, pathname);
+    if (sessionsResponse) return sessionsResponse;
 
     return new Response(
       JSON.stringify({
