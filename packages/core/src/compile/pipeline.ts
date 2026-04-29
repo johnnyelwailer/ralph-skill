@@ -9,7 +9,6 @@ import type {
 } from "./types.ts";
 import {
   validatePipelineArray,
-  validateStringArray,
   validateStringMap,
 } from "./pipeline-validators.ts";
 
@@ -42,7 +41,7 @@ export function parsePipeline(source: string): ParseResult<PipelineConfig> {
   const root = parsed as Record<string, unknown>;
 
   const pipeline = validatePipelineArray(root.pipeline, "pipeline", errors);
-  const finalizer = validateStringArray(root.finalizer, "finalizer", errors);
+  const finalizer = validatePipelineArray(root.finalizer, "finalizer", errors);
   const triggers = validateStringMap(root.triggers, "triggers", errors);
 
   for (const key of Object.keys(root)) {
@@ -87,10 +86,18 @@ export function compilePipeline(config: PipelineConfig): LoopPlan {
     appendPhase(phase, cycle, transitions);
   }
 
+  const finalizer: string[] = [];
+  for (const phase of config.finalizer ?? []) {
+    // Finalizer phases use the same PROMPT convention as cycle phases.
+    // Explicit prompt filenames are not supported in finalizer (unlike cycle),
+    // matching the SPEC convention-over-configuration approach.
+    finalizer.push(promptForAgent(phase.agent));
+  }
+
   return {
     _v: 1,
     cycle,
-    finalizer: config.finalizer ?? [],
+    finalizer,
     triggers: config.triggers ?? {},
     cyclePosition: 0,
     finalizerPosition: 0,
