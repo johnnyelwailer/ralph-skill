@@ -27,7 +27,7 @@ export type PipelinePhase = {
 /** pipeline.yml — the source of truth authors edit. */
 export type PipelineConfig = {
   readonly pipeline: readonly PipelinePhase[];
-  readonly finalizer?: readonly string[];
+  readonly finalizer?: readonly PipelinePhase[];
   readonly triggers?: Readonly<Record<string, string>>;
 };
 
