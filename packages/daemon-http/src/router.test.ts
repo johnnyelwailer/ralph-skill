@@ -10,6 +10,7 @@ function makeDeps() {
         headers: { "content-type": "application/json" },
       });
     },
+    handleMetrics: () => undefined,
     handleProjects: (req: Request, pathname: string) => {
       if (req.method !== "GET" || pathname !== "/v1/projects") return undefined;
       return new Response(JSON.stringify({ _v: 1, items: [] }), {
@@ -20,6 +21,9 @@ function makeDeps() {
     handleProviders: () => undefined,
     handleScheduler: () => undefined,
     handleSessions: () => undefined,
+    handleArtifacts: () => undefined,
+    handleTurns: () => undefined,
+    handleEvents: () => undefined,
   };
 }
 
@@ -138,6 +142,7 @@ describe("makeFetchHandler dispatch order", () => {
         }
         return undefined;
       },
+      handleMetrics: () => undefined,
       handleProjects: (req: Request, pathname: string) => {
         if (pathname === "/v1/projects") {
           return new Response(JSON.stringify({ _v: 1, handler: "projects" }), {
@@ -166,6 +171,9 @@ describe("makeFetchHandler dispatch order", () => {
         return undefined;
       },
       handleSessions: () => undefined,
+      handleArtifacts: () => undefined,
+      handleTurns: () => undefined,
+      handleEvents: () => undefined,
     };
   }
 

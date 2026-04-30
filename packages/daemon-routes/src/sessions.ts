@@ -29,6 +29,7 @@ export async function handleSessions(
 
   if (!action) {
     if (req.method === "GET") return getSession(id, deps);
+    if (req.method === "DELETE") return deleteSession(id, req, deps);
     return methodNotAllowed();
   }
 
@@ -54,6 +55,18 @@ export async function handleSessions(
 
   if (action === "log" && req.method === "GET") {
     return streamLog(id, req, deps);
+  }
+
+  if (action === "pause" && req.method === "POST") {
+    return pauseSession(id, deps);
+  }
+
+  if (action === "unpause" && req.method === "POST") {
+    return unpauseSession(id, deps);
+  }
+
+  if (action === "resume" && req.method === "POST") {
+    return resumeSession(id, deps);
   }
 
   return undefined;
@@ -292,6 +305,133 @@ function deleteQueueItem(sessionId: string, itemId: string, deps: SessionsDeps):
   }
 
   return notFoundResponse(`/v1/sessions/${sessionId}/queue/${itemId}`);
+}
+
+// ─── Session lifecycle ─────────────────────────────────────────────────────────
+
+const TERMINAL_STATUSES = new Set(["completed", "failed", "archived"]);
+const PAUSABLE_STATUSES = new Set(["running", "pending"]);
+const RESUMABLE_STATUSES = new Set(["paused", "interrupted", "stopped"]);
+
+function loadSessionSummary(sessionDir: string): SessionSummary | null {
+  const path = join(sessionDir, "session.json");
+  if (!existsSync(path)) return null;
+  try {
+    return JSON.parse(readFileSync(path, "utf-8")) as SessionSummary;
+  } catch {
+    return null;
+  }
+}
+
+function saveSessionSummary(sessionDir: string, s: SessionSummary): void {
+  writeFileSync(join(sessionDir, "session.json"), JSON.stringify(s), "utf-8");
+}
+
+/**
+ * DELETE /v1/sessions/:id
+ * Stops a session.  Mode is either "graceful" (default, finish current turn)
+ * or "force" (immediate kill).  For orchestrators, cascades to all children.
+ */
+async function deleteSession(
+  id: string,
+  req: Request,
+  deps: SessionsDeps,
+): Promise<Response> {
+  const sessionDir = join(deps.sessionsDir(), id);
+  const session = loadSessionSummary(sessionDir);
+  if (!session) {
+    return errorResponse(404, "session_not_found", `session not found: ${id}`, { id });
+  }
+
+  if (TERMINAL_STATUSES.has(session.status)) {
+    return errorResponse(409, "session_not_stoppable", `session ${id} is already ${session.status}`, {
+      id,
+      status: session.status,
+    });
+  }
+
+  const url = new URL(req.url);
+  const mode = url.searchParams.get("mode") ?? "graceful";
+
+  const nextStatus: SessionStatus =
+    mode === "force" ? "stopped" : session.status === "pending" ? "stopped" : "stopped";
+
+  const updated: SessionSummary = {
+    ...session,
+    status: nextStatus,
+  };
+  saveSessionSummary(sessionDir, updated);
+
+  return jsonResponse(200, { _v: 1, id, status: nextStatus });
+}
+
+/**
+ * POST /v1/sessions/:id/pause
+ * Pauses a session at the next cycle boundary.  Does NOT kill an in-flight turn.
+ */
+function pauseSession(id: string, deps: SessionsDeps): Response {
+  const sessionDir = join(deps.sessionsDir(), id);
+  const session = loadSessionSummary(sessionDir);
+  if (!session) {
+    return errorResponse(404, "session_not_found", `session not found: ${id}`, { id });
+  }
+
+  if (!PAUSABLE_STATUSES.has(session.status)) {
+    return errorResponse(409, "session_not_pausable", `session ${id} cannot be paused from status ${session.status}`, {
+      id,
+      status: session.status,
+    });
+  }
+
+  const updated: SessionSummary = { ...session, status: "paused" };
+  saveSessionSummary(sessionDir, updated);
+  return jsonResponse(200, { _v: 1, id, status: "paused" });
+}
+
+/**
+ * POST /v1/sessions/:id/unpause
+ * Resumes a paused session.
+ */
+function unpauseSession(id: string, deps: SessionsDeps): Response {
+  const sessionDir = join(deps.sessionsDir(), id);
+  const session = loadSessionSummary(sessionDir);
+  if (!session) {
+    return errorResponse(404, "session_not_found", `session not found: ${id}`, { id });
+  }
+
+  if (session.status !== "paused") {
+    return errorResponse(409, "session_not_paused", `session ${id} is not paused (status: ${session.status})`, {
+      id,
+      status: session.status,
+    });
+  }
+
+  const updated: SessionSummary = { ...session, status: "running" };
+  saveSessionSummary(sessionDir, updated);
+  return jsonResponse(200, { _v: 1, id, status: "running" });
+}
+
+/**
+ * POST /v1/sessions/:id/resume
+ * Resumes a session from interrupted, stopped, or paused status.
+ */
+function resumeSession(id: string, deps: SessionsDeps): Response {
+  const sessionDir = join(deps.sessionsDir(), id);
+  const session = loadSessionSummary(sessionDir);
+  if (!session) {
+    return errorResponse(404, "session_not_found", `session not found: ${id}`, { id });
+  }
+
+  if (!RESUMABLE_STATUSES.has(session.status)) {
+    return errorResponse(409, "session_not_resumable", `session ${id} cannot be resumed from status ${session.status}`, {
+      id,
+      status: session.status,
+    });
+  }
+
+  const updated: SessionSummary = { ...session, status: "running" };
+  saveSessionSummary(sessionDir, updated);
+  return jsonResponse(200, { _v: 1, id, status: "running" });
 }
 
 // ─── Types ─────────────────────────────────────────────────────────────────────

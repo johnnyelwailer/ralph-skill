@@ -27,10 +27,13 @@ export async function handleTurns(
     return errorResponse(405, "method_not_allowed", "method not allowed for this resource");
   }
 
-  return streamTurnChunks(sessionId, turnId, deps);
+  const url = new URL(req.url);
+  const replay = url.searchParams.get("replay") === "true";
+
+  return streamTurnChunks(sessionId, turnId, deps, replay);
 }
 
-function streamTurnChunks(sessionId: string, turnId: string, deps: TurnsDeps): Response {
+function streamTurnChunks(sessionId: string, turnId: string, deps: TurnsDeps, _replay: boolean): Response {
   const eventsPath = join(deps.sessionsDir(), sessionId, "events.jsonl");
 
   const encoder = new TextEncoder();

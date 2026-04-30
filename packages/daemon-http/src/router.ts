@@ -31,6 +31,11 @@ export type RouterDeps = {
     req: Request,
     pathname: string,
   ) => Response | Promise<Response | undefined> | undefined;
+  /** SSE event bus: GET /v1/events */
+  readonly handleEvents: (
+    req: Request,
+    pathname: string,
+  ) => Response | Promise<Response | undefined> | undefined;
 };
 
 /**
@@ -79,6 +84,9 @@ export function makeFetchHandler(
 
     const turnsResponse = await deps.handleTurns(req, pathname);
     if (turnsResponse) return turnsResponse;
+
+    const eventsResponse = await deps.handleEvents(req, pathname);
+    if (eventsResponse) return eventsResponse;
 
     return new Response(
       JSON.stringify({

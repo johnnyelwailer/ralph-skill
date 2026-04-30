@@ -553,3 +553,306 @@ describe("GET /v1/sessions/:id/log", () => {
     expect(res!.status).toBe(200);
   });
 });
+
+// ─── Helpers for session lifecycle tests ───────────────────────────────────────
+
+/** Write a session.json with the given status into a pre-created session dir. */
+function writeSessionStatus(dir: string, status: string, id = "s_lifecycle_001"): void {
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(
+    join(dir, "session.json"),
+    JSON.stringify({
+      id,
+      project_id: "p_test",
+      kind: "standalone",
+      status,
+      workflow: "plan-build-review",
+      created_at: new Date().toISOString(),
+    }),
+    "utf-8",
+  );
+}
+
+// ─── DELETE /v1/sessions/:id ─────────────────────────────────────────────────
+
+describe("DELETE /v1/sessions/:id", () => {
+  test("returns 404 when session does not exist", async () => {
+    const deps = makeDeps("s_del_404");
+    const req = new Request("http://x/v1/sessions/s_nonexistent", { method: "DELETE" });
+    const res = await handleSessions(req, deps, "/v1/sessions/s_nonexistent");
+    expect(res!.status).toBe(404);
+    const body = await resJson<{ error: { code: string } }>(res!);
+    expect(body.error.code).toBe("session_not_found");
+  });
+
+  test("returns 409 when session is already completed", async () => {
+    const deps = makeDeps("s_del_completed");
+    const dir = join(deps.sessionsDir(), "s_del_completed");
+    writeSessionStatus(dir, "completed");
+    const req = new Request("http://x/v1/sessions/s_del_completed", { method: "DELETE" });
+    const res = await handleSessions(req, deps, "/v1/sessions/s_del_completed");
+    expect(res!.status).toBe(409);
+    const body = await resJson<{ error: { code: string } }>(res!);
+    expect(body.error.code).toBe("session_not_stoppable");
+  });
+
+  test("returns 409 when session is already failed", async () => {
+    const deps = makeDeps("s_del_failed");
+    const dir = join(deps.sessionsDir(), "s_del_failed");
+    writeSessionStatus(dir, "failed");
+    const req = new Request("http://x/v1/sessions/s_del_failed", { method: "DELETE" });
+    const res = await handleSessions(req, deps, "/v1/sessions/s_del_failed");
+    expect(res!.status).toBe(409);
+  });
+
+  test("returns 409 when session is archived", async () => {
+    const deps = makeDeps("s_del_archived");
+    const dir = join(deps.sessionsDir(), "s_del_archived");
+    writeSessionStatus(dir, "archived");
+    const req = new Request("http://x/v1/sessions/s_del_archived", { method: "DELETE" });
+    const res = await handleSessions(req, deps, "/v1/sessions/s_del_archived");
+    expect(res!.status).toBe(409);
+  });
+
+  test("stops a running session and returns 200", async () => {
+    const deps = makeDeps("s_del_running");
+    const dir = join(deps.sessionsDir(), "s_del_running");
+    writeSessionStatus(dir, "running");
+    const req = new Request("http://x/v1/sessions/s_del_running", { method: "DELETE" });
+    const res = await handleSessions(req, deps, "/v1/sessions/s_del_running");
+    expect(res!.status).toBe(200);
+    const body = await resJson<{ id: string; status: string }>(res!);
+    expect(body.id).toBe("s_del_running");
+    expect(body.status).toBe("stopped");
+  });
+
+  test("stops a pending session and returns 200", async () => {
+    const deps = makeDeps("s_del_pending");
+    const dir = join(deps.sessionsDir(), "s_del_pending");
+    writeSessionStatus(dir, "pending");
+    const req = new Request("http://x/v1/sessions/s_del_pending", { method: "DELETE" });
+    const res = await handleSessions(req, deps, "/v1/sessions/s_del_pending");
+    expect(res!.status).toBe(200);
+    const body = await resJson<{ status: string }>(res!);
+    expect(body.status).toBe("stopped");
+  });
+
+  test("force mode still returns stopped", async () => {
+    const deps = makeDeps("s_del_force");
+    const dir = join(deps.sessionsDir(), "s_del_force");
+    writeSessionStatus(dir, "running");
+    const req = new Request("http://x/v1/sessions/s_del_force?mode=force", { method: "DELETE" });
+    const res = await handleSessions(req, deps, "/v1/sessions/s_del_force");
+    expect(res!.status).toBe(200);
+    const body = await resJson<{ status: string }>(res!);
+    expect(body.status).toBe("stopped");
+  });
+});
+
+// ─── POST /v1/sessions/:id/pause ──────────────────────────────────────────────
+
+describe("POST /v1/sessions/:id/pause", () => {
+  test("returns 404 when session does not exist", async () => {
+    const deps = makeDeps("s_pause_404");
+    const req = new Request("http://x/v1/sessions/s_nonexistent/pause", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: "{}",
+    });
+    const res = await handleSessions(req, deps, "/v1/sessions/s_nonexistent/pause");
+    expect(res!.status).toBe(404);
+    const body = await resJson<{ error: { code: string } }>(res!);
+    expect(body.error.code).toBe("session_not_found");
+  });
+
+  test("returns 409 when session is completed", async () => {
+    const deps = makeDeps("s_pause_completed");
+    const dir = join(deps.sessionsDir(), "s_pause_completed");
+    writeSessionStatus(dir, "completed");
+    const req = new Request("http://x/v1/sessions/s_pause_completed/pause", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: "{}",
+    });
+    const res = await handleSessions(req, deps, "/v1/sessions/s_pause_completed/pause");
+    expect(res!.status).toBe(409);
+    const body = await resJson<{ error: { code: string } }>(res!);
+    expect(body.error.code).toBe("session_not_pausable");
+  });
+
+  test("pauses a running session", async () => {
+    const deps = makeDeps("s_pause_running");
+    const dir = join(deps.sessionsDir(), "s_pause_running");
+    writeSessionStatus(dir, "running");
+    const req = new Request("http://x/v1/sessions/s_pause_running/pause", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: "{}",
+    });
+    const res = await handleSessions(req, deps, "/v1/sessions/s_pause_running/pause");
+    expect(res!.status).toBe(200);
+    const body = await resJson<{ id: string; status: string }>(res!);
+    expect(body.status).toBe("paused");
+  });
+
+  test("pauses a pending session", async () => {
+    const deps = makeDeps("s_pause_pending");
+    const dir = join(deps.sessionsDir(), "s_pause_pending");
+    writeSessionStatus(dir, "pending");
+    const req = new Request("http://x/v1/sessions/s_pause_pending/pause", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: "{}",
+    });
+    const res = await handleSessions(req, deps, "/v1/sessions/s_pause_pending/pause");
+    expect(res!.status).toBe(200);
+    const body = await resJson<{ status: string }>(res!);
+    expect(body.status).toBe("paused");
+  });
+
+  test("returns 409 when session is already paused", async () => {
+    const deps = makeDeps("s_pause_already");
+    const dir = join(deps.sessionsDir(), "s_pause_already");
+    writeSessionStatus(dir, "paused");
+    const req = new Request("http://x/v1/sessions/s_pause_already/pause", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: "{}",
+    });
+    const res = await handleSessions(req, deps, "/v1/sessions/s_pause_already/pause");
+    expect(res!.status).toBe(409);
+  });
+});
+
+// ─── POST /v1/sessions/:id/unpause ────────────────────────────────────────────
+
+describe("POST /v1/sessions/:id/unpause", () => {
+  test("returns 404 when session does not exist", async () => {
+    const deps = makeDeps("s_unpause_404");
+    const req = new Request("http://x/v1/sessions/s_nonexistent/unpause", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: "{}",
+    });
+    const res = await handleSessions(req, deps, "/v1/sessions/s_nonexistent/unpause");
+    expect(res!.status).toBe(404);
+  });
+
+  test("returns 409 when session is not paused", async () => {
+    const deps = makeDeps("s_unpause_running");
+    const dir = join(deps.sessionsDir(), "s_unpause_running");
+    writeSessionStatus(dir, "running");
+    const req = new Request("http://x/v1/sessions/s_unpause_running/unpause", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: "{}",
+    });
+    const res = await handleSessions(req, deps, "/v1/sessions/s_unpause_running/unpause");
+    expect(res!.status).toBe(409);
+    const body = await resJson<{ error: { code: string } }>(res!);
+    expect(body.error.code).toBe("session_not_paused");
+  });
+
+  test("unpauses a paused session", async () => {
+    const deps = makeDeps("s_unpause_paused");
+    const dir = join(deps.sessionsDir(), "s_unpause_paused");
+    writeSessionStatus(dir, "paused");
+    const req = new Request("http://x/v1/sessions/s_unpause_paused/unpause", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: "{}",
+    });
+    const res = await handleSessions(req, deps, "/v1/sessions/s_unpause_paused/unpause");
+    expect(res!.status).toBe(200);
+    const body = await resJson<{ status: string }>(res!);
+    expect(body.status).toBe("running");
+  });
+});
+
+// ─── POST /v1/sessions/:id/resume ─────────────────────────────────────────────
+
+describe("POST /v1/sessions/:id/resume", () => {
+  test("returns 404 when session does not exist", async () => {
+    const deps = makeDeps("s_resume_404");
+    const req = new Request("http://x/v1/sessions/s_nonexistent/resume", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: "{}",
+    });
+    const res = await handleSessions(req, deps, "/v1/sessions/s_nonexistent/resume");
+    expect(res!.status).toBe(404);
+  });
+
+  test("returns 409 when session is running", async () => {
+    const deps = makeDeps("s_resume_running");
+    const dir = join(deps.sessionsDir(), "s_resume_running");
+    writeSessionStatus(dir, "running");
+    const req = new Request("http://x/v1/sessions/s_resume_running/resume", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: "{}",
+    });
+    const res = await handleSessions(req, deps, "/v1/sessions/s_resume_running/resume");
+    expect(res!.status).toBe(409);
+    const body = await resJson<{ error: { code: string } }>(res!);
+    expect(body.error.code).toBe("session_not_resumable");
+  });
+
+  test("returns 409 when session is completed", async () => {
+    const deps = makeDeps("s_resume_completed");
+    const dir = join(deps.sessionsDir(), "s_resume_completed");
+    writeSessionStatus(dir, "completed");
+    const req = new Request("http://x/v1/sessions/s_resume_completed/resume", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: "{}",
+    });
+    const res = await handleSessions(req, deps, "/v1/sessions/s_resume_completed/resume");
+    expect(res!.status).toBe(409);
+  });
+
+  test("resumes a stopped session", async () => {
+    const deps = makeDeps("s_resume_stopped");
+    const dir = join(deps.sessionsDir(), "s_resume_stopped");
+    writeSessionStatus(dir, "stopped");
+    const req = new Request("http://x/v1/sessions/s_resume_stopped/resume", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: "{}",
+    });
+    const res = await handleSessions(req, deps, "/v1/sessions/s_resume_stopped/resume");
+    expect(res!.status).toBe(200);
+    const body = await resJson<{ status: string }>(res!);
+    expect(body.status).toBe("running");
+  });
+
+  test("resumes an interrupted session", async () => {
+    const deps = makeDeps("s_resume_interrupted");
+    const dir = join(deps.sessionsDir(), "s_resume_interrupted");
+    writeSessionStatus(dir, "interrupted");
+    const req = new Request("http://x/v1/sessions/s_resume_interrupted/resume", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: "{}",
+    });
+    const res = await handleSessions(req, deps, "/v1/sessions/s_resume_interrupted/resume");
+    expect(res!.status).toBe(200);
+    const body = await resJson<{ status: string }>(res!);
+    expect(body.status).toBe("running");
+  });
+
+  test("resumes a paused session", async () => {
+    const deps = makeDeps("s_resume_paused");
+    const dir = join(deps.sessionsDir(), "s_resume_paused");
+    writeSessionStatus(dir, "paused");
+    const req = new Request("http://x/v1/sessions/s_resume_paused/resume", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: "{}",
+    });
+    const res = await handleSessions(req, deps, "/v1/sessions/s_resume_paused/resume");
+    expect(res!.status).toBe(200);
+    const body = await resJson<{ status: string }>(res!);
+    expect(body.status).toBe("running");
+  });
+});

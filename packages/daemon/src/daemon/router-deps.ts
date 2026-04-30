@@ -11,7 +11,9 @@ import {
   handleProjects as handleProjectsRoute,
   handleScheduler as handleSchedulerRoute,
   handleSessions as handleSessionsRoute,
+  handleEvents as handleEventsRoute,
   type SessionsDeps,
+  type EventsDeps,
 } from "@aloop/daemon-routes";
 import { handleArtifacts as handleArtifactsRoute, type ArtifactsDeps } from "@aloop/daemon-routes-artifacts";
 import { handleTurns as handleTurnsRoute, type TurnsDeps } from "@aloop/daemon-routes-turns";
@@ -91,6 +93,15 @@ export function makeRouterDeps(input: MakeRouterDepsInput): RouterDeps {
       handleTurnsRoute(
         req,
         {
+          sessionsDir: () => join(input.config.paths().stateDir, "sessions"),
+        },
+        pathname,
+      ),
+    handleEvents: (req, pathname) =>
+      handleEventsRoute(
+        req,
+        {
+          logFile: () => input.config.paths().logFile,
           sessionsDir: () => join(input.config.paths().stateDir, "sessions"),
         },
         pathname,
