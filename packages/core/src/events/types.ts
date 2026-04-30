@@ -1,4 +1,26 @@
 /**
+ * Session kinds as declared at creation time.  Determines lifecycle rules,
+ * worktree semantics, and parent/child relationships — see api.md §Sessions.
+ */
+export type SessionKind = "standalone" | "orchestrator" | "child";
+
+/**
+ * Canonical session status.  Status values are v1-stable per api.md.
+ * Terminal statuses (`completed | failed | archived`) may not transition further.
+ * Resumable statuses (`interrupted | stopped | paused`) may transition to
+ * `running` via `POST /v1/sessions/:id/resume`.
+ */
+export type SessionStatus =
+  | "pending"
+  | "running"
+  | "paused"
+  | "interrupted"
+  | "stopped"
+  | "completed"
+  | "failed"
+  | "archived";
+
+/**
  * Canonical event envelope. Every event in every session's JSONL log uses
  * this shape. Topic-specific payloads live in `data`.
  *
