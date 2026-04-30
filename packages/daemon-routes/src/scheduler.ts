@@ -73,7 +73,7 @@ function asPositiveInt(value: unknown): number | "invalid" | undefined {
 
 function asNonNegativeFloat(value: unknown): number | "invalid" | undefined {
   if (value === undefined) return undefined;
-  if (typeof value !== "number" || Number.isNaN(value) || value < 0) return "invalid";
+  if (typeof value !== "number" || Number.isNaN(value) || !Number.isFinite(value) || value < 0) return "invalid";
   return value;
 }
 
