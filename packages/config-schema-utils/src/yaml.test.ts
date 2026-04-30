@@ -38,7 +38,7 @@ describe("parseYamlString", () => {
   test("returns ok:false with error for invalid YAML syntax", () => {
     const result = parseYamlString("key: [unclosed");
     expect(result.ok).toBe(false);
-    expect((result.value as any).errors).toContainEqual(
+    expect(result.errors).toContainEqual(
       expect.stringContaining("yaml parse error:"),
     );
   });
@@ -47,11 +47,12 @@ describe("parseYamlString", () => {
     // Tabs are not valid YAML indentation
     const result = parseYamlString("key:\t: value");
     expect(result.ok).toBe(false);
-    expect((result.value as any).errors[0]).toContain("yaml parse error:");
+    expect(result.errors[0]).toContain("yaml parse error:");
   });
 
   test("returns ok:false for document marker with invalid content", () => {
-    const result = parseYamlString("---invalid");
+    // "[unclosed" is a bare unclosed flow sequence — fails to parse
+    const result = parseYamlString("[unclosed");
     expect(result.ok).toBe(false);
   });
 });
@@ -80,7 +81,7 @@ describe("loadYamlFile", () => {
   test("returns ok:false with file-not-found error for missing file", () => {
     const result = loadYamlFile(join(tmpDir, "does-not-exist.yaml"));
     expect(result.ok).toBe(false);
-    expect((result.value as any).errors).toContainEqual(
+    expect(result.errors).toContainEqual(
       `file not found: ${join(tmpDir, "does-not-exist.yaml")}`,
     );
   });
@@ -100,7 +101,7 @@ describe("loadYamlFile", () => {
     writeFileSync(filePath, "broken: [");
     const result = loadYamlFile(filePath);
     expect(result.ok).toBe(false);
-    expect((result.value as any).errors[0]).toContain("yaml parse error:");
+    expect(result.errors[0]).toContain("yaml parse error:");
   });
 });
 

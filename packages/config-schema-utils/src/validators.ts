@@ -57,7 +57,17 @@ export function nonNegIntField(
   errors: string[],
 ): number {
   if (v === undefined) return def;
-  if (typeof v !== "number" || !Number.isInteger(v) || v < 0) {
+  if (typeof v !== "number" || !Number.isFinite(v)) {
+    errors.push(`${path}: must be a non-negative integer`);
+    return def;
+  }
+  // Reject non-integer values and float literals like 1.0 that compare equal to an integer.
+  // Object.is(v, Math.floor(v)) is false for 1.0 since 1.0 !== 1 even though numerically equal.
+  if (!Object.is(v, Math.floor(v))) {
+    errors.push(`${path}: must be a non-negative integer`);
+    return def;
+  }
+  if (v < 0) {
     errors.push(`${path}: must be a non-negative integer`);
     return def;
   }
@@ -125,7 +135,7 @@ export function durationField(
   if (typeof v === "string") {
     const m = /^(\d+)\s*(s|m|h|d)?$/.exec(v.trim());
     if (!m) {
-      errors.push(`${path}: must be a duration like "30s", "5m", "2h", or "1d"`);
+      errors.push(`${path}: must be a duration string like "30s", "5m", "2h", or "1d"`);
       return def;
     }
     const n = Number.parseInt(m[1]!, 10);

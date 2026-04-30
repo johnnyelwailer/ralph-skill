@@ -5,5 +5,5 @@ export function pick(
   snake: string,
   camel: string,
 ): unknown {
-  return obj[snake] ?? obj[camel];
+  return snake in obj ? obj[snake] : obj[camel];
 }

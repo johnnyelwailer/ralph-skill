@@ -153,7 +153,11 @@ describe("nonNegIntField", () => {
 
   test("records error and returns default for floating point", () => {
     errors.length = 0;
-    const result = nonNegIntField(1.0, "field.name", 99, errors);
+    // Note: YAML parses 1.0 as number 1 in JavaScript (IEEE 754 double — 1.0 === 1).
+    // The yaml library normalizes it before the validator sees it, so the validator
+    // correctly accepts it as a non-negative integer. This test verifies the
+    // validator correctly rejects values that are genuinely non-integer floats.
+    const result = nonNegIntField(1.5, "field.name", 99, errors);
     expect(result).toBe(99);
     expect(errors).toContain("field.name: must be a non-negative integer");
   });
