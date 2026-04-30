@@ -2,53 +2,52 @@ import { describe, expect, test } from "bun:test";
 import { pick } from "./daemon-mergers-pick.ts";
 
 describe("pick", () => {
-  test("returns snake_case value when present", () => {
-    const obj = { tick_interval: 30, tickIntervalSeconds: 60 };
-    expect(pick(obj, "tick_interval", "tickIntervalSeconds")).toBe(30);
+  test("returns the snake_case value when present", () => {
+    const obj = { http_port: 8080 };
+    expect(pick(obj, "http_port", "httpPort")).toBe(8080);
   });
 
-  test("returns camelCase value when snake_case is absent", () => {
-    const obj = { tickIntervalSeconds: 60 };
-    expect(pick(obj, "tick_interval", "tickIntervalSeconds")).toBe(60);
+  test("returns the camelCase value when snake_case is absent", () => {
+    const obj = { httpPort: 8080 };
+    expect(pick(obj, "http_port", "httpPort")).toBe(8080);
   });
 
-  test("prefers snake_case over camelCase when both are present", () => {
-    const obj = { concurrency_cap: 3, concurrencyCap: 5 };
-    expect(pick(obj, "concurrency_cap", "concurrencyCap")).toBe(3);
+  test("prefers snake_case over camelCase when both present", () => {
+    const obj = { http_port: 9000, httpPort: 3000 };
+    expect(pick(obj, "http_port", "httpPort")).toBe(9000);
   });
 
   test("returns undefined when neither key is present", () => {
-    const obj = { other_key: 1 };
-    expect(pick(obj, "missing_snake", "missingCamel")).toBeUndefined();
+    const obj = {};
+    expect(pick(obj, "http_port", "httpPort")).toBeUndefined();
   });
 
-  test("returns undefined for empty object", () => {
-    expect(pick({}, "key_snake", "keyCamel")).toBeUndefined();
+  test("returns undefined when obj is empty regardless of keys", () => {
+    expect(pick({}, "a", "b")).toBeUndefined();
   });
 
-  test("returns falsy snake_case value (0) when present", () => {
-    const obj = { tick_interval: 0 };
-    expect(pick(obj, "tick_interval", "tickIntervalSeconds")).toBe(0);
+  test("works with numeric values", () => {
+    const obj = { max_count: 10 };
+    expect(pick(obj, "max_count", "maxCount")).toBe(10);
   });
 
-  test("returns falsy camelCase value (false) when snake_case is absent", () => {
-    const obj = { enabled: false };
-    expect(pick(obj, "is_enabled", "enabled")).toBe(false);
+  test("works with null values", () => {
+    const obj = { setting: null };
+    expect(pick(obj, "setting", "settingAlt")).toBeNull();
   });
 
-  test("handles numeric snake_case value", () => {
-    const obj = { cpu_max_pct: 80 };
-    expect(pick(obj, "cpu_max_pct", "cpuMaxPct")).toBe(80);
+  test("works with falsy values (0)", () => {
+    const obj = { timeout: 0 };
+    expect(pick(obj, "timeout", "timeoutMs")).toBe(0);
   });
 
-  test("handles nested object as value", () => {
-    const obj = { burn_rate: { min_commits_per_hour: 10 } };
-    const result = pick(obj, "burn_rate", "burnRate") as { min_commits_per_hour: number } | undefined;
-    expect(result).toEqual({ min_commits_per_hour: 10 });
+  test("works with falsy values (empty string)", () => {
+    const obj = { name: "" };
+    expect(pick(obj, "name", "nameAlt")).toBe("");
   });
 
-  test("works with string values", () => {
-    const obj = { log_level: "debug" };
-    expect(pick(obj, "log_level", "logLevel")).toBe("debug");
+  test("snake key wins over absent camel key even with falsy value", () => {
+    const obj = { http_port: 0 };
+    expect(pick(obj, "http_port", "httpPort")).toBe(0);
   });
 });

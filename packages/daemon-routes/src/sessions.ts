@@ -32,6 +32,10 @@ export async function handleSessions(
     return await steerSession(id, req, deps);
   }
 
+  if (action === "steer") {
+    return methodNotAllowed();
+  }
+
   if (action === "queue" && req.method === "GET") {
     return listQueue(id, deps);
   }
@@ -40,7 +44,11 @@ export async function handleSessions(
     return deleteQueueItem(id, restSegments[0], deps);
   }
 
-  return notFoundResponse(pathname);
+  if (action === "queue") {
+    return methodNotAllowed();
+  }
+
+  return undefined;
 }
 
 function listSessions(_req: Request, _deps: SessionsDeps): Response {

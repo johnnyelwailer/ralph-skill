@@ -4,12 +4,17 @@ import type { RouterDeps } from "@aloop/daemon-http";
 import type { InMemoryProviderHealthStore, ProviderRegistry } from "@aloop/provider";
 import { handleProviders as handleProvidersRoute } from "@aloop/daemon-routes-providers";
 import {
+  handleMetrics as handleMetricsRoute,
+  type MetricsDeps as MetricsDeps,
+} from "@aloop/daemon-routes";
+import {
   handleProjects as handleProjectsRoute,
   handleScheduler as handleSchedulerRoute,
   handleSessions as handleSessionsRoute,
   type SessionsDeps,
 } from "@aloop/daemon-routes";
 import type { SchedulerService } from "@aloop/scheduler";
+import { DEFAULT_SCHEDULER_PROBES } from "@aloop/scheduler-gates";
 import type { EventWriter, ProjectRegistry } from "@aloop/state-sqlite";
 import { handleDaemon as handleDaemonRoute } from "../routes/daemon.ts";
 
@@ -24,9 +29,17 @@ export type MakeRouterDepsInput = {
 };
 
 export function makeRouterDeps(input: MakeRouterDepsInput): RouterDeps {
+  const metricsDeps: MetricsDeps = {
+    scheduler: input.scheduler,
+    providerHealth: input.providerHealth,
+    systemSample: DEFAULT_SCHEDULER_PROBES.systemSample,
+  };
+
   return {
     handleDaemon: (req, pathname) =>
       handleDaemonRoute(req, { startedAt: input.startedAt, config: input.config }, pathname),
+    handleMetrics: (req, pathname) =>
+      handleMetricsRoute(req, metricsDeps, pathname),
     handleProjects: (req, pathname) =>
       handleProjectsRoute(
         req,
