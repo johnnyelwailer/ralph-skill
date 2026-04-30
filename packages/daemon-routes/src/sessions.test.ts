@@ -207,6 +207,180 @@ describe("POST /v1/sessions/:id/steer", () => {
   });
 });
 
+// ─── GET /v1/sessions ─────────────────────────────────────────────────────────
+
+describe("GET /v1/sessions", () => {
+  test("returns 200 with empty items when sessions dir does not exist", async () => {
+    const deps = makeDeps("nonexistent-sessions-dir");
+    const req = new Request("http://x/v1/sessions", { method: "GET" });
+    const res = await handleSessions(req, deps, "/v1/sessions");
+
+    expect(res).toBeDefined();
+    expect(res!.status).toBe(200);
+    const body = await resJson<{ _v: number; items: unknown[]; next_cursor: null }>(res!);
+    expect(body._v).toBe(1);
+    expect(body.items).toEqual([]);
+    expect(body.next_cursor).toBeNull();
+  });
+
+  test("returns 200 with empty items when sessions dir has no subdirs", async () => {
+    const deps = makeDeps("empty-sessions");
+    mkdirSync(deps.sessionsDir(), { recursive: true });
+    const req = new Request("http://x/v1/sessions", { method: "GET" });
+    const res = await handleSessions(req, deps, "/v1/sessions");
+
+    expect(res!.status).toBe(200);
+    const body = await resJson<{ _v: number; items: unknown[] }>(res!);
+    expect(body.items).toEqual([]);
+  });
+
+  test("returns sessions as items array", async () => {
+    const deps = makeDeps("multi-session");
+    mkdirSync(deps.sessionsDir(), { recursive: true });
+
+    // Create two sessions — each is a directory containing session.json
+    for (const [id, proj, kind, status, workflow, createdAt] of [
+      ["s_aaa111", "p_proj1", "standalone", "running", null, "2026-01-01T00:00:00.000Z"],
+      ["s_bbb222", "p_proj2", "orchestrator", "pending", "default", "2026-01-02T00:00:00.000Z"],
+    ] as const) {
+      const sessionDir = join(deps.sessionsDir(), id);
+      mkdirSync(sessionDir, { recursive: true });
+      writeFileSync(
+        join(sessionDir, "session.json"),
+        JSON.stringify({ id, project_id: proj, kind, status, workflow, created_at: createdAt }),
+      );
+    }
+
+    const req = new Request("http://x/v1/sessions", { method: "GET" });
+    const res = await handleSessions(req, deps, "/v1/sessions");
+
+    expect(res!.status).toBe(200);
+    const body = await resJson<{ _v: number; items: unknown[] }>(res!);
+    expect(body.items).toHaveLength(2);
+    const ids = (body.items as { id: string }[]).map((s) => s.id).sort();
+    expect(ids).toEqual(["s_aaa111", "s_bbb222"]);
+  });
+
+  test("skips entries that are not session dirs (missing session.json)", async () => {
+    const deps = makeDeps("mixed-entries");
+    mkdirSync(deps.sessionsDir(), { recursive: true });
+
+    // Create a valid session (directory with session.json inside)
+    const validSessionDir = join(deps.sessionsDir(), "s_valid");
+    mkdirSync(validSessionDir, { recursive: true });
+    writeFileSync(
+      join(validSessionDir, "session.json"),
+      JSON.stringify({
+        id: "s_valid",
+        project_id: "p_1",
+        kind: "standalone",
+        status: "running",
+        workflow: null,
+        created_at: "2026-01-01T00:00:00.000Z",
+      }),
+    );
+    // Create a directory that is not a session (no session.json)
+    mkdirSync(join(deps.sessionsDir(), "not-a-session"), { recursive: true });
+
+    const req = new Request("http://x/v1/sessions", { method: "GET" });
+    const res = await handleSessions(req, deps, "/v1/sessions");
+
+    expect(res!.status).toBe(200);
+    const body = await resJson<{ items: unknown[] }>(res!);
+    expect(body.items).toHaveLength(1);
+    expect((body.items[0] as { id: string }).id).toBe("s_valid");
+  });
+});
+
+// ─── GET /v1/sessions/:id ─────────────────────────────────────────────────────
+
+describe("GET /v1/sessions/:id", () => {
+  test("returns 404 when session does not exist", async () => {
+    const deps = makeDeps("missing-session");
+    mkdirSync(deps.sessionsDir(), { recursive: true });
+    const req = new Request("http://x/v1/sessions/s_missing", { method: "GET" });
+    const res = await handleSessions(req, deps, "/v1/sessions/s_missing");
+
+    expect(res).toBeDefined();
+    expect(res!.status).toBe(404);
+    const body = await resJson<{ error: { code: string; message: string } }>(res!);
+    expect(body.error.code).toBe("session_not_found");
+  });
+
+  test("returns 404 when session dir exists but session.json is missing", async () => {
+    const deps = makeDeps("incomplete-session");
+    mkdirSync(deps.sessionsDir(), { recursive: true });
+    mkdirSync(join(deps.sessionsDir(), "s_incomplete"), { recursive: true });
+    const req = new Request("http://x/v1/sessions/s_incomplete", { method: "GET" });
+    const res = await handleSessions(req, deps, "/v1/sessions/s_incomplete");
+
+    expect(res!.status).toBe(404);
+    const body = await resJson<{ error: { code: string } }>(res!);
+    expect(body.error.code).toBe("session_not_found");
+  });
+
+  test("returns 200 with full session summary", async () => {
+    const deps = makeDeps("full-session-test");
+    const sessionDir = join(deps.sessionsDir(), "s_full001");
+    mkdirSync(sessionDir, { recursive: true });
+    const session = {
+      id: "s_full001",
+      project_id: "p_myproject",
+      kind: "standalone",
+      status: "running",
+      workflow: "default",
+      created_at: "2026-03-15T12:00:00.000Z",
+    };
+    writeFileSync(join(sessionDir, "session.json"), JSON.stringify(session));
+
+    const req = new Request("http://x/v1/sessions/s_full001", { method: "GET" });
+    const res = await handleSessions(req, deps, "/v1/sessions/s_full001");
+
+    expect(res).toBeDefined();
+    expect(res!.status).toBe(200);
+    const body = await resJson<{
+      _v: number;
+      id: string;
+      project_id: string;
+      kind: string;
+      status: string;
+      workflow: string | null;
+      created_at: string;
+    }>(res!);
+    expect(body._v).toBe(1);
+    expect(body.id).toBe("s_full001");
+    expect(body.project_id).toBe("p_myproject");
+    expect(body.kind).toBe("standalone");
+    expect(body.status).toBe("running");
+    expect(body.workflow).toBe("default");
+    expect(body.created_at).toBe("2026-03-15T12:00:00.000Z");
+  });
+
+  test("returns all required session fields for orchestrator kind", async () => {
+    const deps = makeDeps("orch-session-test");
+    const sessionDir = join(deps.sessionsDir(), "s_orch001");
+    mkdirSync(sessionDir, { recursive: true });
+    const session = {
+      id: "s_orch001",
+      project_id: "p_proj",
+      kind: "orchestrator",
+      status: "pending",
+      workflow: null,
+      created_at: "2026-04-01T09:00:00.000Z",
+    };
+    writeFileSync(join(sessionDir, "session.json"), JSON.stringify(session));
+
+    const req = new Request("http://x/v1/sessions/s_orch001", { method: "GET" });
+    const res = await handleSessions(req, deps, "/v1/sessions/s_orch001");
+
+    expect(res!.status).toBe(200);
+    const body = await resJson<Record<string, unknown>>(res!);
+    expect(body.kind).toBe("orchestrator");
+    expect(body.status).toBe("pending");
+  });
+
+});
+
 // ─── GET /v1/sessions/:id/queue ────────────────────────────────────────────────
 
 describe("GET /v1/sessions/:id/queue", () => {

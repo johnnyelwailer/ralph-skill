@@ -71,8 +71,27 @@ export async function handleSessions(
   return undefined;
 }
 
-function listSessions(_req: Request, _deps: SessionsDeps): Response {
-  return jsonResponse(200, { _v: 1, items: [], next_cursor: null });
+function listSessions(_req: Request, deps: SessionsDeps): Response {
+  const sessionsDir = deps.sessionsDir();
+  if (!existsSync(sessionsDir)) {
+    return jsonResponse(200, { _v: 1, items: [], next_cursor: null });
+  }
+
+  let entries: string[];
+  try {
+    entries = readdirSync(sessionsDir);
+  } catch {
+    return jsonResponse(200, { _v: 1, items: [], next_cursor: null });
+  }
+
+  const items: SessionSummary[] = [];
+  for (const id of entries) {
+    const sessionDir = join(sessionsDir, id);
+    const summary = loadSessionSummary(sessionDir);
+    if (summary) items.push(summary);
+  }
+
+  return jsonResponse(200, { _v: 1, items, next_cursor: null });
 }
 
 function getSession(id: string, deps: SessionsDeps): Response {
@@ -80,7 +99,11 @@ function getSession(id: string, deps: SessionsDeps): Response {
   if (!existsSync(sessionDir)) {
     return errorResponse(404, "session_not_found", `session not found: ${id}`, { id });
   }
-  return jsonResponse(200, { _v: 1, id });
+  const summary = loadSessionSummary(sessionDir);
+  if (!summary) {
+    return errorResponse(404, "session_not_found", `session not found: ${id}`, { id });
+  }
+  return jsonResponse(200, { _v: 1, ...summary });
 }
 
 async function createSession(req: Request, deps: SessionsDeps): Promise<Response> {
