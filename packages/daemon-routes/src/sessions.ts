@@ -3,8 +3,7 @@ import { createInterface } from "node:readline";
 import { existsSync, mkdirSync, writeFileSync, readFileSync, readdirSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
 import { badRequest, errorResponse, jsonResponse, methodNotAllowed, notFoundResponse, parseJsonBody } from "./http-helpers.ts";
-import type { AffectsCompletedWork, SteeringQueueEntry } from "@aloop/core";
-import type { EventEnvelope } from "@aloop/core";
+import type { AffectsCompletedWork, SteeringQueueEntry, EventEnvelope, SessionKind, SessionStatus } from "@aloop/core";
 
 export type SessionsDeps = {
   readonly sessionsDir: () => string;
@@ -435,10 +434,6 @@ function resumeSession(id: string, deps: SessionsDeps): Response {
 }
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
-
-type SessionKind = "standalone" | "orchestrator" | "child";
-
-type SessionStatus = "pending" | "running" | "paused" | "interrupted" | "stopped" | "completed" | "failed" | "archived";
 
 type SessionSummary = {
   readonly id: string;
