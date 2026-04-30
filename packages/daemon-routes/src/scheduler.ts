@@ -35,14 +35,17 @@ export async function handleScheduler(
     const sessionId = asNonEmptyString(parsed.data.session_id);
     const providerCandidate = asNonEmptyString(parsed.data.provider_candidate);
     const ttlSeconds = asPositiveInt(parsed.data.ttl_seconds);
+    const estimatedCostUsd = asNonNegativeFloat(parsed.data.estimated_cost_usd);
     if (!sessionId) return badRequest("session_id is required");
     if (!providerCandidate) return badRequest("provider_candidate is required");
     if (ttlSeconds === "invalid") return badRequest("ttl_seconds must be a positive integer");
+    if (estimatedCostUsd === "invalid") return badRequest("estimated_cost_usd must be a non-negative number");
 
     const decision = await deps.scheduler.acquirePermit({
       sessionId,
       providerCandidate,
       ...(typeof ttlSeconds === "number" ? { ttlSeconds } : {}),
+      ...(typeof estimatedCostUsd === "number" ? { estimatedCostUsd } : {}),
     });
     if (!decision.granted) return jsonResponse(200, { _v: 1, ...decision });
     return jsonResponse(200, { _v: 1, granted: true, permit: decision.permit });
@@ -65,6 +68,12 @@ function asNonEmptyString(value: unknown): string | undefined {
 function asPositiveInt(value: unknown): number | "invalid" | undefined {
   if (value === undefined) return undefined;
   if (typeof value !== "number" || !Number.isInteger(value) || value < 1) return "invalid";
+  return value;
+}
+
+function asNonNegativeFloat(value: unknown): number | "invalid" | undefined {
+  if (value === undefined) return undefined;
+  if (typeof value !== "number" || Number.isNaN(value) || value < 0) return "invalid";
   return value;
 }
 
