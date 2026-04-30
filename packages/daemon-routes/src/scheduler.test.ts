@@ -203,6 +203,87 @@ describe("POST /v1/scheduler/permits", () => {
     expect(res!.status).toBe(200);
   });
 
+  test("returns 200 with estimated_cost_usd passed through", async () => {
+    const deps = makeDeps();
+    deps.scheduler.acquirePermit = ({ estimatedCostUsd }: { sessionId: string; providerCandidate: string; estimatedCostUsd?: number }) => {
+      expect(estimatedCostUsd).toBe(0.05);
+      return Promise.resolve({ granted: true, permit: { id: "p", sessionId: "s", providerCandidate: "prov", createdAt: "", expiresAt: "", grantedAt: "" } });
+    };
+    const req = new Request("http://x/v1/scheduler/permits", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ session_id: "s1", provider_candidate: "prov1", estimated_cost_usd: 0.05 }),
+    });
+    const res = await handleScheduler(req, deps, "/v1/scheduler/permits");
+    expect(res!.status).toBe(200);
+  });
+
+  test("returns 200 with both ttl_seconds and estimated_cost_usd", async () => {
+    const deps = makeDeps();
+    deps.scheduler.acquirePermit = ({ ttlSeconds, estimatedCostUsd }: { sessionId: string; providerCandidate: string; ttlSeconds?: number; estimatedCostUsd?: number }) => {
+      expect(ttlSeconds).toBe(1200);
+      expect(estimatedCostUsd).toBe(1.5);
+      return Promise.resolve({ granted: true, permit: { id: "p", sessionId: "s", providerCandidate: "prov", createdAt: "", expiresAt: "", grantedAt: "" } });
+    };
+    const req = new Request("http://x/v1/scheduler/permits", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ session_id: "s1", provider_candidate: "prov1", ttl_seconds: 1200, estimated_cost_usd: 1.5 }),
+    });
+    const res = await handleScheduler(req, deps, "/v1/scheduler/permits");
+    expect(res!.status).toBe(200);
+  });
+
+  test("returns 400 when estimated_cost_usd is negative", async () => {
+    const deps = makeDeps();
+    const req = new Request("http://x/v1/scheduler/permits", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ session_id: "s1", provider_candidate: "prov1", estimated_cost_usd: -0.01 }),
+    });
+    const res = await handleScheduler(req, deps, "/v1/scheduler/permits");
+    expect(res!.status).toBe(400);
+    const body = await resJson<{ error: { code: string } }>(res!);
+    expect(body.error.code).toBe("bad_request");
+  });
+
+  test("returns 400 when estimated_cost_usd is not a number", async () => {
+    const deps = makeDeps();
+    const req = new Request("http://x/v1/scheduler/permits", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ session_id: "s1", provider_candidate: "prov1", estimated_cost_usd: "free" }),
+    });
+    const res = await handleScheduler(req, deps, "/v1/scheduler/permits");
+    expect(res!.status).toBe(400);
+  });
+
+  test("returns 400 when estimated_cost_usd is NaN", async () => {
+    const deps = makeDeps();
+    const req = new Request("http://x/v1/scheduler/permits", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ session_id: "s1", provider_candidate: "prov1", estimated_cost_usd: NaN }),
+    });
+    const res = await handleScheduler(req, deps, "/v1/scheduler/permits");
+    expect(res!.status).toBe(400);
+  });
+
+  test("returns 200 when estimated_cost_usd is zero", async () => {
+    // Zero is a valid non-negative float — a provider could estimate $0
+    const deps = makeDeps();
+    deps.scheduler.acquirePermit = () =>
+      Promise.resolve({ granted: true, permit: { id: "p", sessionId: "s", providerCandidate: "prov", createdAt: "", expiresAt: "", grantedAt: "" } });
+    const req = new Request("http://x/v1/scheduler/permits", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ session_id: "s1", provider_candidate: "prov1", estimated_cost_usd: 0 }),
+    });
+    const res = await handleScheduler(req, deps, "/v1/scheduler/permits");
+    // Zero should be accepted as a valid non-negative float
+    expect(res!.status).toBe(200);
+  });
+
   test("returns 400 when session_id is missing", async () => {
     const deps = makeDeps();
     const req = new Request("http://x/v1/scheduler/permits", {
@@ -414,5 +495,49 @@ describe("asPositiveInt", () => {
     expect(asPositiveInt(NaN)).toBe("invalid");
     expect(asPositiveInt(Infinity)).toBe("invalid");
     expect(asPositiveInt(-Infinity)).toBe("invalid");
+  });
+});
+
+// ─── asNonNegativeFloat ──────────────────────────────────────────────────────
+
+function asNonNegativeFloat(value: unknown): number | "invalid" | undefined {
+  if (value === undefined) return undefined;
+  if (typeof value !== "number" || Number.isNaN(value) || !Number.isFinite(value) || value < 0) return "invalid";
+  return value;
+}
+
+describe("asNonNegativeFloat", () => {
+  test("returns the number when given a valid non-negative float", () => {
+    expect(asNonNegativeFloat(0)).toBe(0);
+    expect(asNonNegativeFloat(0.01)).toBe(0.01);
+    expect(asNonNegativeFloat(1.5)).toBe(1.5);
+    expect(asNonNegativeFloat(999.99)).toBe(999.99);
+  });
+
+  test("returns undefined when value is undefined", () => {
+    expect(asNonNegativeFloat(undefined)).toBeUndefined();
+  });
+
+  test("returns 'invalid' for non-number values", () => {
+    expect(asNonNegativeFloat("0.05")).toBe("invalid");
+    expect(asNonNegativeFloat(null)).toBe("invalid");
+    expect(asNonNegativeFloat({})).toBe("invalid");
+    expect(asNonNegativeFloat([])).toBe("invalid");
+    expect(asNonNegativeFloat(true)).toBe("invalid");
+  });
+
+  test("returns 'invalid' for negative numbers", () => {
+    expect(asNonNegativeFloat(-0.01)).toBe("invalid");
+    expect(asNonNegativeFloat(-1)).toBe("invalid");
+    expect(asNonNegativeFloat(-999.99)).toBe("invalid");
+  });
+
+  test("returns 'invalid' for NaN", () => {
+    expect(asNonNegativeFloat(NaN)).toBe("invalid");
+  });
+
+  test("returns 'invalid' for Infinity", () => {
+    expect(asNonNegativeFloat(Infinity)).toBe("invalid");
+    expect(asNonNegativeFloat(-Infinity)).toBe("invalid");
   });
 });
