@@ -19,6 +19,8 @@ export {
   makeEvent,
   makeIdGenerator,
   type EventEnvelope,
+  type SessionKind,
+  type SessionStatus,
 } from "./events/types.ts";
 export {
   cusumInit,
