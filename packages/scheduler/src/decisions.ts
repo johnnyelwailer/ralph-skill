@@ -13,6 +13,8 @@ export type AcquirePermitInput = {
   readonly sessionId: string;
   readonly providerCandidate: string;
   readonly ttlSeconds?: number;
+  /** Estimated USD cost of the turn, used for budget gate decisions. */
+  readonly estimatedCostUsd?: number;
 };
 
 type PermitGranted = {
