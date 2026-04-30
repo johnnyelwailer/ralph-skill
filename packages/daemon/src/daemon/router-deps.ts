@@ -13,9 +13,11 @@ import {
   handleSessions as handleSessionsRoute,
   type SessionsDeps,
 } from "@aloop/daemon-routes";
+import { handleArtifacts as handleArtifactsRoute, type ArtifactsDeps } from "@aloop/daemon-routes-artifacts";
+import { handleTurns as handleTurnsRoute, type TurnsDeps } from "@aloop/daemon-routes-turns";
+import type { ArtifactRegistry, EventWriter, ProjectRegistry } from "@aloop/state-sqlite";
 import type { SchedulerService } from "@aloop/scheduler";
 import { DEFAULT_SCHEDULER_PROBES } from "@aloop/scheduler-gates";
-import type { EventWriter, ProjectRegistry } from "@aloop/state-sqlite";
 import { handleDaemon as handleDaemonRoute } from "../routes/daemon.ts";
 
 export type MakeRouterDepsInput = {
@@ -26,6 +28,7 @@ export type MakeRouterDepsInput = {
   readonly events: EventWriter;
   readonly providerRegistry: ProviderRegistry;
   readonly providerHealth: InMemoryProviderHealthStore;
+  readonly artifactRegistry: ArtifactRegistry;
 };
 
 export function makeRouterDeps(input: MakeRouterDepsInput): RouterDeps {
@@ -69,6 +72,23 @@ export function makeRouterDeps(input: MakeRouterDepsInput): RouterDeps {
       ),
     handleSessions: (req, pathname) =>
       handleSessionsRoute(
+        req,
+        {
+          sessionsDir: () => join(input.config.paths().stateDir, "sessions"),
+        },
+        pathname,
+      ),
+    handleArtifacts: (req, pathname) =>
+      handleArtifactsRoute(
+        req,
+        {
+          registry: input.artifactRegistry,
+          artifactsDir: () => join(input.config.paths().home, "artifacts"),
+        },
+        pathname,
+      ),
+    handleTurns: (req, pathname) =>
+      handleTurnsRoute(
         req,
         {
           sessionsDir: () => join(input.config.paths().stateDir, "sessions"),

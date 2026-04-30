@@ -1,7 +1,10 @@
-import { mkdirSync, writeFileSync, readFileSync, existsSync, readdirSync, unlinkSync } from "node:fs";
+import { createReadStream } from "node:fs";
+import { createInterface } from "node:readline";
+import { existsSync, mkdirSync, writeFileSync, readFileSync, readdirSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
 import { badRequest, errorResponse, jsonResponse, methodNotAllowed, notFoundResponse, parseJsonBody } from "./http-helpers.ts";
 import type { AffectsCompletedWork, SteeringQueueEntry } from "@aloop/core";
+import type { EventEnvelope } from "@aloop/core";
 
 export type SessionsDeps = {
   readonly sessionsDir: () => string;
@@ -16,6 +19,7 @@ export async function handleSessions(
 
   if (pathname === "/v1/sessions") {
     if (req.method === "GET") return listSessions(req, deps);
+    if (req.method === "POST") return createSession(req, deps);
     return methodNotAllowed();
   }
 
@@ -48,6 +52,10 @@ export async function handleSessions(
     return methodNotAllowed();
   }
 
+  if (action === "log" && req.method === "GET") {
+    return streamLog(id, req, deps);
+  }
+
   return undefined;
 }
 
@@ -61,6 +69,130 @@ function getSession(id: string, deps: SessionsDeps): Response {
     return errorResponse(404, "session_not_found", `session not found: ${id}`, { id });
   }
   return jsonResponse(200, { _v: 1, id });
+}
+
+async function createSession(req: Request, deps: SessionsDeps): Promise<Response> {
+  const body = await parseJsonBody(req);
+  if ("error" in body) return body.error;
+
+  const projectId = typeof body.data.project_id === "string" ? body.data.project_id : undefined;
+  if (!projectId) return badRequest("project_id is required");
+
+  const kind = typeof body.data.kind === "string" ? body.data.kind : "standalone";
+  const validKinds = ["standalone", "orchestrator", "child"];
+  if (!validKinds.includes(kind)) {
+    return badRequest(`kind must be one of: ${validKinds.join(", ")}`);
+  }
+
+  const workflow = typeof body.data.workflow === "string" ? body.data.workflow : undefined;
+
+  const id = `s_${crypto.randomUUID().replace(/-/g, "").slice(0, 12)}`;
+  const sessionDir = join(deps.sessionsDir(), id);
+  mkdirSync(sessionDir, { recursive: true });
+  mkdirSync(join(sessionDir, "queue"), { recursive: true });
+  mkdirSync(join(sessionDir, "worktree"), { recursive: true });
+
+  const session: SessionSummary = {
+    id,
+    project_id: projectId,
+    kind: kind as SessionKind,
+    status: "pending",
+    workflow: workflow ?? null,
+    created_at: new Date().toISOString(),
+  };
+
+  writeFileSync(join(sessionDir, "session.json"), JSON.stringify(session), "utf-8");
+
+  return jsonResponse(201, { _v: 1, ...session });
+}
+
+function streamLog(sessionId: string, req: Request, deps: SessionsDeps): Response {
+  const sessionDir = join(deps.sessionsDir(), sessionId);
+  if (!existsSync(sessionDir)) {
+    return errorResponse(404, "session_not_found", `session not found: ${sessionId}`, { session_id: sessionId });
+  }
+
+  const url = new URL(req.url);
+  const since = url.searchParams.get("since") ?? undefined;
+  const format = url.searchParams.get("format") ?? "json";
+
+  const eventsPath = join(sessionDir, "log.jsonl");
+
+  if (format === "ndjson" || format === "jsonl") {
+    const encoder = new TextEncoder();
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        if (!existsSync(eventsPath)) {
+          controller.close();
+          return;
+        }
+
+        const fileStream = createReadStream(eventsPath, { encoding: "utf-8" });
+        const rl = createInterface({ input: fileStream, crlfDelay: Infinity });
+
+        rl.on("line", (line) => {
+          if (line.length === 0) return;
+          try {
+            const envelope = JSON.parse(line) as EventEnvelope;
+            if (since !== undefined && envelope.id <= since) return;
+            controller.enqueue(encoder.encode(line + "\n"));
+          } catch {
+            // skip malformed lines
+          }
+        });
+
+        rl.on("close", () => controller.close());
+        rl.on("error", () => controller.close());
+      },
+    });
+
+    return new Response(stream, {
+      status: 200,
+      headers: {
+        "content-type": "application/x-ndjson",
+        "cache-control": "no-cache",
+        "connection": "keep-alive",
+      },
+    });
+  }
+
+  // Default: SSE stream
+  const encoder = new TextEncoder();
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      if (!existsSync(eventsPath)) {
+        controller.close();
+        return;
+      }
+
+      const fileStream = createReadStream(eventsPath, { encoding: "utf-8" });
+      const rl = createInterface({ input: fileStream, crlfDelay: Infinity });
+
+      rl.on("line", (line) => {
+        if (line.length === 0) return;
+        try {
+          const envelope = JSON.parse(line) as EventEnvelope;
+          if (since !== undefined && envelope.id <= since) return;
+          const sseLine = `data: ${line}\n\n`;
+          controller.enqueue(encoder.encode(sseLine));
+        } catch {
+          // skip malformed lines
+        }
+      });
+
+      rl.on("close", () => controller.close());
+      rl.on("error", () => controller.close());
+    },
+  });
+
+  return new Response(stream, {
+    status: 200,
+    headers: {
+      "content-type": "text/event-stream",
+      "cache-control": "no-cache",
+      "connection": "keep-alive",
+    },
+  });
 }
 
 async function steerSession(id: string, req: Request, deps: SessionsDeps): Promise<Response> {
@@ -161,3 +293,18 @@ function deleteQueueItem(sessionId: string, itemId: string, deps: SessionsDeps):
 
   return notFoundResponse(`/v1/sessions/${sessionId}/queue/${itemId}`);
 }
+
+// ─── Types ─────────────────────────────────────────────────────────────────────
+
+type SessionKind = "standalone" | "orchestrator" | "child";
+
+type SessionStatus = "pending" | "running" | "paused" | "interrupted" | "stopped" | "completed" | "failed" | "archived";
+
+type SessionSummary = {
+  readonly id: string;
+  readonly project_id: string;
+  readonly kind: SessionKind;
+  readonly status: SessionStatus;
+  readonly workflow: string | null;
+  readonly created_at: string;
+};

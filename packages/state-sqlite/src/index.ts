@@ -38,6 +38,14 @@ export {
   type ProjectStatus,
 } from "./state/projects.ts";
 export {
+  ArtifactNotFoundError,
+  ArtifactRegistry,
+  type Artifact,
+  type ArtifactFilter,
+  type ArtifactKind,
+  type CreateArtifactInput,
+} from "./state/artifacts.ts";
+export {
   EventCountsProjector,
   clearEventCounts,
   runProjector,

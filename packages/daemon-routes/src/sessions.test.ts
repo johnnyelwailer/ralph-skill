@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtempSync, rmSync, writeFileSync, readFileSync, mkdirSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync, readFileSync, mkdirSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { handleSessions, type SessionsDeps } from "./sessions.ts";
@@ -353,5 +353,203 @@ describe("unhandled paths", () => {
     const req = new Request("http://x/v1/sessions/foo/bar", { method: "GET" });
     const res = await handleSessions(req, deps, "/v1/sessions/foo/bar");
     expect(res).toBeUndefined();
+  });
+});
+// ─── POST /v1/sessions ─────────────────────────────────────────────────────────
+
+describe("POST /v1/sessions", () => {
+  test("returns 400 when project_id is missing", async () => {
+    const deps = makeDeps();
+    const req = new Request("http://x/v1/sessions", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ kind: "standalone" }),
+    });
+    const res = await handleSessions(req, deps, "/v1/sessions");
+    expect(res!.status).toBe(400);
+    const body = await resJson<{ error: { code: string } }>(res!);
+    expect(body.error.code).toBe("bad_request");
+  });
+
+  test("returns 400 for invalid kind", async () => {
+    const deps = makeDeps();
+    const req = new Request("http://x/v1/sessions", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ project_id: "p_123", kind: "invalid" }),
+    });
+    const res = await handleSessions(req, deps, "/v1/sessions");
+    expect(res!.status).toBe(400);
+    const body = await resJson<{ error: { code: string } }>(res!);
+    expect(body.error.code).toBe("bad_request");
+  });
+
+  test("creates session with default kind=standalone and returns 201", async () => {
+    const deps = makeDeps();
+    const req = new Request("http://x/v1/sessions", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ project_id: "p_abc" }),
+    });
+    const res = await handleSessions(req, deps, "/v1/sessions");
+    expect(res!.status).toBe(201);
+    const body = await resJson<{ _v: number; id: string; project_id: string; kind: string; status: string }>(res!);
+    expect(body._v).toBe(1);
+    expect(body.id).toMatch(/^s_[a-f0-9]{12}$/);
+    expect(body.project_id).toBe("p_abc");
+    expect(body.kind).toBe("standalone");
+    expect(body.status).toBe("pending");
+  });
+
+  test("creates session with all fields and returns 201", async () => {
+    const deps = makeDeps();
+    const req = new Request("http://x/v1/sessions", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        project_id: "p_xyz",
+        kind: "orchestrator",
+        workflow: "my-workflow",
+      }),
+    });
+    const res = await handleSessions(req, deps, "/v1/sessions");
+    expect(res!.status).toBe(201);
+    const body = await resJson<{ _v: number; id: string; project_id: string; kind: string; workflow: string | null; status: string }>(res!);
+    expect(body.project_id).toBe("p_xyz");
+    expect(body.kind).toBe("orchestrator");
+    expect(body.workflow).toBe("my-workflow");
+    expect(body.status).toBe("pending");
+  });
+
+  test("creates session directories on filesystem", async () => {
+    const deps = makeDeps();
+    const req = new Request("http://x/v1/sessions", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ project_id: "p_dirs" }),
+    });
+    const res = await handleSessions(req, deps, "/v1/sessions");
+    expect(res!.status).toBe(201);
+    const body = await resJson<{ id: string }>(res!);
+    const sessionDir = join(deps.sessionsDir(), body.id);
+    expect(existsSync(sessionDir)).toBe(true);
+    expect(existsSync(join(sessionDir, "queue"))).toBe(true);
+    expect(existsSync(join(sessionDir, "worktree"))).toBe(true);
+    expect(existsSync(join(sessionDir, "session.json"))).toBe(true);
+  });
+
+  test("returns 400 for invalid JSON body", async () => {
+    const deps = makeDeps();
+    const req = new Request("http://x/v1/sessions", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: "not json",
+    });
+    const res = await handleSessions(req, deps, "/v1/sessions");
+    expect(res!.status).toBe(400);
+  });
+
+  test("accepts child kind", async () => {
+    const deps = makeDeps();
+    const req = new Request("http://x/v1/sessions", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ project_id: "p_child", kind: "child" }),
+    });
+    const res = await handleSessions(req, deps, "/v1/sessions");
+    expect(res!.status).toBe(201);
+    const body = await resJson<{ kind: string }>(res!);
+    expect(body.kind).toBe("child");
+  });
+});
+
+// ─── GET /v1/sessions/:id/log ─────────────────────────────────────────────────
+
+describe("GET /v1/sessions/:id/log", () => {
+  test("returns 404 when session does not exist", async () => {
+    const deps = makeDeps();
+    const req = new Request("http://x/v1/sessions/s_nonexistent/log", {
+      method: "GET",
+    });
+    const res = await handleSessions(req, deps, "/v1/sessions/s_nonexistent/log");
+    expect(res!.status).toBe(404);
+    const body = await resJson<{ error: { code: string } }>(res!);
+    expect(body.error.code).toBe("session_not_found");
+  });
+
+  test("returns SSE stream with 200 when log exists", async () => {
+    const deps = makeDeps("s_log_001");
+    const sessionDir = join(deps.sessionsDir(), "s_log_001");
+    mkdirSync(sessionDir, { recursive: true });
+    writeFileSync(join(sessionDir, "log.jsonl"), "", "utf-8");
+    const req = new Request("http://x/v1/sessions/s_log_001/log", {
+      method: "GET",
+    });
+    const res = await handleSessions(req, deps, "/v1/sessions/s_log_001/log");
+    expect(res!.status).toBe(200);
+    expect(res!.headers.get("content-type")).toBe("text/event-stream");
+  });
+
+  test("streams events via SSE", async () => {
+    const deps = makeDeps("s_log_002");
+    const sessionDir = join(deps.sessionsDir(), "s_log_002");
+    mkdirSync(sessionDir, { recursive: true });
+    const event1 = JSON.stringify({ _v: 1, id: "0001", topic: "session.update", data: { session_id: "s_log_002" } });
+    const event2 = JSON.stringify({ _v: 1, id: "0002", topic: "agent.chunk", data: { session_id: "s_log_002", turn_id: "t1", sequence: 0, type: "text", content: { delta: "hi" }, final: false } });
+    writeFileSync(join(sessionDir, "log.jsonl"), event1 + "\n" + event2 + "\n", "utf-8");
+
+    const req = new Request("http://x/v1/sessions/s_log_002/log", { method: "GET" });
+    const res = await handleSessions(req, deps, "/v1/sessions/s_log_002/log");
+    expect(res!.status).toBe(200);
+    expect(res!.headers.get("content-type")).toBe("text/event-stream");
+  });
+
+  test("returns NDJSON format when format=ndjson", async () => {
+    const deps = makeDeps("s_log_003");
+    const sessionDir = join(deps.sessionsDir(), "s_log_003");
+    mkdirSync(sessionDir, { recursive: true });
+    const event1 = JSON.stringify({ _v: 1, id: "0001", topic: "session.update", data: {} });
+    writeFileSync(join(sessionDir, "log.jsonl"), event1 + "\n", "utf-8");
+
+    const req = new Request("http://x/v1/sessions/s_log_003/log?format=ndjson", { method: "GET" });
+    const res = await handleSessions(req, deps, "/v1/sessions/s_log_003/log");
+    expect(res!.status).toBe(200);
+    expect(res!.headers.get("content-type")).toBe("application/x-ndjson");
+  });
+
+  test("returns NDJSON format when format=jsonl", async () => {
+    const deps = makeDeps("s_log_004");
+    const sessionDir = join(deps.sessionsDir(), "s_log_004");
+    mkdirSync(sessionDir, { recursive: true });
+    writeFileSync(join(sessionDir, "log.jsonl"), "", "utf-8");
+
+    const req = new Request("http://x/v1/sessions/s_log_004/log?format=jsonl", { method: "GET" });
+    const res = await handleSessions(req, deps, "/v1/sessions/s_log_004/log");
+    expect(res!.status).toBe(200);
+    expect(res!.headers.get("content-type")).toBe("application/x-ndjson");
+  });
+
+  test("skips events with id <= since parameter", async () => {
+    const deps = makeDeps("s_log_005");
+    const sessionDir = join(deps.sessionsDir(), "s_log_005");
+    mkdirSync(sessionDir, { recursive: true });
+    const event1 = JSON.stringify({ _v: 1, id: "0001", topic: "session.update", data: { n: 1 } });
+    const event2 = JSON.stringify({ _v: 1, id: "0002", topic: "session.update", data: { n: 2 } });
+    writeFileSync(join(sessionDir, "log.jsonl"), event1 + "\n" + event2 + "\n", "utf-8");
+
+    const req = new Request("http://x/v1/sessions/s_log_005/log?since=0001", { method: "GET" });
+    const res = await handleSessions(req, deps, "/v1/sessions/s_log_005/log");
+    expect(res!.status).toBe(200);
+  });
+
+  test("closes stream when log file does not exist", async () => {
+    const deps = makeDeps("s_log_006");
+    const sessionDir = join(deps.sessionsDir(), "s_log_006");
+    mkdirSync(sessionDir, { recursive: true });
+    // No log.jsonl written
+
+    const req = new Request("http://x/v1/sessions/s_log_006/log", { method: "GET" });
+    const res = await handleSessions(req, deps, "/v1/sessions/s_log_006/log");
+    expect(res!.status).toBe(200);
   });
 });

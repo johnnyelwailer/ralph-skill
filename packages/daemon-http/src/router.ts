@@ -23,6 +23,14 @@ export type RouterDeps = {
     req: Request,
     pathname: string,
   ) => Response | Promise<Response | undefined> | undefined;
+  readonly handleArtifacts: (
+    req: Request,
+    pathname: string,
+  ) => Response | Promise<Response | undefined> | undefined;
+  readonly handleTurns: (
+    req: Request,
+    pathname: string,
+  ) => Response | Promise<Response | undefined> | undefined;
 };
 
 /**
@@ -65,6 +73,12 @@ export function makeFetchHandler(
 
     const sessionsResponse = await deps.handleSessions(req, pathname);
     if (sessionsResponse) return sessionsResponse;
+
+    const artifactsResponse = await deps.handleArtifacts(req, pathname);
+    if (artifactsResponse) return artifactsResponse;
+
+    const turnsResponse = await deps.handleTurns(req, pathname);
+    if (turnsResponse) return turnsResponse;
 
     return new Response(
       JSON.stringify({

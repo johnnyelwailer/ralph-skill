@@ -1,0 +1,1 @@
+export { handleArtifacts, type ArtifactsDeps } from "./artifacts-handlers.ts";
