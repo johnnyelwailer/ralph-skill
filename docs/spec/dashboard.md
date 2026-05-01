@@ -107,7 +107,7 @@ The intended architecture is:
 
 ## Information architecture
 
-The core navigation model is a **hierarchical sidebar tree** with optional saved filters and workspaces.
+The core navigation model is a **hierarchical sidebar tree** with first-class workspaces and optional saved filters.
 
 Illustrative top-level tree:
 
@@ -117,6 +117,17 @@ Illustrative top-level tree:
   - Research
   - Proposals
   - Ready to promote
+- Workspaces
+  - Workspace
+    - Overview
+    - Inbox / Incubation
+    - Research / monitors
+    - Projects
+      - Project
+    - Cross-project tracker
+    - Aggregate runtime
+    - Costs / budgets
+    - Workspace settings
 - Projects
   - Project
     - Overview
@@ -153,6 +164,10 @@ The point of the tree is not nostalgia for file explorers. It gives the user fas
 - scope
 - persistent object
 - active run
+
+A workspace is not just a saved layout. It is a durable operator scope that may contain multiple projects and multiple Git repositories. Examples: "Aloop product", "Client X", "AI research", "Mobile app + API + infra", or "Ideas not attached to repos yet."
+
+Projects remain the runnable units. Workspaces are where the user supervises cross-project state, budgets, incubation, research, aggregate progress, and relationships between repos.
 
 The workstation should also provide:
 
@@ -402,6 +417,7 @@ The composer should cover every daemon-exposed control plane by delegating to sc
 
 | Control area | Composer examples |
 |---|---|
+| Workspaces | "Create a workspace for the mobile app", "add these three repos", "show cross-repo status" |
 | Projects | "Add this repo", "start setup for a new mobile app", "archive this project" |
 | Incubation | "Capture this", "research it", "track this weekly", "promote this to setup" |
 | Setup | "Continue setup", "answer these questions from the README", "show me unresolved ambiguities" |
@@ -422,6 +438,7 @@ Representative subagents:
 | Subagent | Scope | Tool access |
 |---|---|---|
 | `project-setup` | one candidate project or repo path | project registration, setup-run tools, discovery artifacts |
+| `workspace-organizer` | one workspace or candidate group of repos | workspace read/write proposal tools, project membership tools |
 | `incubation-research` | one incubation item or research question | source acquisition, artifact reading, research-run tools |
 | `config-editor` | one daemon/project config document or provider override scope | config read/diff/validate/propose tools |
 | `scheduler-operator` | scheduler limits, permits, provider health | scheduler read/explain/propose tools |

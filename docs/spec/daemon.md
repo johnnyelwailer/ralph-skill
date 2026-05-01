@@ -11,6 +11,7 @@
 - State layout
 - Incubation
 - Composer turns
+- Workspace registry
 - Project registry (multi-project)
 - Session kinds
 - Scheduler authority
@@ -32,6 +33,7 @@
 - **Provider health, quota, and cooldown** state
 - **Scheduler permits** — the truth on what runs when
 - **Event aggregation** from all sessions into per-session JSONL + the global event bus
+- **Workspace registry** — human/operator groupings across projects and repos
 - **Project registry** — the set of repos known to this machine
 - **Overrides** — live allow/deny/force policy for providers
 
@@ -55,7 +57,7 @@ No separate worker fleet in v1. Every session runs under daemon supervision with
   overrides.yml                 persisted provider overrides
   token                         bearer token (for remote/tunneled access)
   state/
-    db.sqlite                   queryable state: sessions, permits, projects, health
+    db.sqlite                   queryable state: workspaces, projects, sessions, permits, health
     incubation/
       <id>/
         log.jsonl               authoritative event history for one incubation item
@@ -116,13 +118,31 @@ Practical consequences:
 - Project registration, project setup, provider overrides, scheduler limits, daemon config, project config, tracker writes, outreach, session starts, and destructive actions are always policy-checked and audited through the same path as structured UI/API requests, whether initiated by UI controls, composer, or a control subagent.
 - The transcript is useful history, but the launched object is the source of truth.
 
+## Workspace registry
+
+A workspace is a human/operator grouping. It can represent a product, client, company, initiative, research area, or any other durable context the user wants to operate from.
+
+Important properties:
+
+- A workspace can contain multiple projects and therefore multiple Git repositories.
+- A workspace can exist before any repo exists.
+- A project can belong to more than one workspace.
+- Workspaces are not runnable. They do not own sessions, worktrees, setup readiness, or tracker mutations directly.
+- Workspace-scoped incubation, research, dashboards, budgets, and defaults are allowed, but execution always resolves to one or more projects before sessions start.
+
+**Workspace tables (SQLite):**
+- `workspaces` — `id`, `name`, `description`, `default_project_id?`, `metadata`, `created_at`, `updated_at`, `archived_at?`
+- `workspace_projects` — `workspace_id`, `project_id`, `role`, `added_at`
+
 ## Project registry
 
-The daemon serves N unrelated repositories on one host.
+The daemon serves N projects on one host. A project is the smallest setup-gated and runnable aloop unit. It usually maps to a Git repository or a subfolder of a monorepo, but it is not the same thing as a workspace.
 
 **Registry table (SQLite):**
 - `id` — uuid
+- `workspace_ids` — projection from `workspace_projects`; a project may be in zero, one, or many workspaces
 - `abs_path` — canonicalized absolute path (unique key)
+- `repo_url?` — optional remote URL when known
 - `name` — defaults to basename of `abs_path`
 - `status` — `setup_pending` | `ready` | `archived`. Setup is the only writer of the transition to `ready` (see `setup.md` §Verification); sessions may only start against `ready` projects.
 - `added_at`, `last_active_at`
@@ -138,6 +158,7 @@ The daemon serves N unrelated repositories on one host.
 - CLI resolves `abs_path` → `project_id` via `GET /v1/projects?path=<abs_path>`. Unknown path → `POST /v1/projects` registers it.
 - Every session op in the API carries `project_id`. No path walking in the daemon.
 - Setup runs are project-scoped. A project may have at most one active setup run at a time.
+- Workspace context can supply defaults and navigation scope, but it never replaces `project_id` on session/setup/tracker operations.
 
 **Isolation:**
 - A session from project A cannot read project B's worktree, config, secrets, or event log.

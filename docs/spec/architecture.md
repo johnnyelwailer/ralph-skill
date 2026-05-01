@@ -46,7 +46,7 @@ A single long-running local daemon (`aloopd`) owns all state and scheduling. Eve
 │    Compile step                                               │
 │    Scheduler (permits: system / quota / burn-rate / concurrency)│
 │    Watchdog + reconcile jobs                                  │
-│    Project registry · overrides store                         │
+│    Workspace registry · project registry · overrides store     │
 │                                                               │
 │    Adapter interfaces:                                        │
 │      ProviderAdapter    (5 impls: opencode, copilot, codex,   │
@@ -94,6 +94,7 @@ This is the load-bearing decision:
 - **Prompt context assembly** — resolves prompt `context` declarations through registered context plugins, injects bounded source-cited context blocks, and records what was injected. See `context.md`.
 - **Runtime extension manifests** — supervises typed project-code extensions such as `exec` steps and `context-provider`s through one manifest-backed execution model. See `pipeline.md` §Runtime extension manifests.
 - **Watchdog / reconcile** — stuck detection, provider quota refresh, permit expiry sweep, orphan cleanup, burn-rate tracking, crash recovery. All internal to the daemon; no external cron.
+- **Workspace registry** — human/operator grouping across one or more projects/repos, with shared dashboard scope, budgets, incubation, and defaults.
 - **Project registry** — N unrelated repos served by one daemon instance.
 - **Adapter orchestration** — invokes `ProviderAdapter` for agent turns and research reasoning, `TrackerAdapter` for decomposition/review/merge, `SandboxAdapter` for session execution environments and deterministic exec/experiment steps, and future outreach/source adapters only through the same policy-controlled adapter pattern.
 
@@ -140,6 +141,27 @@ incubation capture
 Each arrow crosses the same daemon API boundary and emits events. There is no private dashboard path from a phone capture to a tracker issue or repo edit.
 
 The composer may accelerate any arrow or coordinate the control plane, including from spoken input, screenshots, voice notes, videos, PDFs, links, or pasted logs, but it does not create a parallel object model. Media becomes artifacts/source records first; speech becomes native model input or transcript artifacts under daemon policy; subagents run with scoped capability grants; mutations become normal policy-checked API calls; the composer observes child work by reading the same projections and event streams as every other client.
+
+## Workspace vs project
+
+`Workspace` and `Project` are intentionally different primitives.
+
+| Primitive | Meaning | Cardinality | Runnable? |
+|---|---|---|---|
+| `Workspace` | Human/operator scope. A product, client, company, initiative, research area, or operational context. May contain many repos and projects. | one workspace -> many projects | No |
+| `Project` | Runnable aloop unit with setup readiness, config, tracker binding, provider chain, sessions, and worktrees. Usually one repo or subfolder, but not necessarily the whole workspace. | one project -> one setup/runtime boundary | Yes, after setup passes |
+
+A workspace can encompass:
+
+- one repo with one project
+- one monorepo with several subfolder projects
+- several independent repos that together form one product
+- greenfield incubation before any repo exists
+- non-code research and planning items that may later promote into one or more projects
+
+Projects remain isolated for execution. Sessions, worktrees, setup readiness, tracker operations, and project config are project-scoped. Workspace-scoped state is coordination and policy: dashboards, budgets, incubation, shared defaults, cross-project research, aggregate metrics, and relationships between projects.
+
+This prevents the product language from collapsing "workspace", "repo", and "project" into one thing. A repo is a version-control object. A project is aloop's runnable unit. A workspace is the user's operating context.
 
 ## Standards-first design
 

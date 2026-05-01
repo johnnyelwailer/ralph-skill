@@ -89,16 +89,18 @@ Sandboxing is the broader execution concept; the project devcontainer is only th
 
 ---
 
-## M3 — Project registry + config + compile step
+## M3 — Workspace/project registry + config + compile step
 
 **Deliverable:**
+- `POST /v1/workspaces`, `GET /v1/workspaces`, workspace/project membership endpoints.
 - `POST /v1/projects`, `GET /v1/projects`, `GET /v1/projects/:id`, `PATCH`, `DELETE`.
+- Workspace registry table in SQLite plus workspace-project membership table.
 - Project registry table in SQLite with `status: setup_pending | ready | archived`.
 - Config loader for `daemon.yml`, `~/.aloop/overrides.yml`, per-project `aloop/config.yml` and `aloop/pipeline.yml`.
 - Compile step: `pipeline.yml` → `loop-plan.json`. Only YAML reader in system.
 - `POST /v1/daemon/reload` re-reads config files; non-listener settings apply to next permit.
 
-**Test:** register a project, edit its `pipeline.yml`, hot-reload, verify new `loop-plan.json` matches expected. Invalid pipeline.yml fails compile with a precise error.
+**Test:** create a workspace, register two projects into it, edit one project's `pipeline.yml`, hot-reload, verify new `loop-plan.json` matches expected. Invalid pipeline.yml fails compile with a precise error.
 
 **Non-goals:** interactive setup interview, setup-side background research, and tracker-backed setup handoff; scheduler integration.
 

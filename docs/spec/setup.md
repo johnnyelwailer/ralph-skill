@@ -411,11 +411,13 @@ Everything shell-initiated lands here eventually. The daemon-side view treats se
 **Project registration:**
 
 ```
-POST /v1/projects { abs_path, name }
-→ 200 { id, abs_path, name, added_at, status: "setup_pending" }
+POST /v1/projects { abs_path, name, workspace_ids? }
+→ 200 { id, workspace_ids, abs_path, name, added_at, status: "setup_pending" }
 ```
 
-The daemon canonicalizes `abs_path`, refuses to register a path outside the configured workspace roots (a safety boundary, not a setup detail), and returns an existing row on duplicate registration (see `daemon.md` §Project registry). A `setup_pending` project cannot have sessions started against it — `aloop start` rejects with `project_not_ready` until Phase 6 passes.
+The daemon canonicalizes `abs_path`, refuses to register a path outside the configured filesystem roots (a safety boundary, not a setup detail), and returns an existing row on duplicate registration (see `daemon.md` §Project registry). A `setup_pending` project cannot have sessions started against it — `aloop start` rejects with `project_not_ready` until Phase 6 passes.
+
+Workspace membership is optional at setup start. A project may be attached to one or more workspaces for navigation, budgets, incubation, and cross-project coordination, but setup readiness remains project-scoped.
 
 **Setup run state:**
 

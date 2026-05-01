@@ -12,6 +12,7 @@
 - Transport and auth
 - Standards baseline
 - Common envelope (request, response, errors)
+- Workspaces
 - Projects
 - Composer
 - Incubation
@@ -86,27 +87,77 @@ Codes are stable identifiers (`not_found`, `bad_request`, `conflict`, `permit_de
 
 Mutations that create resources accept `Idempotency-Key: <uuid>`. Repeat key within 24h returns the original result.
 
+## Workspaces
+
+A workspace is an operator grouping across one or more projects/repos. It is not itself runnable; it scopes dashboards, incubation, defaults, budgets, cross-project research, and aggregate views.
+
+### List
+
+```
+GET /v1/workspaces
+GET /v1/workspaces?q=<text>&limit=<n>&cursor=<cursor>
+```
+
+Returns `{ items: [{id, name, description, default_project_id, project_counts, created_at, updated_at}] }`.
+
+### Create
+
+```
+POST /v1/workspaces
+{
+  "name": "Aloop",
+  "description": "Harness product and related repos",
+  "default_budget_usd_per_day": 25.00,
+  "metadata": {}
+}
+```
+
+### Get / update / archive
+
+```
+GET    /v1/workspaces/:id
+PATCH  /v1/workspaces/:id
+DELETE /v1/workspaces/:id        // archive; does not archive contained projects by default
+```
+
+### Membership
+
+```
+GET  /v1/workspaces/:id/projects
+POST /v1/workspaces/:id/projects
+{ "project_id": "p_...", "role": "primary|supporting|dependency|experiment" }
+DELETE /v1/workspaces/:id/projects/:project_id
+```
+
+Projects may belong to zero, one, or multiple workspaces. A project remains the execution boundary even when it belongs to multiple workspaces.
+
 ## Projects
 
-The daemon serves N unrelated repos. Every session op carries `project_id`.
+The daemon serves N projects. A project is the smallest setup-gated and runnable aloop unit. It usually maps to one Git repo or subfolder, but workspaces may group multiple projects/repos above it. Every session op carries `project_id`.
 
 ### List
 
 ```
 GET /v1/projects
 GET /v1/projects?path=<abs_path>   // lookup by filesystem path
+GET /v1/projects?workspace_id=<id> // projects linked to a workspace
 ```
 
-Returns `{ items: [{id, abs_path, name, added_at, last_active_at, session_counts}] }`.
+Returns `{ items: [{id, workspace_ids, abs_path, repo_url, name, added_at, last_active_at, session_counts}] }`.
 
 ### Register
 
 ```
 POST /v1/projects
-{ "abs_path": "/home/pj/Dev/ralph-skill", "name": "ralph-skill" }
+{
+  "abs_path": "/home/pj/Dev/ralph-skill",
+  "repo_url": "https://github.com/johnnyelwailer/ralph-skill.git",
+  "name": "ralph-skill",
+  "workspace_ids": ["w_..."]
+}
 ```
 
-Canonicalizes path, returns existing if already registered.
+Canonicalizes path, returns existing if already registered. Workspace membership can be supplied at registration time or managed later.
 
 ### Get / update / archive
 
