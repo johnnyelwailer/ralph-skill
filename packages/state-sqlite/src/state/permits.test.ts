@@ -47,6 +47,7 @@ describe("PermitRegistry", () => {
     expect(found).toEqual({
       id: "perm_x",
       sessionId: "s_1",
+      projectId: null,
       providerId: "opencode",
       ttlSeconds: 600,
       grantedAt: "2026-01-01T00:00:00.000Z",
@@ -232,6 +233,7 @@ describe("projection functions", () => {
     expect(row).toEqual({
       id: "new_permit",
       session_id: "s_1",
+      project_id: null,
       provider_id: "opencode",
       ttl_seconds: 600,
       granted_at: "2026-01-01T00:00:00.000Z",
