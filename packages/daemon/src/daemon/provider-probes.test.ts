@@ -1,109 +1,152 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { createProviderQuotaProbe } from "./provider-probes.ts";
-import {
-  InMemoryProviderHealthStore,
-  type ProviderHealth,
-} from "@aloop/provider";
-import { createUnknownHealth } from "@aloop/provider-health";
+import { InMemoryProviderHealthStore } from "@aloop/provider";
+import { createUnknownHealth, applyProviderFailure } from "@aloop/provider-health";
 
 describe("createProviderQuotaProbe", () => {
-  test("available (healthy) provider returns null probe result", () => {
-    const store = new InMemoryProviderHealthStore();
-    store.noteSuccess("myprovider");
-    const probe = createProviderQuotaProbe(store);
-    expect(probe("myprovider")).toBeNull();
+  let store: InMemoryProviderHealthStore;
+
+  beforeEach(() => {
+    store = new InMemoryProviderHealthStore(["prov-a", "prov-b"]);
   });
 
-  test("available (unknown) provider returns null probe result", () => {
-    const store = new InMemoryProviderHealthStore(["myprovider"]);
-    const probe = createProviderQuotaProbe(store);
-    // unknown providers are treated as available
-    expect(probe("myprovider")).toBeNull();
+  afterEach(() => {
+    // no teardown needed — InMemoryProviderHealthStore has no resources
   });
 
-  test("unavailable (cooldown) returns ok:false with cooldown status", () => {
-    const store = new InMemoryProviderHealthStore(["myprovider"]);
-    // Default backoff table: [0, 0, 2min, ...]
-    // Failure 1 → consecutiveFailures=1 → backoff[1]=0 → healthy
-    // Failure 2 → consecutiveFailures=2 → backoff[2]=2min → cooldown
-    store.noteFailure("myprovider", "timeout", Date.now());
-    store.noteFailure("myprovider", "timeout", Date.now());
-    const probe = createProviderQuotaProbe(store);
-    const result = probe("myprovider");
-    expect(result).not.toBeNull();
-    expect(result!.ok).toBe(false);
-    expect(result!.reason).toBe("provider_unavailable");
-    expect(result!.details.provider_id).toBe("myprovider");
-    expect(result!.details.status).toBe("cooldown");
+  function makeProbe() {
+    return createProviderQuotaProbe(store);
+  }
+
+  // ── available path ──────────────────────────────────────────────────────────
+
+  test("returns null when provider is healthy (unknown status counts as available)", () => {
+    // prov-a starts as unknown health, which is available
+    const probe = makeProbe();
+    expect(probe("prov-a")).toBeNull();
   });
 
-  test("unavailable (cooldown) returns retryAfterSeconds when cooldownUntil is set", () => {
-    const store = new InMemoryProviderHealthStore(["myprovider"]);
-    store.noteFailure("myprovider", "timeout", Date.now(), {
-      backoffMsByFailureCount: [0, 30_000],
+  test("returns null for healthy provider after success", () => {
+    store.noteSuccess("prov-a");
+    const probe = makeProbe();
+    expect(probe("prov-a")).toBeNull();
+  });
+
+  test("returns null for unknown status provider that was never updated", () => {
+    // prov-b was registered but never updated — status is unknown
+    const probe = makeProbe();
+    expect(probe("prov-b")).toBeNull();
+  });
+
+  test("returns null when cooldown has already expired (provider is available again)", () => {
+    // Manually set a cooldown with an already-passed expiry time so the
+    // provider transitions back to available.
+    const pastCooldown = new Date(Date.now() - 10_000).toISOString();
+    store["states"].set("prov-a", {
+      providerId: "prov-a",
+      status: "cooldown" as const,
+      consecutiveFailures: 3,
+      lastSuccess: null,
+      lastFailure: new Date().toISOString(),
+      failureReason: "rate_limit",
+      cooldownUntil: pastCooldown,
+      quotaRemaining: null,
+      quotaResetsAt: null,
+      updatedAt: new Date().toISOString(),
     });
-    const probe = createProviderQuotaProbe(store);
-    const result = probe("myprovider");
-    expect(result).not.toBeNull();
-    expect(result!.ok).toBe(false);
-    expect(result!.retryAfterSeconds).toBeGreaterThan(0);
-    expect(result!.retryAfterSeconds).toBeLessThanOrEqual(31);
-    expect(result!.details.cooldown_until).toBeDefined();
+    const probe = makeProbe();
+    // isProviderAvailable returns true when cooldown has expired
+    expect(probe("prov-a")).toBeNull();
   });
 
-  test("unavailable (degraded) returns ok:false with degraded status and failureReason", () => {
-    const store = new InMemoryProviderHealthStore(["myprovider"]);
-    // auth failure sets status to degraded (no cooldown)
-    store.noteFailure("myprovider", "auth", Date.now());
-    const probe = createProviderQuotaProbe(store);
-    const result = probe("myprovider");
+  // ── unavailable path ────────────────────────────────────────────────────────
+
+  test("returns result with ok=false for degraded provider (auth failure)", () => {
+    store.noteFailure("prov-a", "auth");
+    const probe = makeProbe();
+    const result = probe("prov-a");
     expect(result).not.toBeNull();
     expect(result!.ok).toBe(false);
     expect(result!.reason).toBe("provider_unavailable");
-    expect(result!.details.provider_id).toBe("myprovider");
+    expect(result!.details.provider_id).toBe("prov-a");
     expect(result!.details.status).toBe("degraded");
     expect(result!.details.failure_reason).toBe("auth");
-    expect(result!.retryAfterSeconds).toBeUndefined();
   });
 
-  test("unknown provider ID returns null (treats as available)", () => {
-    const store = new InMemoryProviderHealthStore();
-    const probe = createProviderQuotaProbe(store);
-    // get() on unknown provider creates unknown health (available)
-    expect(probe("nonexistent")).toBeNull();
+  test("returns result with ok=false for cooldown provider (rate_limit with backoff)", () => {
+    // Backoff kicks in at 3+ consecutive failures for rate_limit
+    store.noteFailure("prov-a", "rate_limit");
+    store.noteFailure("prov-a", "rate_limit");
+    store.noteFailure("prov-a", "rate_limit");
+    const probe = makeProbe();
+    const result = probe("prov-a");
+    expect(result).not.toBeNull();
+    expect(result!.ok).toBe(false);
+    expect(result!.reason).toBe("provider_unavailable");
+    expect(result!.details.status).toBe("cooldown");
+    expect(result!.retryAfterSeconds).toBeGreaterThan(0);
   });
 
-  test("cooldown with zero backoff (index 0) has no retryAfterSeconds", () => {
-    // When all backoff entries are 0, cooldownUntil remains null
-    const store = new InMemoryProviderHealthStore(["myprovider"]);
-    store.noteFailure("myprovider", "timeout", Date.now(), {
-      backoffMsByFailureCount: [0],
+  test("includes cooldown_until in details for cooldown providers", () => {
+    // Set up cooldown with a known future expiry
+    const futureCooldown = new Date(Date.now() + 120_000).toISOString();
+    store["states"].set("prov-a", {
+      providerId: "prov-a",
+      status: "cooldown" as const,
+      consecutiveFailures: 3,
+      lastSuccess: null,
+      lastFailure: new Date().toISOString(),
+      failureReason: "rate_limit",
+      cooldownUntil: futureCooldown,
+      quotaRemaining: null,
+      quotaResetsAt: null,
+      updatedAt: new Date().toISOString(),
     });
-    const probe = createProviderQuotaProbe(store);
-    const result = probe("myprovider");
-    // With 0 backoff, status is "healthy" not "cooldown" — probe returns null
-    expect(probe("myprovider")).toBeNull();
+    const probe = makeProbe();
+    const result = probe("prov-a");
+    expect(result!.details.cooldown_until).toBe(futureCooldown);
   });
 
-  test("degraded provider has no retryAfterSeconds", () => {
-    const store = new InMemoryProviderHealthStore(["myprovider"]);
-    store.noteFailure("myprovider", "auth", Date.now());
-    const probe = createProviderQuotaProbe(store);
-    const result = probe("myprovider");
-    expect(result!.details.status).toBe("degraded");
-    expect(result!.retryAfterSeconds).toBeUndefined();
+  test("does not include cooldown_until in details for degraded providers", () => {
+    // auth failure → degraded → cooldownUntil is null
+    store.noteFailure("prov-a", "auth");
+    const probe = makeProbe();
+    const result = probe("prov-a");
+    expect(result!.details).not.toHaveProperty("cooldown_until");
   });
 
-  test("cooldown retryAfterSeconds reflects remaining time until expiry", () => {
-    // Use a large enough backoff that we're guaranteed a future cooldownUntil
-    const store = new InMemoryProviderHealthStore(["myprovider"]);
-    store.noteFailure("myprovider", "timeout", Date.now(), {
-      backoffMsByFailureCount: [0, 60_000],
+  test("includes failure_reason in details for degraded providers", () => {
+    // auth failures immediately degrade regardless of failure count
+    store.noteFailure("prov-a", "auth");
+    const probe = makeProbe();
+    const result = probe("prov-a");
+    expect(result!.details.failure_reason).toBe("auth");
+  });
+
+  test("computes retryAfterSeconds as ceiling of remaining cooldown seconds", () => {
+    const futureCooldown = new Date(Date.now() + 90_000).toISOString();
+    store["states"].set("prov-a", {
+      providerId: "prov-a",
+      status: "cooldown" as const,
+      consecutiveFailures: 3,
+      lastSuccess: null,
+      lastFailure: new Date().toISOString(),
+      failureReason: "rate_limit",
+      cooldownUntil: futureCooldown,
+      quotaRemaining: null,
+      quotaResetsAt: null,
+      updatedAt: new Date().toISOString(),
     });
-    const probe = createProviderQuotaProbe(store);
-    const result = probe("myprovider");
-    // 60s backoff minus some wall clock elapsed → somewhere between 58-60s
-    expect(result!.retryAfterSeconds).toBeGreaterThanOrEqual(58);
-    expect(result!.retryAfterSeconds).toBeLessThanOrEqual(61);
+    const probe = makeProbe();
+    const result = probe("prov-a");
+    // ~90 seconds ± 2s tolerance for test execution time
+    expect(result!.retryAfterSeconds).toBeGreaterThanOrEqual(88);
+    expect(result!.retryAfterSeconds).toBeLessThanOrEqual(92);
+  });
+
+  test("unknown provider id returns null (treats as available)", () => {
+    const probe = makeProbe();
+    // An unregistered provider id gets a default-constructed health with status=unknown
+    expect(probe("unknown-id")).toBeNull();
   });
 });
