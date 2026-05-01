@@ -229,7 +229,7 @@ describe("compilePipeline", () => {
   test("single phase expands to one cycle entry with PROMPT convention", () => {
     const config: PipelineConfig = { pipeline: [{ agent: "build" }] };
     const plan = compilePipeline(config);
-    expect(plan.cycle).toEqual(["PROMPT_build.md"]);
+    expect(plan.cycle).toEqual([{ kind: "agent", ref: "PROMPT_build.md" }]);
     expect(plan.finalizer).toEqual([]);
     expect(plan.triggers).toEqual({});
     expect(plan.cyclePosition).toBe(0);
@@ -243,9 +243,9 @@ describe("compilePipeline", () => {
     const config: PipelineConfig = { pipeline: [{ agent: "build" }, { agent: "test" }, { agent: "deploy" }] };
     const plan = compilePipeline(config);
     expect(plan.cycle).toEqual([
-      "PROMPT_build.md",
-      "PROMPT_test.md",
-      "PROMPT_deploy.md",
+      { kind: "agent", ref: "PROMPT_build.md" },
+      { kind: "agent", ref: "PROMPT_test.md" },
+      { kind: "agent", ref: "PROMPT_deploy.md" },
     ]);
   });
 
@@ -253,16 +253,16 @@ describe("compilePipeline", () => {
     const config: PipelineConfig = { pipeline: [{ agent: "lint", repeat: 3 }] };
     const plan = compilePipeline(config);
     expect(plan.cycle).toEqual([
-      "PROMPT_lint.md",
-      "PROMPT_lint.md",
-      "PROMPT_lint.md",
+      { kind: "agent", ref: "PROMPT_lint.md" },
+      { kind: "agent", ref: "PROMPT_lint.md" },
+      { kind: "agent", ref: "PROMPT_lint.md" },
     ]);
   });
 
   test("repeat: 1 still produces exactly one entry", () => {
     const config: PipelineConfig = { pipeline: [{ agent: "build", repeat: 1 }] };
     const plan = compilePipeline(config);
-    expect(plan.cycle).toEqual(["PROMPT_build.md"]);
+    expect(plan.cycle).toEqual([{ kind: "agent", ref: "PROMPT_build.md" }]);
   });
 
   test("onFailure: retry emits a retry transition at the correct cycle position", () => {
@@ -295,9 +295,9 @@ describe("compilePipeline", () => {
     const plan = compilePipeline(config);
     // build occupies positions 0, 1, 2; each gets the transition
     expect(plan.cycle).toEqual([
-      "PROMPT_build.md",
-      "PROMPT_build.md",
-      "PROMPT_build.md",
+      { kind: "agent", ref: "PROMPT_build.md" },
+      { kind: "agent", ref: "PROMPT_build.md" },
+      { kind: "agent", ref: "PROMPT_build.md" },
     ]);
     expect(plan.transitions).toEqual({
       "0": { type: "retry" },
@@ -315,7 +315,10 @@ describe("compilePipeline", () => {
       ],
     };
     const plan = compilePipeline(config);
-    expect(plan.finalizer).toEqual(["PROMPT_spec-gap.md", "PROMPT_docs.md"]);
+    expect(plan.finalizer).toEqual([
+      { kind: "agent", ref: "PROMPT_spec-gap.md" },
+      { kind: "agent", ref: "PROMPT_docs.md" },
+    ]);
   });
 
   test("finalizer phases compile provider and reasoning are ignored (not in loop-plan)", () => {
@@ -328,7 +331,7 @@ describe("compilePipeline", () => {
       ],
     };
     const plan = compilePipeline(config);
-    expect(plan.finalizer).toEqual(["PROMPT_proof.md"]);
+    expect(plan.finalizer).toEqual([{ kind: "agent", ref: "PROMPT_proof.md" }]);
   });
 
   test("passes triggers through to LoopPlan", () => {
@@ -360,8 +363,8 @@ describe("compilePipeline", () => {
       ],
     };
     const plan = compilePipeline(config);
-    // Cycle should only contain the prompt filename
-    expect(plan.cycle).toEqual(["PROMPT_review.md"]);
+    // Cycle should only contain the step descriptor
+    expect(plan.cycle).toEqual([{ kind: "agent", ref: "PROMPT_review.md" }]);
     expect(plan.transitions).toEqual({});
   });
 
@@ -414,9 +417,9 @@ describe("compilePipeline", () => {
     };
     const plan = compilePipeline(config);
     expect(plan.finalizer).toEqual([
-      "PROMPT_spec-gap.md",
-      "PROMPT_docs.md",
-      "PROMPT_proof.md",
+      { kind: "agent", ref: "PROMPT_spec-gap.md" },
+      { kind: "agent", ref: "PROMPT_docs.md" },
+      { kind: "agent", ref: "PROMPT_proof.md" },
     ]);
     expect(plan.finalizerPosition).toBe(0);
   });
@@ -432,6 +435,49 @@ describe("compilePipeline", () => {
     const plan = compilePipeline(config);
     expect(plan.cycle).toHaveLength(5);
     expect(plan.iteration).toBe(1);
+  });
+
+  test("exec phase in pipeline produces kind=exec step descriptor", () => {
+    const config: PipelineConfig = {
+      pipeline: [
+        { agent: "plan" },
+        { exec: "regen-api" },
+        { exec: "cleanup", args: ["--check"], timeout: "5m" },
+      ],
+    };
+    const plan = compilePipeline(config);
+    expect(plan.cycle).toEqual([
+      { kind: "agent", ref: "PROMPT_plan.md" },
+      { kind: "exec", ref: "EXEC_regen-api.json" },
+      { kind: "exec", ref: "EXEC_cleanup.json" },
+    ]);
+  });
+
+  test("exec phase in finalizer produces kind=exec step descriptor", () => {
+    const config: PipelineConfig = {
+      pipeline: [{ agent: "build" }],
+      finalizer: [{ exec: "cleanup-generated" }],
+    };
+    const plan = compilePipeline(config);
+    expect(plan.finalizer).toEqual([
+      { kind: "exec", ref: "EXEC_cleanup-generated.json" },
+    ]);
+  });
+
+  test("mixed agent and exec phases produce correct cycle order", () => {
+    const config: PipelineConfig = {
+      pipeline: [
+        { agent: "build" },
+        { exec: "lint" },
+        { agent: "test" },
+      ],
+    };
+    const plan = compilePipeline(config);
+    expect(plan.cycle).toEqual([
+      { kind: "agent", ref: "PROMPT_build.md" },
+      { kind: "exec", ref: "EXEC_lint.json" },
+      { kind: "agent", ref: "PROMPT_test.md" },
+    ]);
   });
 });
 
@@ -478,7 +524,7 @@ describe("loadPipelineFromFile", () => {
     if (parsed.ok) {
       const plan = compilePipeline(parsed.value);
       expect(plan.cycle).toHaveLength(1);
-      expect(plan.cycle[0]!).toBe("PROMPT_build.md");
+      expect(plan.cycle[0]!).toEqual({ kind: "agent", ref: "PROMPT_build.md" });
     }
   });
 });

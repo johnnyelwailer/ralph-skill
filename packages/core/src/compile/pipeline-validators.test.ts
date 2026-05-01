@@ -56,18 +56,62 @@ describe("validatePipelineArray", () => {
     expect(errors.some((e) => e.startsWith("pipeline[1]:"))).toBe(true);
   });
 
+  test("accepts valid exec phase with minimal fields", () => {
+    const errors: string[] = [];
+    const result = validatePipelineArray([{ exec: "regen-api" }], "pipeline", errors);
+    expect(result).toHaveLength(1);
+    expect((result as PipelinePhase[])[0]!).toEqual({ exec: "regen-api" });
+    expect(errors).toHaveLength(0);
+  });
+
+  test("accepts valid exec phase with all optional fields", () => {
+    const errors: string[] = [];
+    const result = validatePipelineArray(
+      [{ exec: "cleanup", args: ["--dry-run"], env: { FOO: "bar" }, cwd: "worktree", timeout: "5m" }],
+      "pipeline",
+      errors,
+    );
+    expect(result).toHaveLength(1);
+    expect((result as PipelinePhase[])[0]!).toEqual({
+      exec: "cleanup",
+      args: ["--dry-run"],
+      env: { FOO: "bar" },
+      cwd: "worktree",
+      timeout: "5m",
+    });
+    expect(errors).toHaveLength(0);
+  });
+
+  test("rejects phase with both agent and exec keys", () => {
+    const errors: string[] = [];
+    const result = validatePipelineArray([{ agent: "build", exec: "cleanup" }], "pipeline", errors);
+    expect(result).toEqual([]);
+    expect(errors[0]).toBe(
+      "pipeline[0]: phase cannot have both 'agent' and 'exec' keys; they are mutually exclusive",
+    );
+  });
+
+  test("rejects exec phase with empty exec string", () => {
+    const errors: string[] = [];
+    const result = validatePipelineArray([{ exec: "" }], "pipeline", errors);
+    expect(result).toEqual([]);
+    expect(errors[0]).toBe(
+      "pipeline[0]: phase must have either an 'agent' or 'exec' key (non-empty string)",
+    );
+  });
+
   test("skips phase with missing agent but continues processing remainder", () => {
     const errors: string[] = [];
     const phases: unknown[] = [
       { agent: "plan" },
       { agent: "" },      // invalid — skipped
-      { agent: "build" },
+      { exec: "cleanup" },
     ];
     const result = validatePipelineArray(phases, "pipeline", errors);
-    // Returns only valid phases (agent-less entries are dropped, errors are still collected)
+    // Returns only valid phases (invalid entries are dropped, errors are still collected)
     expect(result!.length).toBe(2);
-    expect((result as PipelinePhase[])[0]!.agent).toBe("plan");
-    expect((result as PipelinePhase[])[1]!.agent).toBe("build");
+    expect((result as PipelinePhase[])[0]!).toEqual({ agent: "plan" });
+    expect((result as PipelinePhase[])[1]!).toEqual({ exec: "cleanup" });
   });
 
   test("rejects non-integer repeat", () => {
