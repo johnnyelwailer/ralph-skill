@@ -24,6 +24,7 @@ function makeDeps() {
     handleArtifacts: () => undefined,
     handleTurns: () => undefined,
     handleEvents: () => undefined,
+    handleSetup: () => undefined,
   };
 }
 
@@ -174,6 +175,7 @@ describe("makeFetchHandler dispatch order", () => {
       handleArtifacts: () => undefined,
       handleTurns: () => undefined,
       handleEvents: () => undefined,
+      handleSetup: () => undefined,
     };
   }
 
