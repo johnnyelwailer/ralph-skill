@@ -11,6 +11,7 @@ import {
   ProjectRegistry,
   type Database,
   type EventWriter,
+  ArtifactRegistry,
 } from "@aloop/state-sqlite";
 import { resolveDaemonPaths } from "@aloop/daemon-config";
 import { startHttp, startSocket, type RunningHttp, type RunningSocket } from "@aloop/daemon-http";
@@ -21,6 +22,11 @@ import { makeSchedulerConfig } from "./scheduler-config.ts";
 import { createProviderQuotaProbe } from "./provider-probes.ts";
 import { makeRouterDeps } from "./router-deps.ts";
 import { loadInitialConfig } from "./start-config.ts";
+import {
+  detectStuckSessions,
+  refreshProviderHealth,
+  recoverCrashedSessions,
+} from "@aloop/scheduler";
 import type { ConfigStore, DaemonConfig, DaemonPaths, OverridesConfig } from "@aloop/daemon-config";
 import { InMemoryProviderHealthStore, ProviderRegistry } from "@aloop/provider";
 
@@ -71,6 +77,7 @@ export async function startDaemon(opts: StartDaemonOptions = {}): Promise<Runnin
   const { db } = openDatabase(dbPath);
   const registry = new ProjectRegistry(db);
   const permits = new PermitRegistry(db);
+  const artifactRegistry = new ArtifactRegistry(db);
   eventStore = new JsonlEventStore(paths.logFile);
   const events = createEventWriter({
     db,
@@ -90,13 +97,24 @@ export async function startDaemon(opts: StartDaemonOptions = {}): Promise<Runnin
     events,
     providerRegistry,
     providerHealth,
+    artifactRegistry,
   });
+  const sessionsDir = join(paths.stateDir, "sessions");
+  await recoverCrashedSessions(sessionsDir, events);
   try {
     http = startHttp({ hostname, port, deps: routerDeps });
     socket = startSocket({ path: paths.socketFile, deps: routerDeps });
     watchdog = startSchedulerWatchdog({
       tickIntervalSeconds: () => config.daemon().watchdog.tickIntervalSeconds,
       expirePermits: () => scheduler.expirePermits(),
+      detectStuckSessions,
+      refreshProviderHealth,
+      sessionsDir,
+      stuckThresholdSeconds: config.daemon().watchdog.stuckThresholdSeconds,
+      quotaPollIntervalSeconds: config.daemon().watchdog.quotaPollIntervalSeconds,
+      providerRegistry,
+      providerHealth,
+      events,
     });
   } catch (err) {
     await http?.stop().catch(() => {});
