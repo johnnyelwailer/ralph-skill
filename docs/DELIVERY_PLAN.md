@@ -50,6 +50,21 @@ Sandboxing is the broader execution concept; the project devcontainer is only th
 - A later execution milestone should adopt `sandbox-core` as the abstraction layer for sandbox lifecycle, exec, streaming, and file transfer.
 - That future change is intended to unlock server deployment where each loop/session can run in its own offloaded sandbox without changing the daemon API or orchestration model.
 
+## Deployment portability note
+
+Remote deployment is deferred from v1 implementation, but portability is a design constraint now. Aloop should package into standard OCI containers and map onto common cloud capabilities:
+
+- control plane: containerized HTTP service
+- state: Postgres
+- events/artifacts: object storage, preferably S3-compatible where possible
+- workers: isolated containers, VMs, managed jobs, or sandbox backends
+- secrets: provider secret manager or mounted secret files
+- auth: TLS plus bearer/OIDC-compatible auth
+
+Azure is an explicit target, but not a special architecture. The same capability model should map to Azure Container Apps/App Service/AKS + Azure Database for PostgreSQL + Blob Storage, AWS ECS/Fargate/App Runner + RDS + S3, GCP Cloud Run/GKE + Cloud SQL + Cloud Storage, and cheaper/self-hosted options such as Fly.io, Render, Railway, DigitalOcean, Hetzner, Docker Compose, Nomad, or Kubernetes.
+
+Provider-specific deployment recipes are templates. Core code must not learn cloud-provider concepts.
+
 ---
 
 ## M1 — Scaffolding + daemon skeleton + health
@@ -279,7 +294,7 @@ Deferred to v1.5+ per `learning.md` and `self-improvement.md`:
 - AutoResearch for narrow deterministic-eval problems
 - Task mirroring implementations (capability flag is in the interface; no adapter ships one)
 - Telegram bot, Chat bots, IDE plugins
-- Remote deployment (control plane + worker fleet)
+- Production remote deployment recipes (control plane + worker fleet), though the architecture keeps the seams ready
 - GitLab / Linear / Jira tracker adapters
 - Causal inference / OPE / reward modeling
 

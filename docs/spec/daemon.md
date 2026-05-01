@@ -336,9 +336,11 @@ On startup the daemon scans the `sessions` table for rows with `status=running`:
 
 Permits held at crash time are released on startup (their TTL would have expired anyway). In-flight provider processes that survived the daemon crash become orphans; the watchdog kills them on first tick.
 
-## Forward-compat: distribution seams
+## Forward-compat: distribution and cloud deployment seams
 
-v1 is single-host. v2+ may run the daemon as a backend service with session workers on separate VMs. The following seams exist in v1 so that transition is a deployment change, not a rewrite.
+v1 is single-host. v2+ may run the daemon as a backend service with session workers on separate VMs, containers, or managed job runners. The following seams exist in v1 so that transition is a deployment change, not a rewrite.
+
+The target is cloud portability, not one blessed cloud. Azure should be straightforward, but so should AWS, GCP, Fly.io, Render, Railway, DigitalOcean, Hetzner, bare-metal Docker, and Kubernetes.
 
 ### Seam 1: API is the only boundary
 
@@ -346,11 +348,28 @@ Everything a client (CLI, dashboard, bot, remote worker) does goes through the H
 
 ### Seam 2: `StateStore` adapter
 
-SQLite operations are behind a `StateStore` interface. v1 implementation: SQLite. v2 implementation: Postgres. Interface covers the full set of queries the daemon makes — no raw SQL outside the adapter.
+SQLite operations are behind a `StateStore` interface. v1 implementation: SQLite. Hosted implementation: Postgres. Interface covers the full set of queries the daemon makes — no raw SQL outside the adapter.
+
+Portable mappings:
+
+- Azure Database for PostgreSQL
+- AWS RDS / Aurora Postgres
+- Google Cloud SQL for PostgreSQL
+- Neon, Supabase, Crunchy, Railway, Render, Fly Postgres, DigitalOcean Managed PostgreSQL
+- self-hosted Postgres container or VM
 
 ### Seam 3: `EventStore` adapter
 
-JSONL writes go through an `EventStore` interface. v1 implementation: local per-session files. v2 implementation: local ring buffer + write-through to object storage (S3-compatible), with `GET /events` paginating across both. Read path is the same.
+JSONL writes go through an `EventStore` interface. v1 implementation: local per-session files. Hosted implementation: local ring buffer + write-through to object storage, with `GET /events` paginating across both. Read path is the same.
+
+Prefer S3-compatible semantics where available because they map to many providers and self-hosted stores. Provider-native blob storage is acceptable behind the same adapter.
+
+Portable mappings:
+
+- Azure Blob Storage
+- AWS S3
+- Google Cloud Storage
+- Cloudflare R2, Backblaze B2, Wasabi, MinIO
 
 ### Seam 4: `ProjectAdapter`
 
@@ -368,6 +387,13 @@ The execution environment for a session sits behind `SandboxAdapter`. Conceptual
 
 v1 implementations are local: host execution and project devcontainer execution. The planned next step is to map this seam to `sandbox-core` so aloop can target local Docker and hosted backends through one abstraction. A later hosted deployment may then place each loop in its own offloaded sandbox without changing the orchestrator, API, or tracker logic.
 
+Portable mappings:
+
+- Azure Container Apps jobs, AKS jobs, or VM Scale Sets
+- AWS ECS/Fargate tasks, EKS jobs, or EC2 workers
+- Google Cloud Run jobs, GKE jobs, or Compute Engine workers
+- Fly machines, Railway/Render jobs where suitable, DigitalOcean Apps/Droplets, Hetzner VMs, Nomad jobs, Docker Compose workers
+
 ### Seam 6: Scheduler as HTTP service
 
 Already designed that way. Permit acquire/release are HTTP calls, not function calls, even in-daemon. v2 deployment can split the scheduler onto its own replica without touching worker code.
@@ -378,21 +404,23 @@ Execution backends (host, devcontainer, or future offloaded sandbox) accumulate 
 
 ### What v1 explicitly does NOT implement
 
-- Postgres, S3, object storage, offloaded sandbox fleets, sandbox leases
+- Postgres, cloud object storage, offloaded sandbox fleets, sandbox leases
 - Any queue system (Redis, SQS, Postgres FOR UPDATE SKIP LOCKED)
 - Authentication beyond "localhost = trusted"
 - Container orchestration, Kubernetes primitives, gRPC meshes
 - Tunneling, VPNs, multi-user
 
-These are v2+ concerns. Mentioning them here locks the seams so we don't design ourselves into a corner.
+These are v2+ concerns for the product implementation, but the architecture must keep them easy. Mentioning them here locks the seams so we don't design ourselves into a corner.
 
 ### What v2 transition looks like (for context, not to build now)
 
 1. Implement `Postgres` `StateStore` adapter behind the existing interface.
-2. Implement `S3` `EventStore` adapter (write-through) behind the existing interface.
+2. Implement object-storage `EventStore` and artifact storage adapters behind the existing interfaces.
 3. Implement a `sandbox-core`-backed `SandboxAdapter` for hosted sandboxes.
-4. Deploy control plane as a stateless HTTP service with Postgres + S3 behind it.
-5. Deploy sandbox capacity as a fleet of VMs / containers with the required provider CLIs, auth, and runtime profiles pre-seeded.
+4. Package the control plane as an OCI container.
+5. Deploy control plane as a stateless HTTP service with Postgres + object storage behind it.
+6. Deploy sandbox capacity as a fleet of VMs, containers, or managed jobs with the required provider CLIs, auth, and runtime profiles pre-seeded.
+7. Ship provider-specific deployment recipes as thin templates over the same capability model, for example Azure Container Apps + Azure Postgres + Blob Storage.
 6. API contract unchanged. CLI, dashboard, bots work against the hosted endpoint with a bearer token.
 
 Estimated scope when the time comes: 3–4 weeks, not a rewrite. That's the payoff for treating the seams as load-bearing in v1.

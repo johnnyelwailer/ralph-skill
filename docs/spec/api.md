@@ -37,7 +37,7 @@ Clients send `X-Aloop-Client: <name>/<version>` for telemetry and compatibility 
 
 ## Transport and auth
 
-- **HTTP/1.1** over localhost (`127.0.0.1` by default). JSON in, JSON out. Port configurable in `~/.aloop/daemon.yml` (default 7777, auto-written if `null`). Used by the dashboard (browsers can't talk to unix sockets) and by any remote/tunneled client.
+- **HTTP/1.1** over localhost (`127.0.0.1` by default). JSON in, JSON out. Port configurable in `~/.aloop/daemon.yml` (default 7777, auto-written if `null`). Used by the dashboard (browsers can't talk to unix sockets) and by any remote, tunneled, or hosted deployment.
 - **Unix socket** at `~/.aloop/aloopd.sock` — **required in v1**. Local clients (CLI, shim, `aloop-agent`) prefer the socket; it's faster and avoids port exposure. The container's bind-mount of `.aloop/` brings the socket into the sandbox so in-container `aloop-agent` calls go directly back to the host daemon. API contract is identical over socket and HTTP.
 - **SSE** for streams. Plain `text/event-stream`, no WebSocket in v1. Works over both transports.
 - **Auth:** localhost-only deployments are unauthenticated. Remote/tunneled deployments require `Authorization: Bearer <token>` where the token is read from `~/.aloop/token` (generated on install). CORS: `*` for localhost, restricted list for remote.
@@ -53,6 +53,7 @@ The v1 API should remain boring and standards-aligned:
 - exports use JSONL/NDJSON where append-only logs matter
 - idempotent creation uses `Idempotency-Key`
 - remote auth uses standard `Authorization: Bearer` headers in v1 and should evolve toward OAuth/OIDC-compatible flows if aloop becomes multi-user
+- hosted deployments should sit behind normal TLS termination/load balancing and must not require custom gateways or provider-specific protocols
 - errors use stable machine-readable codes plus human-readable messages
 
 Do not add custom RPC frames, binary protocols, dashboard-only wire formats, or agent-only side channels. If an existing standard does not fit, document the gap in the relevant spec before introducing a new primitive.

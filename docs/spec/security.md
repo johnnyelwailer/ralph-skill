@@ -75,6 +75,8 @@ The trust boundary holds regardless of where things run:
 |---|---|---|---|
 | Local dev | Your machine | Host process or local sandbox backend | On the same machine |
 | Cloud orchestrator (future) | Control-plane host | Remote worker VM | On control plane |
+| Azure / AWS / GCP hosted | Managed container app, VM, or Kubernetes node | Managed job, container, VM, or sandbox backend | Hosted control plane |
+| Lower-cost hosted | Fly.io, Render, Railway, DigitalOcean, Hetzner, Nomad, Docker host | Container, VM, or sandbox backend | Hosted control plane |
 | GitHub Actions | Runner | Spawned containers | Runner (ephemeral) |
 | Docker-in-Docker | Outer container | Inner containers | Outer container |
 | Devcontainer project | Host | Container | Host (communicates with container over bind-mount for worktree) |

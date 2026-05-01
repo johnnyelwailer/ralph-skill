@@ -14,7 +14,7 @@ You type or speak an idea, screenshot, voice note, link, document, or spec into 
 ## What it's not
 
 - Not a replacement for your IDE. Not an interactive coding assistant (Claude Code, Cursor, aider already do that well).
-- Not a SaaS. v1 runs on your machine; later versions may run as a hosted backend, but your keys and your repo stay yours.
+- Not a SaaS. v1 runs on your machine; later versions should be easy to self-host on Azure, AWS, GCP, cheaper container/VM providers, or your own servers, but your keys and your repo stay yours.
 - Not a general-purpose agent framework. Aloop is narrow by design: it automates the development cycle, nothing else.
 - Not a replacement for thinking. It still needs a well-written spec, a real CONSTITUTION, and someone reviewing what lands.
 
@@ -27,9 +27,10 @@ You type or speak an idea, screenshot, voice note, link, document, or spec into 
 5. **Observable and resumable.** Every state change emits a structured event. JSONL per session is the authoritative log. SSE streams to the dashboard. The daemon crashes, restarts, and resumes. Sessions survive upgrades.
 6. **One API, many clients.** CLI, dashboard, Telegram bot, future integrations all consume the same v1 HTTP+SSE contract. No privileged paths. What you can do from the dashboard you can do from curl.
 7. **Standards before custom mechanisms.** Aloop uses boring protocols and existing ecosystem conventions wherever possible: HTTP, SSE, JSON, JSON Schema/OpenAPI-compatible shapes, MIME artifacts, Git, SQLite/Postgres, and standard auth patterns. Custom protocols are a last resort, not a design style.
-8. **Workspaces are broader than repos.** A workspace is the human operating context and may contain multiple projects, repos, monorepo subprojects, research threads, and ideas before any repo exists. A project is the setup-gated runnable unit.
-9. **Incubation before implementation.** Vague ideas, links, screenshots, research questions, market signals, and long-running monitors live as durable daemon objects before they become setup runs, spec edits, Epics, Stories, or steering. The system can research and synthesize across governed sources without mutating the repo or tracker until promotion is explicit.
-10. **A lean core held in check by a constitution.** Core runtime target: under 2,000 LOC. Extensions under 800. Shims under 150. Files under 150. The constitution is what keeps the rebuild from turning into what the rebuild was rebuilding.
+8. **Deployable anywhere common.** The hosted shape is provider-neutral: containerized control plane, Postgres, object storage, isolated workers, standard auth, and HTTP/SSE API. Azure is a target, not a lock-in; cheaper providers and self-hosted deployments should use the same seams.
+9. **Workspaces are broader than repos.** A workspace is the human operating context and may contain multiple projects, repos, monorepo subprojects, research threads, and ideas before any repo exists. A project is the setup-gated runnable unit.
+10. **Incubation before implementation.** Vague ideas, links, screenshots, research questions, market signals, and long-running monitors live as durable daemon objects before they become setup runs, spec edits, Epics, Stories, or steering. The system can research and synthesize across governed sources without mutating the repo or tracker until promotion is explicit.
+11. **A lean core held in check by a constitution.** Core runtime target: under 2,000 LOC. Extensions under 800. Shims under 150. Files under 150. The constitution is what keeps the rebuild from turning into what the rebuild was rebuilding.
 
 ## What "aloop is working" looks like
 
@@ -64,7 +65,7 @@ A bad day on aloop (and how it handles it):
 - Full TDD coverage of primitives, workflows, and engine.
 - Constitution invariants green across all LOC budgets.
 
-Beyond v1: remote/distributed deployment (control plane + worker fleet), additional tracker adapters (GitLab, Linear), additional provider adapters, richer dashboard, Telegram bot, public dashboard with tunnel auth.
+Beyond v1: portable remote/distributed deployment recipes (Azure plus common cheaper providers), control plane + worker fleet, additional tracker adapters (GitLab, Linear), additional provider adapters, richer dashboard, Telegram bot, public dashboard with tunnel auth.
 
 ## Autonomy and human control
 

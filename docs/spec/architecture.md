@@ -13,6 +13,7 @@
 - Shim responsibilities
 - Client responsibilities
 - Standards-first design
+- Deployment portability
 - Adapter surfaces
 - Cross-platform
 - Trust boundaries
@@ -189,6 +190,42 @@ When aloop needs semantics that standards do not provide, keep the custom part n
 - document why an existing standard was insufficient before adding a new primitive
 - add conformance tests around the boundary
 - expose the capability through the same v1 API so every client can use it
+
+## Deployment portability
+
+Aloop should be easy to deploy on any normal cloud or hosting provider. Azure must be a first-class target, but not a special case. The architecture should map to generic capabilities that exist across Azure, AWS, GCP, Fly.io, Render, Railway, DigitalOcean, Hetzner, bare-metal, and Kubernetes.
+
+Provider-neutral deployment capabilities:
+
+| Capability | Local v1 | Portable hosted equivalent |
+|---|---|---|
+| Control plane | `aloopd` process | containerized HTTP service |
+| Queryable state | SQLite | managed Postgres or self-hosted Postgres |
+| Event/artifact storage | JSONL + local files | S3-compatible object storage or provider blob storage |
+| Session execution | host/devcontainer | isolated worker container, VM, or sandbox backend |
+| Worktree access | local filesystem | git clone/push through `ProjectAdapter` |
+| Secrets | env/files | provider secret manager or mounted secrets |
+| Auth | localhost / bearer token | TLS + bearer/OIDC-compatible auth |
+| Observability | logs + `/v1/metrics` | container logs + Prometheus/OpenTelemetry-compatible export |
+| Scheduling | daemon scheduler | same scheduler, optionally split later |
+
+Example mappings, not hard dependencies:
+
+| Provider family | Control plane | State | Artifacts/events | Workers |
+|---|---|---|---|---|
+| Azure | Container Apps, App Service, or AKS | Azure Database for PostgreSQL | Blob Storage | Container Apps jobs, AKS jobs, VM scale set |
+| AWS | ECS/Fargate, App Runner, or EKS | RDS Postgres | S3 | ECS tasks, EKS jobs, EC2 |
+| GCP | Cloud Run or GKE | Cloud SQL Postgres | Cloud Storage | Cloud Run jobs, GKE jobs, Compute Engine |
+| Lower-cost/self-hosted | Docker Compose, Nomad, systemd, Fly.io, Hetzner, DigitalOcean | Postgres container or managed Postgres | S3-compatible storage such as MinIO/R2/B2 | Docker workers, VMs, Nomad jobs |
+
+Rules:
+
+- no provider-specific concepts in core daemon APIs
+- deployment manifests live outside core logic
+- cloud-specific behavior is adapter/configuration, not conditional branches in orchestration
+- object storage should use S3-compatible semantics where possible; provider-native blob storage is allowed behind `EventStore`/artifact storage adapters
+- workers talk to the control plane over the same HTTP API as local shims
+- the first hosted deployment may be simple Docker Compose with Postgres + object storage; Kubernetes is optional, never required
 
 ## Adapter surfaces
 
