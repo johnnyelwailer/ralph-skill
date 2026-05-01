@@ -13,6 +13,7 @@ import {
   type Database,
   type EventWriter,
   ArtifactRegistry,
+  WorkspaceRegistry,
 } from "@aloop/state-sqlite";
 import { resolveDaemonPaths } from "@aloop/daemon-config";
 import { startHttp, startSocket, type RunningHttp, type RunningSocket } from "@aloop/daemon-http";
@@ -78,6 +79,7 @@ export async function startDaemon(opts: StartDaemonOptions = {}): Promise<Runnin
   let watchdog: RunningWatchdog | undefined;
   const { db } = openDatabase(dbPath);
   const registry = new ProjectRegistry(db);
+  const workspaceRegistry = new WorkspaceRegistry(db);
   const permits = new PermitRegistry(db);
   const artifactRegistry = new ArtifactRegistry(db);
   eventStore = new JsonlEventStore(paths.logFile);
@@ -94,6 +96,7 @@ export async function startDaemon(opts: StartDaemonOptions = {}): Promise<Runnin
   const idempotencyStore = createIdempotencyStore(db);
   const routerDeps = makeRouterDeps({
     registry,
+    workspaceRegistry,
     scheduler,
     startedAt,
     config,

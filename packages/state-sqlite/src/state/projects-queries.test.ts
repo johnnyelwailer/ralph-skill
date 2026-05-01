@@ -84,6 +84,7 @@ describe("projects-queries helpers", () => {
       addedAt: "2026-01-01T00:00:00.000Z",
       lastActiveAt: null,
       updatedAt: "2026-01-01T00:00:00.000Z",
+      workspaceIds: [],
     });
     db.close();
   });

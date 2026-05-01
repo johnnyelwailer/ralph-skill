@@ -46,6 +46,16 @@ export {
   type CreateArtifactInput,
 } from "./state/artifacts.ts";
 export {
+  WorkspaceNotFoundError,
+  WorkspaceRegistry,
+  type CreateWorkspaceInput,
+  type Workspace,
+  type WorkspaceFilter,
+  type WorkspaceProject,
+  type WorkspaceProjectRole,
+} from "./state/workspaces.ts";
+export { WorkspaceProjector } from "./state/workspace-projector.ts";
+export {
   EventCountsProjector,
   clearEventCounts,
   runProjector,

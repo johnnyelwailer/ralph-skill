@@ -11,9 +11,10 @@ type ProjectRow = {
   added_at: string;
   last_active_at: string | null;
   updated_at: string;
+  workspace_ids: string;
 };
 
-function rowToProject(row: ProjectRow): Project {
+function rowToProject(row: ProjectRow, workspaceIds: readonly string[] = []): Project {
   return {
     id: row.id,
     absPath: row.abs_path,
@@ -22,7 +23,13 @@ function rowToProject(row: ProjectRow): Project {
     addedAt: row.added_at,
     lastActiveAt: row.last_active_at,
     updatedAt: row.updated_at,
+    workspaceIds,
   };
+}
+
+function parseWorkspaceIds(workspaceIdsStr: string): readonly string[] {
+  if (!workspaceIdsStr) return [];
+  return workspaceIdsStr.split(",").filter(Boolean);
 }
 
 export function canonicalizeProjectPath(path: string): string {
@@ -34,17 +41,38 @@ export function canonicalizeProjectPath(path: string): string {
   }
 }
 
+function getWorkspaceIdsForProject(db: Database, projectId: string): readonly string[] {
+  const rows = db
+    .query<{ workspace_id: string }, [string]>(`SELECT workspace_id FROM workspace_projects WHERE project_id = ?`)
+    .all(projectId);
+  return rows.map((r) => r.workspace_id);
+}
+
 export function getProjectById(db: Database, id: string): Project | undefined {
-  const row = db.query<ProjectRow, [string]>(`SELECT * FROM projects WHERE id = ?`).get(id);
-  return row ? rowToProject(row) : undefined;
+  const row = db
+    .query<ProjectRow, [string]>(
+      `SELECT p.*, COALESCE(GROUP_CONCAT(wp.workspace_id), '') as workspace_ids
+       FROM projects p
+       LEFT JOIN workspace_projects wp ON wp.project_id = p.id
+       WHERE p.id = ?
+       GROUP BY p.id`,
+    )
+    .get(id);
+  return row ? rowToProject(row, parseWorkspaceIds(row.workspace_ids)) : undefined;
 }
 
 export function getProjectByPath(db: Database, absPath: string): Project | undefined {
   const canonical = canonicalizeProjectPath(absPath);
   const row = db
-    .query<ProjectRow, [string]>(`SELECT * FROM projects WHERE abs_path = ?`)
+    .query<ProjectRow, [string]>(
+      `SELECT p.*, COALESCE(GROUP_CONCAT(wp.workspace_id), '') as workspace_ids
+       FROM projects p
+       LEFT JOIN workspace_projects wp ON wp.project_id = p.id
+       WHERE p.abs_path = ?
+       GROUP BY p.id`,
+    )
     .get(canonical);
-  return row ? rowToProject(row) : undefined;
+  return row ? rowToProject(row, parseWorkspaceIds(row.workspace_ids)) : undefined;
 }
 
 export function listProjectsFromDb(db: Database, filter: ProjectFilter = {}): Project[] {
@@ -52,29 +80,54 @@ export function listProjectsFromDb(db: Database, filter: ProjectFilter = {}): Pr
     const canonical = canonicalizeProjectPath(filter.absPath);
     return db
       .query<ProjectRow, [ProjectStatus, string]>(
-        `SELECT * FROM projects WHERE status = ? AND abs_path = ? ORDER BY added_at`,
+        `SELECT p.*, COALESCE(GROUP_CONCAT(wp.workspace_id), '') as workspace_ids
+         FROM projects p
+         LEFT JOIN workspace_projects wp ON wp.project_id = p.id
+         WHERE p.status = ? AND p.abs_path = ?
+         GROUP BY p.id
+         ORDER BY p.added_at`,
       )
       .all(filter.status, canonical)
-      .map(rowToProject);
+      .map((row) => rowToProject(row, parseWorkspaceIds(row.workspace_ids)));
   }
 
   if (filter.status !== undefined) {
     return db
-      .query<ProjectRow, [ProjectStatus]>(`SELECT * FROM projects WHERE status = ? ORDER BY added_at`)
+      .query<ProjectRow, [ProjectStatus]>(
+        `SELECT p.*, COALESCE(GROUP_CONCAT(wp.workspace_id), '') as workspace_ids
+         FROM projects p
+         LEFT JOIN workspace_projects wp ON wp.project_id = p.id
+         WHERE p.status = ?
+         GROUP BY p.id
+         ORDER BY p.added_at`,
+      )
       .all(filter.status)
-      .map(rowToProject);
+      .map((row) => rowToProject(row, parseWorkspaceIds(row.workspace_ids)));
   }
 
   if (filter.absPath !== undefined) {
     const canonical = canonicalizeProjectPath(filter.absPath);
     return db
-      .query<ProjectRow, [string]>(`SELECT * FROM projects WHERE abs_path = ? ORDER BY added_at`)
+      .query<ProjectRow, [string]>(
+        `SELECT p.*, COALESCE(GROUP_CONCAT(wp.workspace_id), '') as workspace_ids
+         FROM projects p
+         LEFT JOIN workspace_projects wp ON wp.project_id = p.id
+         WHERE p.abs_path = ?
+         GROUP BY p.id
+         ORDER BY p.added_at`,
+      )
       .all(canonical)
-      .map(rowToProject);
+      .map((row) => rowToProject(row, parseWorkspaceIds(row.workspace_ids)));
   }
 
   return db
-    .query<ProjectRow, []>(`SELECT * FROM projects ORDER BY added_at`)
+    .query<ProjectRow, []>(
+      `SELECT p.*, COALESCE(GROUP_CONCAT(wp.workspace_id), '') as workspace_ids
+       FROM projects p
+       LEFT JOIN workspace_projects wp ON wp.project_id = p.id
+       GROUP BY p.id
+       ORDER BY p.added_at`,
+    )
     .all()
-    .map(rowToProject);
+    .map((row) => rowToProject(row, parseWorkspaceIds(row.workspace_ids)));
 }

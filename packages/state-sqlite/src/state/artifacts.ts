@@ -23,8 +23,8 @@ export class ArtifactRegistry {
     const now = input.now ?? new Date().toISOString();
 
     this.db.run(
-      `INSERT INTO artifacts (id, project_id, session_id, setup_run_id, work_item_key, kind, phase, label, filename, media_type, bytes, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO artifacts (id, project_id, session_id, setup_run_id, work_item_key, kind, phase, label, filename, media_type, bytes, created_at, composer_turn_id, control_subagent_run_id, incubation_item_id, research_run_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         id,
         input.project_id,
@@ -38,6 +38,10 @@ export class ArtifactRegistry {
         input.media_type,
         input.bytes,
         now,
+        input.composer_turn_id ?? null,
+        input.control_subagent_run_id ?? null,
+        input.incubation_item_id ?? null,
+        input.research_run_id ?? null,
       ],
     );
 
@@ -59,8 +63,12 @@ export class ArtifactRegistry {
         media_type: string;
         bytes: number;
         created_at: string;
+        composer_turn_id: string | null;
+        control_subagent_run_id: string | null;
+        incubation_item_id: string | null;
+        research_run_id: string | null;
       }, [string]>(
-        `SELECT id, project_id, session_id, setup_run_id, work_item_key, kind, phase, label, filename, media_type, bytes, created_at
+        `SELECT id, project_id, session_id, setup_run_id, work_item_key, kind, phase, label, filename, media_type, bytes, created_at, composer_turn_id, control_subagent_run_id, incubation_item_id, research_run_id
          FROM artifacts WHERE id = ?`,
       )
       .get(id);
@@ -83,84 +91,64 @@ export class ArtifactRegistry {
       media_type: string;
       bytes: number;
       created_at: string;
+      composer_turn_id: string | null;
+      control_subagent_run_id: string | null;
+      incubation_item_id: string | null;
+      research_run_id: string | null;
     };
 
-    if (filter.project_id !== undefined && filter.session_id !== undefined) {
-      return this.db
-        .query<ArtifactRow, [string, string]>(
-          `SELECT id, project_id, session_id, setup_run_id, work_item_key, kind, phase, label, filename, media_type, bytes, created_at
-           FROM artifacts WHERE project_id = ? AND session_id = ? ORDER BY created_at DESC`,
-        )
-        .all(filter.project_id, filter.session_id)
-        .map(toArtifact);
-    }
+    // Build a WHERE clause from the filter, supporting multiple filter dimensions.
+    const conditions: string[] = [];
+    const args: string[] = [];
 
+    if (filter.composer_turn_id !== undefined) {
+      conditions.push("composer_turn_id = ?");
+      args.push(filter.composer_turn_id);
+    }
+    if (filter.control_subagent_run_id !== undefined) {
+      conditions.push("control_subagent_run_id = ?");
+      args.push(filter.control_subagent_run_id);
+    }
+    if (filter.incubation_item_id !== undefined) {
+      conditions.push("incubation_item_id = ?");
+      args.push(filter.incubation_item_id);
+    }
+    if (filter.research_run_id !== undefined) {
+      conditions.push("research_run_id = ?");
+      args.push(filter.research_run_id);
+    }
     if (filter.project_id !== undefined) {
-      return this.db
-        .query<ArtifactRow, [string]>(
-          `SELECT id, project_id, session_id, setup_run_id, work_item_key, kind, phase, label, filename, media_type, bytes, created_at
-           FROM artifacts WHERE project_id = ? ORDER BY created_at DESC`,
-        )
-        .all(filter.project_id)
-        .map(toArtifact);
+      conditions.push("project_id = ?");
+      args.push(filter.project_id);
     }
-
     if (filter.session_id !== undefined) {
-      return this.db
-        .query<ArtifactRow, [string]>(
-          `SELECT id, project_id, session_id, setup_run_id, work_item_key, kind, phase, label, filename, media_type, bytes, created_at
-           FROM artifacts WHERE session_id = ? ORDER BY created_at DESC`,
-        )
-        .all(filter.session_id)
-        .map(toArtifact);
+      conditions.push("session_id = ?");
+      args.push(filter.session_id);
     }
-
     if (filter.setup_run_id !== undefined) {
-      return this.db
-        .query<ArtifactRow, [string]>(
-          `SELECT id, project_id, session_id, setup_run_id, work_item_key, kind, phase, label, filename, media_type, bytes, created_at
-           FROM artifacts WHERE setup_run_id = ? ORDER BY created_at DESC`,
-        )
-        .all(filter.setup_run_id)
-        .map(toArtifact);
+      conditions.push("setup_run_id = ?");
+      args.push(filter.setup_run_id);
     }
-
     if (filter.work_item_key !== undefined) {
-      return this.db
-        .query<ArtifactRow, [string]>(
-          `SELECT id, project_id, session_id, setup_run_id, work_item_key, kind, phase, label, filename, media_type, bytes, created_at
-           FROM artifacts WHERE work_item_key = ? ORDER BY created_at DESC`,
-        )
-        .all(filter.work_item_key)
-        .map(toArtifact);
+      conditions.push("work_item_key = ?");
+      args.push(filter.work_item_key);
     }
-
     if (filter.phase !== undefined) {
-      return this.db
-        .query<ArtifactRow, [string]>(
-          `SELECT id, project_id, session_id, setup_run_id, work_item_key, kind, phase, label, filename, media_type, bytes, created_at
-           FROM artifacts WHERE phase = ? ORDER BY created_at DESC`,
-        )
-        .all(filter.phase)
-        .map(toArtifact);
+      conditions.push("phase = ?");
+      args.push(filter.phase);
+    }
+    if (filter.type !== undefined) {
+      conditions.push("kind = ?");
+      args.push(filter.type);
     }
 
-    if (filter.type !== undefined) {
-      return this.db
-        .query<ArtifactRow, [string]>(
-          `SELECT id, project_id, session_id, setup_run_id, work_item_key, kind, phase, label, filename, media_type, bytes, created_at
-           FROM artifacts WHERE kind = ? ORDER BY created_at DESC`,
-        )
-        .all(filter.type)
-        .map(toArtifact);
-    }
+    const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+    const query = `SELECT id, project_id, session_id, setup_run_id, work_item_key, kind, phase, label, filename, media_type, bytes, created_at, composer_turn_id, control_subagent_run_id, incubation_item_id, research_run_id
+ FROM artifacts ${where} ORDER BY created_at DESC`;
 
     return this.db
-      .query<ArtifactRow, []>(
-        `SELECT id, project_id, session_id, setup_run_id, work_item_key, kind, phase, label, filename, media_type, bytes, created_at
-         FROM artifacts ORDER BY created_at DESC`,
-      )
-      .all()
+      .query<ArtifactRow, string[]>(query)
+      .all(...args)
       .map(toArtifact);
   }
 
@@ -189,6 +177,10 @@ function toArtifact(row: {
   media_type: string;
   bytes: number;
   created_at: string;
+  composer_turn_id: string | null;
+  control_subagent_run_id: string | null;
+  incubation_item_id: string | null;
+  research_run_id: string | null;
 }): Artifact {
   return {
     _v: 1,
@@ -205,5 +197,9 @@ function toArtifact(row: {
     bytes: row.bytes,
     url: `/v1/artifacts/${row.id}/content`,
     created_at: row.created_at,
+    composer_turn_id: row.composer_turn_id,
+    control_subagent_run_id: row.control_subagent_run_id,
+    incubation_item_id: row.incubation_item_id,
+    research_run_id: row.research_run_id,
   };
 }

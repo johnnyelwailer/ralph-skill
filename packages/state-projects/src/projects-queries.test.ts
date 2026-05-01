@@ -9,8 +9,8 @@ import {
   getProjectById,
   getProjectByPath,
   listProjectsFromDb,
-  type ProjectStatus,
 } from "./projects-queries.ts";
+import type { ProjectStatus } from "./project-types.ts";
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS projects (

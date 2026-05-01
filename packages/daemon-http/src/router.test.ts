@@ -25,6 +25,7 @@ function makeDeps() {
     handleTurns: () => undefined,
     handleEvents: () => undefined,
     handleSetup: () => undefined,
+    handleWorkspaces: () => undefined,
   };
 }
 
@@ -176,6 +177,7 @@ describe("makeFetchHandler dispatch order", () => {
       handleTurns: () => undefined,
       handleEvents: () => undefined,
       handleSetup: () => undefined,
+      handleWorkspaces: () => undefined,
     };
   }
 

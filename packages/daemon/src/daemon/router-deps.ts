@@ -13,18 +13,21 @@ import {
   handleScheduler as handleSchedulerRoute,
   handleSessions as handleSessionsRoute,
   handleEvents as handleEventsRoute,
+  handleWorkspaces as handleWorkspacesRoute,
   type SessionsDeps,
   type EventsDeps,
+  type WorkspacesDeps,
 } from "@aloop/daemon-routes";
 import { handleArtifacts as handleArtifactsRoute, type ArtifactsDeps } from "@aloop/daemon-routes-artifacts";
 import { handleTurns as handleTurnsRoute, type TurnsDeps } from "@aloop/daemon-routes-turns";
-import type { ArtifactRegistry, EventWriter, IdempotencyStore, ProjectRegistry } from "@aloop/state-sqlite";
+import type { ArtifactRegistry, EventWriter, IdempotencyStore, ProjectRegistry, WorkspaceRegistry } from "@aloop/state-sqlite";
 import type { SchedulerService } from "@aloop/scheduler";
 import { DEFAULT_SCHEDULER_PROBES } from "@aloop/scheduler-gates";
 import { handleDaemon as handleDaemonRoute } from "../routes/daemon.ts";
 
 export type MakeRouterDepsInput = {
   readonly registry: ProjectRegistry;
+  readonly workspaceRegistry: WorkspaceRegistry;
   readonly scheduler: SchedulerService;
   readonly startedAt: number;
   readonly config: ConfigStore;
@@ -128,6 +131,16 @@ export function makeRouterDeps(input: MakeRouterDepsInput): RouterDeps {
         pathname,
         { archive: (id: string) => input.registry.archive(id), purge: (id: string) => input.registry.purge(id), get: (id: string) => input.registry.get(id) },
         join(input.config.paths().stateDir, "sessions"),
+      ),
+    handleWorkspaces: (req, pathname) =>
+      handleWorkspacesRoute(
+        req,
+        {
+          workspaceRegistry: input.workspaceRegistry,
+          projectRegistry: input.registry,
+          sessionsDir: () => join(input.config.paths().stateDir, "sessions"),
+        },
+        pathname,
       ),
   };
 }

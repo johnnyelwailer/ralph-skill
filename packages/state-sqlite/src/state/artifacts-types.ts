@@ -7,6 +7,10 @@ export type ArtifactFilter = {
   readonly work_item_key?: string;
   readonly phase?: string;
   readonly type?: ArtifactKind;
+  readonly composer_turn_id?: string;
+  readonly control_subagent_run_id?: string;
+  readonly incubation_item_id?: string;
+  readonly research_run_id?: string;
 };
 
 export type Artifact = {
@@ -24,6 +28,10 @@ export type Artifact = {
   readonly bytes: number;
   readonly url: string;
   readonly created_at: string;
+  readonly composer_turn_id: string | null;
+  readonly control_subagent_run_id: string | null;
+  readonly incubation_item_id: string | null;
+  readonly research_run_id: string | null;
 };
 
 export type CreateArtifactInput = {
@@ -39,6 +47,10 @@ export type CreateArtifactInput = {
   readonly media_type: string;
   readonly bytes: number;
   readonly now?: string;
+  readonly composer_turn_id?: string | null;
+  readonly control_subagent_run_id?: string | null;
+  readonly incubation_item_id?: string | null;
+  readonly research_run_id?: string | null;
 };
 
 export class ArtifactNotFoundError extends Error {

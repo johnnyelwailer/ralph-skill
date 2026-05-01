@@ -174,13 +174,13 @@ describe("/v1/scheduler/*", () => {
     });
     expect(res.status).toBe(200);
     const body = (await res.json()) as {
-      concurrencyCap: number;
-      systemLimits: { cpuMaxPct: number };
-      burnRate: { minCommitsPerHour: number };
+      max_permits: number;
+      system_limits: { cpu_max_pct: number };
+      burn_rate: { min_commits_per_hour: number };
     };
-    expect(body.concurrencyCap).toBe(1);
-    expect(body.systemLimits.cpuMaxPct).toBe(70);
-    expect(body.burnRate.minCommitsPerHour).toBe(2);
+    expect(body.max_permits).toBe(1);
+    expect(body.system_limits.cpu_max_pct).toBe(70);
+    expect(body.burn_rate.min_commits_per_hour).toBe(2);
 
     const onDisk = readFileSync(daemon.paths.daemonConfigFile, "utf-8");
     expect(onDisk).toContain("concurrency_cap: 1");

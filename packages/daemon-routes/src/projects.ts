@@ -9,7 +9,7 @@ import {
   purgeProject,
 } from "./projects-handlers.ts";
 
-export type ProjectsDeps = { readonly registry: ProjectRegistry; readonly sessionsDir: string; readonly idempotencyStore?: IdempotencyStore };
+export type ProjectsDeps = { readonly registry: ProjectRegistry; readonly sessionsDir: string | (() => string); readonly idempotencyStore?: IdempotencyStore };
 
 /**
  * Dispatcher for /v1/projects/*. Each verb routes to a focused handler in

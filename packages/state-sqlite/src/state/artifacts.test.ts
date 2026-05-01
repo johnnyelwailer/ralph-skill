@@ -2,21 +2,10 @@ import { describe, expect, test } from "bun:test";
 import { Database } from "bun:sqlite";
 import { migrate, loadBundledMigrations } from "@aloop/sqlite-db";
 import { ArtifactRegistry, type ArtifactKind, type CreateArtifactInput } from "./artifacts.ts";
-import { readFileSync } from "node:fs";
-import { join, dirname } from "node:path";
-import { fileURLToPath } from "url";
-
-const __dirname = dirname(fileURLToPath(import.meta.url));
-
-function runArtifactsMigration(db: Database): void {
-  const sql = readFileSync(join(__dirname, "../migrations/006-artifacts.sql"), "utf-8");
-  db.run(sql);
-}
 
 function makeDb(): Database {
   const db = new Database(":memory:");
   migrate(db, loadBundledMigrations());
-  runArtifactsMigration(db);
   return db;
 }
 
