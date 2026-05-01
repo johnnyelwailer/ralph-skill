@@ -44,7 +44,8 @@ For every refinement, explicitly reason through:
 3. Which parts are valid under all plausible interpretations?
 4. Which parts depend on a decision that has not actually been made?
 5. Should this remain one work item, or should it be split?
-6. Is the item truly ready for dispatch, or only partially ready?
+6. If the project requires preview deployments, what preview URL evidence will prove this work?
+7. Is the item truly ready for dispatch, or only partially ready?
 
 Use the following ambiguity categories when relevant:
 
@@ -109,7 +110,7 @@ If a variant can be explored safely without committing the product decision, sha
 
 - draft-only work
 - proof-heavy work
-- screenshot or API evidence
+- screenshot, API, or preview-link evidence
 - isolated or feature-flagged realization where feasible
 
 ### 6. Keep unaffected work moving
@@ -126,6 +127,7 @@ A Story is only `dor_validated` when all of the following are true:
 - file ownership is identified
 - environment requirements are declared
 - dependencies are known
+- preview-deployment expectations are clear when the project requires them
 - workflow selection is justified
 - no unresolved decision remains that would force the child to invent user-facing behavior
 

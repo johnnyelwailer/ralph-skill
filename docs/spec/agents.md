@@ -134,6 +134,12 @@ Under the shared refinement contract, review should reject changes that silently
   "summary": "3 screenshots, 1 API capture. Dashboard layout verified against baseline.",
   "artifacts": [
     {
+      "type": "deployment_preview",
+      "url": "https://feature-x-preview.example.com",
+      "description": "Live PR preview for the current change set",
+      "metadata": { "source": "tracker_deployment_status", "change_set": "PR-123" }
+    },
+    {
       "type": "screenshot",
       "path": "dashboard-main.png",
       "description": "Dashboard after layout refactor",
@@ -153,7 +159,7 @@ Under the shared refinement contract, review should reject changes that silently
 }
 ```
 
-`type` is free-form; common kinds: `screenshot`, `visual_diff`, `api_response`, `cli_output`, `test_summary`, `accessibility_snapshot`, `video`. Agent picks what fits.
+`type` is free-form; common kinds: `deployment_preview`, `screenshot`, `visual_diff`, `api_response`, `cli_output`, `test_summary`, `accessibility_snapshot`, `video`. Agent picks what fits.
 
 **Never treats as proof:** CI pass counts, lint summaries, type-check output, git diffs, commit summaries. Those are validation, not evidence.
 

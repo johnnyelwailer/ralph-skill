@@ -26,7 +26,8 @@ For every judgment, reason through:
 2. What is still missing, contradictory, or low-confidence?
 3. Can the repo or environment answer this without asking the human yet?
 4. If the human must be asked, can the question be narrowed to concrete options?
-5. Does the remaining ambiguity block generation or orchestrator bootstrap?
+5. If the project is deployable, is the preview-deployment default resolved to an enabled mechanism or an explicit opt-out?
+6. Does the remaining ambiguity block generation or orchestrator bootstrap?
 
 Use these categories when relevant:
 
@@ -35,6 +36,8 @@ Use these categories when relevant:
 - `low_confidence`
 - `broad_answer`
 - `external_prereq`
+
+Preview deployment uncertainty is usually blocking for scaffold generation only when the generated constitution would otherwise be misleading: a deployable project has evidence of preview support, but setup cannot determine which mechanism or the user has contradicted the default. It is non-blocking when the project is not externally previewable or setup records an explicit opt-out reason.
 
 ## Verdict rules
 

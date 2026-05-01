@@ -106,9 +106,29 @@ Read by orchestrator diagnose + watchdog.
 |---|---|---|---|
 | `cost_per_story` | Gauge | `usage` chunks, grouped by session's `issue` | Dashboard, orchestrator |
 | `cost_per_epic` | Gauge | roll-up across Stories under an Epic | Dashboard |
+| `cost_per_research_run` | Gauge | `usage` chunks, grouped by `research_run_id` | Dashboard, incubation proposal review |
 | `cost_per_merged_pr` | Gauge | cost summed from dispatch → merge | Burn-rate gate |
 | `daily_cost_total` | Counter (reset daily) | `usage.cost_usd` | Budget gate |
 | `daily_cost_vs_cap` | Ratio | daily_cost_total / daily_cap from project config | Budget gate (starts denying at 80%) |
+
+### Incubation
+
+| Metric | Type | Source | Consumer |
+|---|---|---|---|
+| `incubation_capture_count` | Counter | `incubation.item.changed state=captured` | Dashboard |
+| `incubation_research_completion_rate` | Ratio | `incubation.research.update` | Dashboard, diagnose |
+| `incubation_promotion_rate` | Ratio | `incubation.proposal.changed state=applied`, `incubation.item.changed state=captured` | Dashboard |
+| `incubation_time_to_promotion_p50/p95` | Histogram | `incubation.item.changed`, `incubation.proposal.changed state=applied` | Dashboard |
+| `incubation_source_count_by_kind` | Counter | `incubation.source.recorded` | Dashboard |
+| `incubation_experiment_attempt_count` | Counter | `incubation.experiment.recorded` | Dashboard, budget review |
+| `incubation_experiment_keeper_rate` | Ratio | `incubation.experiment.recorded keep=true/false` | Dashboard, plateau detection |
+| `incubation_experiment_metric_delta` | Gauge | `incubation.experiment.recorded` | Dashboard, plateau detection |
+| `incubation_monitor_alert_rate` | Rate | `incubation.monitor.update alert=true` | Dashboard |
+| `incubation_monitor_cost_per_period` | Gauge | `usage.cost_usd`, grouped by `monitor_id` and period | Dashboard, budget review |
+| `incubation_outreach_approval_count` | Counter | `incubation.outreach.changed state=approved` | Dashboard, audit |
+| `incubation_outreach_response_count` | Counter | `incubation.outreach.changed response_recorded` | Dashboard |
+
+Incubation metrics are ordinary event projections. Source connectors, monitors, outreach records, and experiment attempts emit events; the existing projector computes metrics. Agents do not report scores that gate their own research or attempts.
 
 ### Provider health
 
@@ -124,7 +144,7 @@ Read by orchestrator diagnose + watchdog.
 
 Three-layer storage, aligned with the daemon's split of authoritative log vs queryable state (see `daemon.md`):
 
-1. **Events** — per-session JSONL (`log.jsonl`). The authoritative raw stream. Replayable.
+1. **Events** — per-session, setup-run, and incubation-item JSONL (`log.jsonl`). The authoritative raw stream. Replayable.
 2. **Projections** — SQLite tables under `db.sqlite`:
    - `session_metrics(session_id, metric_name, value, updated_at)` — current values
    - `scheduler_metrics`, `provider_metrics`, `system_metrics`, `orchestrator_metrics` — per-topic projection tables

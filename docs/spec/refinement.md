@@ -103,7 +103,7 @@ Where useful, prompts should convert abstract disagreement into visible evidence
 - visual diffs
 - API examples
 - benchmark outputs
-- preview links when the project can produce them
+- preview deployment links when the project can produce them; setup makes this the default for deployable projects unless the project explicitly opts out
 
 For UI uncertainty, screenshot-backed comparison is preferred over prose-only explanation.
 

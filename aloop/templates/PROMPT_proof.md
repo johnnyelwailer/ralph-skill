@@ -18,6 +18,7 @@ Choose the strongest available proof for the work that actually changed.
 
 Prefer evidence that a human can inspect quickly:
 
+- clickable preview deployment links
 - screenshots
 - visual diffs
 - API requests and responses
@@ -36,6 +37,19 @@ Reason through:
 4. Which artifacts would help compare variants or clarify an unresolved decision?
 
 Focus on proof that matters for the current Story, not exhaustive artifact spam.
+
+## Preview deployments
+
+When the project constitution or config says preview deployments are enabled, a clickable deployment or preview URL is the preferred proof artifact for every previewable PR / change set.
+
+For deployable changes:
+
+- find or produce the configured preview URL
+- verify that the URL opens and reflects the current change set
+- include the URL in the proof summary and artifact metadata
+- make the tracker comment ready for humans to click without reading logs
+
+If no preview URL is available, say whether the Story is not externally previewable, the project opted out during setup, or the preview mechanism failed.
 
 ## Variant and exploratory work
 
@@ -68,7 +82,7 @@ Each artifact description should say:
 
 - what it shows
 - why it matters
-- the relevant context such as URL, viewport, request, baseline, or benchmark target
+- the relevant context such as preview URL, viewport, request, baseline, or benchmark target
 
 ## Skip protocol
 
