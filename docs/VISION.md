@@ -1,8 +1,8 @@
 # Aloop — Vision
 
-**Aloop is a self-hosted, multi-provider autonomous development harness that turns a specification into merged code without continuous human supervision.**
+**Aloop is a self-hosted, multi-provider autonomous development harness that turns captured intent into researched, specified, tracked, reviewed, and merged code without continuous human supervision.**
 
-You write a spec. Aloop decomposes it into trackable Epics and Stories, dispatches parallel agent sessions against them, reviews their work against hard quality gates, merges approved changes into an agent-owned trunk branch, and surfaces everything through a real-time dashboard. You promote that trunk to your mainline when you're satisfied.
+You capture an idea or write a spec. Aloop can let the idea ripen through research and synthesis, promote it into setup/spec/tracker state when ready, decompose it into trackable Epics and Stories, dispatch parallel agent sessions against them, review their work against hard quality gates, merge approved changes into an agent-owned trunk branch, and surface everything through a real-time workstation. You promote that trunk to your mainline when you're satisfied.
 
 ## Who it's for
 
@@ -21,17 +21,19 @@ You write a spec. Aloop decomposes it into trackable Epics and Stories, dispatch
 ## What makes it different
 
 1. **Multi-provider parallel dispatch is the core promise.** Not "add another provider later" — the chain grammar (`provider[/track][@version]`), the per-turn fallthrough, the scheduler's quota-aware gating, and the cross-session load balancing are baked into the spec. One session can run Claude while the next runs OpenCode while a third runs Codex, all under one budget and one permit authority.
-2. **A scheduler that's actually in charge.** Every turn — standalone, orchestrator, child — acquires a permit before it runs. Concurrency caps are enforced, not hoped for. Burn-rate safety stops sessions that spend tokens without producing commits. Provider quotas are queried (where providers expose them) and cooldowns are real.
+2. **A scheduler that's actually in charge.** Every provider-backed turn — research, standalone, orchestrator, child — acquires a permit before it runs. Concurrency caps are enforced, not hoped for. Burn-rate safety stops sessions that spend tokens without producing commits. Provider quotas are queried (where providers expose them) and cooldowns are real.
 3. **Self-healing through prompts, not daemons.** When something goes wrong, the orchestrator runs a diagnose prompt that decides what to do — pause a session, raise a threshold, file a follow-up, try a different provider. Intelligent over scripted.
 4. **Tracker-agnostic from day one.** GitHub is the shipped adapter (with native sub-issues). The built-in file-based tracker needs zero external dependencies. GitLab, Linear, Jira adapters are future slots — no rewrite required.
 5. **Observable and resumable.** Every state change emits a structured event. JSONL per session is the authoritative log. SSE streams to the dashboard. The daemon crashes, restarts, and resumes. Sessions survive upgrades.
 6. **One API, many clients.** CLI, dashboard, Telegram bot, future integrations all consume the same v1 HTTP+SSE contract. No privileged paths. What you can do from the dashboard you can do from curl.
-7. **A lean core held in check by a constitution.** Core runtime target: under 2,000 LOC. Extensions under 800. Shims under 150. Files under 150. The constitution is what keeps the rebuild from turning into what the rebuild was rebuilding.
+7. **Incubation before implementation.** Vague ideas, links, screenshots, research questions, market signals, and long-running monitors live as durable daemon objects before they become setup runs, spec edits, Epics, Stories, or steering. The system can research and synthesize across governed sources without mutating the repo or tracker until promotion is explicit.
+8. **A lean core held in check by a constitution.** Core runtime target: under 2,000 LOC. Extensions under 800. Shims under 150. Files under 150. The constitution is what keeps the rebuild from turning into what the rebuild was rebuilding.
 
 ## What "aloop is working" looks like
 
 A good day on aloop:
 
+- You capture a half-formed product idea from your phone. Aloop attaches the link and screenshot, runs a bounded research task, and later shows a synthesis with two promotion options: create a spec-change proposal for an existing project or start setup for a new one.
 - You open the dashboard. Three child sessions are running in parallel across three different providers, each on its own Story, each in its own worktree. Two just merged. One is in review. The orchestrator session is scanning for what to dispatch next.
 - Live cost and burn-rate panels show you're at 40% of today's budget. One provider is in a 20-minute cooldown; the scheduler rerouted work to the others. No alerts.
 - You drop a steering instruction into the active Story: "Prefer the patch approach over the rewrite approach for this module." The next turn picks it up.
@@ -54,6 +56,7 @@ A bad day on aloop (and how it handles it):
 - Orchestrator session with Epic → Story decomposition, parallel dispatch, quality gates, merge-to-trunk, intelligent diagnose.
 - Rehabilitated React dashboard consuming only the v1 API.
 - Setup interview + runtime producing CONSTITUTION.md + a validated project in one flow, with orchestration blocked until every ambiguity is resolved.
+- Incubation inbox with capture, multi-source research runs, monitors, synthesis proposals, and explicit promotion into setup/spec/tracker/session targets.
 - Full TDD coverage of primitives, workflows, and engine.
 - Constitution invariants green across all LOC budgets.
 

@@ -2,7 +2,7 @@
 
 > **Reference document.** The layers, boundaries, and seams of the `aloopd` daemon. Hard rules live in CONSTITUTION.md. Work items live in GitHub issues.
 >
-> Sources: SPEC.md §Architecture, §Inner Loop vs Runtime, §Cross-Platform; `daemon.md`, `api.md`, `pipeline.md`, `provider-contract.md`, `work-tracker.md`.
+> Sources: SPEC.md §Architecture, §Inner Loop vs Runtime, §Cross-Platform; `daemon.md`, `api.md`, `pipeline.md`, `provider-contract.md`, `work-tracker.md`, `incubation.md`.
 
 ## Table of contents
 
@@ -28,7 +28,8 @@ A single long-running local daemon (`aloopd`) owns all state and scheduling. Eve
 ```
 ┌──────────────────────────────────────────────────────────────┐
 │  Clients                                                      │
-│    aloop CLI · Dashboard (React) · scripts · future integrations │
+│    aloop CLI · Dashboard · mobile web · bots · scripts       │
+│    future integrations                                       │
 │    loop.sh / loop.ps1 shim (≤150 LOC each)                    │
 └──────────────────────────────────────────────────────────────┘
               │ HTTP + SSE  (v1 API, localhost)
@@ -37,7 +38,9 @@ A single long-running local daemon (`aloopd`) owns all state and scheduling. Eve
 │  aloopd  (daemon, Bun TypeScript)                             │
 │                                                               │
 │    HTTP server · SSE hub · event bus                          │
-│    Session runner · workflow state machine · compile step     │
+│    Incubation inbox · research runs · promotion proposals      │
+│    Setup runs · session runner · workflow state machine       │
+│    Compile step                                               │
 │    Scheduler (permits: system / quota / burn-rate / concurrency)│
 │    Watchdog + reconcile jobs                                  │
 │    Project registry · overrides store                         │
@@ -78,13 +81,17 @@ This is the load-bearing decision:
 
 `aloopd` is the single process that owns:
 
+- **Incubation** — captured ideas, research runs, synthesis proposals, and explicit promotion into setup/spec/tracker/session targets (see `incubation.md`).
+- **Setup runs** — long-lived onboarding state before a project becomes `ready` (see `setup.md`).
 - **Sessions** — standalone, orchestrator, child. State machine, lifecycle, parent-child relationships (see `daemon.md` §Session kinds).
 - **Scheduler** — the only gate between "a turn is wanted" and "a turn is started." Composes gates for concurrency, system resources, per-provider quota, burn rate, and live overrides.
 - **Event bus** — aggregates events from all sessions into per-session JSONL and the global SSE stream. Every state change publishes.
 - **Compile step** — translates `pipeline.yml` into `loop-plan.json`. See `pipeline.md` §Compile step for the canonical description (single YAML reader in the system).
+- **Prompt context assembly** — resolves prompt `context` declarations through registered context plugins, injects bounded source-cited context blocks, and records what was injected. See `context.md`.
+- **Runtime extension manifests** — supervises typed project-code extensions such as `exec` steps and `context-provider`s through one manifest-backed execution model. See `pipeline.md` §Runtime extension manifests.
 - **Watchdog / reconcile** — stuck detection, provider quota refresh, permit expiry sweep, orphan cleanup, burn-rate tracking, crash recovery. All internal to the daemon; no external cron.
 - **Project registry** — N unrelated repos served by one daemon instance.
-- **Adapter orchestration** — invokes `ProviderAdapter` for agent turns, `TrackerAdapter` for decomposition/review/merge, and `SandboxAdapter` for session execution environments and deterministic exec steps.
+- **Adapter orchestration** — invokes `ProviderAdapter` for agent turns and research reasoning, `TrackerAdapter` for decomposition/review/merge, `SandboxAdapter` for session execution environments and deterministic exec/experiment steps, and future outreach/source adapters only through the same policy-controlled adapter pattern.
 
 Full detail in `daemon.md`.
 
@@ -105,13 +112,27 @@ CONSTITUTION rule: the shim must shrink, never grow. Any change that would push 
 
 ## Client responsibilities
 
-All other clients (CLI, dashboard, bots) translate user intent into API calls. They:
+All other clients (CLI, dashboard, mobile web, bots) translate user intent into API calls. They:
 
 - Render state they get from `GET /v1/...` endpoints.
 - Subscribe to SSE streams for live updates (`GET /v1/events`, `GET /v1/sessions/:id/events`, `GET /v1/sessions/:id/turns/:turn_id/chunks`).
 - Never persist their own state for things the daemon owns. Client-local state is limited to UI prefs, auth tokens, etc.
+- Treat incubation captures, research results, syntheses, comments, and promotion decisions as daemon-owned state, not local drafts once submitted.
 
 This keeps the system honest: if the CLI can do X, the dashboard can do X, because X is an API endpoint. If the dashboard needs Y that no one else has, the API is missing an endpoint — fix the API, not the dashboard.
+
+The end-to-end object flow is:
+
+```text
+incubation capture
+  -> research / synthesis
+  -> explicit promotion
+  -> setup run | spec proposal | Epic / Story | session steering | decision record
+  -> orchestrator / child sessions
+  -> artifacts, metrics, learning
+```
+
+Each arrow crosses the same daemon API boundary and emits events. There is no private dashboard path from a phone capture to a tracker issue or repo edit.
 
 ## Adapter surfaces
 
@@ -157,12 +178,15 @@ Agents are the least trusted principal. The daemon is the trust anchor.
 Explicit non-goals — decisions that must not drift back in:
 
 - **No business logic in the shim.** If shrinking requires moving logic, move it.
+- **No hidden intake channel.** Captures, research, and promotion proposals are first-class daemon state under `incubation.md`, not dashboard-local chat transcripts or ad hoc tracker issues.
 - **No YAML parsing outside the compile step.** Shims and session runner use `loop-plan.json`.
 - **No direct tracker calls from agents.** Always `aloop-agent submit` → daemon → adapter.
-- **No expressions or inline code in pipeline YAML.** Keywords (`onFailure: retry`, `trigger: merge_conflict`) are data; deterministic code runs through typed exec manifests; evaluation is daemon code.
+- **No expressions or inline code in pipeline YAML, prompt frontmatter, or daemon config.** Keywords (`onFailure: retry`, `trigger: merge_conflict`, `context: orch_recall`) are data; project-defined logic runs through typed runtime extension manifests.
+- **No parallel plugin systems.** New extensibility points must reuse the runtime extension manifest model unless there is a documented reason it cannot fit.
+- **No research-specific runtime.** Source acquisition, experiment attempts, monitors, outreach drafts, artifacts, metrics, and events reuse daemon adapters, runtime extension manifests, scheduler permits, SQLite projections, and JSONL logs.
 - **No second runtime process.** Orchestrators run as workflows in the same daemon, not separate binaries.
 - **No in-process state that outlives a request.** Session state is SQLite + JSONL, not daemon memory.
-- **No concurrency that bypasses the scheduler.** Every turn goes through the permit protocol, even for standalone single-session runs.
+- **No concurrency that bypasses the scheduler.** Every provider-backed session turn or incubation research turn goes through the permit protocol.
 - **No "aloop gh" treated specially.** GitHub is one adapter among potentially many; `security.md`'s policy table applies to all tracker adapters uniformly.
 
 These rules are not preferences. They are the architecture's load-bearing invariants; the rebuild exists to restore them.

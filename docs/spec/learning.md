@@ -42,6 +42,16 @@ aloop's macro-metrics (merge rate, burn rate, code quality) cannot be evaluated 
 
 AutoResearch IS the right tool for narrow, fast-eval problems within a Story's scope (flaky test stabilization, perf micro-optimization, coverage on a file). Those are covered by the `perf-opt` workflow in `workflows.md` and listed as Level-3 forward-compat in `self-improvement.md`. They are not the focus of this document.
 
+It is also the right mental model for incubation `experiment_loop` research when the project can name:
+
+- a human-owned research protocol
+- a narrow mutable surface
+- an immutable oracle/eval
+- a fixed budget per attempt
+- a daemon-computed metric and keep/reject rule
+
+See `docs/research/research-systems-2026.md` and `incubation.md` section Experiment loops.
+
 This document is about the harder problem: **learning what to change about the project's configuration and prompts so that future Stories produce better outcomes — measured over weeks of real production work, not minutes of synthetic experiment.**
 
 ## The right shape: continuous structured experimentation
@@ -267,9 +277,9 @@ The methodologies below are deliberately out of scope. Listing them so they don'
 
 Every methodology that crosses Level 2 or 3 must satisfy three criteria:
 
-1. **Daemon-computed metrics only.** The metric the optimizer reads is computed by the daemon's projector from events, not by the optimizer itself or any agent it dispatches. (See `metrics.md` §Emission discipline.)
+1. **Daemon-computed metrics only.** The metric the optimizer reads is computed by the daemon's projector from events, not by the optimizer itself or any agent it dispatches. (See `metrics.md` section Emission discipline.)
 2. **Human-gated decision boundary.** The optimizer's output is a proposal — a CR, a tuning request, a draft prompt — never an applied change. The daemon enforces that the optimizer cannot merge its own CR or apply its own tuning beyond bounds.
-3. **DGM test entry.** Every new optimizer capability has an entry in `_dgm-tests.md`: capability, what it can touch, cheat case, prevention, detection metric. (See `self-improvement.md` §The DGM test.)
+3. **DGM test entry.** Every new optimizer capability has an entry in `_dgm-tests.md`: capability, what it can touch, cheat case, prevention, detection metric. (See `self-improvement.md` section The DGM test.)
 
 If any of the three is missing, the capability does not ship. No exceptions.
 

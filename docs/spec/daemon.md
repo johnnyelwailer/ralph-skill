@@ -9,6 +9,7 @@
 - Role
 - Process model
 - State layout
+- Incubation
 - Project registry (multi-project)
 - Session kinds
 - Scheduler authority
@@ -23,6 +24,7 @@
 
 `aloopd` is the single process that owns:
 
+- **Incubation items, research runs, and promotion proposals**
 - **Active sessions** and their state machines
 - **Active setup runs** and their state machines
 - **Provider health, quota, and cooldown** state
@@ -52,6 +54,10 @@ No separate worker fleet in v1. Every session runs under daemon supervision with
   token                         bearer token (for remote/tunneled access)
   state/
     db.sqlite                   queryable state: sessions, permits, projects, health
+    incubation/
+      <id>/
+        log.jsonl               authoritative event history for one incubation item
+        artifacts/              attachments, research outputs, transcripts, synthesis evidence
     sessions/<id>/
       log.jsonl                 authoritative event history
       worktree/                 git worktree (for standalone/child sessions)
@@ -67,6 +73,24 @@ No separate worker fleet in v1. Every session runs under daemon supervision with
 - `log.jsonl` — **authoritative history**. What *happened*. Append-only, `fsync` per line, crash-safe. Replayable.
 
 The two never overlap. SQLite is a projection of truth; JSONL is the truth. On corruption or schema change, SQLite is rebuildable from JSONL via a deterministic projector.
+
+## Incubation
+
+Incubation is daemon-owned state for captures, research, synthesis, and explicit promotion before setup, tracker, or implementation work begins.
+
+Practical consequences:
+
+- An incubation item may be global, project-scoped, or tied to a candidate project path/repo.
+- Background research may run for minutes or days while the item remains open.
+- Monitors may schedule recurring research runs on a bounded cadence with explicit budget and alert policy.
+- Research uses provider adapters and scheduler permits, but it is non-mutating by default.
+- Source acquisition uses runtime extension manifests and daemon policy, not arbitrary agent network access.
+- Experiment-loop attempts use the existing sandbox adapter and deterministic exec-step/event pipeline, not a separate runner.
+- Outreach uses the same policy-controlled adapter pattern as tracker/provider integrations; draft/analyze is allowed before any outbound adapter exists.
+- Promotion creates normal target objects through their existing APIs: setup runs, spec proposals, tracker work items, session steering, or decision records.
+- Mobile web, dashboard, CLI, and bots all attach to the same item through the HTTP API.
+
+The detailed contract lives in `incubation.md`; this document's invariant is that intake and research are durable daemon state, not client-owned conversation state.
 
 ## Project registry
 
@@ -137,7 +161,7 @@ Three kinds, one table, same API.
 
 ## Scheduler authority
 
-The scheduler is the **only gate** between a turn being "wanted" and a turn being "started." Every turn — standalone, orchestrator, child — acquires a permit first.
+The scheduler is the **only gate** between a provider turn being "wanted" and a provider turn being "started." Every provider-backed turn — standalone, orchestrator, child, or incubation research — acquires a permit first.
 
 **Permit gates (composed, all must grant):**
 
@@ -149,7 +173,7 @@ The scheduler is the **only gate** between a turn being "wanted" and a turn bein
 6. **Project gate** (optional) — per-project concurrency cap and daily cost cap if configured.
 
 **Permit lifecycle:**
-- `POST /v1/scheduler/permits` — acquire. Body: `{ session_id, provider_candidate, estimated_cost }`. Returns granted permit with `ttl` or denial with reason.
+- `POST /v1/scheduler/permits` — acquire. Body: `{ session_id? | research_run_id?, provider_candidate, estimated_cost }`. Returns granted permit with `ttl` or denial with reason.
 - Permit is written to SQLite before the turn starts. Survives daemon crash (the turn is marked interrupted on restart if the permit is found in-flight).
 - Turn completion → `DELETE /v1/scheduler/permits/:id` releases.
 - TTL expiry without release → scheduler reclaims, emits `scheduler.permit.expired`.
@@ -169,6 +193,7 @@ Internal to the daemon, not external cron. Run on a tick (default 15s, configura
 | **Permit expiry sweep** | Release expired permits | Reclaim capacity, emit event |
 | **Orphan worker** | Child process has no corresponding session | Kill process, log |
 | **Burn-rate watch** | Per-session token/commit ratio | Deny future permits for that session, emit `scheduler.burn_rate_exceeded` |
+| **Incubation monitor tick** | Monitor `next_run_at` is due and budget/policy permits | Create a normal research run with `monitor_id`, emit `incubation.monitor.update` |
 | **Crash recovery** | At startup only: scan sessions marked `running` | Move to `interrupted`, offer resume via API |
 
 All watchdog findings publish events on the global bus. Self-healing behavior is an **orchestrator workflow** subscribing to those events — not daemon-side logic.

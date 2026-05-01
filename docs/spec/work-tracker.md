@@ -41,6 +41,8 @@ The contract is:
 
 Setup may establish the **initial Epic baseline** for orchestrator-mode projects during the final setup handoff, but after handoff the runtime orchestrator owns **living decomposition** and all further tracker-side decomposition changes.
 
+Pre-work ideas do not belong in the tracker by default. Raw captures, vague requests, links, screenshots, and background research live in the incubation layer until a proposal is explicitly promoted into an Epic, Story, spec change, setup run, or steering instruction. See `incubation.md`.
+
 ## Trust boundary
 
 Same boundary as all other aloop side effects. Agents do not call `gh`, `glab`, Linear API, or any tracker CLI. Agents **express intent** through `aloop-agent submit --type <decompose_result|sub_decompose_result|refine_result|estimate_result|consistency_result|review_result|...>`; the daemon routes that intent to the active `TrackerAdapter`, which executes the operation under a policy that the daemon enforces.
@@ -69,6 +71,7 @@ Aloop models work at three levels. Only the first two are tracked externally; th
 Why this split:
 
 - Epic and Story are human-reviewable, long-lived, permission-scoped — they belong in the tracker humans already use.
+- Incubation items are immature, evidence-gathering, or decision-seeking — they belong in daemon-owned incubation until promoted.
 - Tasks are generated and mutated dozens of times per Story. Syncing them to the tracker would produce noise (issue spam, webhook storms) and slow the loop. Keep them session-local by default.
 - The daemon already has to track tasks for routing and completion detection — integrating that with the tracker is an optional convenience, not a requirement.
 
@@ -453,10 +456,11 @@ CR #192 (comment-driven PR lifecycle) and CR #134 (inline review) are adapter co
 
 Comments on work items and change sets are markdown bodies and may carry `artifact_refs`.
 
-This supports two complementary patterns:
+This supports three complementary patterns:
 
 - **attachments** — a client or prompt attaches proof artifacts, screenshots, diffs, or mockups alongside the comment
 - **inline images** — the markdown body embeds daemon-managed artifact URLs directly, typically for screenshots or visual comparisons
+- **preview links** — the markdown body includes a clickable deployment or preview URL for the change set when the project has preview deployments enabled
 
 Adapter behavior:
 

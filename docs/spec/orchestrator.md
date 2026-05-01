@@ -36,6 +36,7 @@ The runtime orchestrator owns **living decomposition**. Setup may establish the 
 That includes reacting to:
 
 - change requests that alter scope or priorities
+- incubation proposals promoted into spec changes, Epics, Stories, or steering
 - edited spec chapters or rewritten requirements
 - comments on Epics / Stories
 - implementation discoveries that require splitting, merging, or re-sequencing work
@@ -114,6 +115,8 @@ The daemon's `TrackerAdapter` (GitHub, builtin, or future GitLab/Linear/etc.) tr
 | `merge_request` | Approved change set ready to merge | Daemon (not adapter) calls `mergeChangeSet` per policy |
 
 Orchestrator prompts **never** include raw tracker URLs, tracker-specific labels, or API calls in their body. Prompts may reference issues by `slug` (decomposition) or by `ref` (`{adapter, key}`) after creation.
+
+The orchestrator does not read the incubation inbox as a backlog. Incubation becomes orchestrator input only after explicit promotion into a spec proposal, Epic, Story, or steering instruction. This prevents raw ideas from bypassing refinement, file-scope ownership, and workflow selection gates.
 
 ## State machine
 

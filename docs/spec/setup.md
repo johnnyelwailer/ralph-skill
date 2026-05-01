@@ -37,6 +37,7 @@ Setup defines the trajectory of every project using aloop.
 - **SPEC.md, CONSTITUTION.md, `aloop/config.yml`, `aloop/pipeline.yml`** — the four artifacts every loop iteration reads, directly or transitively. Everything downstream is a consequence of what setup writes.
 - **The daemon's project registry** — the set of repos the daemon is willing to run sessions against. Setup is the sole legitimate path to registration (see `daemon.md` §Project registry).
 - **The compile step's inputs** — `pipeline.yml` is authored by setup; the compile step turns it into `loop-plan.json`; the shim and the daemon only read the compiled output (see `pipeline.md` §Compile step).
+- **Incubation promotion** — setup may be started from a matured incubation proposal, but setup still owns readiness and may reject or reopen assumptions from the proposal.
 
 Setup is not a one-time script. It is one orchestrated workflow with multiple shells:
 
@@ -91,6 +92,7 @@ Setup is addressable from multiple surfaces. They all converge on the same daemo
 | `aloop setup` | CLI (interactive) | Human in a terminal, first-time setup |
 | `aloop setup --non-interactive` | CLI (flags) | CI, scripted provisioning, `aloop setup` invoked by a parent agent |
 | Dashboard setup wizard | Rich UI over HTTP API | User reviewing progress, chapters, drafts, and comments |
+| Incubation promotion | Inbox/research proposal over HTTP API | User turning a matured idea into a setup run |
 | `/aloop:setup` | Slash command / external chat host | Claude Code, opencode, or any harness that supports slash commands |
 | `aloop setup <path>` | CLI from outside the target | Configuring a sibling project without `cd` |
 | `POST /v1/projects` + `POST /v1/setup/runs` | API direct | Dashboard, bot, remote orchestration |
@@ -212,8 +214,9 @@ Topics (in order; depth adapts to maturity):
 6. **Budget cap** — daily or per-orchestrator USD ceiling for pay-per-use providers. Consumed by the scheduler's burn-rate gate (see `provider-contract.md` §Cost and usage capture).
 7. **Devcontainer** — yes (new) / yes (existing) / no. When yes, the auth resolution strategy (`mount-first | env-first | env-only`) is surfaced with per-provider method preview (see `devcontainer.md`).
 8. **Validation commands** — exact commands that constitute "this build is verified" (typecheck, lint, test, e2e, build). Used by the review agent's Gate 5 and by setup's own Phase 6 verification.
-9. **Safety rules** — project-specific guardrails beyond the baseline (e.g., "never modify the database schema without a migration"). Folded into CONSTITUTION.md.
-10. **Data privacy** — `private` or `public`. `private` enables ZDR-specific provider configuration (see §File scaffolds for what this triggers).
+9. **Preview deployments** — default-on for deployable web/API products when the repository or host can provide PR preview URLs (Vercel, Netlify, Render, Railway, Fly, custom deploy script, tunnel, or equivalent). Setup records the mechanism or the explicit opt-out reason. The generated constitution should require every previewable PR / change set to carry a clickable deployment or preview URL in its tracker comment before review approval.
+10. **Safety rules** — project-specific guardrails beyond the baseline (e.g., "never modify the database schema without a migration"). Folded into CONSTITUTION.md.
+11. **Data privacy** — `private` or `public`. `private` enables ZDR-specific provider configuration (see §File scaffolds for what this triggers).
 
 The interview never prompts for **runtime** defaults (thresholds, timeouts, concurrency caps, polling intervals) — those belong in `daemon.yml` and `pipeline.yml` and are edited directly. Setup's job is project intent, not scheduler tuning.
 
@@ -269,7 +272,7 @@ The setup orchestrator keeps drilling into these items until they are either res
 
 ### Phase 4: Chapter review and plan confirmation
 
-Once the latest readiness verdict is `resolved`, setup renders the exact plan it is about to apply: selected mode, tracker, setup-analysis provider set, runtime provider chain, validation commands, privacy mode, devcontainer strategy, generated artifacts, and any advisory sensitivity hints. For previewable artifacts, setup shows drafts before writing them. Greenfield `SPEC.md` / `CONSTITUTION.md` previews are reviewed here, then written in Phase 5 if approved.
+Once the latest readiness verdict is `resolved`, setup renders the exact plan it is about to apply: selected mode, tracker, setup-analysis provider set, runtime provider chain, validation commands, preview-deployment policy, privacy mode, devcontainer strategy, generated artifacts, and any advisory sensitivity hints. For previewable artifacts, setup shows drafts before writing them. Greenfield `SPEC.md` / `CONSTITUTION.md` previews are reviewed here, then written in Phase 5 if approved.
 
 The review surface is chapter/document-oriented, not just a flat summary:
 
@@ -293,8 +296,19 @@ Generation turns the `DiscoveryResult` + resolved `InterviewResult` into artifac
 
 Artifacts (see §File scaffolds for full list):
 
-- **CONSTITUTION.md** — generated by a dedicated subagent that scans SPEC.md and interview answers for architectural invariants, layer separations, trust boundaries, protocol contracts, and ownership rules, then distills 10–30 actionable one-sentence rules grouped by category (Architecture, Security, Protocol, Ownership). Per CR #233: "rules must be independently enforceable in a code review — not vague principles but specific constraints with clear pass/fail criteria." Referenced at runtime via `{{CONSTITUTION}}` (see `pipeline.md` §Template variable reference).
-- **`aloop/config.yml`** — project-level configuration consumed by the daemon: tracker adapter, status/label maps, provider chain, validation commands, safety rules, privacy policy, budget cap, sensitivity hints.
+- **CONSTITUTION.md** — generated by a dedicated subagent that scans SPEC.md and interview answers for architectural invariants, layer separations, trust boundaries, protocol contracts, ownership rules, and preview-deployment policy, then distills 10–30 actionable one-sentence rules grouped by category (Architecture, Security, Protocol, Ownership, Evidence). Per CR #233: "rules must be independently enforceable in a code review — not vague principles but specific constraints with clear pass/fail criteria." For deployable products, the default Evidence rule is: every previewable PR / change set must include a clickable deployment or preview URL in its tracker comment before review approval, unless setup recorded an explicit opt-out or the Story is not externally previewable. Referenced at runtime via `{{CONSTITUTION}}` (see `pipeline.md` §Template variable reference).
+- **`aloop/config.yml`** — project-level configuration consumed by the daemon: tracker adapter, status/label maps, provider chain, validation commands, safety rules, preview-deployment policy, privacy policy, budget cap, sensitivity hints. Preview deployment policy is explicit data, for example:
+
+  ```yaml
+  evidence:
+    preview_deployments:
+      enabled: true
+      mechanism: vercel
+      url_source: tracker_deployment_status
+      opt_out_reason: null
+  ```
+
+  If disabled, `opt_out_reason` is required so proof and review agents can distinguish an intentional project choice from a missing deployment.
 - **`aloop/pipeline.yml`** — authored workflow (pipeline + finalizer + triggers). The compile step resolves it into `loop-plan.json` on first session start (see `pipeline.md` §Workflow vs pipeline vs loop-plan).
 - **`.devcontainer/devcontainer.json`** — written only when the devcontainer option is selected; generator consults per-provider auth resolution (`devcontainer.md` §Auth resolution) and the chosen strategy.
 - **`.aloop/tracker/`** — initialized only when `tracker.adapter: builtin` (see `work-tracker.md` §Built-in adapter); seeded with a monotonic id counter and an empty `events.jsonl`.
@@ -521,6 +535,7 @@ Setup is the seam where abstract design becomes concrete project state. Each dow
 | **Compile step** (`pipeline.md`) | `pipeline.yml`, prompt templates, `{{CONSTITUTION}}` / `{{SPEC_FILES}}` / `{{VALIDATION_COMMANDS}}` | Plan compile fails, surfaced during Phase 6; no session starts |
 | **Orchestrator** (`orchestrator.md`) | `agent/trunk` branch, tracker adapter, spec files to decompose, sensitivity hints | Decompose runs against missing / stale spec, produces bad Epics |
 | **Tracker adapter** (`work-tracker.md`) | Adapter id + config, status map, label map, webhook config | Adapter fails `ping()`; orchestrator cannot file Epics |
+| **Proof / review agents** | CONSTITUTION preview-deployment rule, preview mechanism or opt-out reason from `aloop/config.yml` | Humans get screenshots or prose but no clickable PR deployment even though the project can provide one |
 | **Sandbox backend** (`devcontainer.md`) | `.devcontainer/devcontainer.json` for the v1 backend, auth-resolution strategy, later backend selection | Sandbox fails to start; provider auth unavailable inside sandbox |
 | **Agent contract** (`pipeline.md` §Agent contract) | `aloop-agent` on `PATH` inside worktrees and the container | Agents cannot submit; every turn fails validation |
 | **Review / QA agents** | `CONSTITUTION.md`, `docs/conventions/`, validation commands | First-review-dimension compliance check has nothing to enforce |
@@ -558,11 +573,12 @@ Setup handles the following without surprising the user:
 3. **Setup is reproducible.** Same inputs (discovery snapshot + interview answers) produce the same outputs, modulo external state (PATH, auth tokens, remote tracker state).
 4. **Setup is idempotent.** Running it twice with identical answers is a no-op. Diff-and-apply semantics, not blind overwrite.
 5. **Setup never edits CONSTITUTION.md silently after first generation.** Changes go through the CR workflow — the constitution is a tracked artifact like any spec file, not a scratchpad.
-6. **Setup never installs a provider's auth globally.** It only forwards what the host already has (env vars, auth files per `devcontainer.md` §Auth resolution). It does not run interactive OAuth flows, does not write to `~/.config/` outside `~/.aloop/`, does not touch OS keychains.
-7. **Setup's readiness judgment is explicit and authoritative.** Blocking ambiguities must be resolved before scaffold, verification, or runtime orchestration bootstrap. There is no "best effort" promotion past an unresolved blocking judgment.
-8. **Whole-codebase discovery is the default.** Repository understanding for setup may use summarization and progressive deepening internally, but it does not rely on a tiny sampled slice as the contract boundary.
-9. **Setup's verification is the single source of truth for "this project is ready to run a loop."** `aloop start` refuses to launch against a project whose `status` is not `ready`.
-10. **Setup is one backend workflow with multiple shells.** CLI, dashboard, and skill/chat hosts all operate the same daemon-owned setup run. No shell has privileged setup logic.
-11. **Intelligent default selection is a setup-shell concern, not a daemon-side silent fallback.** The daemon enumerates missing configuration and enforces gates; the shell and setup-side agents gather the needed answers. There are no hidden runtime defaults in setup's code path.
-12. **Setup runs through the daemon API.** The CLI is a shim, the dashboard is a richer client, and the skill/chat host is a recipe over the same path. No entry has a privileged back door that writes directly to the filesystem, the tracker, or the registry.
-13. **Setup artifacts in the project root are committed with the code.** `CONSTITUTION.md`, `aloop/`, `docs/conventions/`, `.devcontainer/`, `.opencode/agents/` are versioned alongside the code so the project's intent is reviewable, blame-able, and revertable like any other source file.
+6. **Deployable projects default to clickable PR previews.** Setup records preview deployments as enabled whenever discovery finds a viable mechanism, and the generated constitution carries the review rule. Disabling this requires an explicit opt-out reason.
+7. **Setup never installs a provider's auth globally.** It only forwards what the host already has (env vars, auth files per `devcontainer.md` §Auth resolution). It does not run interactive OAuth flows, does not write to `~/.config/` outside `~/.aloop/`, does not touch OS keychains.
+8. **Setup's readiness judgment is explicit and authoritative.** Blocking ambiguities must be resolved before scaffold, verification, or runtime orchestration bootstrap. There is no "best effort" promotion past an unresolved blocking judgment.
+9. **Whole-codebase discovery is the default.** Repository understanding for setup may use summarization and progressive deepening internally, but it does not rely on a tiny sampled slice as the contract boundary.
+10. **Setup's verification is the single source of truth for "this project is ready to run a loop."** `aloop start` refuses to launch against a project whose `status` is not `ready`.
+11. **Setup is one backend workflow with multiple shells.** CLI, dashboard, and skill/chat hosts all operate the same daemon-owned setup run. No shell has privileged setup logic.
+12. **Intelligent default selection is a setup-shell concern, not a daemon-side silent fallback.** The daemon enumerates missing configuration and enforces gates; the shell and setup-side agents gather the needed answers. There are no hidden runtime defaults in setup's code path.
+13. **Setup runs through the daemon API.** The CLI is a shim, the dashboard is a richer client, and the skill/chat host is a recipe over the same path. No entry has a privileged back door that writes directly to the filesystem, the tracker, or the registry.
+14. **Setup artifacts in the project root are committed with the code.** `CONSTITUTION.md`, `aloop/`, `docs/conventions/`, `.devcontainer/`, `.opencode/agents/` are versioned alongside the code so the project's intent is reviewable, blame-able, and revertable like any other source file.

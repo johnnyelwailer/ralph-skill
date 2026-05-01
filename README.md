@@ -1,6 +1,6 @@
 # aloop
 
-> Self-hosted, multi-provider autonomous development harness that turns a spec into merged code without continuous human supervision.
+> Self-hosted, multi-provider autonomous development harness that turns captured intent into researched, specified, tracked, reviewed, and merged code without continuous human supervision.
 
 **Status:** rebuild in progress on branch `next`. Pre-rebuild code lived under `aloop/` on `master`; it is retired. The new architecture is a single daemon (`aloopd`) with a typed API, a scheduler-with-permits, tracker-agnostic Epic/Story/Task work items, and a workflow catalog per Story type.
 
@@ -9,8 +9,8 @@
 - **[docs/VISION.md](docs/VISION.md)** — the product: who it's for, what it does, why it exists.
 - **[docs/CONSTITUTION.md](docs/CONSTITUTION.md)** — non-negotiable invariants. Read before contributing.
 - **[docs/DELIVERY_PLAN.md](docs/DELIVERY_PLAN.md)** — twelve milestones from spec to shipped v1.
-- **[docs/spec/](docs/spec/)** — 20 reference docs covering architecture, daemon, API, pipeline, providers, trackers, orchestrator, agents, security, workflows, metrics, self-improvement, learning, setup, devcontainer.
-- **[docs/research/](docs/research/)** — outside research that informed the rebuild (Karpathy AutoResearch, Anthropic, Cognition, OpenHands, etc.).
+- **[docs/spec/](docs/spec/)** — reference docs covering architecture, daemon, API, incubation, pipeline, providers, trackers, orchestrator, agents, security, workflows, metrics, self-improvement, learning, setup, devcontainer.
+- **[docs/research/](docs/research/)** — outside research that informed the rebuild (Karpathy AutoResearch, Deep Research systems, Anthropic, Cognition, OpenHands, etc.).
 
 ## Repo layout
 

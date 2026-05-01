@@ -2,7 +2,7 @@
 
 > **Reference document.** The dashboard is the human operator workstation for aloop. It is still only an HTTP/SSE client of the daemon: no privileged backend, no hidden state, no UI-only mutations. If the workstation needs something the CLI cannot also do through the API, the API is missing an endpoint.
 
-The earlier draft intentionally kept this file thin. That is no longer enough. The product promise in `VISION.md`, `setup.md`, `metrics.md`, `work-tracker.md`, and `api.md` already implies a much richer surface: setup shell, runtime control plane, tracker editing, session inspection, artifacts, provider health, cost, and configuration. This document specifies that workstation at the product level. Visual implementation details stay in `DESIGN_BRIEF.md`; transport and payload shapes stay in `api.md`.
+The earlier draft intentionally kept this file thin. That is no longer enough. The product promise in `VISION.md`, `incubation.md`, `setup.md`, `metrics.md`, `work-tracker.md`, and `api.md` already implies a much richer surface: capture inbox, research queue, setup shell, runtime control plane, tracker editing, session inspection, artifacts, provider health, cost, and configuration. This document specifies that workstation at the product level. Visual implementation details stay in `DESIGN_BRIEF.md`; transport and payload shapes stay in `api.md`.
 
 ## Table of contents
 
@@ -16,6 +16,7 @@ The earlier draft intentionally kept this file thin. That is no longer enough. T
 - Chat interaction model
 - Real-time model
 - Layout and customization
+- Incubation workstation
 - Setup workstation
 - Runtime workstation
 - Tracker and planning workstation
@@ -34,6 +35,9 @@ The earlier draft intentionally kept this file thin. That is no longer enough. T
 The dashboard is not a vanity status page. It is the **human control surface** for a system that otherwise runs autonomously:
 
 - setup a project
+- capture raw ideas before they are projects or work items
+- start and inspect non-mutating research tasks
+- synthesize immature ideas into reviewable proposals
 - understand what the orchestrator is doing now
 - inspect why it made a decision
 - steer or stop work at any level
@@ -52,8 +56,8 @@ It therefore needs multiple levels of abstraction in one shell, not a single log
 ## Core principles
 
 1. **API-first, always.** The workstation consumes the same daemon API as every other client.
-2. **One shell for setup and runtime.** Setup is not a separate mini-app. Runtime control is not a separate admin app.
-3. **Hierarchy is first-class.** Users reason in trees: project → setup run / orchestrator → epic → story → session → turn → artifact.
+2. **One shell for all phases.** Incubation, setup, planning, runtime, review, and learning are not separate products.
+3. **Hierarchy is first-class.** Users reason in trees: inbox item → research run / proposal → project → setup run / orchestrator → epic → story → session → turn → artifact.
 4. **Realtime is core, not garnish.** Streaming state, event tails, chunk streams, and live metrics are default behavior.
 5. **Control at multiple altitudes.** The user must be able to act on the whole project, one orchestrator, one work item, one session, or one queued instruction.
 6. **Discussion before mutation when useful.** Editing spec chapters, tracker items, or synthesized changes should support comment/reason/preview loops before commit.
@@ -68,9 +72,10 @@ It therefore needs multiple levels of abstraction in one shell, not a single log
 The workstation may ship in more than one shell:
 
 - **Web app** over the daemon's HTTP/SSE API
+- **Mobile web** over the same API, optimized for capture, triage, research status, comments, and proposal approval
 - **ElectroBun desktop shell** around the same web client, for a more Codex-like workstation feel, local shell integration, better window management, and native notifications
 
-The desktop form is an alternative shell, not a separate product. It may add native affordances, but it does not get privileged operations.
+The desktop and mobile forms are alternative shells, not separate products. They may add native affordances, but they do not get privileged operations.
 
 ## Desktop shell responsibilities
 
@@ -107,9 +112,15 @@ The core navigation model is a **hierarchical sidebar tree** with optional saved
 Illustrative top-level tree:
 
 - Home
+- Inbox / Incubation
+  - Captures
+  - Research
+  - Proposals
+  - Ready to promote
 - Projects
   - Project
     - Overview
+    - Incubation
     - Setup
     - Spec
     - Tracker
@@ -150,6 +161,7 @@ The workstation should also provide:
 - pinned items / favorites
 - recent sessions and artifacts
 - deep links to exact project, session, turn, story, or artifact views
+- deep links to exact incubation item, research run, proposal, or promotion target
 
 ## Primary surfaces
 
@@ -169,7 +181,26 @@ The overview is the global control room:
 
 This is where the user answers: "Is the system healthy, productive, and worth letting run?"
 
-### 2. Work tracker
+### 2. Incubation
+
+The incubation surface is the front door for work before it is ready for setup, spec, or implementation:
+
+- quick capture inbox
+- item detail with provenance, comments, labels, related items, and artifacts
+- research queue and research-run inspector
+- source plan editor for docs, web, video, forums, social, repositories, issue trackers, market data, and user-provided artifacts
+- cited source browser with transcripts, screenshots, retrieval timestamps, and limitations
+- experiment-loop workbench for AutoResearch-style protocols, immutable oracle, mutable surface, attempt ledger, and best/rejected candidates
+- monitor workspace for recurring/continuous tracking tasks with cadence, budget, alert conditions, and delta history
+- outreach workspace for survey/interview drafts, approval gates, consent/privacy checks, and response analysis
+- findings and evidence browser
+- proposal synthesis with preview-before-apply
+- promotion target picker
+- mobile-friendly triage
+
+This is where the user answers: "What is this thought, what do we know about it, and what should it become?"
+
+### 3. Work tracker
 
 The tracker surface is the planning and prioritization view:
 
@@ -183,7 +214,7 @@ The tracker surface is the planning and prioritization view:
 
 The user must be able to create, edit, split, merge, prioritize, re-order, relabel, and comment on Epics and Stories from here.
 
-### 3. Session inspector
+### 4. Session inspector
 
 The session surface is the loop microscope:
 
@@ -198,7 +229,7 @@ The session surface is the loop microscope:
 
 This is where the user answers: "What exactly happened in this loop?"
 
-### 4. Spec and discussion
+### 5. Spec and discussion
 
 The spec surface is for reviewing, discussing, and evolving structured documents:
 
@@ -212,7 +243,7 @@ The spec surface is for reviewing, discussing, and evolving structured documents
 
 The user should be able to argue with the system here before the system rewrites the source of truth.
 
-### 5. Artifacts
+### 6. Artifacts
 
 The artifact surface is an evidence browser:
 
@@ -227,7 +258,7 @@ The artifact surface is an evidence browser:
 
 Artifacts must be grouped by project, story, session, and run phase.
 
-### 6. Control center
+### 7. Control center
 
 The control center exposes runtime and configuration levers:
 
@@ -238,7 +269,7 @@ The control center exposes runtime and configuration levers:
 - budget caps
 - setup and runtime policy settings
 
-### 7. Setup workstation
+### 8. Setup workstation
 
 The setup surface is a first-class shell for the long-lived onboarding flow:
 
@@ -258,6 +289,9 @@ The workstation must support both **fine-grained** and **high-level** control.
 
 Actions scoped to the whole project or orchestrator:
 
+- capture a new idea or research request
+- start, pause, resume, or cancel an incubation research run
+- apply or reject an incubation proposal
 - start / resume setup
 - start / stop / pause an orchestrator
 - reprioritize epics or stories
@@ -269,6 +303,8 @@ Actions scoped to the whole project or orchestrator:
 
 Actions scoped to work items:
 
+- classify or relate incubation items
+- promote an incubation proposal to setup, spec, tracker, steering, decision record, or discard
 - create epic/story
 - edit title, body, scope, acceptance criteria, labels, assignees, priority
 - split or merge stories
@@ -287,7 +323,7 @@ Actions scoped to sessions or turns:
 
 ### Discussion-before-apply
 
-For spec mutations, tracker synthesis, and setup chapter edits, the preferred control loop is:
+For incubation promotion, spec mutations, tracker synthesis, and setup chapter edits, the preferred control loop is:
 
 1. Proposed change appears with rationale and provenance.
 2. User comments, revises, or asks the agent to reason about it.
@@ -319,6 +355,7 @@ What not to borrow:
 The chat surface is most useful for:
 
 - steering a running session
+- clarifying an incubation item or research finding
 - discussing a spec section or proposed synthesis
 - asking the system to explain a decision
 - iterating on comments before applying them to tracker/spec state
@@ -330,7 +367,7 @@ The chat experience should feel operationally sharp:
 
 - **optimistic send behavior**: the user's message appears immediately
 - **incremental streaming**: chunks append smoothly rather than re-rendering the full transcript on every delta
-- **context pinning**: the active project/story/session/spec section is visible and editable as chat scope
+- **context pinning**: the active incubation item/project/story/session/spec section is visible and editable as chat scope
 - **interruptibility**: stop generation, retry, branch, or continue from a prior message
 - **history durability**: every useful exchange can be replayed or linked back to the underlying object it affected
 - **artifact-aware**: attach logs, proofs, diffs, comments, or exact run outputs into the conversation without copy-paste gymnastics
@@ -343,7 +380,7 @@ The composer should behave more like a professional tool than a generic textarea
 - autosize within tight bounds
 - keyboard send by default, newline via modifier
 - slash-style quick actions for common intents (`/steer`, `/explain`, `/comment`, `/apply`, `/stop`)
-- visible scope chips for the current target (`project`, `epic`, `story`, `session`, `spec section`)
+- visible scope chips for the current target (`incubation item`, `project`, `epic`, `story`, `session`, `spec section`)
 - drop targets or picker affordances for artifacts and context objects
 - preserved draft state per target where practical
 
@@ -381,6 +418,8 @@ It should combine:
 
 Live views include:
 
+- incubation item/proposal changes
+- research run progress and findings
 - session state changes
 - event tails
 - provider health transitions
@@ -412,6 +451,7 @@ Required layout characteristics:
 Recommended default layouts:
 
 - **Overview**: tree + project summary + activity + health
+- **Incubation**: inbox/list + selected item + research/proposal rail
 - **Operator**: tree + board/list + session detail + control rail
 - **Inspector**: tree + transcript/log + artifacts + metrics
 - **Setup**: tree + question/review panel + background research + status rail
@@ -422,6 +462,36 @@ Customization should be constrained:
 - users may pin preferred surfaces
 - the system should ship opinionated presets
 - layout freedom must not make onboarding or support impossible
+
+## Incubation workstation
+
+The dashboard is also the intake and maturation surface for ideas that are not ready to become work.
+
+The incubation workstation needs:
+
+- fast capture from desktop and phone
+- inbox filters by state, project scope, label, priority, and age
+- item detail with source provenance, comments, artifacts, and related items
+- research run creation, progress, event replay, findings, cost, and artifacts
+- source records, transcripts, citations, and acquisition limitations
+- experiment protocol review, attempt ledger, metric chart, plateau detection, and winner proposal
+- monitor creation, cadence/budget controls, alert review, and delta history
+- outreach/survey planning with explicit approval and consent/privacy checks
+- synthesis/proposal review with rationale and evidence
+- explicit promotion controls for setup, spec proposal, Epic, Story, steering, decision record, or discard
+- backlinks from promoted targets to the originating incubation item
+
+Mobile should optimize for the narrow high-value loop:
+
+- capture quickly
+- add context or attachments
+- triage state/label/priority
+- start lightweight research
+- pause/resume monitors and review alerts
+- comment on findings
+- approve or reject a ready proposal
+
+The incubation UX should not feel like a ticket form. It should feel like a durable thinking surface: quick to enter, slow enough to preserve provenance, and explicit at the moment an idea becomes real work.
 
 ## Setup workstation
 
@@ -515,6 +585,7 @@ Required surfaces:
 - scheduler permits and denial reasons
 - burn-rate and keeper-rate
 - per-story, per-epic, per-session, and daily cost views
+- per-research-run cost and incubation time-to-promotion views
 - comparison over time where metrics support it
 - recent failure classification
 
@@ -543,6 +614,9 @@ This document does not define payloads. It does define capability classes the AP
 
 Beyond the already-documented session, setup, provider, scheduler, and metrics endpoints, the workstation will require first-class API support for:
 
+- incubation item capture, detail, mutation, comments, research, proposals, and promotion
+- source records, monitor CRUD, monitor run history, and outreach approval/response records
+- experiment-loop attempt history and protocol records
 - work-item list/detail/mutation
 - work-item comments and discussion
 - board/list ordering and prioritization mutations
@@ -561,6 +635,8 @@ The workstation should be specified in two layers: **v1 operable shell** and **r
 
 Must include:
 
+- incubation inbox with capture, item detail, comments, research status, and proposal application
+- monitor list/detail and source provenance display
 - project/session navigation
 - session list and detail with live event tail
 - provider health
@@ -577,6 +653,10 @@ This aligns with `DELIVERY_PLAN.md` M11.
 
 Adds:
 
+- mobile-first capture and triage
+- richer incubation research/proposal workbench
+- market-research workspace with monitors, source comparison, survey/interview planning, and response synthesis
+- experiment-loop workspace for fixed-oracle trials and AutoResearch-style optimization
 - hierarchical tree navigation across project, tracker, sessions, and artifacts
 - customizable multi-pane layouts
 - kanban board and backlog management
@@ -594,6 +674,7 @@ Not all of this must land in v1. It should still shape the API and information a
 
 - A dashboard-specific backend path
 - A pure chat UI as the primary operating model
+- Treating vague ideas as tracker work before they are ready
 - Fake precision in progress or cost projections
 - Making the UI the source of truth instead of the daemon, tracker, config, and event log
 - Shipping every rich workstation surface before the core runtime and setup contracts exist
@@ -607,7 +688,8 @@ Not all of this must land in v1. It should still shape the API and information a
 5. **Discussion is supported before synthesis-heavy mutation.**
 6. **Costs, provider health, and permit rationale are visible.**
 7. **Setup is first-class.** The workstation must handle onboarding, not just runtime.
-8. **Customization is allowed but bounded by opinionated defaults.**
-9. **If the workstation needs it, the API must expose it.**
+8. **Incubation is first-class.** Capture, research, synthesis, and promotion are durable daemon state.
+9. **Customization is allowed but bounded by opinionated defaults.**
+10. **If the workstation needs it, the API must expose it.**
 
-See: `api.md`, `setup.md`, `metrics.md`, `work-tracker.md`, `VISION.md`, `DESIGN_BRIEF.md`.
+See: `api.md`, `incubation.md`, `setup.md`, `metrics.md`, `work-tracker.md`, `VISION.md`, `DESIGN_BRIEF.md`.

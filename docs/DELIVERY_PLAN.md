@@ -26,6 +26,22 @@ The new setup architecture is **cross-cutting**, not one isolated milestone. It 
 
 This means "setup" should not be treated as a thin preflight script in the implementation plan. The user-facing command stays `aloop setup`, but the underlying capabilities arrive incrementally across these milestones.
 
+## Incubation delivery note
+
+Incubation is also cross-cutting, but it must stay thinner than setup in v1.
+
+- **M2** provides the event/state substrate for durable incubation items, research runs, and proposal history.
+- **M4/M5** provide scheduler-permitted provider execution for non-mutating research runs.
+- **M7/M8** should expose the `/v1/incubation` API and artifact/comment plumbing needed for capture and research evidence.
+- **M9** consumes promoted Epics/Stories/steering through the normal orchestrator path; it must not read raw incubation items as backlog.
+- **M11** provides the inbox, research queue, proposal review, mobile capture path, and promotion controls in the dashboard/workstation.
+
+The v1 bar is not a full personal knowledge-management system. It is durable capture, bounded research, source provenance, lightweight monitors, reviewable synthesis, and explicit promotion into the existing aloop subsystems.
+
+AutoResearch-style `experiment_loop` mode is a v1.5 candidate unless a narrow local benchmark use case appears earlier. It requires immutable-oracle enforcement, attempt ledgers, metric extraction, and plateau detection; those are not necessary for the first capture/research/monitor slice.
+
+Active outreach and surveys are a later layer unless implemented as manual-export artifacts only. Any adapter that sends messages, publishes surveys, or purchases panel responses needs explicit security policy and audit coverage before it ships.
+
 ## Sandboxing note
 
 Sandboxing is the broader execution concept; the project devcontainer is only the first shipped backend.
