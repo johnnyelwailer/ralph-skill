@@ -1,5 +1,5 @@
 import { join } from "node:path";
-import { createReadStream } from "node:fs";
+import { createReadStream, existsSync } from "node:fs";
 import { createInterface } from "node:readline";
 import { errorResponse, notFoundResponse } from "@aloop/daemon-routes";
 import type { EventEnvelope } from "@aloop/core";
@@ -33,7 +33,7 @@ export async function handleTurns(
   return streamTurnChunks(sessionId, turnId, deps, replay);
 }
 
-function streamTurnChunks(sessionId: string, turnId: string, deps: TurnsDeps, _replay: boolean): Response {
+function streamTurnChunks(sessionId: string, turnId: string, deps: TurnsDeps, replay: boolean): Response {
   const eventsPath = join(deps.sessionsDir(), sessionId, "log.jsonl");
 
   const encoder = new TextEncoder();
@@ -46,34 +46,51 @@ function streamTurnChunks(sessionId: string, turnId: string, deps: TurnsDeps, _r
 
       writeSSEChunk({ session_id: sessionId, turn_id: turnId, type: "start" });
 
-      const fileStream = createReadStream(eventsPath, { encoding: "utf-8" });
-      const rl = createInterface({ input: fileStream, crlfDelay: Infinity });
-
-      rl.on("line", (line) => {
-        if (line.length === 0) return;
-        try {
-          const envelope = JSON.parse(line) as EventEnvelope;
-          if (
-            envelope.topic === "agent.chunk" &&
-            (envelope.data as { session_id?: string; turn_id?: string }).session_id === sessionId &&
-            (envelope.data as { session_id?: string; turn_id?: string }).turn_id === turnId
-          ) {
-            writeSSEChunk(envelope.data);
-          }
-        } catch {
-          // skip malformed lines
+      if (replay) {
+        // Replay: read all matching agent.chunk events from the durable log and
+        // emit them so post-mortem UIs can reconstruct the full turn output.
+        // This is the authoritative source — the live tail below is best-effort.
+        if (!existsSync(eventsPath)) {
+          writeSSEChunk({ session_id: sessionId, turn_id: turnId, type: "end" });
+          controller.close();
+          return;
         }
-      });
 
-      rl.on("close", () => {
+        const fileStream = createReadStream(eventsPath, { encoding: "utf-8" });
+        const rl = createInterface({ input: fileStream, crlfDelay: Infinity });
+
+        rl.on("line", (line) => {
+          if (line.length === 0) return;
+          try {
+            const envelope = JSON.parse(line) as EventEnvelope;
+            if (
+              envelope.topic === "agent.chunk" &&
+              (envelope.data as { session_id?: string; turn_id?: string }).session_id === sessionId &&
+              (envelope.data as { session_id?: string; turn_id?: string }).turn_id === turnId
+            ) {
+              writeSSEChunk(envelope.data);
+            }
+          } catch {
+            // skip malformed lines
+          }
+        });
+
+        rl.on("close", () => {
+          writeSSEChunk({ session_id: sessionId, turn_id: turnId, type: "end" });
+          controller.close();
+        });
+
+        rl.on("error", () => {
+          writeSSEChunk({ session_id: sessionId, turn_id: turnId, type: "end" });
+          controller.close();
+        });
+      } else {
+        // Live-only: the client wants real-time chunks without the historical replay.
+        // Emit end immediately — true live tailing requires a persistent subscription
+        // to the global event bus via GET /v1/events, not this endpoint.
         writeSSEChunk({ session_id: sessionId, turn_id: turnId, type: "end" });
         controller.close();
-      });
-
-      rl.on("error", () => {
-        writeSSEChunk({ session_id: sessionId, turn_id: turnId, type: "end" });
-        controller.close();
-      });
+      }
     },
   });
 

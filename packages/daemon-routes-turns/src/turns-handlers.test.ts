@@ -67,7 +67,7 @@ describe("handleTurns", () => {
         "utf-8",
       );
 
-      const req = new Request("http://localhost/v1/sessions/s_turns_1/turns/t_turns_1/chunks", {
+      const req = new Request("http://localhost/v1/sessions/s_turns_1/turns/t_turns_1/chunks?replay=true", {
         method: "GET",
       });
       const res = await handleTurns(req, deps, "/v1/sessions/s_turns_1/turns/t_turns_1/chunks");
@@ -148,7 +148,7 @@ describe("handleTurns", () => {
         "utf-8",
       );
 
-      const req = new Request("http://localhost/v1/sessions/s_filter_1/turns/t_target/chunks", {
+      const req = new Request("http://localhost/v1/sessions/s_filter_1/turns/t_target/chunks?replay=true", {
         method: "GET",
       });
       const res = await handleTurns(req, deps, "/v1/sessions/s_filter_1/turns/t_target/chunks");
@@ -202,7 +202,7 @@ describe("handleTurns", () => {
         "utf-8",
       );
 
-      const req = new Request("http://localhost/v1/sessions/s_log_name/turns/t_log/chunks", {
+      const req = new Request("http://localhost/v1/sessions/s_log_name/turns/t_log/chunks?replay=true", {
         method: "GET",
       });
       const res = await handleTurns(req, deps, "/v1/sessions/s_log_name/turns/t_log/chunks");
@@ -239,6 +239,66 @@ describe("handleTurns", () => {
       // Should still emit start and end markers (file not found is handled gracefully)
       expect(payloads).toContainEqual({ session_id: "s_no_log", turn_id: "t_no_log", type: "start" });
       expect(payloads).toContainEqual({ session_id: "s_no_log", turn_id: "t_no_log", type: "end" });
+    });
+
+    test("replay=false emits only start+end markers without reading the log (live-only)", async () => {
+      const deps = makeDeps();
+      const sessionDir = join(deps.sessionsDir(), "s_live_only");
+      mkdirSync(sessionDir, { recursive: true });
+      // Pre-populate log.jsonl — live-only mode should NOT read it
+      writeFileSync(
+        join(sessionDir, "log.jsonl"),
+        JSON.stringify({
+          _v: 1,
+          id: "evt_live_ignore",
+          timestamp: "2026-04-30T00:00:00.000Z",
+          topic: "agent.chunk",
+          data: {
+            session_id: "s_live_only",
+            turn_id: "t_live",
+            sequence: 0,
+            type: "text",
+            content: { delta: "Should not appear" },
+            final: false,
+          },
+        }) + "\n",
+        "utf-8",
+      );
+
+      const req = new Request("http://localhost/v1/sessions/s_live_only/turns/t_live/chunks?replay=false", {
+        method: "GET",
+      });
+      const res = await handleTurns(req, deps, "/v1/sessions/s_live_only/turns/t_live/chunks");
+      expect(res!.status).toBe(200);
+
+      const lines = await collectSSELines(res!);
+      const payloads = lines.map((l) => JSON.parse(l));
+
+      // Must emit start and end markers
+      expect(payloads).toContainEqual({ session_id: "s_live_only", turn_id: "t_live", type: "start" });
+      expect(payloads).toContainEqual({ session_id: "s_live_only", turn_id: "t_live", type: "end" });
+      // Must NOT emit the chunk that was in the log — this is live-only
+      const ignored = payloads.find((p: unknown) => (p as {content?: {delta?: string}}).content?.delta === "Should not appear");
+      expect(ignored).toBeUndefined();
+    });
+
+    test("replay=false without log file emits only start+end (graceful no-op)", async () => {
+      const deps = makeDeps();
+      const sessionDir = join(deps.sessionsDir(), "s_live_no_log");
+      mkdirSync(sessionDir, { recursive: true });
+      // No log.jsonl written
+
+      const req = new Request("http://localhost/v1/sessions/s_live_no_log/turns/t_live/chunks?replay=false", {
+        method: "GET",
+      });
+      const res = await handleTurns(req, deps, "/v1/sessions/s_live_no_log/turns/t_live/chunks");
+      expect(res!.status).toBe(200);
+
+      const lines = await collectSSELines(res!);
+      const payloads = lines.map((l) => JSON.parse(l));
+
+      expect(payloads).toContainEqual({ session_id: "s_live_no_log", turn_id: "t_live", type: "start" });
+      expect(payloads).toContainEqual({ session_id: "s_live_no_log", turn_id: "t_live", type: "end" });
     });
   });
 });
