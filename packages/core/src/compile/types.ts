@@ -14,7 +14,8 @@ export type TransitionKeyword =
   | { type: "retry" }
   | { type: "goto"; target: string };
 
-export type PipelinePhase = {
+/** pipeline.yml phase — agent variant */
+export type AgentPhase = {
   readonly agent: string;
   readonly repeat?: number;
   readonly onFailure?: TransitionKeyword;
@@ -24,6 +25,19 @@ export type PipelinePhase = {
   readonly timeout?: string;
 };
 
+/** pipeline.yml phase — exec variant (run an external command) */
+export type ExecPhase = {
+  readonly exec: string;
+  readonly args?: readonly string[];
+  readonly env?: Readonly<Record<string, string>>;
+  readonly cwd?: string;
+  readonly timeout?: string;
+  readonly onFailure?: TransitionKeyword;
+};
+
+/** pipeline.yml phase — discriminated union of agent and exec variants */
+export type PipelinePhase = AgentPhase | ExecPhase;
+
 /** pipeline.yml — the source of truth authors edit. */
 export type PipelineConfig = {
   readonly pipeline: readonly PipelinePhase[];
@@ -31,11 +45,16 @@ export type PipelineConfig = {
   readonly triggers?: Readonly<Record<string, string>>;
 };
 
+/** A single entry in the compiled loop-plan cycle. */
+export type StepDescriptor =
+  | { readonly kind: "agent"; readonly ref: string }
+  | { readonly kind: "exec"; readonly ref: string };
+
 /** loop-plan.json — the compiled artifact consumed by the runtime. */
 export type LoopPlan = {
   readonly _v: 1;
-  readonly cycle: readonly string[];
-  readonly finalizer: readonly string[];
+  readonly cycle: readonly StepDescriptor[];
+  readonly finalizer: readonly StepDescriptor[];
   readonly triggers: Readonly<Record<string, string>>;
   readonly cyclePosition: number;
   readonly finalizerPosition: number;

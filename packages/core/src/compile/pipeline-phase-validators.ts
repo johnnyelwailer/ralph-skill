@@ -1,4 +1,4 @@
-import type { PipelinePhase, ProviderRef, TransitionKeyword } from "./types.ts";
+import type { AgentPhase, ProviderRef, TransitionKeyword } from "./types.ts";
 
 const REASONING_VALUES = new Set(["none", "low", "medium", "high", "xhigh"]);
 const MAX_CHAIN_LENGTH = 10;
@@ -7,14 +7,14 @@ export function validateReasoning(
   value: unknown,
   path: string,
   errors: string[],
-): PipelinePhase["reasoning"] | undefined {
+): AgentPhase["reasoning"] | undefined {
   if (typeof value !== "string" || !REASONING_VALUES.has(value)) {
     errors.push(
       `${path}: must be one of ${Array.from(REASONING_VALUES).join(", ")}`,
     );
     return undefined;
   }
-  return value as PipelinePhase["reasoning"];
+  return value as AgentPhase["reasoning"];
 }
 
 export function parseTransition(
