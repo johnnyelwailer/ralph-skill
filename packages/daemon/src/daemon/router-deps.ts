@@ -46,7 +46,13 @@ export function makeRouterDeps(input: MakeRouterDepsInput): RouterDeps {
 
   return {
     handleDaemon: (req, pathname) =>
-      handleDaemonRoute(req, { startedAt: input.startedAt, config: input.config }, pathname),
+      handleDaemonRoute(req, {
+        startedAt: input.startedAt,
+        config: input.config,
+        scheduler: input.scheduler,
+        registry: input.registry,
+        sessionsDir,
+      }, pathname),
     handleMetrics: (req, pathname) =>
       handleMetricsRoute(req, metricsDeps, pathname),
     handleProjects: (req, pathname) =>

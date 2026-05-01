@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { buildHealth, type HealthPayload } from "./health.ts";
+import { buildHealth, type HealthCounters, type HealthPayload } from "./health.ts";
 import { VERSION } from "../version.ts";
 
 describe("buildHealth", () => {
@@ -39,5 +39,30 @@ describe("buildHealth", () => {
     expect(result.uptime_seconds).toBe(0);
   });
 
+  test("returns zero counters when none provided", () => {
+    const now = Date.now();
+    const result = buildHealth(now - 1000, now);
 
+    expect(result.counters).toEqual({
+      sessions_total: 0,
+      sessions_by_status: {},
+      permits_in_flight: 0,
+    });
+  });
+
+  test("maps counters to snake_case in response", () => {
+    const now = Date.now();
+    const counters: HealthCounters = {
+      sessionsTotal: 5,
+      sessionsByStatus: { active: 3, completed: 2 },
+      permitsInFlight: 4,
+    };
+    const result = buildHealth(now - 1000, now, counters);
+
+    expect(result.counters).toEqual({
+      sessions_total: 5,
+      sessions_by_status: { active: 3, completed: 2 },
+      permits_in_flight: 4,
+    });
+  });
 });

@@ -54,9 +54,17 @@ function makeDeps(overrides: Partial<{
     },
   } as any;
 
+  // Minimal temp dir with no sessions — buildCounters will scan and return zeros
+  const tmpDir = { path: "" };
+
   return {
     startedAt: overrides.startedAt ?? Date.now(),
     config: overrides.config ?? store,
+    sessionsDir: () => tmpDir.path,
+    scheduler: {
+      listPermits: () => [],
+    } as any,
+    registry: { listProjects: () => [] } as any,
   };
 }
 
@@ -72,7 +80,7 @@ describe("GET /v1/daemon/health", () => {
     expect(res!.status).toBe(200);
   });
 
-  test("health body includes _v: 1, status: ok, version, and uptime_seconds", async () => {
+  test("health body includes _v: 1, status: ok, version, uptime_seconds, and counters", async () => {
     const deps = makeDeps({ startedAt: Date.now() });
     const res = await handleDaemon(new Request("http://x/v1/daemon/health", { method: "GET" }), deps, "/v1/daemon/health");
     const body = await res!.json() as Record<string, unknown>;
@@ -80,6 +88,12 @@ describe("GET /v1/daemon/health", () => {
     expect(body.status).toBe("ok");
     expect(body.version).toBe("0.1.0");
     expect(typeof (body.uptime_seconds as number)).toBe("number");
+    // counters field present and has expected shape
+    expect(body.counters).toBeDefined();
+    const c = body.counters as Record<string, unknown>;
+    expect(typeof (c.sessions_total as number)).toBe("number");
+    expect(typeof (c.permits_in_flight as number)).toBe("number");
+    expect(typeof (c.sessions_by_status as Record<string, unknown>)).toBe("object");
   });
 
   test("uptime_seconds is computed from startedAt", async () => {
@@ -90,6 +104,15 @@ describe("GET /v1/daemon/health", () => {
     // uptime should be ~5 seconds (allow small margin)
     expect((body.uptime_seconds as number)).toBeGreaterThanOrEqual(4);
     expect((body.uptime_seconds as number)).toBeLessThan(10);
+  });
+
+  test("health counters.permits_in_flight reflects scheduler permits", async () => {
+    const deps = makeDeps();
+    // Override scheduler to return 2 permits
+    (deps.scheduler as any).listPermits = () => [{ id: "p1" }, { id: "p2" }];
+    const res = await handleDaemon(new Request("http://x/v1/daemon/health", { method: "GET" }), deps, "/v1/daemon/health");
+    const body = await res!.json() as Record<string, unknown>;
+    expect((body.counters as Record<string, unknown>).permits_in_flight).toBe(2);
   });
 
   test("returns undefined (404) for POST on /v1/daemon/health", async () => {
