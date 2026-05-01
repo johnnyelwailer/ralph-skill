@@ -360,6 +360,7 @@ The workstation should borrow the strongest parts of modern high-performance cha
 - immediate visual response on send
 - stable streaming with minimal layout shift
 - keyboard-first conversation flow
+- voice-first capture and command flow, especially on mobile
 - multimodal capture and response when the selected provider supports it
 - compact, high-signal message rendering
 - easy branch/thread continuation from prior context
@@ -397,7 +398,7 @@ Supported input classes should include:
 - text
 - URLs
 - screenshots and images
-- audio and voice notes
+- audio, live speech, and voice notes
 - short videos or screen recordings
 - PDFs and documents
 - pasted logs, terminal output, stack traces, diffs, and code fragments
@@ -415,6 +416,33 @@ The composer should normalize every non-text input into daemon-managed artifacts
 | pasted code/log/diff | artifact or comment body with language/type metadata |
 
 Provider capability is dynamic. If the selected provider supports native vision/audio/document input, the composer may pass artifact references through the provider adapter. If not, the daemon supplies derived text/OCR/transcripts and clearly marks the response as based on derived media, not native perception.
+
+### Voice composer
+
+Speaking to the composer should feel as natural as typing into it. Voice is not just file upload; it is a first-class composer input mode.
+
+Required voice behaviors:
+
+- push-to-talk and tap-to-toggle recording
+- mobile-friendly voice capture from the composer bar
+- visible live transcript while recording when a streaming transcriber is available
+- editable transcript before send
+- explicit "send transcript" vs "send audio + transcript" behavior when relevant
+- language detection and manual language override
+- confidence/unclear-span markers for low-quality transcription
+- interruption controls for cancelling capture or stopping a spoken/streaming response
+- quiet fallback to typed input when microphone access is unavailable
+
+The composer should support two voice paths:
+
+| Path | Behavior |
+|---|---|
+| native voice model | audio is passed through the provider adapter when the selected model supports speech/audio input |
+| fallback transcriber | audio is first transcribed by a configured transcription adapter; the resulting transcript becomes the composer message and the audio remains an artifact |
+
+Fallback transcription is still daemon-mediated. The client may capture audio, but the daemon owns upload, artifact retention, transcription provider choice, derived transcript artifact, language metadata, and policy decisions. Browser-only speech recognition may be used as a latency optimization only if the daemon records that the transcript came from a client-side recognizer.
+
+For voice responses, the v1 baseline is text output with optional read-aloud in the client. Native spoken responses or generated audio replies can be added later as artifact-backed outputs, not as client-only audio blobs.
 
 Multimodal output should also be artifact-backed:
 

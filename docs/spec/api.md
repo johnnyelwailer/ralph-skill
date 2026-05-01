@@ -107,7 +107,7 @@ The composer is the universal agentic intent interface for the app. It is used b
 
 The composer is not a privileged backend. A composer turn may create or update incubation items, comments, research runs, monitors, outreach plans, setup runs, tracker proposals, steering instructions, or sessions only by invoking the same daemon mutation path those objects use elsewhere.
 
-The composer is multimodal. Clients submit media as artifact references or upload them first through `/v1/artifacts`; the daemon normalizes them into artifacts, derived text, transcripts, OCR, source records, and provenance before provider reasoning.
+The composer is multimodal and voice-first where useful. Clients submit media as artifact references or upload them first through `/v1/artifacts`; the daemon normalizes them into artifacts, derived text, transcripts, OCR, source records, and provenance before provider reasoning.
 
 ### Turns
 
@@ -125,10 +125,13 @@ POST /v1/composer/turns
   ],
   "media_inputs": [
     {
-      "kind": "image|audio|video|document|url|code|log|diff",
+      "kind": "image|audio|speech|video|document|url|code|log|diff",
       "artifact_id": "a_...",
       "url": null,
       "caption": "Optional user note about this media",
+      "transcript_artifact_id": "a_transcript_optional",
+      "transcript_text": "Optional client-side or precomputed transcript",
+      "transcript_source": "client|daemon|provider|external|null",
       "derived_refs": []
     }
   ],
@@ -138,6 +141,11 @@ POST /v1/composer/turns
   ],
   "intent_hint": "capture|research|monitor|setup|steer|explain|summarize|apply",
   "provider_chain": ["codex", "claude"],
+  "transcription": {
+    "mode": "auto|native_provider|fallback_transcriber|client_supplied",
+    "language": "auto",
+    "allow_client_transcript": true
+  },
   "max_cost_usd": 1.50,
   "approval_policy": "preview_required"
 }
@@ -157,6 +165,7 @@ The response includes:
   "status": "queued|running|waiting_for_approval|completed|failed|cancelled",
   "intent_hint": "research",
   "media_mode": "native|derived|none",
+  "voice_mode": "native|transcribed|client_transcribed|none",
   "launched_refs": [
     { "kind": "incubation_item", "id": "i_..." },
     { "kind": "research_run", "id": "rr_..." }
@@ -179,7 +188,7 @@ The launched object, not the composer transcript, is the source of truth. For ex
 Composer media handling reuses artifacts and source records:
 
 - images/screenshots may produce OCR text, visual summaries, dimensions, and thumbnail artifacts
-- audio/voice notes may produce transcript artifacts plus language and confidence metadata
+- speech/audio/voice notes may produce transcript artifacts plus language, timing, speaker, and confidence metadata
 - videos/screen recordings may produce transcript artifacts, keyframe artifacts, and timestamped notes
 - PDFs/documents may produce extracted text chunks, page-image artifacts, and document metadata
 - URLs may produce source records and fetched artifacts under source policy
@@ -188,6 +197,20 @@ Composer media handling reuses artifacts and source records:
 Provider adapters declare whether they support native image, audio, video, and document inputs. If a provider lacks a native modality, the daemon passes derived text/transcript/OCR artifacts instead and marks the composer turn with `media_mode: "derived"`.
 
 Generated or transformed media is returned as artifacts. The transcript may render it inline, but durable downstream objects reference artifact IDs.
+
+### Voice input
+
+Voice is a first-class composer mode. A client may stream or upload speech audio as an artifact, but the daemon owns transcription policy and provenance.
+
+Transcription flow:
+
+1. If the selected provider/model supports native speech input and policy allows it, the daemon may pass the audio artifact through the provider adapter and set `voice_mode: "native"`.
+2. Otherwise the daemon selects a configured fallback transcriber, writes a transcript artifact, and sends the transcript plus artifact references to the composer provider with `voice_mode: "transcribed"`.
+3. If the client supplies a transcript from browser/device speech recognition, the daemon may accept it for latency but records `voice_mode: "client_transcribed"` and keeps the original audio artifact when available.
+
+Streaming transcription may publish `agent.chunk` entries with `type: "transcript"` before the composer turn is sent. Clients must treat partial transcript chunks as editable draft material, not final daemon state until the turn is submitted.
+
+Transcript metadata should include language, confidence, timing offsets when available, transcriber id, and whether the transcript is human-edited.
 
 ## Incubation
 
@@ -613,7 +636,7 @@ fields:
   incubation_item_id=<id>? // optional
   research_run_id=<id>?    // optional
   work_item_key=<key>?     // optional
-  kind=image|screenshot|audio|video|document|mockup|diff|log|code|other
+  kind=image|screenshot|audio|speech|video|document|transcript|mockup|diff|log|code|other
   label=<short label>?     // optional
   file=<binary>
 ```
@@ -674,7 +697,7 @@ Research runs and future provider-backed daemon jobs may expose owner-specific c
 
 - `sequence` is monotonic within a turn, starts at 0.
 - `owner.kind` is `session`, `composer_turn`, or another provider-backed daemon job kind added later. `session_id` remains for v1 session compatibility.
-- `type`: `text`, `thinking`, `tool_call`, `tool_result`, `usage`, `error`.
+- `type`: `text`, `transcript`, `thinking`, `tool_call`, `tool_result`, `usage`, `error`.
 - `content` is type-specific; clients render what they know, ignore unknowns.
 - `final: true` on the last chunk of the turn.
 
