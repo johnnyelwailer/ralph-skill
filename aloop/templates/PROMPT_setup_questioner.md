@@ -57,6 +57,19 @@ Prioritize questions that:
 3. determine tracker/provider/devcontainer/spec structure
 4. prevent downstream prompt churn
 
+## Default project rules
+
+Setup should make strong defaults explicit instead of asking preference questions for them.
+
+For deployable web/API products, assume PR / change-set preview deployments are wanted by default. Only ask about this when discovery cannot determine the preview mechanism, detects multiple materially different mechanisms, or finds evidence that previews are impossible or intentionally unwanted.
+
+When this topic is asked, present "enabled" as the recommended default and include:
+
+- the detected or proposed preview mechanism
+- what clickable URL will appear on each previewable PR / change set
+- what review behavior changes when previews are unavailable
+- the consequence of opting out
+
 ## Hard constraints
 
 - Do not ask vague preference questions when the difference is not material.

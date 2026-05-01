@@ -33,6 +33,7 @@ Always check:
 3. Which are unsupported by proof?
 4. Which assumptions were introduced by implementation rather than the spec?
 5. Did the change select one unresolved interpretation and present it as if it were specified?
+6. If the constitution requires preview deployments, is the preview URL present for externally previewable behavior?
 
 ## Ambiguity rule
 
