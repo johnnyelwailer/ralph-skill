@@ -21,10 +21,9 @@ export async function createProject(req: Request, deps: Deps): Promise<Response>
 
   const name = typeof body.data.name === "string" ? body.data.name : undefined;
 
-  const sessionsDir = typeof deps.sessionsDir === "function" ? deps.sessionsDir() : deps.sessionsDir;
   try {
     const created = deps.registry.create({ absPath, ...(name !== undefined && { name }) });
-    return jsonResponse(201, projectResponse(created, sessionsDir));
+    return jsonResponse(201, projectResponse(created, deps.sessionsDir));
   } catch (err) {
     if (err instanceof ProjectAlreadyRegisteredError) {
       return errorResponse(409, "project_already_registered", err.message, {
@@ -40,7 +39,6 @@ export async function patchProject(
   req: Request,
   deps: Deps,
 ): Promise<Response> {
-  const sessionsDir = typeof deps.sessionsDir === "function" ? deps.sessionsDir() : deps.sessionsDir;
   const body = await parseJsonBody(req);
   if ("error" in body) return body.error;
   try {
@@ -55,7 +53,7 @@ export async function patchProject(
       updated = deps.registry.updateStatus(id, body.data.status as ProjectStatus);
     }
     if (!updated) return badRequest("no updatable fields provided");
-    return jsonResponse(200, projectResponse(updated, sessionsDir));
+    return jsonResponse(200, projectResponse(updated, deps.sessionsDir));
   } catch (err) {
     if (err instanceof ProjectNotFoundError) {
       return errorResponse(404, "project_not_found", err.message, { id });
@@ -65,10 +63,9 @@ export async function patchProject(
 }
 
 export function archiveProject(id: string, deps: Deps): Response {
-  const sessionsDir = typeof deps.sessionsDir === "function" ? deps.sessionsDir() : deps.sessionsDir;
   try {
     const archived = deps.registry.archive(id);
-    return jsonResponse(200, projectResponse(archived, sessionsDir));
+    return jsonResponse(200, projectResponse(archived, deps.sessionsDir));
   } catch (err) {
     if (err instanceof ProjectNotFoundError) {
       return errorResponse(404, "project_not_found", err.message, { id });
