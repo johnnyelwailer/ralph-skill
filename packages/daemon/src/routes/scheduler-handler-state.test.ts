@@ -133,9 +133,9 @@ describe("GET /v1/scheduler/limits", () => {
       "/v1/scheduler/limits",
     );
     expect(res).toBeDefined();
-    const body = await resJson<{ _v: number; concurrencyCap: number }>(res!);
+    const body = await resJson<{ _v: number; max_permits: number }>(res!);
     expect(body._v).toBe(1);
-    expect(typeof body.concurrencyCap).toBe("number");
+    expect(typeof body.max_permits).toBe("number");
   });
 });
 
@@ -149,9 +149,9 @@ describe("PUT /v1/scheduler/limits", () => {
     });
     const res = await handleScheduler(req, makeSchedulerDeps(scheduler), "/v1/scheduler/limits");
     expect(res).toBeDefined();
-    const body = await resJson<{ _v: number; concurrencyCap: number }>(res!);
+    const body = await resJson<{ _v: number; max_permits: number }>(res!);
     expect(body._v).toBe(1);
-    expect(body.concurrencyCap).toBe(8);
+    expect(body.max_permits).toBe(8);
   });
 
   test("returns 400 when concurrencyCap is not a positive number", async () => {

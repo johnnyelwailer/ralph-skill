@@ -158,7 +158,7 @@ describe("makeRouterDeps", () => {
     expect(res!.status).toBe(200);
     const body = (await res!.json()) as Record<string, unknown>;
     expect(body._v).toBe(1);
-    expect(body).toHaveProperty("concurrencyCap");
+    expect(body).toHaveProperty("max_permits");
   });
 
   test("handleProviders GET /v1/providers/overrides returns current overrides", async () => {

@@ -297,6 +297,24 @@ describe("PUT /v1/daemon/config", () => {
     expect((body as any).error.message).toContain("JSON");
   });
 
+  test("returns 400 when req.text() throws (malformed stream)", async () => {
+    const deps = makeDeps({ features: { daemonConfigWrite: true } });
+    // Simulate a stream that throws when read — parseJsonBody should catch it and return 400
+    const mockReq = new Request("http://x/v1/daemon/config", {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+    }) as Request & { text(): Promise<string> };
+    // Replace text() with one that throws
+    mockReq.text = async () => {
+      throw new Error("stream error");
+    };
+    const res = await handleDaemon(mockReq as Request, deps, "/v1/daemon/config");
+    expect(res).toBeDefined();
+    expect(res!.status).toBe(400);
+    const body = JSON.parse(await res!.text()) as Record<string, unknown>;
+    expect((body as any).error.code).toBe("bad_request");
+  });
+
   test("returns 400 for non-object JSON body", async () => {
     const deps = makeDeps({ features: { daemonConfigWrite: true } });
     const res = await handleDaemon(

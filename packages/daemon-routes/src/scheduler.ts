@@ -11,7 +11,22 @@ export async function handleScheduler(
 ): Promise<Response | undefined> {
   if (pathname === "/v1/scheduler/limits") {
     if (req.method === "GET") {
-      return jsonResponse(200, { _v: 1, ...deps.scheduler.currentLimits() });
+      const limits = deps.scheduler.currentLimits();
+      return jsonResponse(200, {
+        _v: 1,
+        max_permits: limits.concurrencyCap,
+        permit_ttl_default_seconds: limits.permitTtlDefaultSeconds,
+        permit_ttl_max_seconds: limits.permitTtlMaxSeconds,
+        system_limits: {
+          cpu_max_pct: limits.systemLimits.cpuMaxPct,
+          mem_max_pct: limits.systemLimits.memMaxPct,
+          load_max: limits.systemLimits.loadMax,
+        },
+        burn_rate: {
+          max_tokens_since_commit: limits.burnRate.maxTokensSinceCommit,
+          min_commits_per_hour: limits.burnRate.minCommitsPerHour,
+        },
+      });
     }
     if (req.method !== "PUT") return methodNotAllowed();
 
@@ -20,7 +35,22 @@ export async function handleScheduler(
 
     const updated = await deps.scheduler.updateLimits(parsed.data);
     if (!updated.ok) return badRequest("invalid scheduler limits", { errors: updated.errors });
-    return jsonResponse(200, { _v: 1, ...updated.limits });
+    const limits = updated.limits;
+    return jsonResponse(200, {
+      _v: 1,
+      max_permits: limits.concurrencyCap,
+      permit_ttl_default_seconds: limits.permitTtlDefaultSeconds,
+      permit_ttl_max_seconds: limits.permitTtlMaxSeconds,
+      system_limits: {
+        cpu_max_pct: limits.systemLimits.cpuMaxPct,
+        mem_max_pct: limits.systemLimits.memMaxPct,
+        load_max: limits.systemLimits.loadMax,
+      },
+      burn_rate: {
+        max_tokens_since_commit: limits.burnRate.maxTokensSinceCommit,
+        min_commits_per_hour: limits.burnRate.minCommitsPerHour,
+      },
+    });
   }
 
   if (pathname === "/v1/scheduler/permits") {

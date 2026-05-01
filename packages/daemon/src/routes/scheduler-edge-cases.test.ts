@@ -244,28 +244,28 @@ describe("GET /v1/scheduler/limits", () => {
     expect(res!.status).toBe(200);
     const body = await resJson<{
       _v: number;
-      concurrencyCap: number;
-      permitTtlDefaultSeconds: number;
-      permitTtlMaxSeconds: number;
-      systemLimits: { cpuMaxPct: number; memMaxPct: number; loadMax: number };
-      burnRate: { maxTokensSinceCommit: number; minCommitsPerHour: number };
+      max_permits: number;
+      permit_ttl_default_seconds: number;
+      permit_ttl_max_seconds: number;
+      system_limits: { cpu_max_pct: number; mem_max_pct: number; load_max: number };
+      burn_rate: { max_tokens_since_commit: number; min_commits_per_hour: number };
     }>(res!);
     expect(body._v).toBe(1);
-    expect(typeof body.concurrencyCap).toBe("number");
-    expect(typeof body.permitTtlDefaultSeconds).toBe("number");
-    expect(typeof body.permitTtlMaxSeconds).toBe("number");
-    expect(body.systemLimits).toBeDefined();
-    expect(body.burnRate).toBeDefined();
+    expect(typeof body.max_permits).toBe("number");
+    expect(typeof body.permit_ttl_default_seconds).toBe("number");
+    expect(typeof body.permit_ttl_max_seconds).toBe("number");
+    expect(body.system_limits).toBeDefined();
+    expect(body.burn_rate).toBeDefined();
   });
 
   test("limits reflect current config values", async () => {
     const { scheduler } = makeDeps();
     const req = new Request("http://x/v1/scheduler/limits", { method: "GET" });
     const res = await handleScheduler(req, makeSchedulerDeps(scheduler), "/v1/scheduler/limits");
-    const body = await resJson<{ concurrencyCap: number; systemLimits: { cpuMaxPct: number } }>(res!);
+    const body = await resJson<{ max_permits: number; system_limits: { cpu_max_pct: number } }>(res!);
     // DAEMON_DEFAULTS values
-    expect(body.concurrencyCap).toBe(3);
-    expect(body.systemLimits.cpuMaxPct).toBe(80);
+    expect(body.max_permits).toBe(3);
+    expect(body.system_limits.cpu_max_pct).toBe(80);
   });
 });
 
