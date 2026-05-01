@@ -3,6 +3,7 @@ import type { ConfigStore } from "@aloop/daemon-config";
 import type { RouterDeps } from "@aloop/daemon-http";
 import type { InMemoryProviderHealthStore, ProviderRegistry } from "@aloop/provider";
 import { handleProviders as handleProvidersRoute } from "@aloop/daemon-routes-providers";
+import { handleSetup as handleSetupRoute, SetupStore } from "@aloop/daemon-routes-setup";
 import {
   handleMetrics as handleMetricsRoute,
   type MetricsDeps as MetricsDeps,
@@ -40,6 +41,9 @@ export function makeRouterDeps(input: MakeRouterDepsInput): RouterDeps {
     systemSample: DEFAULT_SCHEDULER_PROBES.systemSample,
   };
 
+  const sessionsDir = () => join(input.config.paths().stateDir, "sessions");
+  const setupStore = new SetupStore({ stateDir: input.config.paths().stateDir });
+
   return {
     handleDaemon: (req, pathname) =>
       handleDaemonRoute(req, { startedAt: input.startedAt, config: input.config }, pathname),
@@ -50,6 +54,7 @@ export function makeRouterDeps(input: MakeRouterDepsInput): RouterDeps {
         req,
         {
           registry: input.registry,
+          sessionsDir,
         },
         pathname,
       ),
@@ -76,7 +81,7 @@ export function makeRouterDeps(input: MakeRouterDepsInput): RouterDeps {
       handleSessionsRoute(
         req,
         {
-          sessionsDir: () => join(input.config.paths().stateDir, "sessions"),
+          sessionsDir,
         },
         pathname,
       ),
@@ -93,7 +98,7 @@ export function makeRouterDeps(input: MakeRouterDepsInput): RouterDeps {
       handleTurnsRoute(
         req,
         {
-          sessionsDir: () => join(input.config.paths().stateDir, "sessions"),
+          sessionsDir,
         },
         pathname,
       ),
@@ -102,9 +107,20 @@ export function makeRouterDeps(input: MakeRouterDepsInput): RouterDeps {
         req,
         {
           logFile: () => input.config.paths().logFile,
-          sessionsDir: () => join(input.config.paths().stateDir, "sessions"),
+          sessionsDir,
         },
         pathname,
+      ),
+    handleSetup: (req, pathname) =>
+      handleSetupRoute(
+        req,
+        {
+          store: setupStore,
+          eventsDir: join(input.config.paths().stateDir, "setup_runs"),
+        },
+        pathname,
+        input.registry,
+        sessionsDir(),
       ),
   };
 }

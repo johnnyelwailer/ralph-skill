@@ -623,7 +623,32 @@ describe("POST /v1/sessions", () => {
     expect(res!.status).toBe(400);
   });
 
-  test("accepts child kind", async () => {
+  test("accepts child kind with valid parent_session_id", async () => {
+    const deps = makeDeps();
+    // Create the parent session first
+    const parentReq = new Request("http://x/v1/sessions", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ project_id: "p_parent", kind: "orchestrator" }),
+    });
+    const parentRes = await handleSessions(parentReq, deps, "/v1/sessions");
+    expect(parentRes!.status).toBe(201);
+    const parent = await resJson<{ id: string }>(parentRes!);
+
+    // Now create a valid child session
+    const req = new Request("http://x/v1/sessions", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ project_id: "p_child", kind: "child", parent_session_id: parent.id }),
+    });
+    const res = await handleSessions(req, deps, "/v1/sessions");
+    expect(res!.status).toBe(201);
+    const body = await resJson<{ kind: string; parent_session_id: string }>(res!);
+    expect(body.kind).toBe("child");
+    expect(body.parent_session_id).toBe(parent.id);
+  });
+
+  test("returns 400 when kind=child without parent_session_id", async () => {
     const deps = makeDeps();
     const req = new Request("http://x/v1/sessions", {
       method: "POST",
@@ -631,9 +656,131 @@ describe("POST /v1/sessions", () => {
       body: JSON.stringify({ project_id: "p_child", kind: "child" }),
     });
     const res = await handleSessions(req, deps, "/v1/sessions");
+    expect(res!.status).toBe(400);
+    const body = await resJson<{ error: { code: string } }>(res!);
+    expect(body.error.code).toBe("bad_request");
+  });
+
+  test("returns 400 when kind=child with non-existent parent_session_id", async () => {
+    const deps = makeDeps();
+    const req = new Request("http://x/v1/sessions", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ project_id: "p_child", kind: "child", parent_session_id: "s_nonexistent" }),
+    });
+    const res = await handleSessions(req, deps, "/v1/sessions");
+    expect(res!.status).toBe(400);
+  });
+
+  test("returns 400 when kind=child with grandchild parent", async () => {
+    const deps = makeDeps();
+    // Create grandparent orchestrator
+    const gpReq = new Request("http://x/v1/sessions", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ project_id: "p_gp", kind: "orchestrator" }),
+    });
+    const gpRes = await handleSessions(gpReq, deps, "/v1/sessions");
+    expect(gpRes!.status).toBe(201);
+    const gp = await resJson<{ id: string }>(gpRes!);
+
+    // Create parent child
+    const parentReq = new Request("http://x/v1/sessions", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ project_id: "p_parent", kind: "child", parent_session_id: gp.id }),
+    });
+    const parentRes = await handleSessions(parentReq, deps, "/v1/sessions");
+    expect(parentRes!.status).toBe(201);
+    const parent = await resJson<{ id: string }>(parentRes!);
+
+    // Try to create grandchild — should fail
+    const req = new Request("http://x/v1/sessions", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ project_id: "p_gc", kind: "child", parent_session_id: parent.id }),
+    });
+    const res = await handleSessions(req, deps, "/v1/sessions");
+    expect(res!.status).toBe(400);
+    const body = await resJson<{ error: { code: string } }>(res!);
+    expect(body.error.code).toBe("bad_request");
+  });
+
+  test("persists issue, max_iterations, and notes to session.json", async () => {
+    const deps = makeDeps();
+    const req = new Request("http://x/v1/sessions", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        project_id: "p_fields",
+        kind: "standalone",
+        workflow: "test-workflow",
+        issue: 42,
+        max_iterations: 10,
+        notes: "Test session notes",
+      }),
+    });
+    const res = await handleSessions(req, deps, "/v1/sessions");
     expect(res!.status).toBe(201);
-    const body = await resJson<{ kind: string }>(res!);
-    expect(body.kind).toBe("child");
+    const body = await resJson<{
+      id: string;
+      issue: number;
+      max_iterations: number;
+      notes: string;
+    }>(res!);
+    expect(body.issue).toBe(42);
+    expect(body.max_iterations).toBe(10);
+    expect(body.notes).toBe("Test session notes");
+
+    // Verify persisted to session.json
+    const sessionDir = join(deps.sessionsDir(), body.id);
+    const stored = JSON.parse(readFileSync(join(sessionDir, "session.json"), "utf-8"));
+    expect(stored.issue).toBe(42);
+    expect(stored.max_iterations).toBe(10);
+    expect(stored.notes).toBe("Test session notes");
+  });
+
+  test("accepts null values for optional fields", async () => {
+    const deps = makeDeps();
+    const req = new Request("http://x/v1/sessions", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        project_id: "p_nulls",
+        kind: "standalone",
+        parent_session_id: null,
+        max_iterations: null,
+        notes: null,
+      }),
+    });
+    const res = await handleSessions(req, deps, "/v1/sessions");
+    expect(res!.status).toBe(201);
+    const body = await resJson<{ parent_session_id: null; max_iterations: null; notes: null }>(res!);
+    expect(body.parent_session_id).toBeNull();
+    expect(body.max_iterations).toBeNull();
+    expect(body.notes).toBeNull();
+  });
+
+  test("ignores non-numeric issue, max_iterations and non-string notes", async () => {
+    const deps = makeDeps();
+    const req = new Request("http://x/v1/sessions", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        project_id: "p_bad_types",
+        kind: "standalone",
+        issue: "not a number",
+        max_iterations: "also not",
+        notes: 123,
+      }),
+    });
+    const res = await handleSessions(req, deps, "/v1/sessions");
+    expect(res!.status).toBe(201);
+    const body = await resJson<Record<string, unknown>>(res!);
+    // Invalid types are ignored (not stored)
+    expect(body.issue).toBeUndefined();
+    expect(body.max_iterations).toBeUndefined();
+    expect(body.notes).toBeUndefined();
   });
 });
 

@@ -9,9 +9,11 @@ import type { Deps } from "./projects-common.ts";
 function makeDeps(dir: string): Deps {
   const { db } = openDatabase(join(dir, "db.sqlite"));
   const registry = new ProjectRegistry(db);
+  // sessionsDir — we use a subdirectory inside the test dir that never contains any sessions
+  const sessionsDir = join(dir, "sessions");
   // Close db when deps is torn down — stored on registry via closure
   (registry as unknown as { _db: ReturnType<typeof openDatabase>["db"] })._db = db;
-  return { registry };
+  return { registry, sessionsDir };
 }
 
 describe("listProjects", () => {

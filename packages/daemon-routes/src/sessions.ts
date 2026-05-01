@@ -121,6 +121,31 @@ async function createSession(req: Request, deps: SessionsDeps): Promise<Response
 
   const workflow = typeof body.data.workflow === "string" ? body.data.workflow : undefined;
 
+  // Parse optional fields — null is accepted and stored as null; wrong types are ignored
+  const hasIssue = "issue" in body.data;
+  const issue: number | null = hasIssue && body.data.issue === null ? null : hasIssue && typeof body.data.issue === "number" ? body.data.issue : undefined;
+  const hasParentSessionId = "parent_session_id" in body.data;
+  const parentSessionId: string | null = hasParentSessionId && body.data.parent_session_id === null ? null : hasParentSessionId && typeof body.data.parent_session_id === "string" ? body.data.parent_session_id : undefined;
+  const hasMaxIterations = "max_iterations" in body.data;
+  const maxIterations: number | null = hasMaxIterations && body.data.max_iterations === null ? null : hasMaxIterations && typeof body.data.max_iterations === "number" ? body.data.max_iterations : undefined;
+  const hasNotes = "notes" in body.data;
+  const notes: string | null = hasNotes && body.data.notes === null ? null : hasNotes && typeof body.data.notes === "string" ? body.data.notes : undefined;
+
+  // kind=child requires parent_session_id as a string and forbids grandchildren
+  if (kind === "child") {
+    if (typeof parentSessionId !== "string") {
+      return badRequest("parent_session_id is required and must be a string when kind is child");
+    }
+    const parentDir = join(deps.sessionsDir(), parentSessionId);
+    if (!existsSync(parentDir)) {
+      return badRequest(`parent session not found: ${parentSessionId}`);
+    }
+    const parent = loadSessionSummary(parentDir);
+    if (parent?.kind === "child") {
+      return badRequest("cannot create a grandchild session (parent session is itself a child)");
+    }
+  }
+
   const id = `s_${crypto.randomUUID().replace(/-/g, "").slice(0, 12)}`;
   const sessionDir = join(deps.sessionsDir(), id);
   mkdirSync(sessionDir, { recursive: true });
@@ -134,6 +159,10 @@ async function createSession(req: Request, deps: SessionsDeps): Promise<Response
     status: "pending",
     workflow: workflow ?? null,
     created_at: new Date().toISOString(),
+    ...(issue !== undefined ? { issue } : {}),
+    ...(parentSessionId !== undefined ? { parent_session_id: parentSessionId } : {}),
+    ...(maxIterations !== undefined ? { max_iterations: maxIterations } : {}),
+    ...(notes !== undefined ? { notes } : {}),
   };
 
   writeFileSync(join(sessionDir, "session.json"), JSON.stringify(session), "utf-8");
@@ -465,4 +494,8 @@ type SessionSummary = {
   readonly status: SessionStatus;
   readonly workflow: string | null;
   readonly created_at: string;
+  readonly issue?: number | null;
+  readonly parent_session_id?: string | null;
+  readonly max_iterations?: number | null;
+  readonly notes?: string | null;
 };

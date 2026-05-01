@@ -1,6 +1,5 @@
 {
   "lockfileVersion": 1,
-  "configVersion": 0,
   "workspaces": {
     "": {
       "name": "ralph-skill",
@@ -60,6 +59,7 @@
         "@aloop/daemon-routes": "workspace:*",
         "@aloop/daemon-routes-artifacts": "workspace:*",
         "@aloop/daemon-routes-providers": "workspace:*",
+        "@aloop/daemon-routes-setup": "workspace:*",
         "@aloop/daemon-routes-turns": "workspace:*",
         "@aloop/provider": "workspace:*",
         "@aloop/provider-opencode": "workspace:*",
@@ -121,6 +121,19 @@
       "dependencies": {
         "@aloop/daemon-config": "workspace:*",
         "@aloop/provider": "workspace:*",
+        "@aloop/state-sqlite": "workspace:*",
+      },
+      "devDependencies": {
+        "@types/bun": "latest",
+        "typescript": "^5.6.0",
+      },
+    },
+    "packages/daemon-routes-setup": {
+      "name": "@aloop/daemon-routes-setup",
+      "version": "0.1.0",
+      "dependencies": {
+        "@aloop/core": "workspace:*",
+        "@aloop/daemon-routes": "workspace:*",
         "@aloop/state-sqlite": "workspace:*",
       },
       "devDependencies": {
@@ -265,6 +278,8 @@
     "@aloop/daemon-routes-artifacts": ["@aloop/daemon-routes-artifacts@workspace:packages/daemon-routes-artifacts"],
 
     "@aloop/daemon-routes-providers": ["@aloop/daemon-routes-providers@workspace:packages/daemon-routes-providers"],
+
+    "@aloop/daemon-routes-setup": ["@aloop/daemon-routes-setup@workspace:packages/daemon-routes-setup"],
 
     "@aloop/daemon-routes-turns": ["@aloop/daemon-routes-turns@workspace:packages/daemon-routes-turns"],
 
