@@ -4,9 +4,12 @@ import { existsSync, mkdirSync, writeFileSync, readFileSync, readdirSync, unlink
 import { join } from "node:path";
 import { badRequest, errorResponse, jsonResponse, methodNotAllowed, notFoundResponse, parseJsonBody } from "./http-helpers.ts";
 import type { AffectsCompletedWork, SteeringQueueEntry, EventEnvelope, SessionKind, SessionStatus } from "@aloop/core";
+import type { EventWriter } from "@aloop/state-sqlite";
 
 export type SessionsDeps = {
   readonly sessionsDir: () => string;
+  /** Optional event writer for session lifecycle events (session.forced, session.event). */
+  readonly events?: EventWriter;
 };
 
 export async function handleSessions(
@@ -407,6 +410,24 @@ async function deleteSession(
   const nextStatus: SessionStatus =
     mode === "force" ? "stopped" : session.status === "pending" ? "stopped" : "stopped";
 
+  // Emit session.forced when force-stop is requested
+  if (mode === "force") {
+    await deps.events?.append("session.forced", {
+      session_id: id,
+      previous_status: session.status,
+    });
+  }
+
+  // Emit session.event for the status change
+  await deps.events?.append("session.event", {
+    session_id: id,
+    previous_status: session.status,
+    status: nextStatus,
+    kind: session.kind,
+    workflow: session.workflow,
+    project_id: session.project_id,
+  });
+
   const updated: SessionSummary = {
     ...session,
     status: nextStatus,
@@ -420,7 +441,7 @@ async function deleteSession(
  * POST /v1/sessions/:id/pause
  * Pauses a session at the next cycle boundary.  Does NOT kill an in-flight turn.
  */
-function pauseSession(id: string, deps: SessionsDeps): Response {
+async function pauseSession(id: string, deps: SessionsDeps): Promise<Response> {
   const sessionDir = join(deps.sessionsDir(), id);
   const session = loadSessionSummary(sessionDir);
   if (!session) {
@@ -434,16 +455,28 @@ function pauseSession(id: string, deps: SessionsDeps): Response {
     });
   }
 
-  const updated: SessionSummary = { ...session, status: "paused" };
+  const nextStatus: SessionStatus = "paused";
+
+  // Emit session.event for the status change
+  await deps.events?.append("session.event", {
+    session_id: id,
+    previous_status: session.status,
+    status: nextStatus,
+    kind: session.kind,
+    workflow: session.workflow,
+    project_id: session.project_id,
+  });
+
+  const updated: SessionSummary = { ...session, status: nextStatus };
   saveSessionSummary(sessionDir, updated);
-  return jsonResponse(200, { _v: 1, id, status: "paused" });
+  return jsonResponse(200, { _v: 1, id, status: nextStatus });
 }
 
 /**
  * POST /v1/sessions/:id/unpause
  * Resumes a paused session.
  */
-function unpauseSession(id: string, deps: SessionsDeps): Response {
+async function unpauseSession(id: string, deps: SessionsDeps): Promise<Response> {
   const sessionDir = join(deps.sessionsDir(), id);
   const session = loadSessionSummary(sessionDir);
   if (!session) {
@@ -457,16 +490,28 @@ function unpauseSession(id: string, deps: SessionsDeps): Response {
     });
   }
 
-  const updated: SessionSummary = { ...session, status: "running" };
+  const nextStatus: SessionStatus = "running";
+
+  // Emit session.event for the status change
+  await deps.events?.append("session.event", {
+    session_id: id,
+    previous_status: session.status,
+    status: nextStatus,
+    kind: session.kind,
+    workflow: session.workflow,
+    project_id: session.project_id,
+  });
+
+  const updated: SessionSummary = { ...session, status: nextStatus };
   saveSessionSummary(sessionDir, updated);
-  return jsonResponse(200, { _v: 1, id, status: "running" });
+  return jsonResponse(200, { _v: 1, id, status: nextStatus });
 }
 
 /**
  * POST /v1/sessions/:id/resume
  * Resumes a session from interrupted, stopped, or paused status.
  */
-function resumeSession(id: string, deps: SessionsDeps): Response {
+async function resumeSession(id: string, deps: SessionsDeps): Promise<Response> {
   const sessionDir = join(deps.sessionsDir(), id);
   const session = loadSessionSummary(sessionDir);
   if (!session) {
@@ -480,9 +525,21 @@ function resumeSession(id: string, deps: SessionsDeps): Response {
     });
   }
 
-  const updated: SessionSummary = { ...session, status: "running" };
+  const nextStatus: SessionStatus = "running";
+
+  // Emit session.event for the status change
+  await deps.events?.append("session.event", {
+    session_id: id,
+    previous_status: session.status,
+    status: nextStatus,
+    kind: session.kind,
+    workflow: session.workflow,
+    project_id: session.project_id,
+  });
+
+  const updated: SessionSummary = { ...session, status: nextStatus };
   saveSessionSummary(sessionDir, updated);
-  return jsonResponse(200, { _v: 1, id, status: "running" });
+  return jsonResponse(200, { _v: 1, id, status: nextStatus });
 }
 
 // ─── Types ─────────────────────────────────────────────────────────────────────

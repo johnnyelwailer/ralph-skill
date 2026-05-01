@@ -82,6 +82,7 @@ export function makeRouterDeps(input: MakeRouterDepsInput): RouterDeps {
         req,
         {
           sessionsDir,
+          events: input.events,
         },
         pathname,
       ),

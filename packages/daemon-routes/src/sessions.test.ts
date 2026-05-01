@@ -1177,3 +1177,136 @@ describe("POST /v1/sessions/:id/resume", () => {
     expect(body.status).toBe("running");
   });
 });
+
+// ─── session.forced event emission ─────────────────────────────────────────────
+
+function makeMockEventWriter() {
+  const events: Array<{ topic: string; data: Record<string, unknown> }> = [];
+  return {
+    events,
+    writer: {
+      append: async <T>(topic: string, data: T) => {
+        events.push({ topic, data: data as Record<string, unknown> });
+        return { _v: 1, id: "evt_test", timestamp: new Date(0).toISOString(), topic, data };
+      },
+    },
+  };
+}
+
+describe("DELETE /v1/sessions/:id?mode=force emits session.forced", () => {
+  test("emits session.forced event when mode=force", async () => {
+    const { events, writer } = makeMockEventWriter();
+    const deps = makeDeps("s_force_event");
+    const dir = join(deps.sessionsDir(), "s_force_event");
+    writeSessionStatus(dir, "running");
+    const req = new Request("http://x/v1/sessions/s_force_event?mode=force", { method: "DELETE" });
+    const res = await handleSessions(req, { ...deps, events: writer }, "/v1/sessions/s_force_event");
+    expect(res!.status).toBe(200);
+    const forced = events.find((e) => e.topic === "session.forced");
+    expect(forced).toBeDefined();
+    expect(forced!.data.session_id).toBe("s_force_event");
+    expect(forced!.data.previous_status).toBe("running");
+  });
+
+  test("does NOT emit session.forced when mode=graceful (default)", async () => {
+    const { events, writer } = makeMockEventWriter();
+    const deps = makeDeps("s_graceful_event");
+    const dir = join(deps.sessionsDir(), "s_graceful_event");
+    writeSessionStatus(dir, "running");
+    const req = new Request("http://x/v1/sessions/s_graceful_event", { method: "DELETE" });
+    const res = await handleSessions(req, { ...deps, events: writer }, "/v1/sessions/s_graceful_event");
+    expect(res!.status).toBe(200);
+    const forced = events.find((e) => e.topic === "session.forced");
+    expect(forced).toBeUndefined();
+  });
+});
+
+// ─── session.event emission ─────────────────────────────────────────────────────
+
+describe("session.event emission on lifecycle transitions", () => {
+  test("DELETE emits session.event with correct previous and next status", async () => {
+    const { events, writer } = makeMockEventWriter();
+    const deps = makeDeps("s_del_event");
+    const dir = join(deps.sessionsDir(), "s_del_event");
+    writeSessionStatus(dir, "running");
+    const req = new Request("http://x/v1/sessions/s_del_event", { method: "DELETE" });
+    const res = await handleSessions(req, { ...deps, events: writer }, "/v1/sessions/s_del_event");
+    expect(res!.status).toBe(200);
+    const evt = events.find((e) => e.topic === "session.event");
+    expect(evt).toBeDefined();
+    expect(evt!.data.session_id).toBe("s_del_event");
+    expect(evt!.data.previous_status).toBe("running");
+    expect(evt!.data.status).toBe("stopped");
+    expect(evt!.data.kind).toBe("standalone");
+    expect(evt!.data.workflow).toBe("plan-build-review");
+    expect(evt!.data.project_id).toBe("p_test");
+  });
+
+  test("pause emits session.event", async () => {
+    const { events, writer } = makeMockEventWriter();
+    const deps = makeDeps("s_pause_event");
+    const dir = join(deps.sessionsDir(), "s_pause_event");
+    writeSessionStatus(dir, "running");
+    const req = new Request("http://x/v1/sessions/s_pause_event/pause", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: "{}",
+    });
+    const res = await handleSessions(req, { ...deps, events: writer }, "/v1/sessions/s_pause_event/pause");
+    expect(res!.status).toBe(200);
+    const evt = events.find((e) => e.topic === "session.event");
+    expect(evt).toBeDefined();
+    expect(evt!.data.previous_status).toBe("running");
+    expect(evt!.data.status).toBe("paused");
+  });
+
+  test("unpause emits session.event", async () => {
+    const { events, writer } = makeMockEventWriter();
+    const deps = makeDeps("s_unpause_event");
+    const dir = join(deps.sessionsDir(), "s_unpause_event");
+    writeSessionStatus(dir, "paused");
+    const req = new Request("http://x/v1/sessions/s_unpause_event/unpause", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: "{}",
+    });
+    const res = await handleSessions(req, { ...deps, events: writer }, "/v1/sessions/s_unpause_event/unpause");
+    expect(res!.status).toBe(200);
+    const evt = events.find((e) => e.topic === "session.event");
+    expect(evt).toBeDefined();
+    expect(evt!.data.previous_status).toBe("paused");
+    expect(evt!.data.status).toBe("running");
+  });
+
+  test("resume emits session.event", async () => {
+    const { events, writer } = makeMockEventWriter();
+    const deps = makeDeps("s_resume_event");
+    const dir = join(deps.sessionsDir(), "s_resume_event");
+    writeSessionStatus(dir, "stopped");
+    const req = new Request("http://x/v1/sessions/s_resume_event/resume", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: "{}",
+    });
+    const res = await handleSessions(req, { ...deps, events: writer }, "/v1/sessions/s_resume_event/resume");
+    expect(res!.status).toBe(200);
+    const evt = events.find((e) => e.topic === "session.event");
+    expect(evt).toBeDefined();
+    expect(evt!.data.previous_status).toBe("stopped");
+    expect(evt!.data.status).toBe("running");
+  });
+
+  test("lifecycle functions work without events writer (optional dependency)", async () => {
+    const deps = makeDeps("s_no_events");
+    const dir = join(deps.sessionsDir(), "s_no_events");
+    writeSessionStatus(dir, "running");
+    // No events property — should not throw
+    const req = new Request("http://x/v1/sessions/s_no_events/pause", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: "{}",
+    });
+    const res = await handleSessions(req, deps, "/v1/sessions/s_no_events/pause");
+    expect(res!.status).toBe(200);
+  });
+});
