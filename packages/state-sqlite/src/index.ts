@@ -51,3 +51,4 @@ export {
   runProjector,
   type Projector,
 } from "./state/projector.ts";
+export { createIdempotencyStore, type IdempotencyStore } from "./state/idempotency.ts";
