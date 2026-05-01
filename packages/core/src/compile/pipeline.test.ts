@@ -103,7 +103,7 @@ describe("parsePipeline", () => {
       const result = parsePipeline(yaml);
       const errors = expectParseErrors(result);
       expect(errors).toContain(
-        "pipeline[0].agent: required, must be a non-empty string",
+        "pipeline[0]: phase must have either an 'agent' or 'exec' key (non-empty string)",
       );
     });
 
@@ -112,7 +112,7 @@ describe("parsePipeline", () => {
       const result = parsePipeline(yaml);
       const errors = expectParseErrors(result);
       expect(errors).toContain(
-        "pipeline[0].agent: required, must be a non-empty string",
+        "pipeline[0]: phase must have either an 'agent' or 'exec' key (non-empty string)",
       );
     });
 

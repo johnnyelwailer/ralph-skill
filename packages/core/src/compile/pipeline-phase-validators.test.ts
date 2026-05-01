@@ -223,14 +223,18 @@ describe("validatePipelineArray", () => {
     const result = validatePipelineArray([{ provider: "opencode" }], "pipeline", errors);
     // Returns empty array (phase not added), not undefined — errors are still pushed
     expect(result).toEqual([]);
-    expect(errors[0]).toBe("pipeline[0].agent: required, must be a non-empty string");
+    expect(errors[0]).toBe(
+      "pipeline[0]: phase must have either an 'agent' or 'exec' key (non-empty string)",
+    );
   });
 
   test("rejects phase with empty agent string", () => {
     const errors: string[] = [];
     const result = validatePipelineArray([{ agent: "" }], "pipeline", errors);
     expect(result).toEqual([]);
-    expect(errors[0]).toBe("pipeline[0].agent: required, must be a non-empty string");
+    expect(errors[0]).toBe(
+      "pipeline[0]: phase must have either an 'agent' or 'exec' key (non-empty string)",
+    );
   });
 
   test("rejects invalid repeat value (non-integer)", () => {
@@ -326,7 +330,9 @@ describe("validatePipelineArray", () => {
   test("pushes path-qualified error for nested phase index", () => {
     const errors: string[] = [];
     validatePipelineArray([{ agent: "" }], "agents[2].pipeline", errors);
-    expect(errors[0]).toBe("agents[2].pipeline[0].agent: required, must be a non-empty string");
+    expect(errors[0]).toBe(
+      "agents[2].pipeline[0]: phase must have either an 'agent' or 'exec' key (non-empty string)",
+    );
   });
 });
 

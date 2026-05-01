@@ -51,8 +51,9 @@ describe("validatePipelineArray", () => {
   test("collects multiple errors from multiple invalid phases", () => {
     const errors: string[] = [];
     validatePipelineArray([{ repeat: 5 }, { agent: "" }], "pipeline", errors);
-    expect(errors.some((e) => e.includes("pipeline[0].agent"))).toBe(true);
-    expect(errors.some((e) => e.includes("pipeline[1].agent"))).toBe(true);
+    // Both phases are missing a valid agent/exec key, so both get path-qualified errors
+    expect(errors.some((e) => e.startsWith("pipeline[0]:"))).toBe(true);
+    expect(errors.some((e) => e.startsWith("pipeline[1]:"))).toBe(true);
   });
 
   test("skips phase with missing agent but continues processing remainder", () => {
