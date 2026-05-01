@@ -10,7 +10,8 @@ function makeDeps(dir: string): Deps {
   const { db } = openDatabase(join(dir, "db.sqlite"));
   const registry = new ProjectRegistry(db);
   (registry as unknown as { _db: ReturnType<typeof openDatabase>["db"] })._db = db;
-  return { registry };
+  const sessionsDir = join(dir, "sessions");
+  return { registry, sessionsDir };
 }
 
 function makeRequest(body: Record<string, unknown>): Request {

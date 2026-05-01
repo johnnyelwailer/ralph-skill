@@ -1,3 +1,5 @@
+import { join } from "path";
+import { tmpdir } from "os";
 import { describe, expect, test } from "bun:test";
 import { Database } from "bun:sqlite";
 import {
@@ -10,7 +12,7 @@ import { handleProjects, type ProjectsDeps } from "./projects.ts";
 function makeDeps(): ProjectsDeps {
   const db = new Database(":memory:");
   migrate(db, loadBundledMigrations());
-  return { registry: new ProjectRegistry(db) };
+  return { registry: new ProjectRegistry(db), sessionsDir: join(tmpdir(), "aloop-projects-test-sessions") };
 }
 
 async function resJson<T>(res: Response): Promise<T> {

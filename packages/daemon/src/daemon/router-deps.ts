@@ -50,6 +50,7 @@ export function makeRouterDeps(input: MakeRouterDepsInput): RouterDeps {
         req,
         {
           registry: input.registry,
+          sessionsDir: () => join(input.config.paths().stateDir, "sessions"),
         },
         pathname,
       ),

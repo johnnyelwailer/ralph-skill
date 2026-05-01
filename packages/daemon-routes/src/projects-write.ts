@@ -23,7 +23,7 @@ export async function createProject(req: Request, deps: Deps): Promise<Response>
 
   try {
     const created = deps.registry.create({ absPath, ...(name !== undefined && { name }) });
-    return jsonResponse(201, projectResponse(created));
+    return jsonResponse(201, projectResponse(created, deps.sessionsDir));
   } catch (err) {
     if (err instanceof ProjectAlreadyRegisteredError) {
       return errorResponse(409, "project_already_registered", err.message, {
@@ -53,7 +53,7 @@ export async function patchProject(
       updated = deps.registry.updateStatus(id, body.data.status as ProjectStatus);
     }
     if (!updated) return badRequest("no updatable fields provided");
-    return jsonResponse(200, projectResponse(updated));
+    return jsonResponse(200, projectResponse(updated, deps.sessionsDir));
   } catch (err) {
     if (err instanceof ProjectNotFoundError) {
       return errorResponse(404, "project_not_found", err.message, { id });
@@ -65,7 +65,7 @@ export async function patchProject(
 export function archiveProject(id: string, deps: Deps): Response {
   try {
     const archived = deps.registry.archive(id);
-    return jsonResponse(200, projectResponse(archived));
+    return jsonResponse(200, projectResponse(archived, deps.sessionsDir));
   } catch (err) {
     if (err instanceof ProjectNotFoundError) {
       return errorResponse(404, "project_not_found", err.message, { id });

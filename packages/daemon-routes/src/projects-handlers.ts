@@ -18,6 +18,7 @@ export function listProjects(req: Request, deps: Deps): Response {
   const url = new URL(req.url);
   const statusParam = url.searchParams.get("status");
   const path = url.searchParams.get("path");
+  const sessionsDir = typeof deps.sessionsDir === "function" ? deps.sessionsDir() : deps.sessionsDir;
 
   if (statusParam !== null && !VALID_STATUSES.includes(statusParam as ProjectStatus)) {
     return badRequest(`invalid status: ${statusParam}`, { statusParam });
@@ -30,7 +31,7 @@ export function listProjects(req: Request, deps: Deps): Response {
 
   return jsonResponse(200, {
     _v: 1,
-    items: items.map(projectResponse),
+    items: items.map((p) => projectResponse(p, sessionsDir)),
     next_cursor: null,
   });
 }
@@ -38,5 +39,6 @@ export function listProjects(req: Request, deps: Deps): Response {
 export function getProject(id: string, deps: Deps): Response {
   const p = deps.registry.get(id);
   if (!p) return errorResponse(404, "project_not_found", `project not found: ${id}`, { id });
-  return jsonResponse(200, projectResponse(p));
+  const sessionsDir = typeof deps.sessionsDir === "function" ? deps.sessionsDir() : deps.sessionsDir;
+  return jsonResponse(200, projectResponse(p, sessionsDir));
 }
