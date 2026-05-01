@@ -10,15 +10,9 @@ import { Database } from "bun:sqlite";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-function runArtifactsMigration(db: Database): void {
-  const sql = readFileSync(join(__dirname, "../../state-sqlite/src/migrations/006-artifacts.sql"), "utf-8");
-  db.run(sql);
-}
-
 function makeDeps(): ArtifactsDeps {
   const db = new Database(":memory:");
   migrate(db, loadBundledMigrations());
-  runArtifactsMigration(db);
   const registry = new ArtifactRegistry(db);
   const tempDir = mkdtempSync(join(tmpdir(), "aloop-artifacts-test-"));
   return {
@@ -470,14 +464,16 @@ describe("GET /v1/artifacts filter parameters", () => {
     deps.registry.create({ project_id: "p_multi", kind: "image", filename: "m1.png", media_type: "image/png", bytes: 10, session_id: "sess_x", phase: "execute" });
     deps.registry.create({ project_id: "p_multi", kind: "image", filename: "m2.png", media_type: "image/png", bytes: 10, session_id: "sess_x", phase: "setup" });
     deps.registry.create({ project_id: "p_multi", kind: "image", filename: "m3.png", media_type: "image/png", bytes: 10, session_id: "sess_y", phase: "execute" });
+    deps.registry.create({ project_id: "p_multi", kind: "image", filename: "m4.png", media_type: "image/png", bytes: 10, session_id: "sess_y", phase: "setup" });
 
+    // Both filters apply (AND logic): session_id=sess_x AND phase=execute
     const req = makeRequest("GET", "/v1/artifacts?session_id=sess_x&phase=execute");
     const res = await handleArtifacts(req, deps, "/v1/artifacts");
     expect(res!.status).toBe(200);
     const body = await resJson<{ items: Array<Record<string, unknown>> }>(res!);
-    // session_id filter takes precedence; phase is ignored in the single-filter lookup
-    expect(body.items).toHaveLength(2);
-    expect(body.items.every((item: Record<string, unknown>) => (item as {session_id: string}).session_id === "sess_x")).toBe(true);
+    expect(body.items).toHaveLength(1);
+    expect((body.items[0] as { session_id: string; phase: string }).session_id).toBe("sess_x");
+    expect((body.items[0] as { session_id: string; phase: string }).phase).toBe("execute");
   });
 });
 
