@@ -28,7 +28,8 @@ A single long-running local daemon (`aloopd`) owns all state and scheduling. Eve
 ```
 ┌──────────────────────────────────────────────────────────────┐
 │  Clients                                                      │
-│    aloop CLI · Dashboard · mobile web · bots · scripts       │
+│    aloop CLI · Dashboard · global composer · mobile web      │
+│    bots · scripts                                            │
 │    future integrations                                       │
 │    loop.sh / loop.ps1 shim (≤150 LOC each)                    │
 └──────────────────────────────────────────────────────────────┘
@@ -38,7 +39,8 @@ A single long-running local daemon (`aloopd`) owns all state and scheduling. Eve
 │  aloopd  (daemon, Bun TypeScript)                             │
 │                                                               │
 │    HTTP server · SSE hub · event bus                          │
-│    Incubation inbox · research runs · promotion proposals      │
+│    Composer turns · incubation inbox · research runs          │
+│    promotion proposals                                       │
 │    Setup runs · session runner · workflow state machine       │
 │    Compile step                                               │
 │    Scheduler (permits: system / quota / burn-rate / concurrency)│
@@ -82,6 +84,7 @@ This is the load-bearing decision:
 `aloopd` is the single process that owns:
 
 - **Incubation** — captured ideas, research runs, synthesis proposals, and explicit promotion into setup/spec/tracker/session targets (see `incubation.md`).
+- **Composer turns** — provider-backed control turns that translate user intent into daemon-owned objects, proposals, long-running jobs, or status summaries. The composer is an agentic client interface, not a second runtime.
 - **Setup runs** — long-lived onboarding state before a project becomes `ready` (see `setup.md`).
 - **Sessions** — standalone, orchestrator, child. State machine, lifecycle, parent-child relationships (see `daemon.md` §Session kinds).
 - **Scheduler** — the only gate between "a turn is wanted" and "a turn is started." Composes gates for concurrency, system resources, per-provider quota, burn rate, and live overrides.
@@ -112,12 +115,13 @@ CONSTITUTION rule: the shim must shrink, never grow. Any change that would push 
 
 ## Client responsibilities
 
-All other clients (CLI, dashboard, mobile web, bots) translate user intent into API calls. They:
+All other clients (CLI, dashboard, global composer, mobile web, bots) translate user intent into API calls. They:
 
 - Render state they get from `GET /v1/...` endpoints.
 - Subscribe to SSE streams for live updates (`GET /v1/events`, `GET /v1/sessions/:id/events`, `GET /v1/sessions/:id/turns/:turn_id/chunks`).
 - Never persist their own state for things the daemon owns. Client-local state is limited to UI prefs, auth tokens, etc.
 - Treat incubation captures, research results, syntheses, comments, and promotion decisions as daemon-owned state, not local drafts once submitted.
+- Treat composer turns as a natural-language interface to the same primitives. If a composer launches work, the launched work is a `ResearchRun`, `ResearchMonitor`, `SetupRun`, `Session`, tracker mutation, proposal, comment, or artifact with normal events and projections.
 
 This keeps the system honest: if the CLI can do X, the dashboard can do X, because X is an API endpoint. If the dashboard needs Y that no one else has, the API is missing an endpoint — fix the API, not the dashboard.
 
@@ -133,6 +137,8 @@ incubation capture
 ```
 
 Each arrow crosses the same daemon API boundary and emits events. There is no private dashboard path from a phone capture to a tracker issue or repo edit.
+
+The composer may accelerate the first arrow or explain later arrows, but it does not create a parallel object model. It observes child work by reading the same projections and event streams as every other client.
 
 ## Adapter surfaces
 
@@ -179,6 +185,7 @@ Explicit non-goals — decisions that must not drift back in:
 
 - **No business logic in the shim.** If shrinking requires moving logic, move it.
 - **No hidden intake channel.** Captures, research, and promotion proposals are first-class daemon state under `incubation.md`, not dashboard-local chat transcripts or ad hoc tracker issues.
+- **No composer-only backend.** The composer can be smart, provider-backed, and always available, but it must express durable effects as normal API mutations and long-running daemon jobs.
 - **No YAML parsing outside the compile step.** Shims and session runner use `loop-plan.json`.
 - **No direct tracker calls from agents.** Always `aloop-agent submit` → daemon → adapter.
 - **No expressions or inline code in pipeline YAML, prompt frontmatter, or daemon config.** Keywords (`onFailure: retry`, `trigger: merge_conflict`, `context: orch_recall`) are data; project-defined logic runs through typed runtime extension manifests.

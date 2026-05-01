@@ -10,6 +10,7 @@
 - Process model
 - State layout
 - Incubation
+- Composer turns
 - Project registry (multi-project)
 - Session kinds
 - Scheduler authority
@@ -25,6 +26,7 @@
 `aloopd` is the single process that owns:
 
 - **Incubation items, research runs, and promotion proposals**
+- **Composer turns** that translate user intent into daemon-owned objects and long-running jobs
 - **Active sessions** and their state machines
 - **Active setup runs** and their state machines
 - **Provider health, quota, and cooldown** state
@@ -58,6 +60,9 @@ No separate worker fleet in v1. Every session runs under daemon supervision with
       <id>/
         log.jsonl               authoritative event history for one incubation item
         artifacts/              attachments, research outputs, transcripts, synthesis evidence
+    composer/
+      turns/<id>/
+        log.jsonl               authoritative history for one composer control turn
     sessions/<id>/
       log.jsonl                 authoritative event history
       worktree/                 git worktree (for standalone/child sessions)
@@ -91,6 +96,19 @@ Practical consequences:
 - Mobile web, dashboard, CLI, and bots all attach to the same item through the HTTP API.
 
 The detailed contract lives in `incubation.md`; this document's invariant is that intake and research are durable daemon state, not client-owned conversation state.
+
+## Composer turns
+
+The composer is a provider-backed control agent exposed through the same API as every other client action.
+
+Practical consequences:
+
+- A composer turn can clarify user intent, summarize current state, prepare a proposed action, or request a daemon mutation.
+- If it starts long-running work, that work is a normal daemon object: `ResearchRun`, `ResearchMonitor`, `SetupRun`, `Session`, tracker mutation, proposal, comment, or artifact.
+- The composer observes child work through SQLite projections and SSE events; it does not own a hidden child-agent graph.
+- Provider-backed composer turns acquire scheduler permits using `composer_turn_id`.
+- Risky or durable mutations can stop at `waiting_for_approval` with a structured preview.
+- The transcript is useful history, but the launched object is the source of truth.
 
 ## Project registry
 
@@ -161,7 +179,7 @@ Three kinds, one table, same API.
 
 ## Scheduler authority
 
-The scheduler is the **only gate** between a provider turn being "wanted" and a provider turn being "started." Every provider-backed turn — standalone, orchestrator, child, or incubation research — acquires a permit first.
+The scheduler is the **only gate** between a provider turn being "wanted" and a provider turn being "started." Every provider-backed turn — standalone, orchestrator, child, composer, or incubation research — acquires a permit first.
 
 **Permit gates (composed, all must grant):**
 

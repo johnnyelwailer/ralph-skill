@@ -32,11 +32,11 @@ Incubation is also cross-cutting, but it must stay thinner than setup in v1.
 
 - **M2** provides the event/state substrate for durable incubation items, research runs, and proposal history.
 - **M4/M5** provide scheduler-permitted provider execution for non-mutating research runs.
-- **M7/M8** should expose the `/v1/incubation` API and artifact/comment plumbing needed for capture and research evidence.
+- **M7/M8** should expose the `/v1/composer` and `/v1/incubation` APIs plus artifact/comment plumbing needed for conversational kickoff, capture, and research evidence.
 - **M9** consumes promoted Epics/Stories/steering through the normal orchestrator path; it must not read raw incubation items as backlog.
-- **M11** provides the inbox, research queue, proposal review, mobile capture path, and promotion controls in the dashboard/workstation.
+- **M11** provides the always-ready composer, inbox, research queue, proposal review, mobile capture path, and promotion controls in the dashboard/workstation.
 
-The v1 bar is not a full personal knowledge-management system. It is durable capture, bounded research, source provenance, lightweight monitors, reviewable synthesis, and explicit promotion into the existing aloop subsystems.
+The v1 bar is not a full personal knowledge-management system. It is composer-led durable capture, bounded research, source provenance, lightweight monitors, reviewable synthesis, and explicit promotion into the existing aloop subsystems.
 
 AutoResearch-style `experiment_loop` mode is a v1.5 candidate unless a narrow local benchmark use case appears earlier. It requires immutable-oracle enforcement, attempt ledgers, metric extraction, and plateau detection; those are not necessary for the first capture/research/monitor slice.
 
@@ -233,6 +233,7 @@ Sandboxing is the broader execution concept; the project devcontainer is only th
 
 **Deliverable:**
 - Existing React/Vite dashboard rewired to consume v1 API only.
+- Always-ready scoped composer that can capture intent, create incubation items, start lightweight research, explain status, and observe launched daemon jobs without owning hidden state.
 - Panels: session list (grouped by project), session detail with live event tail, provider health, scheduler permits, cost + keeper-rate, metric comparison by `variant_id`.
 - Basic setup-run shell: active setup runs, current stage/progress, current question set, background research status, and chapter/document summaries via the same setup API used by the CLI.
 - Steering box, stop button, override editor.
@@ -241,7 +242,7 @@ Sandboxing is the broader execution concept; the project devcontainer is only th
 
 **Test:** launch dashboard, watch M9's parallel-dispatch scenario in real-time, then resume a setup run and answer a structured question without leaving the dashboard. Kill a session via the dashboard — daemon confirms stop. Override a provider live → in-flight turn unaffected, next grant respects it.
 
-**Non-goals:** design polish, full chat-first UX, or the final rich chapter-review UI for every setup stage; Storybook.
+**Non-goals:** design polish, transcript-only UX, or the final rich chapter-review UI for every setup stage; Storybook.
 
 **Unlocks:** aloop is operable by humans in the loop.
 

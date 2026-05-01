@@ -13,7 +13,7 @@ The earlier draft intentionally kept this file thin. That is no longer enough. T
 - Information architecture
 - Primary surfaces
 - Control model
-- Chat interaction model
+- Composer agent model
 - Real-time model
 - Layout and customization
 - Incubation workstation
@@ -64,7 +64,7 @@ It therefore needs multiple levels of abstraction in one shell, not a single log
 7. **Observable decisions.** Denials, reroutes, cooldowns, diagnoses, and merges need visible rationale.
 8. **Flexible, but not chaotic.** Layout can be customized, resized, docked, and saved, but the app must still have sane default workspaces.
 9. **Durable over ephemeral.** Streams are helpful; persisted records win. Every live panel should have a replay or inspectable history behind it.
-10. **Chat is a tool, not the architecture.** Streaming agent chat is useful, especially for steering or discussion, but the product cannot collapse into a single chat transcript.
+10. **The composer is the universal intent interface, not the state store.** Users should be able to ask for anything the app can do from one intelligent composer, but durable state still lands in daemon-owned objects.
 11. **Fast paths matter.** The workstation should feel immediate in the composer, stream, panel switching, and inspect flows; latency should not be amplified by heavy UI chrome or unnecessary rerenders.
 
 ## Client forms
@@ -332,11 +332,28 @@ For incubation promotion, spec mutations, tracker synthesis, and setup chapter e
 
 Not every edit needs ceremony. Direct editing remains valid. But synthesis-heavy mutations need a reviewable intermediate state.
 
-## Chat interaction model
+## Composer agent model
 
-The workstation should borrow the strongest parts of modern high-performance chat tools without becoming "just another chat app."
+The composer is the intelligent interface for everything aloop can do. It is a real agentic control surface: it can understand ambiguous user intent, prepare the right task, create or update daemon objects, kick off long-running subagents, and observe their status through the same event streams as the rest of the app.
 
-What to borrow:
+The composer is not a separate backend and not a hidden memory store. A composer turn is a provider-backed control turn whose outputs are structured mutations, proposals, comments, research runs, setup runs, session steering, or status summaries.
+
+The default user model should be:
+
+- speak or type into the composer
+- the composer resolves scope and asks clarifying questions when needed
+- the composer previews the structured action it intends to take when the action is risky or durable
+- the daemon applies approved mutations through normal endpoints
+- long-running work continues as normal daemon jobs
+- the composer can later summarize, pause, resume, cancel, or redirect those jobs
+
+This makes incubation kickoff natural: a raw idea can begin as one sentence in the composer and become an `IncubationItem`, a `ResearchRun`, a monitor, an outreach draft, or a promotion proposal without forcing the user through a form first.
+
+The dedicated workstations remain necessary. The composer is the fastest way to express intent; the incubation/setup/runtime/tracker surfaces are the durable places to inspect, compare, approve, and manage the resulting objects.
+
+### What to borrow from chat
+
+The workstation should borrow the strongest parts of modern high-performance chat tools without becoming "just another chat app":
 
 - a **fast, always-ready composer**
 - immediate visual response on send
@@ -346,24 +363,48 @@ What to borrow:
 - easy branch/thread continuation from prior context
 - lightweight attachment of artifacts, spec fragments, or work-item context into the message
 
-What not to borrow:
+### What not to borrow
 
 - making the transcript the only source of truth
 - forcing planning, tracker editing, or observability into chat turns
 - hiding structured state behind natural-language conversation
+- allowing the composer to mutate repos, trackers, outreach channels, or setup state outside the daemon API
 
-The chat surface is most useful for:
+### Composer responsibilities
 
+The composer can initiate or assist with:
+
+- capturing a new incubation item from raw text, a link, an image, a voice transcript, or a pasted thread
+- preparing a research task by refining the question, source plan, budget, provider chain, and expected output
+- starting, pausing, resuming, cancelling, or summarizing long-running research runs and monitors
+- drafting outreach/survey plans while leaving send/approval gates to the daemon policy
+- starting setup runs from a candidate project or matured incubation proposal
 - steering a running session
-- clarifying an incubation item or research finding
+- explaining scheduler/provider/tracker decisions
 - discussing a spec section or proposed synthesis
 - asking the system to explain a decision
 - iterating on comments before applying them to tracker/spec state
-- targeted agent assistance while staying anchored to a selected project, story, or session
+- targeted agent assistance while staying anchored to a selected incubation item, project, story, or session
 
-### Required chat qualities
+### Long-running subagents
 
-The chat experience should feel operationally sharp:
+When the composer kicks off long-running work, it creates normal daemon jobs rather than owning hidden child agents:
+
+| User asks composer to... | Daemon object created or updated |
+|---|---|
+| "Capture this idea" | `IncubationItem` |
+| "Research this" | `ResearchRun` |
+| "Track this for a month" | `ResearchMonitor` plus periodic `ResearchRun`s |
+| "Draft a survey" | `OutreachPlan` and artifacts |
+| "Figure out if this repo is ready" | `SetupRun` |
+| "Implement this story" | `Session` or tracker/orchestrator action after promotion |
+| "Explain what is running" | status read over existing projections/events |
+
+The composer observes those objects by subscribing to SSE and reading normal API projections. It may summarize status, but the source of truth is still the underlying run/item/session.
+
+### Required composer qualities
+
+The composer experience should feel operationally sharp:
 
 - **optimistic send behavior**: the user's message appears immediately
 - **incremental streaming**: chunks append smoothly rather than re-rendering the full transcript on every delta
@@ -372,6 +413,8 @@ The chat experience should feel operationally sharp:
 - **history durability**: every useful exchange can be replayed or linked back to the underlying object it affected
 - **artifact-aware**: attach logs, proofs, diffs, comments, or exact run outputs into the conversation without copy-paste gymnastics
 - **inline-media-aware**: embed screenshots, mockups, and visual diffs inline from the artifact picker when the comment or chat thread needs them
+- **action previews**: show structured proposed mutations before durable or risky actions
+- **job awareness**: show launched child work, live status, cost, and cancellation controls inline
 
 ### Composer behavior
 
@@ -379,7 +422,7 @@ The composer should behave more like a professional tool than a generic textarea
 
 - autosize within tight bounds
 - keyboard send by default, newline via modifier
-- slash-style quick actions for common intents (`/steer`, `/explain`, `/comment`, `/apply`, `/stop`)
+- slash-style quick actions for common intents (`/capture`, `/research`, `/monitor`, `/setup`, `/steer`, `/explain`, `/comment`, `/apply`, `/stop`)
 - visible scope chips for the current target (`incubation item`, `project`, `epic`, `story`, `session`, `spec section`)
 - drop targets or picker affordances for artifacts and context objects
 - preserved draft state per target where practical
@@ -394,16 +437,17 @@ Streaming should optimize for legibility and perceived speed:
 - keep scroll behavior predictable: follow while at bottom, do not yank the viewport when the user has scrolled away
 - show partial responses immediately, even if richer metadata arrives later
 
-### Chat in the workstation layout
+### Composer in the workstation layout
 
-Chat should usually live as one surface among several:
+The composer should be globally reachable and scope-aware, not trapped inside one page:
 
+- global command/composer bar
 - docked inspector tab
 - bottom conversation drawer
 - right-rail discussion pane
 - dedicated workbench mode when the user wants a chat-led flow
 
-The default shell should not force chat open at all times. The system is broader than the transcript.
+The default shell should not force a transcript open at all times. The system is broader than the transcript, but the composer should always be one shortcut or tap away.
 
 ## Real-time model
 

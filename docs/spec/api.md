@@ -12,6 +12,7 @@
 - Transport and auth
 - Common envelope (request, response, errors)
 - Projects
+- Composer
 - Incubation
 - Sessions
 - Steering
@@ -99,6 +100,65 @@ PATCH  /v1/projects/:id        // rename
 DELETE /v1/projects/:id        // archive (soft-delete)
 POST   /v1/projects/:id/purge  // hard-delete sessions, logs, worktrees
 ```
+
+## Composer
+
+The composer is the universal agentic intent interface for the app. It is used by dashboard, mobile web, CLI, and future capture surfaces to turn natural-language intent into normal daemon-owned objects.
+
+The composer is not a privileged backend. A composer turn may create or update incubation items, comments, research runs, monitors, outreach plans, setup runs, tracker proposals, steering instructions, or sessions only by invoking the same daemon mutation path those objects use elsewhere.
+
+### Turns
+
+```
+GET  /v1/composer/turns?scope_kind=<kind>&scope_id=<id>&limit=<n>&cursor=<cursor>
+POST /v1/composer/turns
+{
+  "scope": {
+    "kind": "global" | "project" | "incubation_item" | "setup_run" | "work_item" | "session" | "spec_section",
+    "id": "optional-object-id"
+  },
+  "message": "Research whether mobile capture should become part of aloop.",
+  "artifact_refs": [],
+  "context_refs": [
+    { "kind": "project", "project_id": "p_..." },
+    { "kind": "incubation_item", "item_id": "i_..." }
+  ],
+  "intent_hint": "capture|research|monitor|setup|steer|explain|summarize|apply",
+  "provider_chain": ["codex", "claude"],
+  "max_cost_usd": 1.50,
+  "approval_policy": "preview_required"
+}
+GET    /v1/composer/turns/:id
+POST   /v1/composer/turns/:id/cancel
+GET    /v1/composer/turns/:id/chunks
+GET    /v1/composer/turns/:id/launched
+```
+
+The response includes:
+
+```json
+{
+  "_v": 1,
+  "id": "ct_...",
+  "scope": { "kind": "global" },
+  "status": "queued|running|waiting_for_approval|completed|failed|cancelled",
+  "intent_hint": "research",
+  "launched_refs": [
+    { "kind": "incubation_item", "id": "i_..." },
+    { "kind": "research_run", "id": "rr_..." }
+  ],
+  "proposal_refs": [],
+  "usage": { "tokens_in": 1234, "tokens_out": 456, "cost_usd": 0.12 },
+  "created_at": "2026-05-01T10:00:00Z",
+  "updated_at": "2026-05-01T10:01:00Z"
+}
+```
+
+Composer turns acquire scheduler permits before provider calls. A turn that launches long-running work returns quickly once the daemon has created the child object; status for that work is observed through the child object's own endpoints and events.
+
+Risky or durable mutations should return `waiting_for_approval` with a structured preview instead of applying immediately. Examples: promotion, tracker mutation, setup-state mutation, outreach send, session start, or repository-affecting steering. Read-only explanations and low-risk capture/comment creation may complete without preview depending on policy.
+
+The launched object, not the composer transcript, is the source of truth. For example, "track this market weekly" creates a `ResearchMonitor`; the composer turn only records how it was requested and which objects it launched.
 
 ## Incubation
 
@@ -400,7 +460,7 @@ The global event bus. All state changes, log lines, and streaming content publis
 ### Subscribe
 
 ```
-GET /v1/events?topics=session.*,provider.*&project_id=<id>&session_id=<id>&parent=<orch_id>&since=<event_id>
+GET /v1/events?topics=session.*,provider.*&project_id=<id>&session_id=<id>&research_run_id=<id>&composer_turn_id=<id>&parent=<orch_id>&since=<event_id>
 ```
 
 Response: `text/event-stream`.
@@ -408,6 +468,8 @@ Response: `text/event-stream`.
 - `topics`: csv of topic patterns, `*` is glob. Default subscribes to all.
 - `project_id`: filter to a project's events.
 - `session_id`: filter to a single session.
+- `research_run_id`: filter to a single incubation research run.
+- `composer_turn_id`: filter to a single composer turn.
 - `parent`: filter to a session's children (for orchestrators).
 - `since`: resume from a prior event id. Daemon streams missed events then switches to live tail.
 
@@ -435,11 +497,13 @@ Every event has a monotonic `id` (ms timestamp + sequence). Events are durable (
 | `provider.quota` | quota probe result | `{provider_id, remaining, reset_at}` |
 | `provider.override.changed` | overrides PUT | new overrides doc |
 | `scheduler.limits.changed` | scheduler limits PUT | `{limits}` |
-| `scheduler.permit.grant` | permit issued | `{permit_id, session_id?, research_run_id?, provider_id, ttl}` |
-| `scheduler.permit.deny` | permit refused | `{session_id?, research_run_id?, reason, gate, details}` |
-| `scheduler.permit.release` | permit released | `{permit_id, session_id?, research_run_id?}` |
-| `scheduler.permit.expired` | TTL reclaim | `{permit_id, session_id?, research_run_id?}` |
+| `scheduler.permit.grant` | permit issued | `{permit_id, session_id?, research_run_id?, composer_turn_id?, provider_id, ttl}` |
+| `scheduler.permit.deny` | permit refused | `{session_id?, research_run_id?, composer_turn_id?, reason, gate, details}` |
+| `scheduler.permit.release` | permit released | `{permit_id, session_id?, research_run_id?, composer_turn_id?}` |
+| `scheduler.permit.expired` | TTL reclaim | `{permit_id, session_id?, research_run_id?, composer_turn_id?}` |
 | `scheduler.burn_rate_exceeded` | burn gate tripped for a session | `{session_id, observed, threshold}` |
+| `composer.turn.changed` | composer turn queued, running, waiting for approval, completed, failed, or cancelled | composer turn summary |
+| `composer.action.previewed` | composer produced a structured mutation preview requiring approval | preview summary |
 | `incubation.item.changed` | capture/edit/state change on an incubation item | incubation item summary |
 | `incubation.comment.created` | comment added to an incubation item | comment summary |
 | `incubation.research.update` | research run status, findings, or cost changed | research run summary |
@@ -468,14 +532,14 @@ Returns `application/x-ndjson`, streaming. Useful for exports, offline analysis,
 
 ## Artifacts
 
-Artifacts are daemon-managed files associated with sessions, setup runs, work items, or change sets. Proof outputs are the primary source, but clients may also upload images or other files that should be referenced in discussion.
+Artifacts are daemon-managed files associated with sessions, composer turns, setup runs, incubation items, research runs, work items, or change sets. Proof outputs are the primary source, but clients may also upload images or other files that should be referenced in discussion.
 
 This is the minimal runtime primitive that enables image-backed feedback without requiring clients or agents to speak tracker-native upload APIs.
 
 ### List / inspect / content
 
 ```
-GET /v1/artifacts?project_id=<id>&session_id=<id>&setup_run_id=<id>&incubation_item_id=<id>&research_run_id=<id>&work_item_key=<key>&phase=proof&type=screenshot
+GET /v1/artifacts?project_id=<id>&session_id=<id>&composer_turn_id=<id>&setup_run_id=<id>&incubation_item_id=<id>&research_run_id=<id>&work_item_key=<key>&phase=proof&type=screenshot
 GET /v1/artifacts/:id
 GET /v1/artifacts/:id/content
 ```
@@ -492,6 +556,7 @@ Illustrative metadata shape:
   "id": "a_01j...",
   "project_id": "p_...",
   "session_id": "s_...",
+  "composer_turn_id": null,
   "setup_run_id": null,
   "incubation_item_id": null,
   "research_run_id": null,
@@ -514,6 +579,7 @@ Content-Type: multipart/form-data
 fields:
   project_id=<id>
   session_id=<id>?         // optional
+  composer_turn_id=<id>?   // optional
   setup_run_id=<id>?       // optional
   incubation_item_id=<id>? // optional
   research_run_id=<id>?    // optional
@@ -555,10 +621,19 @@ GET /v1/sessions/:id/turns/:turn_id/chunks
 
 Response: SSE `event: agent.chunk`. Also published on the global bus.
 
+Composer turns use:
+
+```
+GET /v1/composer/turns/:turn_id/chunks
+```
+
+Research runs and future provider-backed daemon jobs may expose owner-specific chunk endpoints as needed. The chunk payload always identifies the owner; clients must not assume every chunk belongs to an implementation session.
+
 ### Chunk payload
 
 ```json
 {
+  "owner": { "kind": "session", "id": "s_abc" },
   "session_id": "s_abc",
   "turn_id": "t_42",
   "sequence": 0,
@@ -569,6 +644,7 @@ Response: SSE `event: agent.chunk`. Also published on the global bus.
 ```
 
 - `sequence` is monotonic within a turn, starts at 0.
+- `owner.kind` is `session`, `composer_turn`, or another provider-backed daemon job kind added later. `session_id` remains for v1 session compatibility.
 - `type`: `text`, `thinking`, `tool_call`, `tool_result`, `usage`, `error`.
 - `content` is type-specific; clients render what they know, ignore unknowns.
 - `final: true` on the last chunk of the turn.
@@ -588,7 +664,7 @@ Provider adapters that support streaming (opencode already does; claude and code
 
 ### Replay
 
-Chunks are durable in the session's JSONL. `GET /v1/sessions/:id/turns/:turn_id/chunks?replay=true` replays historical chunks for a completed turn (useful for post-mortem UI).
+Chunks are durable in the owning object's JSONL. `GET /v1/sessions/:id/turns/:turn_id/chunks?replay=true` and `GET /v1/composer/turns/:turn_id/chunks?replay=true` replay historical chunks for completed turns (useful for post-mortem UI).
 
 ## Providers
 
@@ -655,19 +731,20 @@ POST /v1/scheduler/permits
 {
   "session_id": "s_abc",
   "research_run_id": null,
+  "composer_turn_id": null,
   "provider_candidate": "opencode",
   "estimated_cost_usd": 0.03
 }
 ```
 
-Exactly one of `session_id` or `research_run_id` is required. Sessions are the normal owner for implementation and orchestration turns; research runs are the owner for incubation research turns.
+Exactly one of `session_id`, `research_run_id`, or `composer_turn_id` is required. Sessions are the normal owner for implementation and orchestration turns; research runs are the owner for incubation research turns; composer turns are the owner for provider-backed intent-resolution turns.
 
 Returns:
 
 ```json
 {
   "granted": true,
-  "permit": { "id": "perm_xyz", "session_id": "s_abc", "research_run_id": null, "provider_id": "opencode", "ttl_seconds": 600 }
+  "permit": { "id": "perm_xyz", "session_id": "s_abc", "research_run_id": null, "composer_turn_id": null, "provider_id": "opencode", "ttl_seconds": 600 }
 }
 ```
 

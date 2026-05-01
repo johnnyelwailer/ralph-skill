@@ -28,7 +28,7 @@ Incubation is the durable place for work that is not ready to become project set
 
 It covers:
 
-- fast capture from phone, browser, desktop, CLI, or chat surfaces
+- fast capture from phone, browser, desktop, CLI, or composer surfaces
 - vague ideas that need clarification over time
 - links, screenshots, voice-note transcripts, logs, or pasted observations
 - background research tasks that should produce evidence before any implementation
@@ -173,6 +173,7 @@ Incubation reuses aloop's daemon discipline:
 
 - the daemon owns the objects, state transitions, events, artifacts, and retention
 - all clients use `/v1/incubation/...`
+- composer kickoff is just an agentic client path into the same objects; it creates or updates incubation items, comments, research runs, monitors, outreach plans, and proposals through the daemon API
 - background research uses provider adapters and scheduler permits
 - permits are owned by `research_run_id`, not by a hidden implementation session
 - every research run emits durable events and artifacts
@@ -478,6 +479,13 @@ Promotion is the handoff from incubation into an existing aloop subsystem.
 Promotion is never a hidden side effect of research completion. A client or policy-authorized agent must apply a proposal through the API, and the resulting target object records a back-reference to the incubation item.
 
 ## Client surfaces
+
+Incubation has two complementary client modes:
+
+- **Conversational kickoff** through the global composer agent.
+- **Structured management** through the incubation workstation.
+
+The composer is the preferred path for raw intent because early ideas are usually incomplete. It can ask clarifying questions, infer scope, prepare a source plan, propose a budget, and start a research run or monitor after the daemon validates the request. The resulting state is still an `IncubationItem`, `ResearchRun`, `ResearchMonitor`, `OutreachPlan`, or `IncubationProposal`.
 
 The workstation should expose incubation as a first-class surface, not as a generic chat thread.
 
