@@ -4,12 +4,14 @@ import { existsSync, mkdirSync, writeFileSync, readFileSync, readdirSync, unlink
 import { join } from "node:path";
 import { badRequest, errorResponse, jsonResponse, methodNotAllowed, notFoundResponse, parseJsonBody } from "./http-helpers.ts";
 import type { AffectsCompletedWork, SteeringQueueEntry, EventEnvelope, SessionKind, SessionStatus } from "@aloop/core";
-import type { EventWriter } from "@aloop/state-sqlite";
+import type { EventWriter, IdempotencyStore } from "@aloop/state-sqlite";
 
 export type SessionsDeps = {
   readonly sessionsDir: () => string;
   /** Optional event writer for session lifecycle events (session.forced, session.event). */
   readonly events?: EventWriter;
+  /** Optional idempotency store for deduplicating session creation requests. */
+  readonly idempotencyStore?: IdempotencyStore;
 };
 
 export async function handleSessions(
@@ -21,7 +23,23 @@ export async function handleSessions(
 
   if (pathname === "/v1/sessions") {
     if (req.method === "GET") return listSessions(req, deps);
-    if (req.method === "POST") return createSession(req, deps);
+    if (req.method === "POST") {
+      const key = deps.idempotencyStore ? req.headers.get("Idempotency-Key")?.trim() : null;
+      // Idempotency: if the client sent a known key, return the cached response.
+      if (key) {
+        const cached = deps.idempotencyStore.get(key);
+        if (cached) {
+          return jsonResponse(200, cached.result);
+        }
+      }
+      const response = await createSession(req, deps);
+      // Cache successful creates for replay.
+      if (key && response.status === 201) {
+        const body = await response.clone().json();
+        deps.idempotencyStore.put(key, body, "ok");
+      }
+      return response;
+    }
     return methodNotAllowed();
   }
 

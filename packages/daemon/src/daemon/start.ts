@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { makeIdGenerator } from "@aloop/core";
 import {
   createEventWriter,
+  createIdempotencyStore,
   EventCountsProjector,
   JsonlEventStore,
   openDatabase,
@@ -51,6 +52,7 @@ export type RunningDaemon = {
   scheduler: SchedulerService;
   providerRegistry: ProviderRegistry;
   providerHealth: InMemoryProviderHealthStore;
+  idempotencyStore: ReturnType<typeof createIdempotencyStore>;
   startedAt: number;
   stop(): Promise<void>;
 };
@@ -89,6 +91,7 @@ export async function startDaemon(opts: StartDaemonOptions = {}): Promise<Runnin
   providerRegistry.register(createOpencodeAdapter());
   const providerHealth = new InMemoryProviderHealthStore(providerRegistry.list().map((adapter) => adapter.id));
   const scheduler = new SchedulerService(permits, makeSchedulerConfig(config, events), events, { providerQuota: createProviderQuotaProbe(providerHealth) });
+  const idempotencyStore = createIdempotencyStore(db);
   const routerDeps = makeRouterDeps({
     registry,
     scheduler,
@@ -98,6 +101,7 @@ export async function startDaemon(opts: StartDaemonOptions = {}): Promise<Runnin
     providerRegistry,
     providerHealth,
     artifactRegistry,
+    idempotencyStore,
   });
   const sessionsDir = join(paths.stateDir, "sessions");
   await recoverCrashedSessions(sessionsDir, events);
@@ -136,6 +140,7 @@ export async function startDaemon(opts: StartDaemonOptions = {}): Promise<Runnin
     scheduler,
     providerRegistry,
     providerHealth,
+    idempotencyStore,
     startedAt,
     async stop() {
       watchdog?.stop();

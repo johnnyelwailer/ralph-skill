@@ -3,6 +3,7 @@ import type { ConfigStore } from "@aloop/daemon-config";
 import type { RouterDeps } from "@aloop/daemon-http";
 import type { InMemoryProviderHealthStore, ProviderRegistry } from "@aloop/provider";
 import { handleProviders as handleProvidersRoute } from "@aloop/daemon-routes-providers";
+import { handleSetup as handleSetupRoute, SetupStore } from "@aloop/daemon-routes-setup";
 import {
   handleMetrics as handleMetricsRoute,
   type MetricsDeps as MetricsDeps,
@@ -17,7 +18,7 @@ import {
 } from "@aloop/daemon-routes";
 import { handleArtifacts as handleArtifactsRoute, type ArtifactsDeps } from "@aloop/daemon-routes-artifacts";
 import { handleTurns as handleTurnsRoute, type TurnsDeps } from "@aloop/daemon-routes-turns";
-import type { ArtifactRegistry, EventWriter, ProjectRegistry } from "@aloop/state-sqlite";
+import type { ArtifactRegistry, EventWriter, IdempotencyStore, ProjectRegistry } from "@aloop/state-sqlite";
 import type { SchedulerService } from "@aloop/scheduler";
 import { DEFAULT_SCHEDULER_PROBES } from "@aloop/scheduler-gates";
 import { handleDaemon as handleDaemonRoute } from "../routes/daemon.ts";
@@ -31,6 +32,7 @@ export type MakeRouterDepsInput = {
   readonly providerRegistry: ProviderRegistry;
   readonly providerHealth: InMemoryProviderHealthStore;
   readonly artifactRegistry: ArtifactRegistry;
+  readonly idempotencyStore: IdempotencyStore;
 };
 
 export function makeRouterDeps(input: MakeRouterDepsInput): RouterDeps {
@@ -40,9 +42,18 @@ export function makeRouterDeps(input: MakeRouterDepsInput): RouterDeps {
     systemSample: DEFAULT_SCHEDULER_PROBES.systemSample,
   };
 
+  const sessionsDir = () => join(input.config.paths().stateDir, "sessions");
+  const setupStore = new SetupStore({ stateDir: input.config.paths().stateDir });
+
   return {
     handleDaemon: (req, pathname) =>
-      handleDaemonRoute(req, { startedAt: input.startedAt, config: input.config }, pathname),
+      handleDaemonRoute(req, {
+        startedAt: input.startedAt,
+        config: input.config,
+        scheduler: input.scheduler,
+        registry: input.registry,
+        sessionsDir,
+      }, pathname),
     handleMetrics: (req, pathname) =>
       handleMetricsRoute(req, metricsDeps, pathname),
     handleProjects: (req, pathname) =>
@@ -51,6 +62,7 @@ export function makeRouterDeps(input: MakeRouterDepsInput): RouterDeps {
         {
           registry: input.registry,
           sessionsDir: () => join(input.config.paths().stateDir, "sessions"),
+          idempotencyStore: input.idempotencyStore,
         },
         pathname,
       ),
@@ -77,7 +89,9 @@ export function makeRouterDeps(input: MakeRouterDepsInput): RouterDeps {
       handleSessionsRoute(
         req,
         {
-          sessionsDir: () => join(input.config.paths().stateDir, "sessions"),
+          sessionsDir,
+          events: input.events,
+          idempotencyStore: input.idempotencyStore,
         },
         pathname,
       ),
@@ -106,6 +120,14 @@ export function makeRouterDeps(input: MakeRouterDepsInput): RouterDeps {
           sessionsDir: () => join(input.config.paths().stateDir, "sessions"),
         },
         pathname,
+      ),
+    handleSetup: (req, pathname) =>
+      handleSetupRoute(
+        req,
+        { store: setupStore, eventsDir: join(input.config.paths().stateDir, "setup_runs") },
+        pathname,
+        { archive: (id: string) => input.registry.archive(id), purge: (id: string) => input.registry.purge(id), get: (id: string) => input.registry.get(id) },
+        join(input.config.paths().stateDir, "sessions"),
       ),
   };
 }
