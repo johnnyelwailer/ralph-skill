@@ -244,4 +244,41 @@ describe("appendPermitDeny", () => {
     expect(result).not.toHaveProperty("retryAfterSeconds");
     expect((result as { retryAfterSeconds?: number }).retryAfterSeconds).toBeUndefined();
   });
+
+  test("returns denial even when events.append throws", async () => {
+    // Audit log failure must not prevent the denial response from being returned.
+    // The permit decision is authoritative; event logging is best-effort.
+    const failingAppend = async (_topic: string, _data: Record<string, unknown>) => {
+      throw new Error("disk full");
+    };
+    const result = await appendPermitDeny({ append: failingAppend }, {
+      sessionId: "sess_audit_fail",
+      reason: "concurrency_cap",
+      gate: "concurrency",
+      details: { active_permits: 3, concurrency_cap: 3 },
+    });
+
+    expect(result.granted).toBe(false);
+    const denied = result as { granted: false; reason: string; gate: string; details: Record<string, unknown> };
+    expect(denied.reason).toBe("concurrency_cap");
+    expect(denied.gate).toBe("concurrency");
+    expect(denied.details).toEqual({ active_permits: 3, concurrency_cap: 3 });
+  });
+
+  test("returns denial with retryAfterSeconds even when events.append throws", async () => {
+    const failingAppend = async (_topic: string, _data: Record<string, unknown>) => {
+      throw new Error("disk full");
+    };
+    const result = await appendPermitDeny({ append: failingAppend }, {
+      sessionId: "sess_retry_audit_fail",
+      reason: "system_pressure",
+      gate: "system",
+      details: { cpu: 95, limit: 80 },
+      retryAfterSeconds: 30,
+    });
+
+    expect(result.granted).toBe(false);
+    const denied = result as { granted: false; retryAfterSeconds: number };
+    expect(denied.retryAfterSeconds).toBe(30);
+  });
 });

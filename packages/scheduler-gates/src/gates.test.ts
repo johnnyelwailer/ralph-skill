@@ -465,4 +465,55 @@ describe("checkBurnRateGate", () => {
     const result = await checkBurnRateGate(events, "s_big", sample, bigBurn);
     expect(result.ok).toBe(true);
   });
+
+  test("returns ok=false when tokens threshold breached even if event logging throws", async () => {
+    // Denial decision is authoritative; audit log is best-effort.
+    const failingEvents = {
+      append: async (_topic: string, _data: Record<string, unknown>) => {
+        throw new Error("disk full");
+      },
+    };
+    const sample: BurnRateSample = {
+      tokensSinceLastCommit: 5_000_000,
+      commitsPerHour: 10,
+    };
+    const result = await checkBurnRateGate(
+      failingEvents as Parameters<typeof checkBurnRateGate>[0],
+      "sess_fail_tok",
+      sample,
+      defaultBurn,
+    );
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.details).toEqual({
+        observed_tokens_since_commit: 5_000_000,
+        threshold_tokens_since_commit: 2_000_000,
+      });
+    }
+  });
+
+  test("returns ok=false when commits threshold breached even if event logging throws", async () => {
+    const failingEvents = {
+      append: async (_topic: string, _data: Record<string, unknown>) => {
+        throw new Error("disk full");
+      },
+    };
+    const sample: BurnRateSample = {
+      tokensSinceLastCommit: 0,
+      commitsPerHour: 0,
+    };
+    const result = await checkBurnRateGate(
+      failingEvents as Parameters<typeof checkBurnRateGate>[0],
+      "sess_fail_commits",
+      sample,
+      defaultBurn,
+    );
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.details).toEqual({
+        observed_commits_per_hour: 0,
+        threshold_commits_per_hour: 2,
+      });
+    }
+  });
 });

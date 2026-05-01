@@ -52,15 +52,20 @@ export async function appendPermitDeny(
     retryAfterSeconds?: number;
   },
 ): Promise<PermitDecision> {
-  await events.append("scheduler.permit.deny", {
-    session_id: input.sessionId,
-    reason: input.reason,
-    gate: input.gate,
-    details: input.details,
-    ...(input.retryAfterSeconds !== undefined
-      ? { retry_after_seconds: input.retryAfterSeconds }
-      : {}),
-  });
+  try {
+    await events.append("scheduler.permit.deny", {
+      session_id: input.sessionId,
+      reason: input.reason,
+      gate: input.gate,
+      details: input.details,
+      ...(input.retryAfterSeconds !== undefined
+        ? { retry_after_seconds: input.retryAfterSeconds }
+        : {}),
+    });
+  } catch {
+    // Audit log failure must not prevent the denial response from being returned.
+    // The permit decision is authoritative; event logging is best-effort.
+  }
   return {
     granted: false,
     reason: input.reason,

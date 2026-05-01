@@ -70,6 +70,8 @@ export async function checkBurnRateGate(
       session_id: sessionId,
       observed: sample.tokensSinceLastCommit,
       threshold: burn.maxTokensSinceCommit,
+    }).catch(() => {
+      // Audit log failure is best-effort — denial decision is authoritative.
     });
     return {
       ok: false,
@@ -84,6 +86,8 @@ export async function checkBurnRateGate(
       session_id: sessionId,
       observed: sample.commitsPerHour,
       threshold: burn.minCommitsPerHour,
+    }).catch(() => {
+      // Audit log failure is best-effort — denial decision is authoritative.
     });
     return {
       ok: false,
