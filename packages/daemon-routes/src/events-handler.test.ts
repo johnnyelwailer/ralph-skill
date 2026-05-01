@@ -262,4 +262,54 @@ describe("handleEvents", () => {
       rmSync(base, { recursive: true, force: true });
     });
   });
+
+  describe("parent filter", () => {
+    test("filters events by parent_id in event data", async () => {
+      const base = mkdtempSync(join(tmpdir(), "aloop-events-parent-"));
+      const deps = makeDeps(base);
+      mkdirSync(deps.sessionsDir(), { recursive: true });
+      const sessionDir = join(deps.sessionsDir(), "s_parent");
+      mkdirSync(sessionDir, { recursive: true });
+
+      // Three events: one with parent_id=abc, one with parent_id=xyz, one without parent_id
+      writeFileSync(join(sessionDir, "log.jsonl"), [
+        makeEvent("agent.chunk", { session_id: "s_parent", parent_id: "abc", turn_id: "t1" }, "1748537600000.000001"),
+        makeEvent("agent.chunk", { session_id: "s_parent", parent_id: "xyz", turn_id: "t2" }, "1748537600000.000002"),
+        makeEvent("agent.chunk", { session_id: "s_parent", turn_id: "t3" }, "1748537600000.000003"),
+      ].join("\n") + "\n");
+
+      const req = new Request("http://localhost/v1/events?session_id=s_parent&parent=abc", { method: "GET" });
+      const res = await handleEvents(req, deps, "/v1/events");
+      const text = await res!.text();
+      // Should include the event with parent_id=abc
+      expect(text).toContain("1748537600000.000001");
+      // Should exclude the event with parent_id=xyz
+      expect(text).not.toContain("1748537600000.000002");
+      // Should exclude the event without parent_id
+      expect(text).not.toContain("1748537600000.000003");
+
+      rmSync(base, { recursive: true, force: true });
+    });
+
+    test("returns all events when parent param is absent", async () => {
+      const base = mkdtempSync(join(tmpdir(), "aloop-events-no-parent-"));
+      const deps = makeDeps(base);
+      mkdirSync(deps.sessionsDir(), { recursive: true });
+      const sessionDir = join(deps.sessionsDir(), "s_noparent");
+      mkdirSync(sessionDir, { recursive: true });
+
+      writeFileSync(join(sessionDir, "log.jsonl"), [
+        makeEvent("agent.chunk", { session_id: "s_noparent", parent_id: "abc" }, "1748537600000.000001"),
+        makeEvent("agent.chunk", { session_id: "s_noparent", parent_id: "xyz" }, "1748537600000.000002"),
+      ].join("\n") + "\n");
+
+      const req = new Request("http://localhost/v1/events?session_id=s_noparent", { method: "GET" });
+      const res = await handleEvents(req, deps, "/v1/events");
+      const text = await res!.text();
+      expect(text).toContain("1748537600000.000001");
+      expect(text).toContain("1748537600000.000002");
+
+      rmSync(base, { recursive: true, force: true });
+    });
+  });
 });
