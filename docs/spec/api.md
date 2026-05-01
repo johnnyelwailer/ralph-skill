@@ -37,10 +37,10 @@ Clients send `X-Aloop-Client: <name>/<version>` for telemetry and compatibility 
 
 ## Transport and auth
 
-- **HTTP/1.1** over localhost (`127.0.0.1` by default). JSON in, JSON out. Port configurable in `~/.aloop/daemon.yml` (default 7777, auto-written if `null`). Used by the dashboard (browsers can't talk to unix sockets) and by any remote, tunneled, or hosted deployment.
-- **Unix socket** at `~/.aloop/aloopd.sock` — **required in v1**. Local clients (CLI, shim, `aloop-agent`) prefer the socket; it's faster and avoids port exposure. The container's bind-mount of `.aloop/` brings the socket into the sandbox so in-container `aloop-agent` calls go directly back to the host daemon. API contract is identical over socket and HTTP.
+- **HTTP/1.1** over a reachable control-plane endpoint. JSON in, JSON out. Local mode may bind `127.0.0.1` by default; hosted deployments sit behind normal TLS/load balancing. Used by the dashboard, mobile web, CLI, workers, and any tunneled or hosted deployment.
+- **Unix socket** at `~/.aloop/aloopd.sock` — optional local-mode optimization. Local clients (CLI, shim, `aloop-agent`) may prefer the socket; it is faster and avoids port exposure. Hosted workers use the HTTP endpoint instead. API contract is identical over socket and HTTP.
 - **SSE** for streams. Plain `text/event-stream`, no WebSocket in v1. Works over both transports.
-- **Auth:** localhost-only deployments are unauthenticated. Remote/tunneled deployments require `Authorization: Bearer <token>` where the token is read from `~/.aloop/token` (generated on install). CORS: `*` for localhost, restricted list for remote.
+- **Auth:** reachable deployments require `Authorization: Bearer <token>` in v1 and should evolve toward OIDC-compatible auth for multi-user setups. Localhost-only deployments may use local trust or the same bearer-token path. CORS: `*` for localhost, restricted list for remote.
 
 ## Standards baseline
 
@@ -461,7 +461,7 @@ GET /v1/incubation/sources/:source_id
 
 Source records capture provenance for every external input used by a research run: source kind, URL or stable locator, title/author when known, retrieval timestamp, citation metadata, transcript/artifact references, confidence notes, and policy limitations.
 
-Source records are daemon artifacts plus SQLite projections over JSONL events. The API exposes the normalized records; source connectors themselves are runtime extensions, not a separate API/runtime family.
+Source records are daemon artifacts plus StateStore projections over EventStore history. The API exposes the normalized records; source connectors themselves are runtime extensions, not a separate API/runtime family.
 
 ### Monitors
 
@@ -611,7 +611,7 @@ DELETE /v1/sessions/:id?mode=graceful|force
 POST /v1/sessions/:id/resume
 ```
 
-Valid only when `status in (interrupted, stopped, paused)`. Reconstructs state from JSONL + SQLite, requests new permit, continues.
+Valid only when `status in (interrupted, stopped, paused)`. Reconstructs state from EventStore + StateStore, requests new permit, continues.
 
 ### Pause
 

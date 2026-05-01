@@ -30,8 +30,8 @@ This means "setup" should not be treated as a thin preflight script in the imple
 
 Incubation is also cross-cutting, but it must stay thinner than setup in v1.
 
-- **M2** provides the event/state substrate for durable incubation items, research runs, and proposal history.
-- **M4/M5** provide scheduler-permitted provider execution for non-mutating research runs.
+- **M2** provides the event/state substrate for durable incubation items, research runs, proposal history, and backing-store interfaces that can map to Postgres/object storage.
+- **M4/M5** provide scheduler-permitted provider execution and worker/lease discipline for non-mutating research runs.
 - **M7/M8** should expose the `/v1/composer` and `/v1/incubation` APIs plus artifact/comment plumbing needed for conversational kickoff, capture, and research evidence.
 - **M9** consumes promoted Epics/Stories/steering through the normal orchestrator path; it must not read raw incubation items as backlog.
 - **M11** provides the always-ready composer, inbox, research queue, proposal review, mobile capture path, and promotion controls in the dashboard/workstation.
@@ -42,22 +42,39 @@ AutoResearch-style `experiment_loop` mode is a v1.5 candidate unless a narrow lo
 
 Active outreach and surveys are a later layer unless implemented as manual-export artifacts only. Any adapter that sends messages, publishes surveys, or purchases panel responses needs explicit security policy and audit coverage before it ships.
 
+## Server-backed deployment note
+
+The product pivot is explicit: aloop is primarily a durable agentic building and incubation system, not just a local `ralph-loop`. Local deployment remains supported, but v1 implementation should avoid choices that only work while one developer machine is awake.
+
+The target production shape is:
+
+- always-reachable control plane packaged as an OCI container
+- Postgres for queryable state
+- object/artifact storage for event history, media, transcripts, research evidence, and proof artifacts
+- delegated workers as isolated containers, VMs, managed jobs, local nodes, or sandbox backends
+- durable worker leases and scheduler permits owned by the control plane
+- secrets through provider secret managers or mounted secret files
+- TLS plus bearer/OIDC-compatible auth for reachable deployments
+
+The fully local shape is a deployment profile of the same primitives: one `aloopd` process, SQLite or local Postgres, JSONL/local files, host/devcontainer/local Docker execution, and optional localhost trust. It must not grow separate semantics.
+
 ## Sandboxing note
 
 Sandboxing is the broader execution concept; the project devcontainer is only the first shipped backend.
 
-- v1 uses host execution plus the project devcontainer as the practical local sandbox path.
+- v1 may use host execution plus the project devcontainer as the practical local sandbox path.
+- The worker abstraction should be introduced early enough that sessions, setup runs, research runs, and monitors all execute through the same lease/event/artifact path.
 - A later execution milestone should adopt `sandbox-core` as the abstraction layer for sandbox lifecycle, exec, streaming, and file transfer.
-- That future change is intended to unlock server deployment where each loop/session can run in its own offloaded sandbox without changing the daemon API or orchestration model.
+- That change is intended to make each loop/session/research job run in its own offloaded sandbox without changing the daemon API or orchestration model.
 
 ## Deployment portability note
 
-Remote deployment is deferred from v1 implementation, but portability is a design constraint now. Aloop should package into standard OCI containers and map onto common cloud capabilities:
+Deployment portability is part of the core architecture, not a deferred afterthought. Aloop should package into standard OCI containers and map onto common cloud capabilities:
 
 - control plane: containerized HTTP service
 - state: Postgres
 - events/artifacts: object storage, preferably S3-compatible where possible
-- workers: isolated containers, VMs, managed jobs, or sandbox backends
+- workers: isolated containers, VMs, managed jobs, local nodes, or sandbox backends
 - secrets: provider secret manager or mounted secret files
 - auth: TLS plus bearer/OIDC-compatible auth
 
@@ -256,7 +273,7 @@ Provider-specific deployment recipes are templates. Core code must not learn clo
 - Basic setup-run shell: active setup runs, current stage/progress, current question set, background research status, and chapter/document summaries via the same setup API used by the CLI.
 - Steering box, stop button, override editor.
 - Ability to resume a setup run, answer structured questions, and leave comments on setup chapters/documents from the dashboard.
-- Auth in place for future tunneling (bearer token, off by default for localhost).
+- Auth in place for reachable deployments (bearer token baseline; localhost may use local trust).
 
 **Test:** launch dashboard, watch M9's parallel-dispatch scenario in real-time, then resume a setup run and answer a structured question without leaving the dashboard. Kill a session via the dashboard — daemon confirms stop. Override a provider live → in-flight turn unaffected, next grant respects it.
 
@@ -294,7 +311,7 @@ Deferred to v1.5+ per `learning.md` and `self-improvement.md`:
 - AutoResearch for narrow deterministic-eval problems
 - Task mirroring implementations (capability flag is in the interface; no adapter ships one)
 - Telegram bot, Chat bots, IDE plugins
-- Production remote deployment recipes (control plane + worker fleet), though the architecture keeps the seams ready
+- Fully polished provider-specific deployment recipes, though the control-plane + worker-fleet architecture is the primary target
 - GitLab / Linear / Jira tracker adapters
 - Causal inference / OPE / reward modeling
 

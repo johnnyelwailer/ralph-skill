@@ -35,10 +35,10 @@ Policy is **hardcoded in the daemon source**, not in project config. This preven
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│  LAYER 1: HOST (where the daemon and shims run)             │
+│  LAYER 1: CONTROL PLANE (durable authority)                 │
 │                                                              │
 │  aloopd (daemon) — the trust anchor                          │
-│    ├─ v1 API (HTTP + SSE, localhost)                         │
+│    ├─ v1 API (HTTP + SSE, local or remote)                   │
 │    ├─ Scheduler (permits, quotas, burn-rate)                 │
 │    ├─ Project registry                                       │
 │    ├─ Overrides store                                        │
@@ -47,9 +47,9 @@ Policy is **hardcoded in the daemon source**, not in project config. This preven
 │    │    ├─ TrackerAdapter (github, builtin, …)               │
 │    │    ├─ ProjectAdapter   (worktrees, git)                 │
 │    │    └─ SandboxAdapter   (execution environment seam)     │
-│    └─ Audit log (JSONL per session + daemon-level)           │
+│    └─ Audit log (EventStore-backed; JSONL in local mode)      │
 │                                                              │
-│  aloop CLI, loop.sh/ps1 shims — clients of the daemon API    │
+│  aloop CLI, dashboard, mobile web, shims, workers — API clients│
 │                                                              │
 ├─────────────────────────────────────────────────────────────┤
 │  LAYER 2: SANDBOX (where agents run)                         │
@@ -74,15 +74,15 @@ The trust boundary holds regardless of where things run:
 | Scenario | Host (Layer 1) | Sandbox (Layer 2) | Daemon location |
 |---|---|---|---|
 | Local dev | Your machine | Host process or local sandbox backend | On the same machine |
-| Cloud orchestrator (future) | Control-plane host | Remote worker VM | On control plane |
+| Cloud orchestrator | Control-plane service | Remote worker VM/container | Hosted control plane |
 | Azure / AWS / GCP hosted | Managed container app, VM, or Kubernetes node | Managed job, container, VM, or sandbox backend | Hosted control plane |
 | Lower-cost hosted | Fly.io, Render, Railway, DigitalOcean, Hetzner, Nomad, Docker host | Container, VM, or sandbox backend | Hosted control plane |
 | GitHub Actions | Runner | Spawned containers | Runner (ephemeral) |
 | Docker-in-Docker | Outer container | Inner containers | Outer container |
 | Devcontainer project | Host | Container | Host (communicates with container over bind-mount for worktree) |
-| Hosted sandbox (future) | Control-plane host | Offloaded sandbox per loop | On control plane |
+| Hosted sandbox | Control-plane service | Offloaded sandbox per loop | Hosted control plane |
 
-In every case: **the daemon lives with the host**; agents live in sandboxes that can only reach the daemon via `aloop-agent` → localhost API.
+In every case: **the daemon/control plane is the trust anchor**; agents live in sandboxes that can only reach it through `aloop-agent` using the configured local socket or authenticated HTTP endpoint. Worker loss is expected; authoritative state remains in the control plane.
 
 ## Agent ↔ daemon interface (`aloop-agent`)
 
@@ -324,11 +324,11 @@ Every policy-gated operation produces a log entry **before** the operation execu
 
 **Where it lives:**
 
-- Per-session entries in `~/.aloop/state/sessions/<id>/log.jsonl`.
-- Daemon-level entries (cross-session: project registration, overrides changes, daemon config reloads, auth handle rotations) in `~/.aloop/state/aloopd.log` (JSONL).
+- Per-session entries in the configured `EventStore` (`~/.aloop/state/sessions/<id>/log.jsonl` in local mode).
+- Daemon-level entries (cross-session: project registration, overrides changes, daemon config reloads, auth handle rotations) in the configured `EventStore` (`~/.aloop/state/aloopd.log` in local mode).
 - Both are append-only. The daemon never rewrites history.
 
-**Retention** is governed by `daemon.yml` (`retention.completed_sessions_days`, `retention.interrupted_sessions_days`). Audit entries survive the same lifecycle as the session JSONL.
+**Retention** is governed by `daemon.yml` (`retention.completed_sessions_days`, `retention.interrupted_sessions_days`). Audit entries survive the same lifecycle as the session event history.
 
 **Exposure:**
 
@@ -341,5 +341,5 @@ Every policy-gated operation produces a log entry **before** the operation execu
 - **No agent-side policy.** Agents don't check policy before submitting; the daemon is the single source of enforcement.
 - **No configurable bypass.** There is no "dev mode" or env var that relaxes the policy tables. Policy is hardcoded to prevent accidents.
 - **No raw API access via any surface.** `gh api`, `glab api`, direct HTTP to tracker endpoints — all forbidden. If a capability is missing from the adapter, it's added to the adapter, not worked around.
-- **No cross-session read/write.** A session cannot read another session's worktree, JSONL, state, or auth handle. Daemon enforces this at every read path.
+- **No cross-session read/write.** A session cannot read another session's worktree, event history, state, or auth handle. Daemon enforces this at every read path.
 - **No cross-project read/write.** A session scoped to project A cannot touch project B's artifacts.

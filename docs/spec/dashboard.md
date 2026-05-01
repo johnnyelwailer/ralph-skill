@@ -32,7 +32,7 @@ The earlier draft intentionally kept this file thin. That is no longer enough. T
 
 ## Role of the workstation
 
-The dashboard is not a vanity status page. It is the **human control surface** for a system that otherwise runs autonomously:
+The dashboard is not a vanity status page. It is the **human control surface** for an always-reachable durable system that otherwise runs autonomously:
 
 - setup a project
 - capture raw ideas before they are projects or work items
@@ -45,6 +45,7 @@ The dashboard is not a vanity status page. It is the **human control surface** f
 - review artifacts and evidence
 - watch costs, permits, quotas, and provider health
 - configure the system without dropping to raw files unless desired
+- manage worker capacity, leases, failures, and deployment health
 
 The workstation must serve both:
 
