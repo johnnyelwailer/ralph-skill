@@ -867,5 +867,6 @@ Not all of this must land in v1. It should still shape the API and information a
 8. **Incubation is first-class.** Capture, research, synthesis, and promotion are durable daemon state.
 9. **Customization is allowed but bounded by opinionated defaults.**
 10. **If the workstation needs it, the API must expose it.**
+11. **Standards are preferred.** The workstation uses the daemon's HTTP/SSE/JSON/artifact contracts and normal browser/media standards; it does not invent dashboard-only protocols or hidden state sync.
 
 See: `api.md`, `incubation.md`, `setup.md`, `metrics.md`, `work-tracker.md`, `VISION.md`, `DESIGN_BRIEF.md`.

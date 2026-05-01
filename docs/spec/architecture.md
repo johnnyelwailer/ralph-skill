@@ -12,6 +12,7 @@
 - Daemon responsibilities
 - Shim responsibilities
 - Client responsibilities
+- Standards-first design
 - Adapter surfaces
 - Cross-platform
 - Trust boundaries
@@ -140,6 +141,33 @@ Each arrow crosses the same daemon API boundary and emits events. There is no pr
 
 The composer may accelerate any arrow or coordinate the control plane, including from spoken input, screenshots, voice notes, videos, PDFs, links, or pasted logs, but it does not create a parallel object model. Media becomes artifacts/source records first; speech becomes native model input or transcript artifacts under daemon policy; subagents run with scoped capability grants; mutations become normal policy-checked API calls; the composer observes child work by reading the same projections and event streams as every other client.
 
+## Standards-first design
+
+Aloop should reuse industry standards wherever a standard exists. The architecture should not invent custom protocols, hidden file handshakes, bespoke plugin formats, or ad hoc transport layers when a mature standard or established ecosystem convention covers the job.
+
+Default choices:
+
+| Area | Preferred standard / convention |
+|---|---|
+| Client/daemon transport | HTTP/1.1 or later, JSON, SSE for server-pushed events |
+| API description | OpenAPI-compatible paths and JSON Schema-compatible payloads |
+| Auth for remote/tunneled deployments | Bearer tokens in v1; OAuth/OIDC-compatible flows when multi-user auth lands |
+| Streaming | `text/event-stream` SSE before custom WebSockets; WebSockets only when bidirectional low-latency semantics are required |
+| Artifacts/media | MIME types, content-length, stable URLs, checksums where needed |
+| Events/logs | JSONL/NDJSON for append-only logs and exports |
+| State | SQLite locally; Postgres when distributed |
+| Version control | Git primitives and normal branch/commit semantics |
+| Tool/subagent contracts | Typed JSON tool calls and established tool protocols where applicable; no raw shell/string protocols |
+| Extensions | Existing runtime extension manifest model; align with external tool standards where possible |
+
+When aloop needs semantics that standards do not provide, keep the custom part narrow and explicit:
+
+- put aloop semantics in resource names, schemas, and daemon policy, not in a new wire protocol
+- prefer adapter implementations over new protocol families
+- document why an existing standard was insufficient before adding a new primitive
+- add conformance tests around the boundary
+- expose the capability through the same v1 API so every client can use it
+
 ## Adapter surfaces
 
 Six typed interfaces enclose everything external to the daemon core:
@@ -190,6 +218,7 @@ Explicit non-goals — decisions that must not drift back in:
 - **No direct tracker calls from agents.** Always `aloop-agent submit` → daemon → adapter.
 - **No expressions or inline code in pipeline YAML, prompt frontmatter, or daemon config.** Keywords (`onFailure: retry`, `trigger: merge_conflict`, `context: orch_recall`) are data; project-defined logic runs through typed runtime extension manifests.
 - **No parallel plugin systems.** New extensibility points must reuse the runtime extension manifest model unless there is a documented reason it cannot fit.
+- **No custom protocol when a standard fits.** Use HTTP/SSE/JSON/JSON Schema/MIME/Git/SQLite/Postgres/OAuth-style conventions and established tool protocols before inventing aloop-specific mechanisms.
 - **No research-specific runtime.** Source acquisition, experiment attempts, monitors, outreach drafts, artifacts, metrics, and events reuse daemon adapters, runtime extension manifests, scheduler permits, SQLite projections, and JSONL logs.
 - **No second runtime process.** Orchestrators run as workflows in the same daemon, not separate binaries.
 - **No in-process state that outlives a request.** Session state is SQLite + JSONL, not daemon memory.

@@ -26,8 +26,9 @@ You type or speak an idea, screenshot, voice note, link, document, or spec into 
 4. **Tracker-agnostic from day one.** GitHub is the shipped adapter (with native sub-issues). The built-in file-based tracker needs zero external dependencies. GitLab, Linear, Jira adapters are future slots — no rewrite required.
 5. **Observable and resumable.** Every state change emits a structured event. JSONL per session is the authoritative log. SSE streams to the dashboard. The daemon crashes, restarts, and resumes. Sessions survive upgrades.
 6. **One API, many clients.** CLI, dashboard, Telegram bot, future integrations all consume the same v1 HTTP+SSE contract. No privileged paths. What you can do from the dashboard you can do from curl.
-7. **Incubation before implementation.** Vague ideas, links, screenshots, research questions, market signals, and long-running monitors live as durable daemon objects before they become setup runs, spec edits, Epics, Stories, or steering. The system can research and synthesize across governed sources without mutating the repo or tracker until promotion is explicit.
-8. **A lean core held in check by a constitution.** Core runtime target: under 2,000 LOC. Extensions under 800. Shims under 150. Files under 150. The constitution is what keeps the rebuild from turning into what the rebuild was rebuilding.
+7. **Standards before custom mechanisms.** Aloop uses boring protocols and existing ecosystem conventions wherever possible: HTTP, SSE, JSON, JSON Schema/OpenAPI-compatible shapes, MIME artifacts, Git, SQLite/Postgres, and standard auth patterns. Custom protocols are a last resort, not a design style.
+8. **Incubation before implementation.** Vague ideas, links, screenshots, research questions, market signals, and long-running monitors live as durable daemon objects before they become setup runs, spec edits, Epics, Stories, or steering. The system can research and synthesize across governed sources without mutating the repo or tracker until promotion is explicit.
+9. **A lean core held in check by a constitution.** Core runtime target: under 2,000 LOC. Extensions under 800. Shims under 150. Files under 150. The constitution is what keeps the rebuild from turning into what the rebuild was rebuilding.
 
 ## What "aloop is working" looks like
 

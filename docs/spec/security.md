@@ -11,6 +11,7 @@
 - Deployment scenarios
 - Agent ↔ daemon interface (`aloop-agent`)
 - Composer and control subagent policy
+- Standards and protocol policy
 - Research source and outreach policy
 - Tracker adapter policy (`aloop gh`, builtin, future adapters)
 - Hardcoded policy tables
@@ -107,6 +108,22 @@ Control subagent requirements:
 - **Revocable** — cancelling the composer turn or subagent run revokes outstanding capability handles and prevents further mutations from that run.
 
 This is the safety boundary for "composer can control everything." The user gets one natural interface, while each internal agent operates in an isolated, inspectable lane.
+
+## Standards and protocol policy
+
+Security-sensitive surfaces should prefer mature protocols and existing platform conventions over custom mechanisms.
+
+Rules:
+
+- Use standard HTTP semantics, status codes, headers, `Authorization: Bearer`, MIME types, and SSE framing.
+- Use JSON Schema/OpenAPI-compatible validation for request and event payloads.
+- Use OAuth/OIDC-compatible designs when remote multi-user authentication arrives; do not invent an auth protocol.
+- Use adapter APIs for external systems; do not tunnel raw provider, tracker, email, social, or survey APIs through generic escape hatches.
+- Use capability grants, typed tool calls, and audited daemon adapters for subagents instead of shell strings or unstructured prompts as authority.
+- Use established media/transcript metadata fields where possible: MIME type, language tag, confidence, duration, timestamps, checksum, source URL, and retrieval time.
+- Any non-standard protocol or file contract requires a written rationale, threat-model note, and conformance tests.
+
+The point is not bureaucracy. Standard protocols have known failure modes, libraries, proxies, logs, auth integrations, and security tooling. Custom cleverness is treated as risk until proven necessary.
 
 ## Research source and outreach policy
 
