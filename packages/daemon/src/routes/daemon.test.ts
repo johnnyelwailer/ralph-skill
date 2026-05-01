@@ -200,6 +200,45 @@ describe("POST /v1/daemon/reload", () => {
 });
 
 // ---------------------------------------------------------------------------
+// buildCounters error paths (GET /v1/daemon/health)
+// ---------------------------------------------------------------------------
+
+describe("GET /v1/daemon/health buildCounters error paths", () => {
+  test("returns zero counters when sessions directory does not exist", async () => {
+    // sessionsDir returns a path that does not exist
+    const deps = makeDeps();
+    (deps as any).sessionsDir = () => "/this/path/does/not/exist/at/all";
+    const res = await handleDaemon(
+      new Request("http://x/v1/daemon/health", { method: "GET" }),
+      deps,
+      "/v1/daemon/health",
+    );
+    expect(res).toBeDefined();
+    expect(res!.status).toBe(200);
+    const body = await res!.json() as Record<string, unknown>;
+    expect((body.counters as Record<string, unknown>).sessions_total).toBe(0);
+    expect((body.counters as Record<string, unknown>).sessions_by_status).toEqual({});
+  });
+
+  test("returns zero counters when sessions directory is a file (not a directory)", async () => {
+    const deps = makeDeps();
+    // Use a file path instead of a directory — readdirSync on a file throws
+    (deps as any).sessionsDir = () => "/etc/passwd";
+    const res = await handleDaemon(
+      new Request("http://x/v1/daemon/health", { method: "GET" }),
+      deps,
+      "/v1/daemon/health",
+    );
+    expect(res).toBeDefined();
+    expect(res!.status).toBe(200);
+    const body = await res!.json() as Record<string, unknown>;
+    // Should gracefully fall through to empty counters rather than crashing
+    expect((body.counters as Record<string, unknown>).sessions_total).toBe(0);
+    expect((body.counters as Record<string, unknown>).sessions_by_status).toEqual({});
+  });
+});
+
+// ---------------------------------------------------------------------------
 // PUT /v1/daemon/config (feature-gated)
 // ---------------------------------------------------------------------------
 
