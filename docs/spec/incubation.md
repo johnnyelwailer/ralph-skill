@@ -135,6 +135,7 @@ type ResearchMonitor = {
   item_id: string;
   status: "active" | "paused" | "completed" | "failed" | "cancelled";
   cadence: "hourly" | "daily" | "weekly" | "monthly" | { cron: string };
+  event_triggers?: ResearchMonitorEventTrigger[];
   question: string;
   mode: "monitor_tick";
   source_plan: ResearchSourcePlan;
@@ -146,6 +147,12 @@ type ResearchMonitor = {
   last_run_at?: string;
   created_at: string;
   updated_at: string;
+};
+
+type ResearchMonitorEventTrigger = {
+  topic: string;                       // e.g. "provider.model_catalog.changed" or "metrics.change"
+  filters: Record<string, unknown>;    // bounded structured filters, no inline code
+  debounce_seconds?: number;
 };
 
 type OutreachPlan = {
@@ -378,6 +385,8 @@ Some incubation items are not answered by one research pass. They need watchfuln
 
 A monitor is a scheduled research program tied to an incubation item. Each tick creates a normal `ResearchRun` with `monitor_id` set. The run produces findings and artifacts; the monitor decides whether to append, digest, or alert.
 
+Monitor scheduling is backed by the daemon trigger engine. Cadence handles periodic work; optional event triggers handle material changes between intervals. For example, a model-intelligence monitor might run every two weeks and also trigger early when a watched provider emits a model-catalog change, a benchmark source records a new frontier model, or local cost/performance metrics cross a threshold.
+
 Monitor outputs should distinguish:
 
 - **new facts** since the previous run
@@ -389,6 +398,7 @@ Monitor outputs should distinguish:
 Cadence is part of policy. Continuous does not mean an unbounded loop:
 
 - every monitor has a cadence, budget cap, source plan, and stop condition
+- event-triggered monitor runs must have debounce and budget policy, just like time-triggered runs
 - every tick consumes scheduler permits and cost budget
 - every monitor can be paused, resumed, or cancelled
 - every monitor must expose last run, next run, accumulated cost, and recent deltas

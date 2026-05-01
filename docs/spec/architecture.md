@@ -90,11 +90,12 @@ This is the load-bearing decision:
 - **Setup runs** — long-lived onboarding state before a project becomes `ready` (see `setup.md`).
 - **Sessions** — standalone, orchestrator, child. State machine, lifecycle, parent-child relationships (see `daemon.md` §Session kinds).
 - **Scheduler** — the only gate between "a turn is wanted" and "a turn is started." Composes gates for concurrency, system resources, per-provider quota, burn rate, and live overrides.
+- **Trigger engine** — durable time-based and event-based triggers that create daemon work such as research runs, monitor ticks, reconcile jobs, or proposal refreshes. It decides *when to enqueue work*; the scheduler still decides whether provider-backed work may run.
 - **Event bus** — aggregates events from all sessions into per-session JSONL and the global SSE stream. Every state change publishes.
 - **Compile step** — translates `pipeline.yml` into `loop-plan.json`. See `pipeline.md` §Compile step for the canonical description (single YAML reader in the system).
 - **Prompt context assembly** — resolves prompt `context` declarations through registered context plugins, injects bounded source-cited context blocks, and records what was injected. See `context.md`.
 - **Runtime extension manifests** — supervises typed project-code extensions such as `exec` steps and `context-provider`s through one manifest-backed execution model. See `pipeline.md` §Runtime extension manifests.
-- **Watchdog / reconcile** — stuck detection, provider quota refresh, permit expiry sweep, orphan cleanup, burn-rate tracking, crash recovery. All internal to the daemon; no external cron.
+- **Watchdog / reconcile** — stuck detection, provider quota refresh, permit expiry sweep, orphan cleanup, burn-rate tracking, crash recovery. All internal to the daemon and implemented through the trigger/reconcile substrate; no external cron.
 - **Workspace registry** — human/operator grouping across one or more projects/repos, with shared dashboard scope, budgets, incubation, and defaults.
 - **Project registry** — N unrelated repos served by one daemon instance.
 - **Adapter orchestration** — invokes `ProviderAdapter` for agent turns and research reasoning, `TrackerAdapter` for decomposition/review/merge, `SandboxAdapter` for session execution environments and deterministic exec/experiment steps, and future outreach/source adapters only through the same policy-controlled adapter pattern.

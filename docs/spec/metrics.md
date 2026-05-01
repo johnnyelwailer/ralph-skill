@@ -9,6 +9,7 @@
 - Role of metrics
 - Emission discipline (DGM-resistant)
 - Metric types
+- Metric dimensions and slices
 - Canonical catalog
 - Storage
 - Exposure
@@ -56,6 +57,29 @@ Metrics that flow the other way (agent consumes; daemon produces) are fine: the 
 
 Ratios and rates are computed on read, not written. Keeping them derived prevents skew on restart.
 
+## Metric dimensions and slices
+
+The catalog below names metrics; most dashboard and learning questions are answered by grouping those metrics over a bounded set of dimensions.
+
+Allowed high-cardinality dimensions are deliberately limited:
+
+| Dimension | Examples | Why it exists |
+|---|---|---|
+| `scope` | global, workspace, project, orchestrator, epic, story, session, loop/phase | Lets the dashboard move from fleet health to one loop without changing metric definitions |
+| `provider_route` | requested provider ref, resolved provider id, resolved model id, reasoning effort | Needed for model/provider evaluation |
+| `deployment_route` | closed hosted, open-weight hosted, open-weight local/self-hosted, hardware/quantization bucket | Needed to compare true cost/performance for open-weight and self-hosted routes |
+| `work_shape` | workflow, workflow phase, task family, story complexity tier, file-scope size bucket | Separates frontend work from refactors, review from build, small tasks from large tasks |
+| `quality_context` | spec quality tier, ambiguity count bucket, validation baseline, sensitivity hint | Helps explain outcomes without pretending the model alone caused them |
+| `outcome` | merged, rejected, changes requested, abandoned, failed, blocked | Common funnel vocabulary for work results |
+| `time_window` | last 24h, 7d, 30d, all-time aggregate | Keeps dashboards responsive and comparisons honest |
+
+Cardinality guardrails:
+
+- `session_id`, `story_ref`, and `change_set_ref` are allowed on object-detail endpoints, not global Prometheus counters.
+- Freeform labels, raw file paths, reviewer usernames, and tracker URLs are not metric labels. They stay in events and detail records.
+- For model comparison, `model_id` must be paired with task family/workflow phase. A global model ranking is allowed as a dashboard summary, but optimizer decisions must use task-family slices.
+- Spec-quality dimensions are explanatory/contextual. They can guide investigation and routing proposals, but they are not proof of causality.
+
 ## Canonical catalog
 
 Organized by consumer. Each metric names its type, source events, storage table, and consumers.
@@ -96,9 +120,51 @@ Read by orchestrator diagnose + watchdog.
 | `cross_session_merge_conflict_rate` | Rate | `change_set.conflict` | Orchestrator scheduler (file-scope enforcement feedback) |
 | `review_gate_pass_rate` | Ratio, per gate | `review_result` | Diagnose, dashboard |
 | `decompose_to_merge_latency_p50/p95` | Histogram | `work_item.created kind=story`, `change_set.merged` | Dashboard, diagnose |
+| `dispatch_to_first_review_latency_p50/p95` | Histogram | `session.created kind=child`, `change_set.review_submitted` | Dashboard, diagnose |
+| `review_to_merge_latency_p50/p95` | Histogram | `change_set.review_submitted verdict=approved`, `change_set.merged` | Dashboard, diagnose |
+| `change_request_rework_latency_p50/p95` | Histogram | `change_set.review_submitted verdict=changes_requested`, next `change_set.updated` or `review_result` | Dashboard, diagnose |
 | `comment_response_latency_p50/p95` | Histogram | `comment.created source=human`, `comment.created source=aloop` (reply) | Dashboard — tracks how long humans wait for the orchestrator to respond |
 | `diagnose_invocation_rate` | Rate | `orch_diagnose` queued | Dashboard (if this rises, something is wrong) |
 | `self_tuning_adjustment_rate` | Rate | `PUT /v1/scheduler/limits` accepted | Dashboard (audit trail for Level-2 self-improvement) |
+
+### Work outcomes and review quality
+
+These metrics answer whether generated work is accepted, rejected, revised, merged, or abandoned. They are grouped by `project_id`, `variant_id`, `provider_route`, `workflow`, `workflow_phase`, `task_family`, `story_complexity`, `spec_quality_tier`, and time window.
+
+| Metric | Type | Source | Consumer |
+|---|---|---|---|
+| `change_set_approval_rate` | Ratio | `change_set.review_submitted verdict=approved`, all submitted reviews | Dashboard, model optimizer |
+| `change_set_changes_requested_rate` | Ratio | `change_set.review_submitted verdict=changes_requested`, all submitted reviews | Dashboard, diagnose |
+| `change_set_rejection_rate` | Ratio | `review_result verdict=rejected` or tracker equivalent, all reviewed change sets | Dashboard, model optimizer |
+| `change_set_merge_rate` | Ratio | `change_set.merged`, `change_set.opened` | Dashboard, model optimizer |
+| `review_rounds_per_merged_change_p50/p95` | Histogram | `change_set.review_submitted`, `change_set.merged` | Dashboard |
+| `review_finding_count_by_gate` | Histogram | `review_result.findings[]` grouped by gate/category/severity | Dashboard, prompt/config optimizer |
+| `human_override_rate` | Ratio | human review verdict differs from agent review verdict | Dashboard, learning |
+| `post_merge_followup_rate` | Ratio | follow-up Story/Epic linked to merged change, `change_set.merged` | Dashboard, learning |
+
+Review verdict vocabulary is intentionally small: `approved`, `changes_requested`, `rejected`, `commented`, `stale`, `superseded`. Tracker-native states map into that vocabulary in the adapter projection.
+
+### Spec and decomposition quality
+
+These are not "blame the spec" metrics. They are context signals that explain why a model, workflow, or prompt may be struggling.
+
+| Metric | Type | Source | Consumer |
+|---|---|---|---|
+| `spec_ambiguity_count` | Gauge | setup ambiguity records, `refine_result`, `consistency_result` | Dashboard, setup, learning |
+| `story_refinement_rework_rate` | Ratio | Story moved from dispatchable/refined back to `needs_refinement` | Dashboard, orchestrator diagnose |
+| `pre_dispatch_stale_rate` | Ratio | `consistency_result verdict=stale`, consistency checks | Dashboard, diagnose |
+| `spec_to_story_churn_rate` | Rate | Story scope/status/file-scope changed after initial refinement | Dashboard, learning |
+| `acceptance_criteria_completeness` | Gauge/tier | `refine_result` DoR fields present and validation refs named | Dashboard, learning |
+| `validation_baseline_strength` | Gauge/tier | setup validation command discovery and historical pass/fail coverage | Dashboard, learning |
+
+Recommended `spec_quality_tier` projection:
+
+| Tier | Meaning |
+|---|---|
+| `strong` | Acceptance criteria, validation commands, file scope, and constraints are explicit |
+| `adequate` | Enough to dispatch, but some assumptions or weak validation remain |
+| `weak` | Dispatchable only with exploratory/draft framing or high review strictness |
+| `blocked` | Not dispatchable without clarification |
 
 ### Cost
 
@@ -139,6 +205,28 @@ Incubation metrics are ordinary event projections. Source connectors, monitors, 
 | `provider_fallthrough_position_success` | Histogram | which chain position actually worked | Dashboard (chain-quality signal) |
 | `provider_quota_headroom` | Gauge | `provider.quota` | Dispatcher (prefer headroom) |
 | `provider_consecutive_failures` | Gauge | `provider.health` | Backoff compute |
+
+### Provider and model outcome learning
+
+These are read by the learning layer and dashboard, not on every permit acquire. They are grouped by bounded labels: `project_id`, `variant_id`, `provider_ref`, `resolved_provider_id`, `model_id`, `reasoning_effort`, `deployment_route`, `workflow_phase`, `task_family`, `story_complexity`, and `spec_quality_tier`.
+
+| Metric | Type | Source | Consumer |
+|---|---|---|---|
+| `model_merge_rate` | Ratio | `session.created kind=child`, `change_set.merged` | Model optimizer, dashboard |
+| `model_approval_rate` | Ratio | `change_set.review_submitted verdict=approved`, all submitted reviews | Model optimizer, dashboard |
+| `model_changes_requested_rate` | Ratio | `change_set.review_submitted verdict=changes_requested`, all submitted reviews | Model optimizer, dashboard |
+| `model_review_gate_pass_rate` | Ratio | `review_result` | Model optimizer, dashboard |
+| `model_cost_per_merged_pr` | Gauge | `usage`, `change_set.merged` | Model optimizer, budget review |
+| `model_cost_per_approved_change` | Gauge | `usage`, `change_set.review_submitted verdict=approved` | Model optimizer, dashboard |
+| `model_tokens_per_merged_pr` | Gauge | `usage`, `change_set.merged` | Burn-rate analysis, model optimizer |
+| `model_value_score` | Derived | quality floor + approval/merge rate + cost/latency normalized within task family | Dashboard, model optimizer |
+| `model_turn_success_rate` | Ratio | `turn.completed`, `turn.failed` | Model optimizer, diagnose |
+| `model_fallthrough_success_position` | Histogram | provider-chain resolution + `turn.completed` | Model optimizer, dashboard |
+| `model_latency_to_first_chunk_p50/p95` | Histogram | `agent.chunk`, provider timing | Model optimizer, dashboard |
+| `model_review_rounds_to_merge_p50/p95` | Histogram | `change_set.review_submitted`, `change_set.merged` | Model optimizer, dashboard |
+| `model_external_candidate_count` | Counter | `model_intelligence.candidate_recorded` | Dashboard, model-watch review |
+
+Model outcome metrics require turn metadata to record both the requested provider reference and the resolved route/model. For example, `opencode/openrouter/kimi@2.6` and `opencode/openrouter/deepseek@v4-pro` must not collapse into one `opencode` bucket. Provider/toolchain failures are attributed to the resolved route because the operator experiences the route, not an abstract base model.
 
 ## Storage
 

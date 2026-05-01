@@ -32,6 +32,7 @@
 - **Active setup runs** and their state machines
 - **Provider health, quota, and cooldown** state
 - **Scheduler permits** — the truth on what runs when
+- **Triggers** — durable time/event rules that create daemon-owned work
 - **Event aggregation** from all sessions into per-session JSONL + the global event bus
 - **Workspace registry** — human/operator groupings across projects and repos
 - **Project registry** — the set of repos/projects known to this control plane
@@ -104,6 +105,7 @@ Practical consequences:
 - An incubation item may be global, project-scoped, or tied to a candidate project path/repo.
 - Background research may run for minutes or days while the item remains open.
 - Monitors may schedule recurring research runs on a bounded cadence with explicit budget and alert policy.
+- Monitor cadence is backed by the daemon trigger engine, so monitors can fire from time intervals, relevant source events, or explicit manual refresh requests.
 - Research uses provider adapters and scheduler permits, but it is non-mutating by default.
 - Source acquisition uses runtime extension manifests and daemon policy, not arbitrary agent network access.
 - Experiment-loop attempts use the existing sandbox adapter and deterministic exec-step/event pipeline, not a separate runner.
@@ -239,9 +241,34 @@ The scheduler is the **only gate** between a provider turn being "wanted" and a 
 
 **One contract, multiple placements.** In-process callers may invoke the scheduler through a typed interface that implements the same contract as the HTTP endpoint — no local HTTP hop per permit. Remote workers use the HTTP path. No process-local permits — every path goes through the scheduler's single authority.
 
+## Trigger engine
+
+The trigger engine is the daemon-owned primitive for durable scheduling. It decides **when to create or refresh work**; it does not grant provider capacity. Any provider-backed work it creates still goes through scheduler permits.
+
+Supported trigger sources:
+
+| Source | Examples | Target action |
+|---|---|---|
+| `time` | every two weeks, every Monday, cron expression, one-shot reminder | create a research run, run reconcile, refresh proposal |
+| `event` | `provider.model_catalog.changed`, `model_intelligence.candidate_recorded`, `metrics.change`, `provider.health`, tracker human comment | create a research run, queue diagnose, refresh candidate proposal |
+| `manual` | dashboard/CLI/composer "run now" | fire the same target immediately with audit trail |
+
+Trigger actions are typed, not arbitrary code:
+
+- `create_research_run`
+- `tick_monitor`
+- `queue_orchestrator_trigger`
+- `refresh_projection`
+- `create_proposal`
+- `emit_alert`
+
+Rules are structured filters over event topics, labels, thresholds, and object scope. No inline JavaScript, shell, or prompt-defined expressions live in trigger definitions. If a project needs custom signal detection, it must be a typed runtime extension that emits a normal event; the trigger engine consumes that event.
+
+Trigger rows live in `StateStore` and emit `trigger.fired`, `trigger.skipped`, and `trigger.failed` events. Firing is idempotent by `(trigger_id, scheduled_for | source_event_id, target_kind)` so daemon restart or SSE replay cannot duplicate work.
+
 ## Watchdog / reconcile jobs
 
-Internal to the daemon, not external cron. Run on a tick (default 15s, configurable):
+Internal to the daemon, not external cron. These are built-in trigger/reconcile rules. Time-based rules run on a tick (default 15s, configurable); event-based rules evaluate from the event bus:
 
 | Job | Purpose | Action on hit |
 |---|---|---|
@@ -250,7 +277,7 @@ Internal to the daemon, not external cron. Run on a tick (default 15s, configura
 | **Permit expiry sweep** | Release expired permits | Reclaim capacity, emit event |
 | **Orphan worker** | Child process has no corresponding session | Kill process, log |
 | **Burn-rate watch** | Per-session token/commit ratio | Deny future permits for that session, emit `scheduler.burn_rate_exceeded` |
-| **Incubation monitor tick** | Monitor `next_run_at` is due and budget/policy permits | Create a normal research run with `monitor_id`, emit `incubation.monitor.update` |
+| **Incubation monitor tick** | Monitor time trigger or matching event trigger fires and budget/policy permits | Create a normal research run with `monitor_id`, emit `incubation.monitor.update` |
 | **Crash recovery** | At startup only: scan sessions marked `running` | Move to `interrupted`, offer resume via API |
 
 All watchdog findings publish events on the global bus. Self-healing behavior is an **orchestrator workflow** subscribing to those events — not daemon-side logic.
