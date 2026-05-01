@@ -34,7 +34,7 @@ export async function handleTurns(
 }
 
 function streamTurnChunks(sessionId: string, turnId: string, deps: TurnsDeps, _replay: boolean): Response {
-  const eventsPath = join(deps.sessionsDir(), sessionId, "events.jsonl");
+  const eventsPath = join(deps.sessionsDir(), sessionId, "log.jsonl");
 
   const encoder = new TextEncoder();
   const stream = new ReadableStream<Uint8Array>({
@@ -71,6 +71,7 @@ function streamTurnChunks(sessionId: string, turnId: string, deps: TurnsDeps, _r
       });
 
       rl.on("error", () => {
+        writeSSEChunk({ session_id: sessionId, turn_id: turnId, type: "end" });
         controller.close();
       });
     },
