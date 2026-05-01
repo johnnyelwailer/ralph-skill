@@ -334,9 +334,9 @@ Not every edit needs ceremony. Direct editing remains valid. But synthesis-heavy
 
 ## Composer agent model
 
-The composer is the intelligent interface for everything aloop can do. It is a real agentic control surface: it can understand ambiguous user intent, prepare the right task, create or update daemon objects, kick off long-running subagents, and observe their status through the same event streams as the rest of the app.
+The composer is the intelligent interface for everything aloop can do. It is a real agentic control surface: it can understand ambiguous user intent, prepare the right task, delegate to specialized subagents, coordinate long-running work, and observe status through the same event streams as the rest of the app.
 
-The composer is not a separate backend and not a hidden memory store. A composer turn is a provider-backed control turn whose outputs are structured mutations, proposals, comments, research runs, setup runs, session steering, or status summaries.
+The composer is not a separate backend, not a hidden memory store, and not a god-mode API caller. A composer turn is a provider-backed control turn whose outputs are structured delegation plans, proposed mutations, proposals, comments, research runs, setup runs, session steering, configuration patches, project registrations, or status summaries.
 
 The default user model should be:
 
@@ -381,13 +381,77 @@ The composer can initiate or assist with:
 - preparing a research task by refining the question, source plan, budget, provider chain, and expected output
 - starting, pausing, resuming, cancelling, or summarizing long-running research runs and monitors
 - drafting outreach/survey plans while leaving send/approval gates to the daemon policy
+- registering an existing repository or starting setup for a greenfield project
 - starting setup runs from a candidate project or matured incubation proposal
+- answering or revising setup questions and reviewing generated setup scaffold
+- editing project metadata, workflow defaults, provider chains, scheduler limits, overrides, retention settings, and other daemon-exposed configuration
+- creating, editing, splitting, reprioritizing, or explaining tracker work
 - steering a running session
+- starting, pausing, stopping, resuming, or inspecting sessions when policy permits
 - explaining scheduler/provider/tracker decisions
 - discussing a spec section or proposed synthesis
 - asking the system to explain a decision
 - iterating on comments before applying them to tracker/spec state
 - targeted agent assistance while staying anchored to a selected incubation item, project, story, or session
+
+The long-term target is simple: if an operation is possible anywhere in the app, the user should be able to ask the composer for it. The composer may still route the user to a structured workstation when visual inspection is better than conversation, but the intent and coordination path starts from the composer.
+
+### Universal control surface
+
+The composer should cover every daemon-exposed control plane by delegating to scoped specialist subagents where useful:
+
+| Control area | Composer examples |
+|---|---|
+| Projects | "Add this repo", "start setup for a new mobile app", "archive this project" |
+| Incubation | "Capture this", "research it", "track this weekly", "promote this to setup" |
+| Setup | "Continue setup", "answer these questions from the README", "show me unresolved ambiguities" |
+| Tracker/planning | "Split this story", "reprioritize auth work", "create an epic from this proposal" |
+| Runtime | "Start implementation", "pause all child sessions", "stop the stuck run", "explain this failure" |
+| Providers | "Use codex first for this project", "deny claude for today", "show provider health" |
+| Scheduler | "Lower concurrency to 2", "raise the daily project budget", "why was this permit denied?" |
+| Configuration | "Turn on stream reasoning for this project", "change watchdog threshold", "show pending config diff" |
+| Artifacts/evidence | "Compare these screenshots", "attach this log to the story", "summarize proof artifacts" |
+| Security/audit | "Show what changed config today", "why was this action denied?" |
+
+### Specialized control subagents
+
+The composer is the front door and coordinator. It should not carry every specialized tool itself. For non-trivial work, it delegates to subagents with isolated scope and narrow tool access.
+
+Representative subagents:
+
+| Subagent | Scope | Tool access |
+|---|---|---|
+| `project-setup` | one candidate project or repo path | project registration, setup-run tools, discovery artifacts |
+| `incubation-research` | one incubation item or research question | source acquisition, artifact reading, research-run tools |
+| `config-editor` | one daemon/project config document or provider override scope | config read/diff/validate/propose tools |
+| `scheduler-operator` | scheduler limits, permits, provider health | scheduler read/explain/propose tools |
+| `tracker-planner` | one project tracker scope | issue/work-item read/write proposal tools |
+| `runtime-operator` | one project/session/orchestrator scope | session inspect/steer/pause/stop tools |
+| `audit-explainer` | audit/event projections | read-only event, policy, and config history tools |
+
+Subagent constraints:
+
+- each subagent receives a scoped capability grant, not global daemon authority
+- tool access is role-specific and time/budget bounded
+- subagents emit proposed actions, artifacts, findings, and status events
+- the daemon validates and applies mutations; subagents do not bypass policy
+- the composer observes, summarizes, and reconciles subagent outputs for the user
+- subagent runs are durable daemon jobs with events, cost, artifacts, and cancellation
+
+This gives the composer broad reach without concentrating all authority in one prompt. The user experiences one intelligent interface; the system internally uses small, auditable, specialized agents.
+
+The composer must not hide complexity by silently applying ambiguous changes. For broad or risky requests, it should produce a structured delegation/action plan:
+
+1. resolved scope
+2. selected specialist subagent(s)
+3. capability grants and tool scopes
+4. affected objects and config keys
+5. proposed daemon mutations
+6. expected side effects
+7. rollback or reversal path where one exists
+8. approval requirement
+
+Fine-grained configuration is allowed through the composer, but it must feel like an expert assistant editing a real control plane, not a chatbot guessing at settings. The user should be able to ask follow-up questions, inspect the diff, edit the proposed patch, and then apply it through daemon policy.
 
 ### Multimodal composer
 
@@ -463,6 +527,9 @@ When the composer kicks off long-running work, it creates normal daemon jobs rat
 | "Draft a survey" | `OutreachPlan` and artifacts |
 | "Figure out if this repo is ready" | `SetupRun` |
 | "Implement this story" | `Session` or tracker/orchestrator action after promotion |
+| "Set up a new project" | `project-setup` subagent creates `Project` plus `SetupRun` |
+| "Change provider order" | `config-editor` subagent proposes provider override or project config patch |
+| "Reduce concurrency" | `scheduler-operator` subagent proposes scheduler/config patch |
 | "Explain what is running" | status read over existing projections/events |
 
 The composer observes those objects by subscribing to SSE and reading normal API projections. It may summarize status, but the source of truth is still the underlying run/item/session.

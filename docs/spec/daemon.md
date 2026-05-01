@@ -63,6 +63,8 @@ No separate worker fleet in v1. Every session runs under daemon supervision with
     composer/
       turns/<id>/
         log.jsonl               authoritative history for one composer control turn
+      subagents/<id>/
+        log.jsonl               authoritative history for one scoped control subagent run
     sessions/<id>/
       log.jsonl                 authoritative event history
       worktree/                 git worktree (for standalone/child sessions)
@@ -103,13 +105,15 @@ The composer is a provider-backed control agent exposed through the same API as 
 
 Practical consequences:
 
-- A composer turn can clarify user intent, summarize current state, prepare a proposed action, or request a daemon mutation.
+- A composer turn can clarify user intent, summarize current state, prepare a proposed action, or delegate specialized work to scoped control subagents.
 - Composer input is multimodal; images, audio, video, documents, URLs, logs, and diffs are normalized into artifacts, transcripts, OCR, source records, or typed text records before provider reasoning.
 - Voice input is first-class. The daemon chooses native speech handling when the selected provider supports it, otherwise routes through a configured fallback transcriber and records transcript provenance.
-- If it starts long-running work, that work is a normal daemon object: `ResearchRun`, `ResearchMonitor`, `SetupRun`, `Session`, tracker mutation, proposal, comment, or artifact.
+- If it starts long-running work or changes control-plane state, that effect is a normal daemon object or mutation: `Project`, `ResearchRun`, `ResearchMonitor`, `SetupRun`, `Session`, tracker mutation, provider override, scheduler limit change, config patch, proposal, comment, or artifact.
+- Specialized control subagents run with isolated role/scope/capability grants. They can inspect and propose within their scope; the daemon performs final mutations after policy and approval checks.
 - The composer observes child work through SQLite projections and SSE events; it does not own a hidden child-agent graph.
 - Provider-backed composer turns acquire scheduler permits using `composer_turn_id`.
 - Risky or durable mutations can stop at `waiting_for_approval` with a structured preview.
+- Project registration, project setup, provider overrides, scheduler limits, daemon config, project config, tracker writes, outreach, session starts, and destructive actions are always policy-checked and audited through the same path as structured UI/API requests, whether initiated by UI controls, composer, or a control subagent.
 - The transcript is useful history, but the launched object is the source of truth.
 
 ## Project registry

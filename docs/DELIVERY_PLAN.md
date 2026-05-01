@@ -233,7 +233,7 @@ Sandboxing is the broader execution concept; the project devcontainer is only th
 
 **Deliverable:**
 - Existing React/Vite dashboard rewired to consume v1 API only.
-- Always-ready scoped multimodal composer that can capture typed or spoken intent, links, screenshots, voice notes, documents, and logs; create incubation items; start lightweight research; explain status; and observe launched daemon jobs without owning hidden state.
+- Always-ready scoped multimodal composer that can capture typed or spoken intent, links, screenshots, voice notes, documents, and logs; delegate to scoped specialist subagents; create incubation items; start lightweight research; explain status; and observe launched daemon jobs without owning hidden state.
 - Panels: session list (grouped by project), session detail with live event tail, provider health, scheduler permits, cost + keeper-rate, metric comparison by `variant_id`.
 - Basic setup-run shell: active setup runs, current stage/progress, current question set, background research status, and chapter/document summaries via the same setup API used by the CLI.
 - Steering box, stop button, override editor.

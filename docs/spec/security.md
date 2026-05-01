@@ -10,6 +10,7 @@
 - Trust layers
 - Deployment scenarios
 - Agent ↔ daemon interface (`aloop-agent`)
+- Composer and control subagent policy
 - Research source and outreach policy
 - Tracker adapter policy (`aloop gh`, builtin, future adapters)
 - Hardcoded policy tables
@@ -91,6 +92,21 @@ Agents communicate via the `aloop-agent` CLI, which is the ONLY privileged binar
 - **Rate-limited** — per-session token bucket (default: 100 requests/minute, configurable in `daemon.yml`). Exceeding the budget returns exit code 22 and emits `agent_cli.throttled`. Prevents runaway agents from thrashing the daemon with `todo list` loops or submit-spam.
 
 The retired pattern of "agents write `.aloop/output/*.json` and the runtime bridges them" is gone. The session JSONL remains, but it's the output of `aloop-agent submit`, not the other way around.
+
+## Composer and control subagent policy
+
+The composer is a user-facing coordinator, not a policy bypass. It can ask for every system capability, but broad requests are decomposed into scoped control subagent runs with narrow tools.
+
+Control subagent requirements:
+
+- **Scoped capability grant** — every subagent run declares role, target scope, allowed tool classes, budget, timeout, and initiating composer turn.
+- **Least privilege** — a `config-editor` can read/validate/propose config patches for its scope; it does not get runtime session controls. A `runtime-operator` can inspect/steer sessions for its scope; it does not get daemon config write tools.
+- **No direct external APIs** — subagents use daemon tools/adapters only, never raw tracker CLIs, raw network credentials, or filesystem side channels.
+- **Preview before mutation** — policy-sensitive changes become proposed actions. The daemon applies them only after approval/policy checks.
+- **Audited delegation** — creating a subagent run, granting capabilities, producing an action proposal, approving, applying, denying, or cancelling all emit daemon-level audit events.
+- **Revocable** — cancelling the composer turn or subagent run revokes outstanding capability handles and prevents further mutations from that run.
+
+This is the safety boundary for "composer can control everything." The user gets one natural interface, while each internal agent operates in an isolated, inspectable lane.
 
 ## Research source and outreach policy
 

@@ -103,9 +103,9 @@ POST   /v1/projects/:id/purge  // hard-delete sessions, logs, worktrees
 
 ## Composer
 
-The composer is the universal agentic intent interface for the app. It is used by dashboard, mobile web, CLI, and future capture surfaces to turn natural-language intent into normal daemon-owned objects.
+The composer is the universal agentic intent interface for the app. It is used by dashboard, mobile web, CLI, and future capture surfaces to turn natural-language intent into scoped delegation plans, normal daemon-owned objects, and policy-checked daemon mutations.
 
-The composer is not a privileged backend. A composer turn may create or update incubation items, comments, research runs, monitors, outreach plans, setup runs, tracker proposals, steering instructions, or sessions only by invoking the same daemon mutation path those objects use elsewhere.
+The composer is not a privileged backend. It should not directly hold every specialized tool. A composer turn may delegate to scoped subagents that create or update incubation items, comments, research runs, monitors, outreach plans, projects, setup runs, tracker proposals, steering instructions, sessions, provider overrides, scheduler limits, daemon config, or project config only through the same daemon mutation path those objects use elsewhere.
 
 The composer is multimodal and voice-first where useful. Clients submit media as artifact references or upload them first through `/v1/artifacts`; the daemon normalizes them into artifacts, derived text, transcripts, OCR, source records, and provenance before provider reasoning.
 
@@ -139,7 +139,25 @@ POST /v1/composer/turns
     { "kind": "project", "project_id": "p_..." },
     { "kind": "incubation_item", "item_id": "i_..." }
   ],
-  "intent_hint": "capture|research|monitor|setup|steer|explain|summarize|apply",
+  "intent_hint": "capture|research|monitor|project|setup|plan|configure|steer|explain|summarize|apply",
+  "allowed_action_classes": [
+    "read",
+    "capture",
+    "research",
+    "project",
+    "setup",
+    "tracker",
+    "runtime",
+    "provider",
+    "scheduler",
+    "config",
+    "artifact"
+  ],
+  "delegation_policy": {
+    "allow_subagents": true,
+    "max_subagents": 3,
+    "require_preview_for_mutations": true
+  },
   "provider_chain": ["codex", "claude"],
   "transcription": {
     "mode": "auto|native_provider|fallback_transcriber|client_supplied",
@@ -166,9 +184,30 @@ The response includes:
   "intent_hint": "research",
   "media_mode": "native|derived|none",
   "voice_mode": "native|transcribed|client_transcribed|none",
+  "delegated_refs": [
+    {
+      "kind": "control_subagent_run",
+      "id": "csr_...",
+      "role": "config-editor",
+      "scope": { "kind": "project", "id": "p_..." },
+      "status": "running"
+    }
+  ],
   "launched_refs": [
     { "kind": "incubation_item", "id": "i_..." },
     { "kind": "research_run", "id": "rr_..." }
+  ],
+  "proposed_actions": [
+    {
+      "id": "act_...",
+      "class": "config",
+      "method": "PUT",
+      "path": "/v1/providers/overrides",
+      "summary": "Prefer codex before claude for new turns",
+      "produced_by": { "kind": "control_subagent_run", "id": "csr_..." },
+      "risk": "low|medium|high",
+      "requires_approval": true
+    }
   ],
   "proposal_refs": [],
   "usage": { "tokens_in": 1234, "tokens_out": 456, "cost_usd": 0.12 },
@@ -179,9 +218,38 @@ The response includes:
 
 Composer turns acquire scheduler permits before provider calls. A turn that launches long-running work returns quickly once the daemon has created the child object; status for that work is observed through the child object's own endpoints and events.
 
-Risky or durable mutations should return `waiting_for_approval` with a structured preview instead of applying immediately. Examples: promotion, tracker mutation, setup-state mutation, outreach send, session start, or repository-affecting steering. Read-only explanations and low-risk capture/comment creation may complete without preview depending on policy.
+Risky or durable mutations should return `waiting_for_approval` with a structured preview instead of applying immediately. Examples: project registration or purge, promotion, tracker mutation, setup-state mutation, provider override, scheduler limit change, daemon config change, project config change, outreach send, session start, or repository-affecting steering. Read-only explanations and low-risk capture/comment creation may complete without preview depending on policy.
 
 The launched object, not the composer transcript, is the source of truth. For example, "track this market weekly" creates a `ResearchMonitor`; the composer turn only records how it was requested and which objects it launched.
+
+### Delegated control planning
+
+The composer can coordinate any operation exposed by the daemon API, but it should delegate specialized work to scoped subagents instead of directly wielding all tools. It does not get private endpoints. The composer or its subagents emit proposed actions that reference normal API paths, payloads, and target objects.
+
+Delegation and action planning requirements:
+
+- each delegated subagent has a role, scope, budget, timeout, and explicit capability grant
+- subagent tool access is narrower than the composer's user-facing breadth
+- every proposed mutation has an action class, target path, summary, risk level, and approval requirement
+- multi-step requests become ordered action plans, for example `POST /v1/projects` then `POST /v1/setup/runs`
+- config changes are represented as patches or full replacement documents using the same config endpoints as the dashboard configuration center
+- policy-sensitive actions must be previewed and audited before application
+- the composer may explain, revise, or discard proposed actions before apply
+- applied actions emit the same events as if the user had clicked the corresponding structured UI control
+- the daemon, not the subagent, performs the final mutation after policy checks
+
+Useful examples:
+
+| User request | Delegated subagent | Proposed daemon path |
+|---|---|
+| "Set up this repo as a new aloop project" | `project-setup` | `POST /v1/projects` then `POST /v1/setup/runs` |
+| "Use codex first for this project" | `config-editor` | project config patch or `PUT /v1/providers/overrides` depending on scope |
+| "Lower global concurrency" | `scheduler-operator` | scheduler/daemon config patch |
+| "Archive this project" | `project-setup` or `config-editor` | `DELETE /v1/projects/:id` |
+| "Start three implementation agents" | `runtime-operator` | tracker/orchestrator/session mutations after policy checks |
+| "Show every config change today" | `audit-explainer` | read audit/event projections |
+
+There should be no meaningful app capability that is unreachable from the composer. If the daemon API can do it, the composer can coordinate a scoped subagent to inspect or propose it; if policy allows it and approval is satisfied, the daemon can apply it.
 
 ### Multimodal normalization
 
@@ -512,7 +580,7 @@ The global event bus. All state changes, log lines, and streaming content publis
 ### Subscribe
 
 ```
-GET /v1/events?topics=session.*,provider.*&project_id=<id>&session_id=<id>&research_run_id=<id>&composer_turn_id=<id>&parent=<orch_id>&since=<event_id>
+GET /v1/events?topics=session.*,provider.*&project_id=<id>&session_id=<id>&research_run_id=<id>&composer_turn_id=<id>&control_subagent_run_id=<id>&parent=<orch_id>&since=<event_id>
 ```
 
 Response: `text/event-stream`.
@@ -522,6 +590,7 @@ Response: `text/event-stream`.
 - `session_id`: filter to a single session.
 - `research_run_id`: filter to a single incubation research run.
 - `composer_turn_id`: filter to a single composer turn.
+- `control_subagent_run_id`: filter to a single scoped control subagent run.
 - `parent`: filter to a session's children (for orchestrators).
 - `since`: resume from a prior event id. Daemon streams missed events then switches to live tail.
 
@@ -549,12 +618,13 @@ Every event has a monotonic `id` (ms timestamp + sequence). Events are durable (
 | `provider.quota` | quota probe result | `{provider_id, remaining, reset_at}` |
 | `provider.override.changed` | overrides PUT | new overrides doc |
 | `scheduler.limits.changed` | scheduler limits PUT | `{limits}` |
-| `scheduler.permit.grant` | permit issued | `{permit_id, session_id?, research_run_id?, composer_turn_id?, provider_id, ttl}` |
-| `scheduler.permit.deny` | permit refused | `{session_id?, research_run_id?, composer_turn_id?, reason, gate, details}` |
-| `scheduler.permit.release` | permit released | `{permit_id, session_id?, research_run_id?, composer_turn_id?}` |
-| `scheduler.permit.expired` | TTL reclaim | `{permit_id, session_id?, research_run_id?, composer_turn_id?}` |
+| `scheduler.permit.grant` | permit issued | `{permit_id, session_id?, research_run_id?, composer_turn_id?, control_subagent_run_id?, provider_id, ttl}` |
+| `scheduler.permit.deny` | permit refused | `{session_id?, research_run_id?, composer_turn_id?, control_subagent_run_id?, reason, gate, details}` |
+| `scheduler.permit.release` | permit released | `{permit_id, session_id?, research_run_id?, composer_turn_id?, control_subagent_run_id?}` |
+| `scheduler.permit.expired` | TTL reclaim | `{permit_id, session_id?, research_run_id?, composer_turn_id?, control_subagent_run_id?}` |
 | `scheduler.burn_rate_exceeded` | burn gate tripped for a session | `{session_id, observed, threshold}` |
 | `composer.turn.changed` | composer turn queued, running, waiting for approval, completed, failed, or cancelled | composer turn summary |
+| `composer.subagent.changed` | scoped control subagent queued, running, completed, failed, or cancelled | control subagent run summary |
 | `composer.action.previewed` | composer produced a structured mutation preview requiring approval | preview summary |
 | `incubation.item.changed` | capture/edit/state change on an incubation item | incubation item summary |
 | `incubation.comment.created` | comment added to an incubation item | comment summary |
@@ -584,14 +654,14 @@ Returns `application/x-ndjson`, streaming. Useful for exports, offline analysis,
 
 ## Artifacts
 
-Artifacts are daemon-managed files associated with sessions, composer turns, setup runs, incubation items, research runs, work items, or change sets. Proof outputs are the primary source, but clients may also upload images, audio, video, documents, or other files that should be referenced in discussion or composer turns.
+Artifacts are daemon-managed files associated with sessions, composer turns, control subagent runs, setup runs, incubation items, research runs, work items, or change sets. Proof outputs are the primary source, but clients may also upload images, audio, video, documents, or other files that should be referenced in discussion or composer turns.
 
 This is the minimal runtime primitive that enables multimodal feedback without requiring clients or agents to speak tracker-native upload APIs.
 
 ### List / inspect / content
 
 ```
-GET /v1/artifacts?project_id=<id>&session_id=<id>&composer_turn_id=<id>&setup_run_id=<id>&incubation_item_id=<id>&research_run_id=<id>&work_item_key=<key>&phase=proof&type=screenshot
+GET /v1/artifacts?project_id=<id>&session_id=<id>&composer_turn_id=<id>&control_subagent_run_id=<id>&setup_run_id=<id>&incubation_item_id=<id>&research_run_id=<id>&work_item_key=<key>&phase=proof&type=screenshot
 GET /v1/artifacts/:id
 GET /v1/artifacts/:id/content
 ```
@@ -609,6 +679,7 @@ Illustrative metadata shape:
   "project_id": "p_...",
   "session_id": "s_...",
   "composer_turn_id": null,
+  "control_subagent_run_id": null,
   "setup_run_id": null,
   "incubation_item_id": null,
   "research_run_id": null,
@@ -632,6 +703,7 @@ fields:
   project_id=<id>
   session_id=<id>?         // optional
   composer_turn_id=<id>?   // optional
+  control_subagent_run_id=<id>? // optional
   setup_run_id=<id>?       // optional
   incubation_item_id=<id>? // optional
   research_run_id=<id>?    // optional
@@ -696,7 +768,7 @@ Research runs and future provider-backed daemon jobs may expose owner-specific c
 ```
 
 - `sequence` is monotonic within a turn, starts at 0.
-- `owner.kind` is `session`, `composer_turn`, or another provider-backed daemon job kind added later. `session_id` remains for v1 session compatibility.
+- `owner.kind` is `session`, `composer_turn`, `control_subagent_run`, or another provider-backed daemon job kind added later. `session_id` remains for v1 session compatibility.
 - `type`: `text`, `transcript`, `thinking`, `tool_call`, `tool_result`, `usage`, `error`.
 - `content` is type-specific; clients render what they know, ignore unknowns.
 - `final: true` on the last chunk of the turn.
@@ -784,19 +856,20 @@ POST /v1/scheduler/permits
   "session_id": "s_abc",
   "research_run_id": null,
   "composer_turn_id": null,
+  "control_subagent_run_id": null,
   "provider_candidate": "opencode",
   "estimated_cost_usd": 0.03
 }
 ```
 
-Exactly one of `session_id`, `research_run_id`, or `composer_turn_id` is required. Sessions are the normal owner for implementation and orchestration turns; research runs are the owner for incubation research turns; composer turns are the owner for provider-backed intent-resolution turns.
+Exactly one of `session_id`, `research_run_id`, `composer_turn_id`, or `control_subagent_run_id` is required. Sessions are the normal owner for implementation and orchestration turns; research runs are the owner for incubation research turns; composer turns are the owner for provider-backed intent-resolution turns; control subagent runs are the owner for scoped delegated control turns.
 
 Returns:
 
 ```json
 {
   "granted": true,
-  "permit": { "id": "perm_xyz", "session_id": "s_abc", "research_run_id": null, "composer_turn_id": null, "provider_id": "opencode", "ttl_seconds": 600 }
+  "permit": { "id": "perm_xyz", "session_id": "s_abc", "research_run_id": null, "composer_turn_id": null, "control_subagent_run_id": null, "provider_id": "opencode", "ttl_seconds": 600 }
 }
 ```
 

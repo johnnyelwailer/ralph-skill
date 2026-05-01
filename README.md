@@ -1,6 +1,6 @@
 # aloop
 
-> Self-hosted, multi-provider autonomous development harness with a central voice-capable multimodal agentic composer that turns captured intent into researched, specified, tracked, reviewed, and merged code without continuous human supervision.
+> Self-hosted, multi-provider autonomous development harness with a central voice-capable multimodal composer that delegates to scoped agents and turns captured intent into researched, specified, tracked, reviewed, and merged code without continuous human supervision.
 
 **Status:** rebuild in progress on branch `next`. Pre-rebuild code lived under `aloop/` on `master`; it is retired. The new architecture is a single daemon (`aloopd`) with a typed API, a scheduler-with-permits, tracker-agnostic Epic/Story/Task work items, and a workflow catalog per Story type.
 
