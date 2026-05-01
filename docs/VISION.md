@@ -23,7 +23,7 @@ You type or speak an idea, screenshot, voice note, link, document, or spec into 
 1. **Multi-provider parallel dispatch is the core promise.** Not "add another provider later" — the chain grammar (`provider[/track][@version]`), the per-turn fallthrough, the scheduler's quota-aware gating, and the cross-session load balancing are baked into the spec. One session can run Claude while the next runs OpenCode while a third runs Codex, all under one budget and one permit authority.
 2. **A scheduler that's actually in charge.** Every provider-backed turn — research, standalone, orchestrator, child — acquires a permit before it runs. Concurrency caps are enforced, not hoped for. Burn-rate safety stops sessions that spend tokens without producing commits. Provider quotas are queried (where providers expose them) and cooldowns are real.
 3. **Self-healing through prompts, not daemons.** When something goes wrong, the orchestrator runs a diagnose prompt that decides what to do — pause a session, raise a threshold, file a follow-up, try a different provider. Intelligent over scripted.
-4. **Tracker-agnostic from day one.** GitHub is the shipped adapter (with native sub-issues). The built-in file-based tracker needs zero external dependencies. GitLab, Linear, Jira adapters are future slots — no rewrite required.
+4. **Daemon-native state, tracker adapters at the edge.** Aloop's durable truth lives in daemon state: SQLite/Postgres projections plus append-only event logs. GitHub is a shipped adapter for the human-visible Epic/Story/change-set subset, not the whole product database. The built-in tracker is an offline/minimum-flow adapter and test fixture, not the storage strategy for workspaces, incubation, runtime, research, metrics, or configuration.
 5. **Observable and resumable.** Every state change emits a structured event. JSONL per session is the authoritative log. SSE streams to the dashboard. The daemon crashes, restarts, and resumes. Sessions survive upgrades.
 6. **One API, many clients.** CLI, dashboard, Telegram bot, future integrations all consume the same v1 HTTP+SSE contract. No privileged paths. What you can do from the dashboard you can do from curl.
 7. **Standards before custom mechanisms.** Aloop uses boring protocols and existing ecosystem conventions wherever possible: HTTP, SSE, JSON, JSON Schema/OpenAPI-compatible shapes, MIME artifacts, Git, SQLite/Postgres, and standard auth patterns. Custom protocols are a last resort, not a design style.
@@ -53,7 +53,8 @@ A bad day on aloop (and how it handles it):
 "Done" is the wrong word for a living product, but here's what v1 completion looks like:
 
 - All five providers (OpenCode, Copilot, Codex, Gemini, Claude) as first-class adapters with streaming, quota, and fallthrough.
-- Two tracker adapters (GitHub + builtin) with feature parity for the orchestrator's minimum viable flow.
+- Daemon-native database-backed state for workspaces, projects, incubation, setup, sessions, scheduler, metrics, and tracker projections.
+- Two tracker adapters (GitHub + builtin) with feature parity for the orchestrator's minimum viable Epic/Story/change-set flow.
 - Multi-workspace, multi-project daemon with a stable v1 API.
 - Scheduler with permit-based gating, real quota probes, burn-rate safety, live overrides.
 - Orchestrator session with Epic → Story decomposition, parallel dispatch, quality gates, merge-to-trunk, intelligent diagnose.

@@ -55,7 +55,7 @@ A single long-running local daemon (`aloopd`) owns all state and scheduling. Eve
 │      SandboxAdapter      (v1: local execution / devcontainer;  │
 │                           future: sandbox-core-backed backends)│
 │      ProjectAdapter      (1 impl: local-fs; future: remote-clone)│
-│      StateStore          (1 impl: SQLite; future: Postgres)   │
+│      StateStore          (v1: SQLite; future: Postgres)       │
 │      EventStore          (1 impl: JSONL; future: JSONL + S3)  │
 └──────────────────────────────────────────────────────────────┘
               │ filesystem (worktrees, logs) + subprocess (CLIs)
@@ -197,10 +197,10 @@ Six typed interfaces enclose everything external to the daemon core:
 | Adapter | Interface file / spec | V1 implementations | Purpose |
 |---|---|---|---|
 | **ProviderAdapter** | `provider-contract.md` | opencode, copilot, codex, gemini, claude | One per AI provider; runs turns; emits agent chunks |
-| **TrackerAdapter** | `work-tracker.md` | github, builtin | Generic work-item (Epic/Story) + change-set surface; GH is one instance |
+| **TrackerAdapter** | `work-tracker.md` | github, builtin | External/offline work-item projection surface for Epic/Story/change-set workflows; not the full aloop database |
 | **SandboxAdapter** | in-daemon (seam) | host execution, project devcontainer | Acquires the execution environment for a session and runs turns inside it; later maps to `sandbox-core` backends for local Docker and hosted sandboxes |
 | **ProjectAdapter** | in-daemon (seam) | local-fs | Worktree operations on local filesystem today; remote clone tomorrow |
-| **StateStore** | in-daemon (seam) | sqlite | Queryable current-state; Postgres tomorrow |
+| **StateStore** | in-daemon (seam) | SQLite | Queryable daemon-native current state: workspaces, projects, incubation, setup, sessions, permits, projections, metrics; Postgres tomorrow |
 | **EventStore** | in-daemon (seam) | jsonl | Authoritative append-only event log; JSONL + S3 tomorrow |
 
 Each interface has exactly the implementations v1 needs, plus a deliberate seam for future growth. No interface has zero implementations ("abstractions without users"). No interface has an implementation that isn't actually used.

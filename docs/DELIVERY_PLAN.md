@@ -162,16 +162,17 @@ Sandboxing is the broader execution concept; the project devcontainer is only th
 
 ---
 
-## M7 — Builtin tracker + first orchestrator slice
+## M7 — Daemon work-item projections + builtin tracker adapter + first orchestrator slice
 
 **Deliverable:**
 - `TrackerAdapter` interface.
-- Builtin adapter: work items as JSON files under `<project>/.aloop/tracker/`, append-only `events.jsonl`, branch-based change sets.
+- Daemon work-item projection tables in SQLite for adapter-normalized Epics, Stories, comments, change sets, and tracker event cursors.
+- Builtin adapter: minimum offline Epic/Story/change-set adapter, with work items as JSON files under `<project>/.aloop/tracker/`, append-only `events.jsonl`, branch-based change sets.
 - `aloop tracker ...` CLI proxy (generic).
 - Minimal `orchestrator.yaml` workflow — supports decompose + dispatch only (no review/diagnose yet).
 - Orchestrator session of kind `orchestrator` with basic decomposition against a small test spec.
 
-**Test:** run orchestrator against a 3-story test spec → builtin tracker creates 3 work items → orchestrator dispatches 3 child sessions serially → each runs quick-fix → work items close. Fully offline.
+**Test:** run orchestrator against a 3-story test spec → builtin tracker creates 3 work items → daemon projection reflects normalized work items → orchestrator dispatches 3 child sessions serially → each runs quick-fix → work items close. Fully offline.
 
 **Non-goals:** GitHub, parallel dispatch, full orchestrator prompt set, review/merge flow.
 

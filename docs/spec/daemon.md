@@ -57,7 +57,9 @@ No separate worker fleet in v1. Every session runs under daemon supervision with
   overrides.yml                 persisted provider overrides
   token                         bearer token (for remote/tunneled access)
   state/
-    db.sqlite                   queryable state: workspaces, projects, sessions, permits, health
+    db.sqlite                   queryable daemon-native state and projections:
+                                workspaces, projects, incubation, setup, sessions,
+                                permits, provider health, metrics, tracker projections
     incubation/
       <id>/
         log.jsonl               authoritative event history for one incubation item
@@ -78,10 +80,12 @@ No separate worker fleet in v1. Every session runs under daemon supervision with
 
 **Split of responsibility:**
 
-- `db.sqlite` — **queryable current state**. What is *true now*. Indexed for fast list/filter (active sessions by project, permits in-flight, provider health snapshot).
+- `db.sqlite` — **queryable current state**. What is *true now*. Indexed for fast list/filter across daemon-native objects and projections: workspaces, projects, incubation, setup, sessions, permits, provider health, tracker projections, metrics.
 - `log.jsonl` — **authoritative history**. What *happened*. Append-only, `fsync` per line, crash-safe. Replayable.
 
 The two never overlap. SQLite is a projection of truth; JSONL is the truth. On corruption or schema change, SQLite is rebuildable from JSONL via a deterministic projector.
+
+Tracker adapters are not the daemon's database. They are external/offline projection and mutation surfaces for the work-tracker subset. GitHub can own GitHub-native issues and PRs; the built-in tracker can own local Epic/Story/change-set files; neither owns workspaces, incubation, setup internals, scheduler state, provider health, metrics, artifacts, or composer/subagent history.
 
 ## Incubation
 
