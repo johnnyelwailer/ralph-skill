@@ -30,7 +30,7 @@ It covers:
 
 - fast capture from phone, browser, desktop, CLI, or composer surfaces
 - vague ideas that need clarification over time
-- links, screenshots, voice-note transcripts, logs, or pasted observations
+- links, screenshots, images, audio, voice notes, transcripts, videos, documents, logs, or pasted observations
 - background research tasks that should produce evidence before any implementation
 - multi-source research across documentation, papers, videos, forums, social feeds, repositories, issue trackers, market data, and uploaded artifacts
 - long-running tracking tasks that watch how a market, technology, project, competitor, regulation, or community discussion develops
@@ -124,7 +124,7 @@ type IncubationItem = {
 };
 ```
 
-Comments, attachments, and inline images reuse the same artifact/comment primitives used elsewhere in aloop. Clients must not store useful discussion only in local browser state.
+Comments, attachments, inline images, transcripts, PDFs, videos, and other media reuse the same artifact/comment primitives used elsewhere in aloop. Clients must not store useful discussion only in local browser state.
 
 Incubation may also own recurring or continuous objects tied to the item:
 
@@ -485,7 +485,7 @@ Incubation has two complementary client modes:
 - **Conversational kickoff** through the global composer agent.
 - **Structured management** through the incubation workstation.
 
-The composer is the preferred path for raw intent because early ideas are usually incomplete. It can ask clarifying questions, infer scope, prepare a source plan, propose a budget, and start a research run or monitor after the daemon validates the request. The resulting state is still an `IncubationItem`, `ResearchRun`, `ResearchMonitor`, `OutreachPlan`, or `IncubationProposal`.
+The composer is the preferred path for raw intent because early ideas are usually incomplete and often multimodal. It can accept text, links, screenshots, voice notes, videos, documents, logs, and pasted threads; ask clarifying questions; infer scope; prepare a source plan; propose a budget; and start a research run or monitor after the daemon validates the request. The resulting state is still an `IncubationItem`, `ResearchRun`, `ResearchMonitor`, `OutreachPlan`, or `IncubationProposal`, with media preserved as artifacts.
 
 The workstation should expose incubation as a first-class surface, not as a generic chat thread.
 

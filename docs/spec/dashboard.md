@@ -340,8 +340,9 @@ The composer is not a separate backend and not a hidden memory store. A composer
 
 The default user model should be:
 
-- speak or type into the composer
+- speak, type, paste, upload, screenshot, or share into the composer
 - the composer resolves scope and asks clarifying questions when needed
+- media is normalized into daemon artifacts before provider reasoning
 - the composer previews the structured action it intends to take when the action is risky or durable
 - the daemon applies approved mutations through normal endpoints
 - long-running work continues as normal daemon jobs
@@ -359,6 +360,7 @@ The workstation should borrow the strongest parts of modern high-performance cha
 - immediate visual response on send
 - stable streaming with minimal layout shift
 - keyboard-first conversation flow
+- multimodal capture and response when the selected provider supports it
 - compact, high-signal message rendering
 - easy branch/thread continuation from prior context
 - lightweight attachment of artifacts, spec fragments, or work-item context into the message
@@ -374,7 +376,7 @@ The workstation should borrow the strongest parts of modern high-performance cha
 
 The composer can initiate or assist with:
 
-- capturing a new incubation item from raw text, a link, an image, a voice transcript, or a pasted thread
+- capturing a new incubation item from raw text, a link, an image, a screenshot, an audio/voice note, a video, a document, a voice transcript, or a pasted thread
 - preparing a research task by refining the question, source plan, budget, provider chain, and expected output
 - starting, pausing, resuming, cancelling, or summarizing long-running research runs and monitors
 - drafting outreach/survey plans while leaving send/approval gates to the daemon policy
@@ -385,6 +387,41 @@ The composer can initiate or assist with:
 - asking the system to explain a decision
 - iterating on comments before applying them to tracker/spec state
 - targeted agent assistance while staying anchored to a selected incubation item, project, story, or session
+
+### Multimodal composer
+
+Multimodal input is a first-class composer behavior, not a special upload side path.
+
+Supported input classes should include:
+
+- text
+- URLs
+- screenshots and images
+- audio and voice notes
+- short videos or screen recordings
+- PDFs and documents
+- pasted logs, terminal output, stack traces, diffs, and code fragments
+- selected UI state such as current panel, active item, highlighted spec section, or selected artifact
+
+The composer should normalize every non-text input into daemon-managed artifacts and derived records before reasoning:
+
+| Input | Normalized daemon records |
+|---|---|
+| screenshot/image | artifact, optional OCR text, visual description, dimensions, provenance |
+| voice note/audio | artifact, transcript artifact, language/confidence metadata |
+| video/screen recording | artifact, transcript when available, keyframe/screenshot artifacts, timing notes |
+| PDF/document | artifact, extracted text chunks, page images when needed |
+| URL/share sheet | source record or artifact, retrieval timestamp, title/author when known |
+| pasted code/log/diff | artifact or comment body with language/type metadata |
+
+Provider capability is dynamic. If the selected provider supports native vision/audio/document input, the composer may pass artifact references through the provider adapter. If not, the daemon supplies derived text/OCR/transcripts and clearly marks the response as based on derived media, not native perception.
+
+Multimodal output should also be artifact-backed:
+
+- screenshots, mockups, diagrams, generated docs, survey drafts, transcripts, and comparison tables are artifacts
+- inline display is a rendering concern
+- durable references use artifact IDs, not pasted binary blobs in the transcript
+- generated media that influences a proposal must be linked from the proposal evidence
 
 ### Long-running subagents
 
@@ -412,7 +449,7 @@ The composer experience should feel operationally sharp:
 - **interruptibility**: stop generation, retry, branch, or continue from a prior message
 - **history durability**: every useful exchange can be replayed or linked back to the underlying object it affected
 - **artifact-aware**: attach logs, proofs, diffs, comments, or exact run outputs into the conversation without copy-paste gymnastics
-- **inline-media-aware**: embed screenshots, mockups, and visual diffs inline from the artifact picker when the comment or chat thread needs them
+- **multimodal-aware**: accept and render screenshots, images, audio transcripts, videos, PDFs, docs, visual diffs, mockups, and generated artifacts inline while preserving artifact IDs underneath
 - **action previews**: show structured proposed mutations before durable or risky actions
 - **job awareness**: show launched child work, live status, cost, and cancellation controls inline
 
@@ -424,7 +461,7 @@ The composer should behave more like a professional tool than a generic textarea
 - keyboard send by default, newline via modifier
 - slash-style quick actions for common intents (`/capture`, `/research`, `/monitor`, `/setup`, `/steer`, `/explain`, `/comment`, `/apply`, `/stop`)
 - visible scope chips for the current target (`incubation item`, `project`, `epic`, `story`, `session`, `spec section`)
-- drop targets or picker affordances for artifacts and context objects
+- drop targets, paste handling, capture buttons, microphone capture, camera/share-sheet capture on mobile, and picker affordances for artifacts and context objects
 - preserved draft state per target where practical
 
 ### Streaming behavior

@@ -104,6 +104,7 @@ The composer is a provider-backed control agent exposed through the same API as 
 Practical consequences:
 
 - A composer turn can clarify user intent, summarize current state, prepare a proposed action, or request a daemon mutation.
+- Composer input is multimodal; images, audio, video, documents, URLs, logs, and diffs are normalized into artifacts, transcripts, OCR, source records, or typed text records before provider reasoning.
 - If it starts long-running work, that work is a normal daemon object: `ResearchRun`, `ResearchMonitor`, `SetupRun`, `Session`, tracker mutation, proposal, comment, or artifact.
 - The composer observes child work through SQLite projections and SSE events; it does not own a hidden child-agent graph.
 - Provider-backed composer turns acquire scheduler permits using `composer_turn_id`.

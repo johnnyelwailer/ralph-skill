@@ -107,6 +107,8 @@ The composer is the universal agentic intent interface for the app. It is used b
 
 The composer is not a privileged backend. A composer turn may create or update incubation items, comments, research runs, monitors, outreach plans, setup runs, tracker proposals, steering instructions, or sessions only by invoking the same daemon mutation path those objects use elsewhere.
 
+The composer is multimodal. Clients submit media as artifact references or upload them first through `/v1/artifacts`; the daemon normalizes them into artifacts, derived text, transcripts, OCR, source records, and provenance before provider reasoning.
+
 ### Turns
 
 ```
@@ -118,7 +120,18 @@ POST /v1/composer/turns
     "id": "optional-object-id"
   },
   "message": "Research whether mobile capture should become part of aloop.",
-  "artifact_refs": [],
+  "artifact_refs": [
+    { "artifact_id": "a_...", "role": "screenshot", "selection": null }
+  ],
+  "media_inputs": [
+    {
+      "kind": "image|audio|video|document|url|code|log|diff",
+      "artifact_id": "a_...",
+      "url": null,
+      "caption": "Optional user note about this media",
+      "derived_refs": []
+    }
+  ],
   "context_refs": [
     { "kind": "project", "project_id": "p_..." },
     { "kind": "incubation_item", "item_id": "i_..." }
@@ -143,6 +156,7 @@ The response includes:
   "scope": { "kind": "global" },
   "status": "queued|running|waiting_for_approval|completed|failed|cancelled",
   "intent_hint": "research",
+  "media_mode": "native|derived|none",
   "launched_refs": [
     { "kind": "incubation_item", "id": "i_..." },
     { "kind": "research_run", "id": "rr_..." }
@@ -159,6 +173,21 @@ Composer turns acquire scheduler permits before provider calls. A turn that laun
 Risky or durable mutations should return `waiting_for_approval` with a structured preview instead of applying immediately. Examples: promotion, tracker mutation, setup-state mutation, outreach send, session start, or repository-affecting steering. Read-only explanations and low-risk capture/comment creation may complete without preview depending on policy.
 
 The launched object, not the composer transcript, is the source of truth. For example, "track this market weekly" creates a `ResearchMonitor`; the composer turn only records how it was requested and which objects it launched.
+
+### Multimodal normalization
+
+Composer media handling reuses artifacts and source records:
+
+- images/screenshots may produce OCR text, visual summaries, dimensions, and thumbnail artifacts
+- audio/voice notes may produce transcript artifacts plus language and confidence metadata
+- videos/screen recordings may produce transcript artifacts, keyframe artifacts, and timestamped notes
+- PDFs/documents may produce extracted text chunks, page-image artifacts, and document metadata
+- URLs may produce source records and fetched artifacts under source policy
+- code/log/diff pastes may become typed text artifacts when they are too large or need provenance
+
+Provider adapters declare whether they support native image, audio, video, and document inputs. If a provider lacks a native modality, the daemon passes derived text/transcript/OCR artifacts instead and marks the composer turn with `media_mode: "derived"`.
+
+Generated or transformed media is returned as artifacts. The transcript may render it inline, but durable downstream objects reference artifact IDs.
 
 ## Incubation
 
@@ -532,9 +561,9 @@ Returns `application/x-ndjson`, streaming. Useful for exports, offline analysis,
 
 ## Artifacts
 
-Artifacts are daemon-managed files associated with sessions, composer turns, setup runs, incubation items, research runs, work items, or change sets. Proof outputs are the primary source, but clients may also upload images or other files that should be referenced in discussion.
+Artifacts are daemon-managed files associated with sessions, composer turns, setup runs, incubation items, research runs, work items, or change sets. Proof outputs are the primary source, but clients may also upload images, audio, video, documents, or other files that should be referenced in discussion or composer turns.
 
-This is the minimal runtime primitive that enables image-backed feedback without requiring clients or agents to speak tracker-native upload APIs.
+This is the minimal runtime primitive that enables multimodal feedback without requiring clients or agents to speak tracker-native upload APIs.
 
 ### List / inspect / content
 
@@ -584,7 +613,7 @@ fields:
   incubation_item_id=<id>? // optional
   research_run_id=<id>?    // optional
   work_item_key=<key>?     // optional
-  kind=image|screenshot|mockup|diff|other
+  kind=image|screenshot|audio|video|document|mockup|diff|log|code|other
   label=<short label>?     // optional
   file=<binary>
 ```

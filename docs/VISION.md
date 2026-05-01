@@ -2,7 +2,7 @@
 
 **Aloop is a self-hosted, multi-provider autonomous development harness that turns captured intent into researched, specified, tracked, reviewed, and merged code without continuous human supervision.**
 
-You capture an idea or write a spec through a central agentic composer. Aloop can let the idea ripen through research and synthesis, promote it into setup/spec/tracker state when ready, decompose it into trackable Epics and Stories, dispatch parallel agent sessions against them, review their work against hard quality gates, merge approved changes into an agent-owned trunk branch, and surface everything through a real-time workstation. You promote that trunk to your mainline when you're satisfied.
+You capture an idea, screenshot, voice note, link, document, or spec through a central multimodal agentic composer. Aloop can let the idea ripen through research and synthesis, promote it into setup/spec/tracker state when ready, decompose it into trackable Epics and Stories, dispatch parallel agent sessions against them, review their work against hard quality gates, merge approved changes into an agent-owned trunk branch, and surface everything through a real-time workstation. You promote that trunk to your mainline when you're satisfied.
 
 ## Who it's for
 

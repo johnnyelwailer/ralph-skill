@@ -84,7 +84,7 @@ This is the load-bearing decision:
 `aloopd` is the single process that owns:
 
 - **Incubation** — captured ideas, research runs, synthesis proposals, and explicit promotion into setup/spec/tracker/session targets (see `incubation.md`).
-- **Composer turns** — provider-backed control turns that translate user intent into daemon-owned objects, proposals, long-running jobs, or status summaries. The composer is an agentic client interface, not a second runtime.
+- **Composer turns** — provider-backed, multimodal control turns that translate text, media, links, and selected app context into daemon-owned objects, proposals, long-running jobs, or status summaries. The composer is an agentic client interface, not a second runtime.
 - **Setup runs** — long-lived onboarding state before a project becomes `ready` (see `setup.md`).
 - **Sessions** — standalone, orchestrator, child. State machine, lifecycle, parent-child relationships (see `daemon.md` §Session kinds).
 - **Scheduler** — the only gate between "a turn is wanted" and "a turn is started." Composes gates for concurrency, system resources, per-provider quota, burn rate, and live overrides.
@@ -121,7 +121,7 @@ All other clients (CLI, dashboard, global composer, mobile web, bots) translate 
 - Subscribe to SSE streams for live updates (`GET /v1/events`, `GET /v1/sessions/:id/events`, `GET /v1/sessions/:id/turns/:turn_id/chunks`).
 - Never persist their own state for things the daemon owns. Client-local state is limited to UI prefs, auth tokens, etc.
 - Treat incubation captures, research results, syntheses, comments, and promotion decisions as daemon-owned state, not local drafts once submitted.
-- Treat composer turns as a natural-language interface to the same primitives. If a composer launches work, the launched work is a `ResearchRun`, `ResearchMonitor`, `SetupRun`, `Session`, tracker mutation, proposal, comment, or artifact with normal events and projections.
+- Treat composer turns as a natural-language and multimodal interface to the same primitives. If a composer launches work, the launched work is a `ResearchRun`, `ResearchMonitor`, `SetupRun`, `Session`, tracker mutation, proposal, comment, or artifact with normal events and projections.
 
 This keeps the system honest: if the CLI can do X, the dashboard can do X, because X is an API endpoint. If the dashboard needs Y that no one else has, the API is missing an endpoint — fix the API, not the dashboard.
 
@@ -138,7 +138,7 @@ incubation capture
 
 Each arrow crosses the same daemon API boundary and emits events. There is no private dashboard path from a phone capture to a tracker issue or repo edit.
 
-The composer may accelerate the first arrow or explain later arrows, but it does not create a parallel object model. It observes child work by reading the same projections and event streams as every other client.
+The composer may accelerate the first arrow or explain later arrows, including from screenshots, voice notes, videos, PDFs, links, or pasted logs, but it does not create a parallel object model. Media becomes artifacts/source records first; the composer observes child work by reading the same projections and event streams as every other client.
 
 ## Adapter surfaces
 
