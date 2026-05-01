@@ -24,6 +24,7 @@
 - Providers
 - Overrides
 - Scheduler
+- Triggers
 - Daemon
 - Metrics
 
@@ -471,6 +472,13 @@ POST /v1/incubation/items/:id/monitors
 {
   "question": "Track how browser automation agents evolve over the next quarter.",
   "cadence": "weekly",
+  "event_triggers": [
+    {
+      "topic": "provider.model_catalog.changed",
+      "filters": { "provider_id": "opencode", "tracked_only": true },
+      "debounce_seconds": 86400
+    }
+  ],
   "mode": "monitor_tick",
   "source_plan": {
     "allowed_kinds": ["official_docs", "repository", "forum", "social", "video"],
@@ -495,7 +503,7 @@ GET    /v1/incubation/monitors/:id/runs
 
 Each monitor tick creates a normal research run with `monitor_id` set. Monitors do not mutate project, tracker, spec, or session state directly.
 
-Monitor scheduling is a watchdog/reconcile job. Monitor ticks do not bypass scheduler permits, provider policy, or source-connector policy.
+Monitor scheduling is backed by the daemon trigger engine. Monitor ticks do not bypass scheduler permits, provider policy, or source-connector policy.
 
 ### Outreach
 
@@ -691,6 +699,9 @@ Every event has a monotonic `id` (ms timestamp + sequence). Events are durable (
 | `scheduler.permit.release` | permit released | `{permit_id, session_id?, research_run_id?, composer_turn_id?, control_subagent_run_id?}` |
 | `scheduler.permit.expired` | TTL reclaim | `{permit_id, session_id?, research_run_id?, composer_turn_id?, control_subagent_run_id?}` |
 | `scheduler.burn_rate_exceeded` | burn gate tripped for a session | `{session_id, observed, threshold}` |
+| `trigger.fired` | durable time/event trigger created target work or alert | `{trigger_id, source, target_kind, target_id?}` |
+| `trigger.skipped` | trigger matched but policy/budget/idempotency prevented target creation | `{trigger_id, reason, details}` |
+| `trigger.failed` | trigger execution failed | `{trigger_id, reason, details}` |
 | `composer.turn.changed` | composer turn queued, running, waiting for approval, completed, failed, or cancelled | composer turn summary |
 | `composer.subagent.changed` | scoped control subagent queued, running, completed, failed, or cancelled | control subagent run summary |
 | `composer.action.previewed` | composer produced a structured mutation preview requiring approval | preview summary |
@@ -698,6 +709,7 @@ Every event has a monotonic `id` (ms timestamp + sequence). Events are durable (
 | `incubation.comment.created` | comment added to an incubation item | comment summary |
 | `incubation.research.update` | research run status, findings, or cost changed | research run summary |
 | `incubation.source.recorded` | external source captured for a research run | source record summary |
+| `model_intelligence.candidate_recorded` | model-landscape research identified a candidate provider/model route | candidate record summary |
 | `incubation.experiment.recorded` | experiment-loop attempt finished | experiment attempt summary |
 | `incubation.monitor.update` | monitor created, ticked, paused, alerted, or cancelled | monitor summary |
 | `incubation.outreach.changed` | outreach plan, approval, or response state changed | outreach summary |
@@ -975,6 +987,37 @@ PUT /v1/scheduler/limits
 
 Hot-reloadable. Takes effect on the next permit request.
 
+## Triggers
+
+Triggers are daemon-owned time/event rules. They create or refresh daemon work; they do not grant provider execution capacity. Any provider-backed target created by a trigger must still acquire a scheduler permit.
+
+```
+GET  /v1/triggers
+POST /v1/triggers
+{
+  "scope": { "kind": "project|workspace|incubation_monitor|global", "id": "p_..." },
+  "source": {
+    "kind": "time|event",
+    "schedule": "P14D",
+    "topic": null,
+    "filters": {}
+  },
+  "action": {
+    "kind": "tick_monitor|create_research_run|queue_orchestrator_trigger|emit_alert",
+    "target": { "monitor_id": "mon_..." }
+  },
+  "budget_policy": { "max_cost_usd_per_fire": 3.00 },
+  "debounce_seconds": 86400,
+  "enabled": true
+}
+GET    /v1/triggers/:id
+PATCH  /v1/triggers/:id
+POST   /v1/triggers/:id/fire
+DELETE /v1/triggers/:id
+```
+
+`POST /fire` is a manual run-now path. It uses the same action and policy as automatic firing and emits the same trigger events.
+
 ## Setup
 
 Setup is a resumable, long-lived setup orchestration for onboarding a project. CLI and dashboard are first-class API clients; external skill/chat hosts should drive the same API path (directly or through the CLI/shared client layer), not a privileged alternate backend. See `setup.md` for the phases and contract.
@@ -1032,6 +1075,35 @@ GET /v1/metrics               // Prometheus text-exposition format
 ```
 
 Counters and gauges for sessions by status, permits by state, provider health, scheduler decisions, daemon resource usage. Cardinality kept bounded (no per-session labels on counters). Consumers: Prometheus scrapers, Grafana agents, dashboards that compute live deltas by polling this endpoint at their own cadence. Per-second resource metrics are NOT pushed over SSE — the bus stays event-driven.
+
+For dashboard analytics, use bounded aggregate queries rather than scraping Prometheus output:
+
+```
+GET /v1/metrics/aggregates?scope=project:p_123&window=30d&group_by=model_id,task_family&metrics=model_approval_rate,model_merge_rate,model_cost_per_merged_pr
+```
+
+Returns materialized or on-demand aggregates with sample-size metadata:
+
+```json
+{
+  "window": { "start": "2026-04-01T00:00:00Z", "end": "2026-05-01T00:00:00Z" },
+  "group_by": ["model_id", "task_family"],
+  "items": [
+    {
+      "labels": { "model_id": "codex/gpt-5.5-high", "task_family": "frontend_builder" },
+      "sample_size": 18,
+      "directional": true,
+      "metrics": {
+        "model_approval_rate": 0.72,
+        "model_merge_rate": 0.61,
+        "model_cost_per_merged_pr": 3.82
+      }
+    }
+  ]
+}
+```
+
+Allowed `group_by` fields are the bounded dimensions in `metrics.md`: scope, provider/model route, workflow/phase, task family, story complexity, spec quality tier, outcome, and time window. Unknown or high-cardinality fields return `400 bad_request`.
 
 ---
 

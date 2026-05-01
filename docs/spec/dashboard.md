@@ -782,8 +782,50 @@ Required surfaces:
 - per-research-run cost and incubation time-to-promotion views
 - comparison over time where metrics support it
 - recent failure classification
+- outcome analytics: approval rate, changes-requested rate, rejection rate, merge rate, review rounds, and PR lifecycle latency
+- model/provider analytics grouped by task family, workflow phase, story complexity, and spec quality tier
+- spec-quality analytics: ambiguity count, refinement rework, stale-at-dispatch rate, and validation-baseline strength
 
 This is the panel set that tells the user whether the system is merely busy or actually effective.
+
+### Analytics Workbench
+
+The observability area should include an analytics workbench for comparing outcomes without leaving the product. It is not a BI clone; it is an operator surface over the daemon's bounded metric dimensions.
+
+Default views:
+
+| View | Primary question | Visualization |
+|---|---|---|
+| **Outcome funnel** | Of dispatched Stories, how many opened a change set, passed review, merged, failed, or were abandoned? | Funnel with counts, rates, and time-window selector |
+| **Review quality** | What is being approved or denied, and why? | Stacked bars by verdict, gate/severity heatmap, review-round histogram |
+| **Merge latency** | Where does time go from dispatch to merge? | Stage timeline: dispatch -> first commit -> change set opened -> first review -> approved -> merged |
+| **Model comparison** | Which models work best for which task families? | Matrix/table grouped by model x task family with approval, merge, cost, latency, and sample-size columns |
+| **Loop/session detail** | What happened in one loop compared with project baselines? | Session card with phase timings, cost, tokens, review verdicts, artifacts, and percentile badges |
+| **Spec quality correlation** | Are weak specs causing rework or review failures? | Scatter/box plots by spec quality tier, ambiguity bucket, story complexity, and outcome |
+| **Economics** | Are we buying useful work or just activity? | Cost per approved change, cost per merged PR, tokens per merged PR, and burn-rate trend |
+
+Every comparison view must show sample size and time window. If sample size is low, the UI should label the result as directional rather than ranking models or prompts.
+
+Required filters:
+
+- scope: global, workspace, project, orchestrator, epic, story, session
+- time window
+- provider / resolved model / reasoning effort
+- variant id
+- workflow and workflow phase
+- task family
+- story complexity
+- spec quality tier / ambiguity bucket
+- outcome verdict
+
+Dashboard charts should preserve the distinction between:
+
+- **observed outcome** — what happened
+- **comparison slice** — how the data was grouped
+- **confidence/sample size** — whether the slice is meaningful
+- **possible explanation** — spec quality, task type, provider health, model choice, or validation strength
+
+The dashboard may suggest "this model underperforms on frontend work with weak specs," but it must not present that as causal proof without a benchmark/canary or enough controlled evidence.
 
 ## Configuration center
 
@@ -816,6 +858,9 @@ Beyond the already-documented session, setup, provider, scheduler, and metrics e
 - board/list ordering and prioritization mutations
 - artifact listing and retrieval
 - richer per-session evidence and run summaries
+- metric aggregate queries with bounded dimensions and sample-size metadata
+- review verdict and PR lifecycle projections
+- spec-quality and ambiguity projections attached to Stories
 - project configuration read/update where hot edits are allowed
 - reviewable proposal/apply flows for synthesis-heavy edits
 
