@@ -12,6 +12,7 @@
 - Host / sandbox boundary
 - Container reuse across sessions
 - Worktree mounting
+- Hosted provisioning options
 - `aloop start` with devcontainer
 - Provider auth in container
 - Claude Code specifics
@@ -48,6 +49,44 @@ Planned shape:
 - future hosted backend: `sandbox-core` adapter to remote sandboxes, potentially one sandbox per loop/session
 
 The daemon remains the control plane in every case. Sandbox selection is an execution concern, not a second orchestration system.
+
+## Hosted provisioning options
+
+Hosted sandboxing has two separate concerns:
+
+- **Provisioning / system composition** — creating the control plane, storage, registry, identities, observability, and sandbox capacity.
+- **Runtime sandbox leasing** — selecting or creating the required sandbox pool/profile, allocating a specific sandbox for a loop/session, hydrating the worktree, executing turns, streaming events, collecting artifacts, and releasing the sandbox.
+
+`SandboxAdapter` owns runtime sandbox leasing. Provisioning tools may create baseline infrastructure that the adapter targets, but they are not a replacement for the adapter. Hosted backends must support more than one sandbox profile per project: different stories may require different images, tools, resource sizes, network rules, or provider-auth strategies.
+
+For Azure Container Apps dynamic sessions, this means aloop may create or reuse multiple session pools at runtime. Static pre-provisioned pools are an optimization, not the only supported model. The adapter should resolve a requested sandbox profile to an existing compatible pool when possible, and create a new pool when no compatible pool exists.
+
+### Azure Aspire option
+
+[Aspire](https://aspire.dev/) is a candidate provisioning and local-dev composition layer for an Azure-hosted aloop deployment. It is interesting because it can model a distributed app in an AppHost, run the stack locally with one command, and deploy Azure resources such as Azure Container Apps, registries, managed identity, supporting containers, and related infrastructure.
+
+Potential fit:
+
+- Define the aloop control plane topology: daemon/API, dashboard, database, event/object storage, registry, queue or scheduler-adjacent services, and provider/sandbox test doubles.
+- Provide a single local developer environment for the hosted system with `aspire run`.
+- Deploy the same topology to Azure with `aspire deploy` or an Aspire-generated deployment pipeline.
+- Provision shared Azure infrastructure that hosted sandboxes depend on: resource group, Container Apps environment, container registry, managed identities, secret store, logs/metrics, and network policy.
+
+Important boundary:
+
+- Aspire is an option for **provisioning and developer experience**, not for per-loop sandbox execution.
+- The hosted runtime still needs a `SandboxAdapter`, likely targeting Azure Container Apps dynamic sessions or another sandbox provider.
+- Dynamic-session-specific resources may require custom Azure/Bicep provisioning until Aspire has first-class support for Azure Container Apps session pools.
+
+Secure Azure shape:
+
+- Use a dedicated resource group for aloop.
+- Use a least-privileged provisioner identity for deployment, preferably federated/OIDC instead of long-lived client secrets.
+- Use a separate managed identity for the aloop runtime server. It may create, update, and use sandbox pools only within the dedicated aloop scope, preferably via Azure SDK calls rather than an installed Azure CLI.
+- Use a separate managed identity for sandbox runtime access.
+- Do not expose the user's personal Azure account, Azure CLI token cache, or subscription-wide credentials to sandbox containers.
+- Do not give sandbox containers the runtime server's Azure identity.
+- Keep managed identity access inside sandboxes disabled unless the workload explicitly needs it; if enabled, any code running in the sandbox can request tokens for that identity.
 
 ## Configuration contract
 

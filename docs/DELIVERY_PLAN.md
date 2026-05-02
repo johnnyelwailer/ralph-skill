@@ -66,6 +66,7 @@ Sandboxing is the broader execution concept; the project devcontainer is only th
 - The worker abstraction should be introduced early enough that sessions, setup runs, research runs, and monitors all execute through the same lease/event/artifact path.
 - A later execution milestone should adopt `sandbox-core` as the abstraction layer for sandbox lifecycle, exec, streaming, and file transfer.
 - That change is intended to make each loop/session/research job run in its own offloaded sandbox without changing the daemon API or orchestration model.
+- For an Azure-hosted deployment, Aspire is a candidate provisioning/local-dev composition option around the hosted control plane and shared Azure infrastructure. It should not replace `SandboxAdapter`; the adapter still owns per-loop sandbox leasing and may create or reuse multiple sandbox pools/container profiles at runtime, likely against Azure Container Apps dynamic sessions or another sandbox backend.
 
 ## Deployment portability note
 
