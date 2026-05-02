@@ -14,6 +14,7 @@ import type {
   ChangeSetFilter,
   MergeMode,
   MergeResult,
+  LinePosition,
   CommentArtifactRef,
   Comment,
   CommentRef,
@@ -21,6 +22,7 @@ import type {
   TrackerCapabilities,
   TrackerHealth,
   TrackerEventFilter,
+  TrackerEvent,
   TrackerId,
   LinkChildOptions,
 } from "./types.ts";
@@ -883,5 +885,93 @@ describe("Type-level invariants", () => {
     // @ts-expect-error — labels is readonly
     const mutable: string[] = item.labels;
     void mutable;
+  });
+});
+
+// ─── TrackerEvent ───────────────────────────────────────────────────────────
+
+describe("TrackerEvent", () => {
+  test("accepts minimal event", () => {
+    const e: TrackerEvent = {
+      topic: "tracker.event",
+      data: {
+        adapter: "github",
+        project_id: "p_123",
+        kind: "work_item.created",
+        received_at: "2026-01-01T00:00:00Z",
+      },
+    };
+    expect(e.topic).toBe("tracker.event");
+    expect(e.data.kind).toBe("work_item.created");
+  });
+
+  test("accepts all event kinds", () => {
+    const kinds: TrackerEvent["data"]["kind"][] = [
+      "work_item.created",
+      "work_item.updated",
+      "work_item.closed",
+      "work_item.reopened",
+      "hierarchy.child_added",
+      "hierarchy.child_removed",
+      "hierarchy.parent_added",
+      "hierarchy.parent_removed",
+      "comment.created",
+      "comment.updated",
+      "change_set.opened",
+      "change_set.updated",
+      "change_set.closed",
+      "change_set.merged",
+      "change_set.conflict",
+      "change_set.review_submitted",
+      "change_set.review_thread_resolved",
+    ];
+    for (const kind of kinds) {
+      const e: TrackerEvent = {
+        topic: "tracker.event",
+        data: { adapter: "github", project_id: "p_1", kind, received_at: "2026-01-01T00:00:00Z" },
+      };
+      expect(e.data.kind).toBe(kind);
+    }
+  });
+
+  test("accepts event with optional fields", () => {
+    const e: TrackerEvent = {
+      topic: "tracker.event",
+      data: {
+        adapter: "github",
+        project_id: "p_123",
+        kind: "change_set.review_submitted",
+        work_item: { adapter: "github", key: "42" },
+        change_set: { adapter: "github", key: "pr_99" },
+        reviewer: "alice",
+        verdict: "changes_requested",
+        received_at: "2026-01-01T00:00:00Z",
+      },
+    };
+    expect(e.data.verdict).toBe("changes_requested");
+    expect(e.data.change_set?.key).toBe("pr_99");
+  });
+
+  test("verdict is readonly union", () => {
+    const approved: TrackerEvent["data"]["verdict"] = "approved";
+    const requested: TrackerEvent["data"]["verdict"] = "changes_requested";
+    const reject: TrackerEvent["data"]["verdict"] = "reject";
+    expect(approved).toBe("approved");
+    expect(requested).toBe("changes_requested");
+    expect(reject).toBe("reject");
+  });
+});
+
+// ─── LinePosition ───────────────────────────────────────────────────────────
+
+describe("LinePosition", () => {
+  test("is a number", () => {
+    const pos: LinePosition = 42;
+    expect(pos).toBe(42);
+  });
+
+  test("accepts zero", () => {
+    const pos: LinePosition = 0;
+    expect(pos).toBe(0);
   });
 });

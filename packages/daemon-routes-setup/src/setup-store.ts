@@ -90,8 +90,12 @@ export class SetupStore {
         // corrupted — skip
       }
     }
-    // Most recently updated first
-    return runs.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+    // Most recently updated first; tiebreak by id for deterministic order (higher id = newer)
+    return runs.sort((a, b) => {
+      const cmp = b.updatedAt.localeCompare(a.updatedAt);
+      if (cmp !== 0) return cmp;
+      return b.id.localeCompare(a.id);
+    });
   }
 
   get(id: string): SetupRun {

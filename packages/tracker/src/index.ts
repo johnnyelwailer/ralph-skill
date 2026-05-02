@@ -25,6 +25,7 @@ export type {
   ChangeSetFilter,
   MergeMode,
   MergeResult,
+  LinePosition,
   CommentArtifactRef,
   CommentRef,
   Comment,
@@ -32,5 +33,6 @@ export type {
   TrackerCapabilities,
   TrackerHealth,
   TrackerEventFilter,
+  TrackerEvent,
   TrackerAdapter,
 } from "./types.ts";
