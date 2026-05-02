@@ -26,13 +26,62 @@ The new setup architecture is **cross-cutting**, not one isolated milestone. It 
 
 This means "setup" should not be treated as a thin preflight script in the implementation plan. The user-facing command stays `aloop setup`, but the underlying capabilities arrive incrementally across these milestones.
 
+## Incubation delivery note
+
+Incubation is also cross-cutting, but it must stay thinner than setup in v1.
+
+- **M2** provides the event/state substrate for durable incubation items, research runs, proposal history, and backing-store interfaces that can map to Postgres/object storage.
+- **M4/M5** provide scheduler-permitted provider execution and worker/lease discipline for non-mutating research runs.
+- **M7/M8** should expose the `/v1/composer` and `/v1/incubation` APIs plus artifact/comment plumbing needed for conversational kickoff, capture, and research evidence.
+- **M9** consumes promoted Epics/Stories/steering through the normal orchestrator path; it must not read raw incubation items as backlog.
+- **M11** provides the always-ready composer, inbox, research queue, proposal review, mobile capture path, and promotion controls in the dashboard/workstation.
+
+The v1 bar is not a full personal knowledge-management system. It is composer-led durable capture, bounded research, source provenance, lightweight monitors, reviewable synthesis, and explicit promotion into the existing aloop subsystems.
+
+AutoResearch-style `experiment_loop` mode is a v1.5 candidate unless a narrow local benchmark use case appears earlier. It requires immutable-oracle enforcement, attempt ledgers, metric extraction, and plateau detection; those are not necessary for the first capture/research/monitor slice.
+
+Active outreach and surveys are a later layer unless implemented as manual-export artifacts only. Any adapter that sends messages, publishes surveys, or purchases panel responses needs explicit security policy and audit coverage before it ships.
+
+## Server-backed deployment note
+
+The product pivot is explicit: aloop is primarily a durable agentic building and incubation system, not just a local `ralph-loop`. Local deployment remains supported, but v1 implementation should avoid choices that only work while one developer machine is awake.
+
+The target production shape is:
+
+- always-reachable control plane packaged as an OCI container
+- Postgres for queryable state
+- object/artifact storage for event history, media, transcripts, research evidence, and proof artifacts
+- delegated workers as isolated containers, VMs, managed jobs, local nodes, or sandbox backends
+- durable worker leases and scheduler permits owned by the control plane
+- secrets through provider secret managers or mounted secret files
+- TLS plus bearer/OIDC-compatible auth for reachable deployments
+
+The fully local shape is a deployment profile of the same primitives: one `aloopd` process, SQLite or local Postgres, JSONL/local files, host/devcontainer/local Docker execution, and optional localhost trust. It must not grow separate semantics.
+
 ## Sandboxing note
 
 Sandboxing is the broader execution concept; the project devcontainer is only the first shipped backend.
 
-- v1 uses host execution plus the project devcontainer as the practical local sandbox path.
+- v1 may use host execution plus the project devcontainer as the practical local sandbox path.
+- The worker abstraction should be introduced early enough that sessions, setup runs, research runs, and monitors all execute through the same lease/event/artifact path.
 - A later execution milestone should adopt `sandbox-core` as the abstraction layer for sandbox lifecycle, exec, streaming, and file transfer.
-- That future change is intended to unlock server deployment where each loop/session can run in its own offloaded sandbox without changing the daemon API or orchestration model.
+- That change is intended to make each loop/session/research job run in its own offloaded sandbox without changing the daemon API or orchestration model.
+- For an Azure-hosted deployment, Aspire is a candidate provisioning/local-dev composition option around the hosted control plane and shared Azure infrastructure. It should not replace `SandboxAdapter`; the adapter still owns per-loop sandbox leasing and may create or reuse multiple sandbox pools/container profiles at runtime, likely against Azure Container Apps dynamic sessions or another sandbox backend.
+
+## Deployment portability note
+
+Deployment portability is part of the core architecture, not a deferred afterthought. Aloop should package into standard OCI containers and map onto common cloud capabilities:
+
+- control plane: containerized HTTP service
+- state: Postgres
+- events/artifacts: object storage, preferably S3-compatible where possible
+- workers: isolated containers, VMs, managed jobs, local nodes, or sandbox backends
+- secrets: provider secret manager or mounted secret files
+- auth: TLS plus bearer/OIDC-compatible auth
+
+Azure is an explicit target, but not a special architecture. The same capability model should map to Azure Container Apps/App Service/AKS + Azure Database for PostgreSQL + Blob Storage, AWS ECS/Fargate/App Runner + RDS + S3, GCP Cloud Run/GKE + Cloud SQL + Cloud Storage, and cheaper/self-hosted options such as Fly.io, Render, Railway, DigitalOcean, Hetzner, Docker Compose, Nomad, or Kubernetes.
+
+Provider-specific deployment recipes are templates. Core code must not learn cloud-provider concepts.
 
 ---
 
@@ -73,16 +122,18 @@ Sandboxing is the broader execution concept; the project devcontainer is only th
 
 ---
 
-## M3 — Project registry + config + compile step
+## M3 — Workspace/project registry + config + compile step
 
 **Deliverable:**
+- `POST /v1/workspaces`, `GET /v1/workspaces`, workspace/project membership endpoints.
 - `POST /v1/projects`, `GET /v1/projects`, `GET /v1/projects/:id`, `PATCH`, `DELETE`.
+- Workspace registry table in SQLite plus workspace-project membership table.
 - Project registry table in SQLite with `status: setup_pending | ready | archived`.
 - Config loader for `daemon.yml`, `~/.aloop/overrides.yml`, per-project `aloop/config.yml` and `aloop/pipeline.yml`.
 - Compile step: `pipeline.yml` → `loop-plan.json`. Only YAML reader in system.
 - `POST /v1/daemon/reload` re-reads config files; non-listener settings apply to next permit.
 
-**Test:** register a project, edit its `pipeline.yml`, hot-reload, verify new `loop-plan.json` matches expected. Invalid pipeline.yml fails compile with a precise error.
+**Test:** create a workspace, register two projects into it, edit one project's `pipeline.yml`, hot-reload, verify new `loop-plan.json` matches expected. Invalid pipeline.yml fails compile with a precise error.
 
 **Non-goals:** interactive setup interview, setup-side background research, and tracker-backed setup handoff; scheduler integration.
 
@@ -144,16 +195,17 @@ Sandboxing is the broader execution concept; the project devcontainer is only th
 
 ---
 
-## M7 — Builtin tracker + first orchestrator slice
+## M7 — Daemon work-item projections + builtin tracker adapter + first orchestrator slice
 
 **Deliverable:**
 - `TrackerAdapter` interface.
-- Builtin adapter: work items as JSON files under `<project>/.aloop/tracker/`, append-only `events.jsonl`, branch-based change sets.
+- Daemon work-item projection tables in SQLite for adapter-normalized Epics, Stories, comments, change sets, and tracker event cursors.
+- Builtin adapter: minimum offline Epic/Story/change-set adapter, with work items as JSON files under `<project>/.aloop/tracker/`, append-only `events.jsonl`, branch-based change sets.
 - `aloop tracker ...` CLI proxy (generic).
 - Minimal `orchestrator.yaml` workflow — supports decompose + dispatch only (no review/diagnose yet).
 - Orchestrator session of kind `orchestrator` with basic decomposition against a small test spec.
 
-**Test:** run orchestrator against a 3-story test spec → builtin tracker creates 3 work items → orchestrator dispatches 3 child sessions serially → each runs quick-fix → work items close. Fully offline.
+**Test:** run orchestrator against a 3-story test spec → builtin tracker creates 3 work items → daemon projection reflects normalized work items → orchestrator dispatches 3 child sessions serially → each runs quick-fix → work items close. Fully offline.
 
 **Non-goals:** GitHub, parallel dispatch, full orchestrator prompt set, review/merge flow.
 
@@ -217,15 +269,16 @@ Sandboxing is the broader execution concept; the project devcontainer is only th
 
 **Deliverable:**
 - Existing React/Vite dashboard rewired to consume v1 API only.
+- Always-ready scoped multimodal composer that can capture typed or spoken intent, links, screenshots, voice notes, documents, and logs; delegate to scoped specialist subagents; create incubation items; start lightweight research; explain status; and observe launched daemon jobs without owning hidden state.
 - Panels: session list (grouped by project), session detail with live event tail, provider health, scheduler permits, cost + keeper-rate, metric comparison by `variant_id`.
 - Basic setup-run shell: active setup runs, current stage/progress, current question set, background research status, and chapter/document summaries via the same setup API used by the CLI.
 - Steering box, stop button, override editor.
 - Ability to resume a setup run, answer structured questions, and leave comments on setup chapters/documents from the dashboard.
-- Auth in place for future tunneling (bearer token, off by default for localhost).
+- Auth in place for reachable deployments (bearer token baseline; localhost may use local trust).
 
 **Test:** launch dashboard, watch M9's parallel-dispatch scenario in real-time, then resume a setup run and answer a structured question without leaving the dashboard. Kill a session via the dashboard — daemon confirms stop. Override a provider live → in-flight turn unaffected, next grant respects it.
 
-**Non-goals:** design polish, full chat-first UX, or the final rich chapter-review UI for every setup stage; Storybook.
+**Non-goals:** design polish, transcript-only UX, or the final rich chapter-review UI for every setup stage; Storybook.
 
 **Unlocks:** aloop is operable by humans in the loop.
 
@@ -259,7 +312,7 @@ Deferred to v1.5+ per `learning.md` and `self-improvement.md`:
 - AutoResearch for narrow deterministic-eval problems
 - Task mirroring implementations (capability flag is in the interface; no adapter ships one)
 - Telegram bot, Chat bots, IDE plugins
-- Remote deployment (control plane + worker fleet)
+- Fully polished provider-specific deployment recipes, though the control-plane + worker-fleet architecture is the primary target
 - GitLab / Linear / Jira tracker adapters
 - Causal inference / OPE / reward modeling
 

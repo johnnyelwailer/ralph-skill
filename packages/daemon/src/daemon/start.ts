@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { makeIdGenerator } from "@aloop/core";
 import {
   createEventWriter,
+  createIdempotencyStore,
   EventCountsProjector,
   JsonlEventStore,
   openDatabase,
@@ -11,6 +12,8 @@ import {
   ProjectRegistry,
   type Database,
   type EventWriter,
+  ArtifactRegistry,
+  WorkspaceRegistry,
 } from "@aloop/state-sqlite";
 import { resolveDaemonPaths } from "@aloop/daemon-config";
 import { startHttp, startSocket, type RunningHttp, type RunningSocket } from "@aloop/daemon-http";
@@ -21,6 +24,11 @@ import { makeSchedulerConfig } from "./scheduler-config.ts";
 import { createProviderQuotaProbe } from "./provider-probes.ts";
 import { makeRouterDeps } from "./router-deps.ts";
 import { loadInitialConfig } from "./start-config.ts";
+import {
+  detectStuckSessions,
+  refreshProviderHealth,
+  recoverCrashedSessions,
+} from "@aloop/scheduler";
 import type { ConfigStore, DaemonConfig, DaemonPaths, OverridesConfig } from "@aloop/daemon-config";
 import { InMemoryProviderHealthStore, ProviderRegistry } from "@aloop/provider";
 
@@ -45,6 +53,7 @@ export type RunningDaemon = {
   scheduler: SchedulerService;
   providerRegistry: ProviderRegistry;
   providerHealth: InMemoryProviderHealthStore;
+  idempotencyStore: ReturnType<typeof createIdempotencyStore>;
   startedAt: number;
   stop(): Promise<void>;
 };
@@ -70,7 +79,9 @@ export async function startDaemon(opts: StartDaemonOptions = {}): Promise<Runnin
   let watchdog: RunningWatchdog | undefined;
   const { db } = openDatabase(dbPath);
   const registry = new ProjectRegistry(db);
+  const workspaceRegistry = new WorkspaceRegistry(db);
   const permits = new PermitRegistry(db);
+  const artifactRegistry = new ArtifactRegistry(db);
   eventStore = new JsonlEventStore(paths.logFile);
   const events = createEventWriter({
     db,
@@ -82,21 +93,36 @@ export async function startDaemon(opts: StartDaemonOptions = {}): Promise<Runnin
   providerRegistry.register(createOpencodeAdapter());
   const providerHealth = new InMemoryProviderHealthStore(providerRegistry.list().map((adapter) => adapter.id));
   const scheduler = new SchedulerService(permits, makeSchedulerConfig(config, events), events, { providerQuota: createProviderQuotaProbe(providerHealth) });
+  const idempotencyStore = createIdempotencyStore(db);
   const routerDeps = makeRouterDeps({
     registry,
+    workspaceRegistry,
     scheduler,
     startedAt,
     config,
     events,
     providerRegistry,
     providerHealth,
+    artifactRegistry,
+    idempotencyStore,
+    cooldownMultipliers: buildCooldownMultipliers(config),
   });
+  const sessionsDir = join(paths.stateDir, "sessions");
+  await recoverCrashedSessions(sessionsDir, events);
   try {
     http = startHttp({ hostname, port, deps: routerDeps });
     socket = startSocket({ path: paths.socketFile, deps: routerDeps });
     watchdog = startSchedulerWatchdog({
       tickIntervalSeconds: () => config.daemon().watchdog.tickIntervalSeconds,
       expirePermits: () => scheduler.expirePermits(),
+      detectStuckSessions,
+      refreshProviderHealth,
+      sessionsDir,
+      stuckThresholdSeconds: config.daemon().watchdog.stuckThresholdSeconds,
+      quotaPollIntervalSeconds: config.daemon().watchdog.quotaPollIntervalSeconds,
+      providerRegistry,
+      providerHealth,
+      events,
     });
   } catch (err) {
     await http?.stop().catch(() => {});
@@ -118,6 +144,7 @@ export async function startDaemon(opts: StartDaemonOptions = {}): Promise<Runnin
     scheduler,
     providerRegistry,
     providerHealth,
+    idempotencyStore,
     startedAt,
     async stop() {
       watchdog?.stop();
@@ -131,3 +158,18 @@ export async function startDaemon(opts: StartDaemonOptions = {}): Promise<Runnin
 }
 
 export type { DaemonConfig, OverridesConfig };
+
+/**
+ * Build a ReadonlyMap of providerId → cooldownMultiplier from daemon config.
+ * Reads `provider_tuning.<id>.cooldown_multiplier` entries; absent providers
+ * default to 1.0 (no multiplier). Values are clamped to [0.5, 4.0] per spec.
+ */
+function buildCooldownMultipliers(config: ConfigStore): ReadonlyMap<string, number> {
+  const tuning = config.daemon().providerTuning ?? {};
+  const entries: [string, number][] = Object.entries(tuning).map(([providerId, tune]) => {
+    const raw = (tune as Record<string, unknown>).cooldown_multiplier;
+    const clamped = typeof raw === "number" ? Math.min(4.0, Math.max(0.5, raw)) : 1.0;
+    return [providerId, clamped];
+  });
+  return new Map(entries);
+}

@@ -27,7 +27,8 @@ Always reason through:
 3. Are there unresolved ambiguities or contradictions that were silently collapsed into one implementation?
 4. Is the test depth strong enough for the behavior changed?
 5. Do the proof artifacts actually support the claimed behavior?
-6. Did the change stay within scope?
+6. If the project requires preview deployments, does every previewable PR / change set expose a verified clickable URL or a valid opt-out / non-previewable reason?
+7. Did the change stay within scope?
 
 ## Decision-bound behavior
 
@@ -68,6 +69,8 @@ If the Story is UI-facing, exploratory, or variant-driven, check that proof:
 - is strong enough for the claimed behavior
 
 Weak or irrelevant proof is a review problem, not a cosmetic issue.
+
+If the project constitution or config requires preview deployments, missing or unverified clickable preview URLs are a proof gap for previewable work. Screenshots can complement the preview, but they do not replace it when the configured deployment mechanism can provide a live URL.
 
 ## Verdict guidance
 

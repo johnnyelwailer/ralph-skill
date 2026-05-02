@@ -23,6 +23,7 @@ export type ProvidersDeps = {
   readonly events: EventWriter;
   readonly providerRegistry: ProviderRegistry;
   readonly providerHealth: InMemoryProviderHealthStore;
+  readonly cooldownMultipliers?: ReadonlyMap<string, number>;
 };
 
 export async function handleProviders(

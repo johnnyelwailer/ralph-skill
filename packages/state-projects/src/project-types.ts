@@ -10,6 +10,7 @@ export type Project = {
   readonly addedAt: string;
   readonly lastActiveAt: string | null;
   readonly updatedAt: string;
+  readonly workspaceIds: readonly string[];
 };
 
 export type ProjectFilter = {

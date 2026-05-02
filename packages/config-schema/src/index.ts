@@ -4,6 +4,7 @@ export {
   parseDaemonConfig,
   saveDaemonConfig,
   daemonConfigToRaw,
+  type ContextConfig,
   type DaemonConfig,
 } from "./daemon.ts";
 export {

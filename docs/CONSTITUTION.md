@@ -23,7 +23,6 @@ The constitution is law. Specs describe the system; this document constrains it.
 8. **One process owns concurrency.** The scheduler is the single authority over what runs when. Every turn — standalone, orchestrator, child — acquires a permit before provider invocation. No bypasses, not even for single-session local runs.
 9. **Tracker is an abstraction.** GitHub is one `TrackerAdapter` among many; `builtin` is a first-class offline alternative. Orchestrator prompts are tracker-agnostic (`WorkItem`, `Epic`, `Story`, `ChangeSet`). No `gh`-specific terms leak upstream of the adapter.
 10. **Provider is an abstraction.** Five shipped adapters (OpenCode, Copilot, Codex, Gemini, Claude) implement one `ProviderAdapter` interface. The chain grammar (`provider[/track][@version]`) and mandatory per-turn fallthrough are universal; round-robin is an authoring pattern at the workflow level, never a runtime mode.
-
 ## III. Data-Driven
 
 11. **100% data-driven pipeline.** No hardcoded paths, prompt names, thresholds, intervals, phase sequences, or agent rosters in code. Pipelines live in `pipeline.yml`; providers in `providers.yml`; daemon settings in `daemon.yml`; project defaults in `aloop/config.yml`. The code reads these; it never encodes them.
@@ -58,19 +57,20 @@ The constitution is law. Specs describe the system; this document constrains it.
 28. **QA agents never read source code.** They test exclusively through CLI commands, HTTP endpoints, and browser interaction. This is how we know the spec is met, not just the implementation.
 29. **Test depth is enforced.** No shallow assertions (`toBeDefined`, `toBeTruthy` as the only check). Concrete values, exact outputs, real fixtures. The review gate catches slop.
 30. **Coverage floors apply.** Configured thresholds for branch coverage on touched files and new modules. Drops in coverage are review-blocking.
+31. **Deployable PRs need clickable previews by default.** Setup-generated project constitutions require every previewable PR / change set to carry a verified deployment or preview URL before review approval, unless setup recorded an explicit opt-out or the Story is not externally previewable.
 
 ## VIII. Budget & Resources
 
-31. **Burn-rate safety is absolute.** A session that exceeds the tokens-per-commit threshold is denied new permits. The scheduler emits an event; the orchestrator's diagnose workflow decides next steps. No session can spend unbounded tokens without producing work.
-32. **Budget caps are enforced, not monitored.** At the cap, the scheduler refuses permits for new children. The orchestrator pauses dispatch. No "I'll stop after this one more."
+32. **Burn-rate safety is absolute.** A session that exceeds the tokens-per-commit threshold is denied new permits. The scheduler emits an event; the orchestrator's diagnose workflow decides next steps. No session can spend unbounded tokens without producing work.
+33. **Budget caps are enforced, not monitored.** At the cap, the scheduler refuses permits for new children. The orchestrator pauses dispatch. No "I'll stop after this one more."
 
 ## IX. Self-Improvement (the Oracle Layer)
 
-33. **The oracle layer is agent-read-only.** The spec (`docs/spec/**`), this CONSTITUTION, the orchestrator prompts (`aloop/templates/PROMPT_orch_*.md`), the review gate definitions, the metric catalog, and the scheduler policy are never modified by any agent turn. This is enforced structurally by `ProjectAdapter` — those paths are not in any agent's worktree. The prohibition is not a policy decision made at runtime; it is a path that doesn't exist for the agent.
-34. **Self-tuning is bounded.** Agents may adjust scheduler knobs only within the `daemon.yml` min/max ranges listed in `docs/spec/self-improvement.md` §Level 2. The bounds themselves are agent-inaccessible (they live outside any worktree). Requests outside bounds are rejected.
-35. **Metrics that gate permits are daemon-computed.** No agent emits a metric value that gates its own permits. Agents produce events; the daemon's projector computes metrics from events. This is the DGM-resistance rule — the Darwin Gödel Machine experiment demonstrated that any agent path to its own evaluation metric results in reward hacking.
-36. **Every self-improvement capability has a documented cheat case.** Before a new diagnose action, tuning knob, or self-directed capability ships, the DGM test entry is written: capability, what it touches, the most adversarial exploit an agent could attempt, and the structural mechanism that blocks it. If the cheat cannot be stated, the capability does not ship. See `docs/spec/self-improvement.md` §The DGM test.
-37. **Self-improvement is scoped at four levels. Level 4 is prohibited.** Self-healing (L1), self-tuning (L2), and self-directed follow-up work (L3) are required for autonomous operation. Self-rewriting of the harness, orchestrator prompts, constitution, or spec (L4) is prohibited in v1 and prohibited indefinitely unless a concrete immutable-oracle architecture is proposed and accepted via CR. The previous aloop drifted into L4 and burned weeks of tokens producing nothing.
+34. **The oracle layer is agent-read-only.** The spec (`docs/spec/**`), this CONSTITUTION, the orchestrator prompts (`aloop/templates/PROMPT_orch_*.md`), the review gate definitions, the metric catalog, and the scheduler policy are never modified by any agent turn. This is enforced structurally by `ProjectAdapter` — those paths are not in any agent's worktree. The prohibition is not a policy decision made at runtime; it is a path that doesn't exist for the agent.
+35. **Self-tuning is bounded.** Agents may adjust scheduler knobs only within the `daemon.yml` min/max ranges listed in `docs/spec/self-improvement.md` §Level 2. The bounds themselves are agent-inaccessible (they live outside any worktree). Requests outside bounds are rejected.
+36. **Metrics that gate permits are daemon-computed.** No agent emits a metric value that gates its own permits. Agents produce events; the daemon's projector computes metrics from events. This is the DGM-resistance rule — the Darwin Gödel Machine experiment demonstrated that any agent path to its own evaluation metric results in reward hacking.
+37. **Every self-improvement capability has a documented cheat case.** Before a new diagnose action, tuning knob, or self-directed capability ships, the DGM test entry is written: capability, what it touches, the most adversarial exploit an agent could attempt, and the structural mechanism that blocks it. If the cheat cannot be stated, the capability does not ship. See `docs/spec/self-improvement.md` §The DGM test.
+38. **Self-improvement is scoped at four levels. Level 4 is prohibited.** Self-healing (L1), self-tuning (L2), and self-directed follow-up work (L3) are required for autonomous operation. Self-rewriting of the harness, orchestrator prompts, constitution, or spec (L4) is prohibited in v1 and prohibited indefinitely unless a concrete immutable-oracle architecture is proposed and accepted via CR. The previous aloop drifted into L4 and burned weeks of tokens producing nothing.
 
 ---
 

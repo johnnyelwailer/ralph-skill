@@ -14,6 +14,7 @@ export type ProviderQuotaDeps = {
   readonly events: EventWriter;
   readonly providerRegistry: ProviderRegistry;
   readonly providerHealth: InMemoryProviderHealthStore;
+  readonly cooldownMultipliers?: ReadonlyMap<string, number>;
 };
 
 export async function handleProviderQuota(
@@ -58,7 +59,12 @@ export async function handleProviderQuota(
     return jsonResponse(200, { _v: 1, provider_id: providerId, quota });
   } catch (err) {
     const classification = classifyProviderProbeFailure(err);
-    const health = deps.providerHealth.noteFailure(providerId, classification);
+    const health = deps.providerHealth.noteFailure(
+      providerId,
+      classification,
+      Date.now(),
+      { cooldownMultiplier: deps.cooldownMultipliers?.get(providerId) ?? 1.0 },
+    );
     const failureHttp = quotaProbeFailureHttp(classification);
     await deps.events.append("provider.health", health);
     return errorResponse(failureHttp.status, failureHttp.code, `quota probe failed for ${providerId}`, {

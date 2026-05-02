@@ -1,12 +1,19 @@
 import { describe, expect, test } from "bun:test";
 import { handleScheduler, type SchedulerDeps } from "./scheduler.ts";
 
-function makeDeps(overrides: Partial<SchedulerDeps["scheduler"]> = {}): SchedulerDeps {
+function makeDeps(overrides: Partial<SchedulerDeps["scheduler"]["currentLimits"] extends () => infer R ? R : never> = {}): SchedulerDeps {
+  const defaults = {
+    concurrencyCap: 10,
+    permitTtlDefaultSeconds: 600,
+    permitTtlMaxSeconds: 3600,
+    systemLimits: { cpuMaxPct: 80, memMaxPct: 85, loadMax: 4.0 },
+    burnRate: { maxTokensSinceCommit: 1_000_000, minCommitsPerHour: 1 },
+  };
   return {
     scheduler: {
-      currentLimits() { return { max_permits: 10, ttl_seconds: 3600, ...overrides }; },
+      currentLimits() { return { ...defaults, ...overrides }; },
       listPermits() { return []; },
-      updateLimits() { return { ok: true, limits: { max_permits: 5, ttl_seconds: 1800 }, errors: [] }; },
+      updateLimits() { return { ok: true, limits: { ...defaults, concurrencyCap: 5 }, errors: [] }; },
       acquirePermit() { throw new Error("not stubbed"); },
       releasePermit() { throw new Error("not stubbed"); },
       expirePermits() { throw new Error("not stubbed"); },
@@ -23,13 +30,12 @@ async function resJson<T>(res: Response): Promise<T> {
 
 describe("GET /v1/scheduler/limits", () => {
   test("returns 200 with current limits", async () => {
-    const deps = makeDeps({ max_permits: 42, ttl_seconds: 7200 });
+    const deps = makeDeps({ concurrencyCap: 42 });
     const res = await handleScheduler(new Request("http://x/v1/scheduler/limits"), deps, "/v1/scheduler/limits");
     expect(res!.status).toBe(200);
-    const body = await resJson<{ _v: number; max_permits: number; ttl_seconds: number }>(res!);
+    const body = await resJson<{ _v: number; max_permits: number }>(res!);
     expect(body._v).toBe(1);
     expect(body.max_permits).toBe(42);
-    expect(body.ttl_seconds).toBe(7200);
   });
 
   test("returns 200 with defaults when no overrides", async () => {
@@ -46,24 +52,24 @@ describe("GET /v1/scheduler/limits", () => {
 describe("PUT /v1/scheduler/limits", () => {
   test("returns 200 when limits are valid", async () => {
     const deps = makeDeps();
+    deps.scheduler.updateLimits = () => ({ ok: true, limits: { concurrencyCap: 5, permitTtlDefaultSeconds: 1800, permitTtlMaxSeconds: 3600, systemLimits: { cpuMaxPct: 80, memMaxPct: 85, loadMax: 4.0 }, burnRate: { maxTokensSinceCommit: 1_000_000, minCommitsPerHour: 1 } }, errors: [] });
     const req = new Request("http://x/v1/scheduler/limits", {
       method: "PUT",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ max_permits: 5, ttl_seconds: 1800 }),
+      body: JSON.stringify({ max_permits: 5 }),
     });
     const res = await handleScheduler(req, deps, "/v1/scheduler/limits");
     expect(res!.status).toBe(200);
-    const body = await resJson<{ _v: number; max_permits: number; ttl_seconds: number }>(res!);
+    const body = await resJson<{ _v: number; max_permits: number }>(res!);
     expect(body._v).toBe(1);
     expect(body.max_permits).toBe(5);
-    expect(body.ttl_seconds).toBe(1800);
   });
 
   test("returns 400 when limits are invalid", async () => {
     const deps = makeDeps();
     deps.scheduler.updateLimits = () => ({
       ok: false,
-      limits: { max_permits: 5, ttl_seconds: 1800 },
+      limits: { concurrencyCap: 5, permitTtlDefaultSeconds: 600, permitTtlMaxSeconds: 3600, systemLimits: { cpuMaxPct: 80, memMaxPct: 85, loadMax: 4.0 }, burnRate: { maxTokensSinceCommit: 1_000_000, minCommitsPerHour: 1 } },
       errors: [{ path: "max_permits", message: "must be positive" }],
     });
     const req = new Request("http://x/v1/scheduler/limits", {
@@ -284,7 +290,8 @@ describe("POST /v1/scheduler/permits", () => {
     expect(res!.status).toBe(200);
   });
 
-  test("returns 400 when session_id is missing", async () => {
+  test("returns 400 when session_id is missing and no other owner is provided", async () => {
+    // The API now requires exactly one of the four owner fields.
     const deps = makeDeps();
     const req = new Request("http://x/v1/scheduler/permits", {
       method: "POST",
@@ -295,6 +302,65 @@ describe("POST /v1/scheduler/permits", () => {
     expect(res!.status).toBe(400);
     const body = await resJson<{ error: { code: string } }>(res!);
     expect(body.error.code).toBe("bad_request");
+  });
+
+  test("returns 400 when more than one owner field is provided", async () => {
+    const deps = makeDeps();
+    const req = new Request("http://x/v1/scheduler/permits", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ session_id: "s1", research_run_id: "rr_01", provider_candidate: "prov1" }),
+    });
+    const res = await handleScheduler(req, deps, "/v1/scheduler/permits");
+    expect(res!.status).toBe(400);
+    const body = await resJson<{ error: { code: string; message: string } }>(res!);
+    expect(body.error.code).toBe("bad_request");
+    expect(body.error.message).toContain("only one");
+  });
+
+  test("accepts research_run_id as the owner field", async () => {
+    const deps = makeDeps();
+    deps.scheduler.acquirePermit = (input: { researchRunId: string; providerCandidate: string }) => {
+      expect(input.researchRunId).toBe("rr_01");
+      return Promise.resolve({ granted: true, permit: { id: "p", sessionId: "", providerId: "prov", ttlSeconds: 300, grantedAt: "", expiresAt: "" } });
+    };
+    const req = new Request("http://x/v1/scheduler/permits", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ research_run_id: "rr_01", provider_candidate: "prov1" }),
+    });
+    const res = await handleScheduler(req, deps, "/v1/scheduler/permits");
+    expect(res!.status).toBe(200);
+  });
+
+  test("accepts composer_turn_id as the owner field", async () => {
+    const deps = makeDeps();
+    deps.scheduler.acquirePermit = (input: { composerTurnId: string; providerCandidate: string }) => {
+      expect(input.composerTurnId).toBe("ct_01");
+      return Promise.resolve({ granted: true, permit: { id: "p", sessionId: "", providerId: "prov", ttlSeconds: 300, grantedAt: "", expiresAt: "" } });
+    };
+    const req = new Request("http://x/v1/scheduler/permits", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ composer_turn_id: "ct_01", provider_candidate: "prov1" }),
+    });
+    const res = await handleScheduler(req, deps, "/v1/scheduler/permits");
+    expect(res!.status).toBe(200);
+  });
+
+  test("accepts control_subagent_run_id as the owner field", async () => {
+    const deps = makeDeps();
+    deps.scheduler.acquirePermit = (input: { controlSubagentRunId: string; providerCandidate: string }) => {
+      expect(input.controlSubagentRunId).toBe("csar_01");
+      return Promise.resolve({ granted: true, permit: { id: "p", sessionId: "", providerId: "prov", ttlSeconds: 300, grantedAt: "", expiresAt: "" } });
+    };
+    const req = new Request("http://x/v1/scheduler/permits", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ control_subagent_run_id: "csar_01", provider_candidate: "prov1" }),
+    });
+    const res = await handleScheduler(req, deps, "/v1/scheduler/permits");
+    expect(res!.status).toBe(200);
   });
 
   test("returns 400 when provider_candidate is missing", async () => {

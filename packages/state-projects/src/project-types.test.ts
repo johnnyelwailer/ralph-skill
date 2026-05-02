@@ -25,6 +25,7 @@ describe("Project", () => {
       addedAt: "2024-01-01T00:00:00Z",
       lastActiveAt: "2024-06-15T12:00:00Z",
       updatedAt: "2024-06-15T12:00:00Z",
+      workspaceIds: [],
     };
     expect(project.id).toBe("proj_1");
     expect(project.status).toBe("ready");
@@ -40,6 +41,7 @@ describe("Project", () => {
       addedAt: "2024-01-01T00:00:00Z",
       lastActiveAt: null,
       updatedAt: "2024-01-01T00:00:00Z",
+      workspaceIds: [],
     };
     expect(project.lastActiveAt).toBeNull();
   });

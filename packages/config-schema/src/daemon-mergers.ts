@@ -5,6 +5,7 @@ import {
   nonNegIntField,
   pick,
   portField,
+  posIntField,
   stringField,
 } from "@aloop/config-schema-utils";
 import {
@@ -125,4 +126,50 @@ export function mergeLogging(raw: unknown, errors: string[]): DaemonConfig["logg
     return def;
   }
   return { level: raw.level as DaemonConfig["logging"]["level"] };
+}
+
+/**
+ * Merge the `contexts` section of daemon.yml.
+ * Maps context ids (e.g. "orch_recall") to their provider manifest and defaults.
+ */
+export function mergeContexts(
+  raw: unknown,
+  errors: string[],
+): DaemonConfig["contexts"] {
+  const def = DAEMON_DEFAULTS.contexts;
+  if (raw === undefined) return def;
+  if (!isMapping(raw)) {
+    errors.push("contexts: must be a mapping of context_id → config");
+    return def;
+  }
+  const result: Record<string, DaemonConfig["contexts"][string]> = {};
+  for (const [key, value] of Object.entries(raw)) {
+    if (value === null) {
+      errors.push(`contexts.${key}: must not be null`);
+      continue;
+    }
+    if (!isMapping(value)) {
+      errors.push(`contexts.${key}: must be a mapping`);
+      continue;
+    }
+    const providerRaw = pick(value, "provider", "Provider");
+    if (typeof providerRaw !== "string" || providerRaw.length === 0) {
+      errors.push(`contexts.${key}.provider: must be a non-empty string`);
+      continue;
+    }
+    const budgetTokens = posIntField(
+      pick(value, "budget_tokens", "budgetTokens"),
+      `contexts.${key}.budget_tokens`,
+      6000,
+      errors,
+    );
+    const includeSources =
+      pick(value, "include_sources", "includeSources") === false ? false : true;
+    result[key] = {
+      provider: providerRaw,
+      budgetTokens,
+      includeSources,
+    };
+  }
+  return Object.freeze(result);
 }

@@ -74,6 +74,18 @@ function listArtifacts(req: Request, deps: ArtifactsDeps): Response {
   const type = url.searchParams.get("type");
   if (type) (filter as Record<string, string>).type = type;
 
+  const composerTurnId = url.searchParams.get("composer_turn_id");
+  if (composerTurnId) (filter as Record<string, string>).composer_turn_id = composerTurnId;
+
+  const controlSubagentRunId = url.searchParams.get("control_subagent_run_id");
+  if (controlSubagentRunId) (filter as Record<string, string>).control_subagent_run_id = controlSubagentRunId;
+
+  const incubationItemId = url.searchParams.get("incubation_item_id");
+  if (incubationItemId) (filter as Record<string, string>).incubation_item_id = incubationItemId;
+
+  const researchRunId = url.searchParams.get("research_run_id");
+  if (researchRunId) (filter as Record<string, string>).research_run_id = researchRunId;
+
   const artifacts = deps.registry.list(filter);
   return jsonResponse(200, { _v: 1, items: artifacts, next_cursor: null });
 }
@@ -136,8 +148,8 @@ async function uploadArtifact(req: Request, deps: ArtifactsDeps): Promise<Respon
   if (typeof kind !== "string" || kind.trim().length === 0) {
     return badRequest("kind is required");
   }
-  const validKinds = ["image", "screenshot", "mockup", "diff", "other"];
-  if (!validKinds.includes(kind)) {
+  const validKinds: ArtifactKind[] = ["image", "screenshot", "mockup", "diff", "other"];
+  if (!validKinds.includes(kind as ArtifactKind)) {
     return badRequest(`kind must be one of: ${validKinds.join(", ")}`);
   }
 
@@ -165,6 +177,18 @@ async function uploadArtifact(req: Request, deps: ArtifactsDeps): Promise<Respon
   const phase = formData.get("phase");
   const phaseValue = typeof phase === "string" ? phase : null;
 
+  const composerTurnId = formData.get("composer_turn_id");
+  const composerTurnIdValue = typeof composerTurnId === "string" ? composerTurnId : null;
+
+  const controlSubagentRunId = formData.get("control_subagent_run_id");
+  const controlSubagentRunIdValue = typeof controlSubagentRunId === "string" ? controlSubagentRunId : null;
+
+  const incubationItemId = formData.get("incubation_item_id");
+  const incubationItemIdValue = typeof incubationItemId === "string" ? incubationItemId : null;
+
+  const researchRunId = formData.get("research_run_id");
+  const researchRunIdValue = typeof researchRunId === "string" ? researchRunId : null;
+
   const artifact = deps.registry.create({
     project_id: projectId.trim(),
     session_id: sessionIdValue?.trim() ?? null,
@@ -176,6 +200,10 @@ async function uploadArtifact(req: Request, deps: ArtifactsDeps): Promise<Respon
     filename,
     media_type: mediaType,
     bytes,
+    composer_turn_id: composerTurnIdValue?.trim() ?? null,
+    control_subagent_run_id: controlSubagentRunIdValue?.trim() ?? null,
+    incubation_item_id: incubationItemIdValue?.trim() ?? null,
+    research_run_id: researchRunIdValue?.trim() ?? null,
   });
 
   const arrayBuffer = await file.arrayBuffer();

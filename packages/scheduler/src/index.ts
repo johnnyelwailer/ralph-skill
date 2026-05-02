@@ -4,6 +4,14 @@ export {
   type RunningWatchdog,
   type StartSchedulerWatchdogInput,
 } from "./watchdog.ts";
+export {
+  detectStuckSessions,
+  recoverCrashedSessions,
+  refreshProviderHealth,
+  readLastLineOfLog,
+  parseEventTimestamp,
+} from "./watchdog-jobs.ts";
+export type { WatchdogJobs } from "./watchdog-jobs.ts";
 export type {
   SchedulerLimits,
   ProviderOverrides,

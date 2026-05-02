@@ -1,5 +1,11 @@
 export type ProviderRef = string;
 
+/**
+ * Opaque auth handle passed to provider adapters.
+ * Resolved by the daemon from session context before adapter invocation.
+ */
+export type AuthHandle = string;
+
 export type ParsedProviderRef = {
   readonly providerId: string;
   readonly track?: string;
@@ -89,6 +95,6 @@ export interface ProviderAdapter {
   readonly id: string;
   readonly capabilities: Capabilities;
   resolveModel(ref: ProviderRef): ResolvedModel;
-  probeQuota?(authHandle: string): Promise<QuotaSnapshot>;
+  probeQuota?(auth: AuthHandle): Promise<QuotaSnapshot>;
   sendTurn(input: TurnInput): AsyncGenerator<AgentChunk>;
 }

@@ -4,9 +4,14 @@ import { existsSync, mkdirSync, writeFileSync, readFileSync, readdirSync, unlink
 import { join } from "node:path";
 import { badRequest, errorResponse, jsonResponse, methodNotAllowed, notFoundResponse, parseJsonBody } from "./http-helpers.ts";
 import type { AffectsCompletedWork, SteeringQueueEntry, EventEnvelope, SessionKind, SessionStatus } from "@aloop/core";
+import type { EventWriter, IdempotencyStore } from "@aloop/state-sqlite";
 
 export type SessionsDeps = {
   readonly sessionsDir: () => string;
+  /** Optional event writer for session lifecycle events (session.forced, session.event). */
+  readonly events?: EventWriter;
+  /** Optional idempotency store for deduplicating session creation requests. */
+  readonly idempotencyStore?: IdempotencyStore;
 };
 
 export async function handleSessions(
@@ -18,7 +23,23 @@ export async function handleSessions(
 
   if (pathname === "/v1/sessions") {
     if (req.method === "GET") return listSessions(req, deps);
-    if (req.method === "POST") return createSession(req, deps);
+    if (req.method === "POST") {
+      const key = deps.idempotencyStore ? req.headers.get("Idempotency-Key")?.trim() : null;
+      // Idempotency: if the client sent a known key, return the cached response.
+      if (key) {
+        const cached = deps.idempotencyStore.get(key);
+        if (cached) {
+          return jsonResponse(200, cached.result);
+        }
+      }
+      const response = await createSession(req, deps);
+      // Cache successful creates for replay.
+      if (key && response.status === 201) {
+        const body = await response.clone().json();
+        deps.idempotencyStore.put(key, body, "ok");
+      }
+      return response;
+    }
     return methodNotAllowed();
   }
 
@@ -121,6 +142,31 @@ async function createSession(req: Request, deps: SessionsDeps): Promise<Response
 
   const workflow = typeof body.data.workflow === "string" ? body.data.workflow : undefined;
 
+  // Parse optional fields — null is accepted and stored as null; wrong types are ignored
+  const hasIssue = "issue" in body.data;
+  const issue: number | null = hasIssue && body.data.issue === null ? null : hasIssue && typeof body.data.issue === "number" ? body.data.issue : undefined;
+  const hasParentSessionId = "parent_session_id" in body.data;
+  const parentSessionId: string | null = hasParentSessionId && body.data.parent_session_id === null ? null : hasParentSessionId && typeof body.data.parent_session_id === "string" ? body.data.parent_session_id : undefined;
+  const hasMaxIterations = "max_iterations" in body.data;
+  const maxIterations: number | null = hasMaxIterations && body.data.max_iterations === null ? null : hasMaxIterations && typeof body.data.max_iterations === "number" ? body.data.max_iterations : undefined;
+  const hasNotes = "notes" in body.data;
+  const notes: string | null = hasNotes && body.data.notes === null ? null : hasNotes && typeof body.data.notes === "string" ? body.data.notes : undefined;
+
+  // kind=child requires parent_session_id as a string and forbids grandchildren
+  if (kind === "child") {
+    if (typeof parentSessionId !== "string") {
+      return badRequest("parent_session_id is required and must be a string when kind is child");
+    }
+    const parentDir = join(deps.sessionsDir(), parentSessionId);
+    if (!existsSync(parentDir)) {
+      return badRequest(`parent session not found: ${parentSessionId}`);
+    }
+    const parent = loadSessionSummary(parentDir);
+    if (parent?.kind === "child") {
+      return badRequest("cannot create a grandchild session (parent session is itself a child)");
+    }
+  }
+
   const id = `s_${crypto.randomUUID().replace(/-/g, "").slice(0, 12)}`;
   const sessionDir = join(deps.sessionsDir(), id);
   mkdirSync(sessionDir, { recursive: true });
@@ -134,6 +180,10 @@ async function createSession(req: Request, deps: SessionsDeps): Promise<Response
     status: "pending",
     workflow: workflow ?? null,
     created_at: new Date().toISOString(),
+    ...(issue !== undefined ? { issue } : {}),
+    ...(parentSessionId !== undefined ? { parent_session_id: parentSessionId } : {}),
+    ...(maxIterations !== undefined ? { max_iterations: maxIterations } : {}),
+    ...(notes !== undefined ? { notes } : {}),
   };
 
   writeFileSync(join(sessionDir, "session.json"), JSON.stringify(session), "utf-8");
@@ -378,6 +428,24 @@ async function deleteSession(
   const nextStatus: SessionStatus =
     mode === "force" ? "stopped" : session.status === "pending" ? "stopped" : "stopped";
 
+  // Emit session.forced when force-stop is requested
+  if (mode === "force") {
+    await deps.events?.append("session.forced", {
+      session_id: id,
+      previous_status: session.status,
+    });
+  }
+
+  // Emit session.event for the status change
+  await deps.events?.append("session.event", {
+    session_id: id,
+    previous_status: session.status,
+    status: nextStatus,
+    kind: session.kind,
+    workflow: session.workflow,
+    project_id: session.project_id,
+  });
+
   const updated: SessionSummary = {
     ...session,
     status: nextStatus,
@@ -391,7 +459,7 @@ async function deleteSession(
  * POST /v1/sessions/:id/pause
  * Pauses a session at the next cycle boundary.  Does NOT kill an in-flight turn.
  */
-function pauseSession(id: string, deps: SessionsDeps): Response {
+async function pauseSession(id: string, deps: SessionsDeps): Promise<Response> {
   const sessionDir = join(deps.sessionsDir(), id);
   const session = loadSessionSummary(sessionDir);
   if (!session) {
@@ -405,16 +473,28 @@ function pauseSession(id: string, deps: SessionsDeps): Response {
     });
   }
 
-  const updated: SessionSummary = { ...session, status: "paused" };
+  const nextStatus: SessionStatus = "paused";
+
+  // Emit session.event for the status change
+  await deps.events?.append("session.event", {
+    session_id: id,
+    previous_status: session.status,
+    status: nextStatus,
+    kind: session.kind,
+    workflow: session.workflow,
+    project_id: session.project_id,
+  });
+
+  const updated: SessionSummary = { ...session, status: nextStatus };
   saveSessionSummary(sessionDir, updated);
-  return jsonResponse(200, { _v: 1, id, status: "paused" });
+  return jsonResponse(200, { _v: 1, id, status: nextStatus });
 }
 
 /**
  * POST /v1/sessions/:id/unpause
  * Resumes a paused session.
  */
-function unpauseSession(id: string, deps: SessionsDeps): Response {
+async function unpauseSession(id: string, deps: SessionsDeps): Promise<Response> {
   const sessionDir = join(deps.sessionsDir(), id);
   const session = loadSessionSummary(sessionDir);
   if (!session) {
@@ -428,16 +508,28 @@ function unpauseSession(id: string, deps: SessionsDeps): Response {
     });
   }
 
-  const updated: SessionSummary = { ...session, status: "running" };
+  const nextStatus: SessionStatus = "running";
+
+  // Emit session.event for the status change
+  await deps.events?.append("session.event", {
+    session_id: id,
+    previous_status: session.status,
+    status: nextStatus,
+    kind: session.kind,
+    workflow: session.workflow,
+    project_id: session.project_id,
+  });
+
+  const updated: SessionSummary = { ...session, status: nextStatus };
   saveSessionSummary(sessionDir, updated);
-  return jsonResponse(200, { _v: 1, id, status: "running" });
+  return jsonResponse(200, { _v: 1, id, status: nextStatus });
 }
 
 /**
  * POST /v1/sessions/:id/resume
  * Resumes a session from interrupted, stopped, or paused status.
  */
-function resumeSession(id: string, deps: SessionsDeps): Response {
+async function resumeSession(id: string, deps: SessionsDeps): Promise<Response> {
   const sessionDir = join(deps.sessionsDir(), id);
   const session = loadSessionSummary(sessionDir);
   if (!session) {
@@ -451,9 +543,21 @@ function resumeSession(id: string, deps: SessionsDeps): Response {
     });
   }
 
-  const updated: SessionSummary = { ...session, status: "running" };
+  const nextStatus: SessionStatus = "running";
+
+  // Emit session.event for the status change
+  await deps.events?.append("session.event", {
+    session_id: id,
+    previous_status: session.status,
+    status: nextStatus,
+    kind: session.kind,
+    workflow: session.workflow,
+    project_id: session.project_id,
+  });
+
+  const updated: SessionSummary = { ...session, status: nextStatus };
   saveSessionSummary(sessionDir, updated);
-  return jsonResponse(200, { _v: 1, id, status: "running" });
+  return jsonResponse(200, { _v: 1, id, status: nextStatus });
 }
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
@@ -465,4 +569,8 @@ type SessionSummary = {
   readonly status: SessionStatus;
   readonly workflow: string | null;
   readonly created_at: string;
+  readonly issue?: number | null;
+  readonly parent_session_id?: string | null;
+  readonly max_iterations?: number | null;
+  readonly notes?: string | null;
 };

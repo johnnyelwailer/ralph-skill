@@ -1,6 +1,6 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import type { Project, ProjectRegistry, ProjectStatus } from "@aloop/state-sqlite";
+import type { IdempotencyStore, Project, ProjectRegistry, ProjectStatus } from "@aloop/state-sqlite";
 import type { SessionStatus } from "@aloop/core";
 
 export const VALID_STATUSES: ReadonlyArray<ProjectStatus> = [
@@ -12,7 +12,9 @@ export const VALID_STATUSES: ReadonlyArray<ProjectStatus> = [
 export type Deps = {
   readonly registry: ProjectRegistry;
   /** Path to the sessions directory (stateDir/sessions), used to count sessions per project. */
-  readonly sessionsDir: string;
+  readonly sessionsDir: string | (() => string);
+  /** Optional idempotency store for deduplicating project creation requests. */
+  readonly idempotencyStore?: IdempotencyStore;
 };
 
 /**

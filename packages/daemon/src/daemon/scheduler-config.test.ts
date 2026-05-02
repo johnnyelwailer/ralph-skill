@@ -23,6 +23,8 @@ const BASE_DAEMON_CONFIG: DaemonConfig = {
     abandonedSetupDays: 14,
   },
   logging: { level: "info" },
+  features: { daemonConfigWrite: false },
+  contexts: {},
 };
 
 const DEFAULT_OVERRIDES = {

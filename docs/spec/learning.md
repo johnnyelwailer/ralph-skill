@@ -11,6 +11,7 @@
 - The right shape: continuous structured experimentation
 - Methodology catalog
 - Budgeted benchmark mode (existing-primitives only)
+- Automatic model optimization
 - v1 minimum (must ship)
 - v1.5 candidates (after first telemetry)
 - v2+ candidates (after months of production)
@@ -41,6 +42,16 @@ AutoResearch (Karpathy, March 2026) loops at minutes-per-experiment with a fixed
 aloop's macro-metrics (merge rate, burn rate, code quality) cannot be evaluated in minutes. A single Story is hours of work and one data point. AutoResearch is the wrong tool for them.
 
 AutoResearch IS the right tool for narrow, fast-eval problems within a Story's scope (flaky test stabilization, perf micro-optimization, coverage on a file). Those are covered by the `perf-opt` workflow in `workflows.md` and listed as Level-3 forward-compat in `self-improvement.md`. They are not the focus of this document.
+
+It is also the right mental model for incubation `experiment_loop` research when the project can name:
+
+- a human-owned research protocol
+- a narrow mutable surface
+- an immutable oracle/eval
+- a fixed budget per attempt
+- a daemon-computed metric and keep/reject rule
+
+See `docs/research/research-systems-2026.md` and `incubation.md` section Experiment loops.
 
 This document is about the harder problem: **learning what to change about the project's configuration and prompts so that future Stories produce better outcomes — measured over weeks of real production work, not minutes of synthetic experiment.**
 
@@ -219,6 +230,101 @@ If later automation and UI support are worth the code, keep the additions minima
 2. **Benchmark result API/dashboard surface** — read-only aggregation over existing Story/session data so humans can inspect win rate, cost, and confidence by task family.
 3. **Isolated benchmark sandboxes** — only if true parallel same-task eval becomes worth the complexity. Without such a primitive, duplicate candidates remain serial by design.
 
+## Automatic model optimization
+
+Automatic model optimization is the higher-level version of variant learning: decide which provider/model/effort settings should be tried, canaried, benchmarked, or proposed as new project defaults.
+
+This is necessary because model quality, pricing, latency, context windows, and toolchain reliability now drift faster than normal project release cycles. A static provider chain will become stale. But the optimizer must be evidence-weighted: **external model intelligence is a prior, local Story history is the authority**.
+
+See `docs/research/model-optimization-2026.md` for the current external research pass.
+
+### Evidence layers
+
+| Layer | Examples | How it is used |
+|---|---|---|
+| Local production outcomes | merge rate, review pass rate, cost per merged PR, fallthrough success, retries, human review outcomes | Primary routing evidence and lock-in justification |
+| Local budgeted benchmarks | serial same-task candidates under different provider/model variants | Strong evidence for a task family when duplicate cost is justified |
+| External benchmark intelligence | Artificial Analysis, official model cards, SWE-bench/Terminal-Bench/LiveCodeBench-style public results, pricing, context, latency, open-weight availability, hosting route | Seeds candidate variants and priors |
+| User/operator reports | YouTube head-to-heads, Reddit threads, blogs, public coding-contest repos | Watchlist signal and failure-mode discovery |
+
+External reports are intentionally below local evidence. A leaderboard can identify that `claude/opus@4.7`, `codex/gpt-5.5-high`, `gemini/pro@3.1`, `opencode/openrouter/kimi@2.6`, an open-weight coder route, or another current model deserves evaluation. It cannot prove that model is best value for this project, this workflow phase, this repo, and this toolchain.
+
+### Research run shape
+
+Model landscape research reuses incubation research primitives; it is not a new daemon subsystem.
+
+- One-shot scans use `ResearchRun.mode = "source_synthesis"`.
+- Recurring model watch uses `ResearchMonitor` with `mode = "monitor_tick"`, backed by daemon triggers.
+- The source plan may include benchmark aggregators, official release notes/model cards, public papers, provider pricing pages, reproducible coding-agent comparisons, and selected user-report sources.
+- The output is a synthesis artifact plus `ModelCandidateRecord`-style metadata: model ref, provider route, availability class (closed hosted, open-weight hosted, open-weight local/self-hosted), capabilities, context window, price snapshot, latency/throughput snapshot, hardware/quantization route where relevant, public benchmark notes, user-report notes, source IDs, freshness, confidence, and recommended local evaluation.
+
+The default model watch cadence is **biweekly** for active projects. High-spend or fast-moving workspaces may choose weekly; quiet or low-budget workspaces may choose monthly. The monitor may also have event triggers for model-catalog changes, benchmark-source updates, provider pricing changes, local cost/performance regressions, or provider health drift. Each tick compares against the previous snapshot and reports only material deltas: new model releases, version bumps for models already in use, benchmark movement, pricing changes, context/capability changes, open-weight availability, hosting-route changes, provider availability, and user-report signals with reproducible artifacts.
+
+Promotion targets stay ordinary:
+
+- create a candidate `config_variant_id`
+- schedule a budgeted benchmark group
+- canary a variant at a small permit percentage
+- file a CR changing project provider defaults
+- file a follow-up to add missing adapter/model-map support
+
+### Continuous reevaluation policy
+
+Model optimization is useful during setup, but it is more valuable as continuous research. Setup may seed the first provider chain and create the recurring model watch; after that, the monitor keeps the model map fresh without waiting for a human to rerun setup.
+
+Each monitor tick classifies recommendations into three buckets:
+
+| Recommendation | Example | Required validation |
+|---|---|---|
+| **Patch/version upgrade** | A chain already uses `claude/opus`; `claude/opus@4.8` replaces `@4.7` with better benchmark value and no capability loss | Small canary or direct CR when provider compatibility, price, context, and local risk policy pass |
+| **Capability-specific swap** | Use a model with stronger frontend-design evidence for `frontend_builder`, or a cheaper high-throughput model for extraction | Budgeted benchmark or canary on that task family |
+| **Cost-down substitution** | Replace a frontier default with a cheaper proprietary or open-weight route for extraction, test scaffolding, simple refactors, or other bounded work | Canary with quality floor plus cost/latency comparison |
+| **New route exploration** | Add a newly released model/provider route not used by the project | Candidate variant plus benchmark group before any default change |
+
+Patch/version upgrades are intentionally lighter than new route swaps. If the project already uses an unpinned track like `claude/opus`, the adapter's model map may resolve to the latest compatible version at permit time. If the project pins `claude/opus@4.7`, the monitor files a CR or canary proposal to move the pin. The proposal must include the old/new resolved model, price delta, benchmark delta, capability delta, deployment/route delta, and rollback condition.
+
+### Routing policy
+
+The optimizer may propose exploration, not silently exploit.
+
+1. New external candidate appears, or an existing model materially improves.
+2. Research run records candidate evidence and confidence.
+3. Orchestrator proposes a canary or budgeted benchmark when the model maps to a real task family.
+4. Daemon-computed local metrics accumulate by `variant_id`, `provider_ref`, `model_id`, workflow phase, and task family.
+5. Only after enough local evidence does the optimizer propose a lock-in CR.
+
+This preserves the self-improvement boundary: model optimization is Level 3 when it changes project config defaults, Level 2 only when it allocates traffic inside pre-approved canary bounds, and never Level 4.
+
+### Task-family routing
+
+The optimizer must avoid global "best model" conclusions. It should learn the cheapest reliable route separately for:
+
+- planning / architecture
+- builder implementation
+- frontend visual work
+- tests and QA
+- review / critique
+- research/source synthesis
+- long-context repository analysis
+- fast classification/extraction
+
+A valid recommendation is "prefer Gemini for long-context research but keep Codex/GPT for implementation" or "canary Kimi on cheap bounded refactors." A weak recommendation is "replace the default provider chain because model X tops a public leaderboard."
+
+Capability-specific routing should be represented in workflow phase/provider-chain data, not as hidden scheduler behavior. For example, a frontend workflow can canary a model only for `frontend_builder`, while review and test phases keep their existing chains.
+
+The desired end state is a portfolio: frontier models where they earn their cost, cheaper proprietary models where they clear the quality bar, and open-weight hosted/local routes where they improve value, privacy, throughput, or provider diversity.
+
+### Guardrails
+
+- External scores cannot directly change provider order.
+- Any provider/model lock-in goes through CR review.
+- Candidate canaries must have explicit budget and rollback thresholds.
+- Direct version upgrades are allowed only for compatible replacements inside an already-approved provider/model family and must be auditable.
+- Open-weight and local/self-hosted routes must record hardware, quantization, context, and hosting route because those are part of the model's observed behavior and cost.
+- Local metrics are daemon-computed from events; the optimizer cannot emit its own score.
+- User reports without artifacts are watchlist signals, not ranking data.
+- Provider/toolchain failures count against the resolved model route, even if the base model looks strong on API-only benchmarks.
+
 ## v1 minimum (must ship)
 
 Foundations without which no future learning is possible. Build these in v1; do not build the optimizer layer.
@@ -226,12 +332,13 @@ Foundations without which no future learning is possible. Build these in v1; do 
 | Component | Why required | Estimated LOC |
 |---|---|---|
 | `Story.metadata.config_variant_id` | Every Story tagged with the config variant in use at dispatch time. Without this, no experiment is reconstructible. | ~no LOC, schema field |
-| `metric_aggregates` projection grouped by `variant_id` | Outcomes accumulate by variant; foundation for all later analysis. | Already in `metrics.md` |
+| Resolved provider/model metadata on turns | Outcomes must be attributable to the exact provider route, model, and reasoning/effort setting used. Provider-only evidence is too coarse for model optimization. | adapter/session metadata |
+| `metric_aggregates` projection grouped by `variant_id`, `provider_ref`, `model_id`, task family, and workflow phase | Outcomes accumulate by variant and model route; foundation for all later analysis. | Already in `metrics.md`, extended labels |
 | Welford online stats + CUSUM drift detection | Daemon detects metric shifts in real time; feeds Level-1 `orch_diagnose`. | ~30 LOC |
 | Canary-aware permit allocation | Scheduler can grant `K%` of permits to a flagged variant for safe rollout. | ~40 LOC in scheduler |
 | Variant-comparison dashboard panel | Humans can see merge rate / burn rate / gate pass rate per variant. | dashboard work, post-MVP |
 
-These five primitives mean: when v1.5 work begins, the data is already there, the safety mechanisms are already there, and the analysis layer can be added without restructuring.
+These primitives mean: when v1.5 work begins, the data is already there, the safety mechanisms are already there, and the analysis layer can be added without restructuring.
 
 ## v1.5 candidates (after first telemetry)
 
@@ -240,6 +347,7 @@ Once v1 has produced enough Story-outcome data per variant (rule of thumb: 50+ S
 | Candidate | What it adds | Risk profile |
 |---|---|---|
 | **Thompson sampling over discrete variants** | First real autonomous tuner. Picks among project-config variants based on accumulated outcomes; proposes lock-in CRs at high-confidence. | Low — sampling is well-understood; CR review keeps humans in loop |
+| **External-model intelligence monitor** | Recurring research run over benchmark sources, model releases, pricing, and reproducible user reports. Proposes local canaries/benchmark groups for promising candidates. | Low-medium — external data is noisy; local evidence remains authoritative |
 | **OPRO-style prompt optimizer for project-layer prompts** | Iterates project's own prompts (in `.aloop/prompts/`) against measured outcomes. Proposes new drafts via CR. | Medium — prompt drift is real; canary + CR mitigate |
 | **Statsig methodology layer** | Sample sizing, peeking corrections, sequential testing baked into the optimizer's reasoning prompts. | Low — methodology, not infrastructure |
 
@@ -267,9 +375,9 @@ The methodologies below are deliberately out of scope. Listing them so they don'
 
 Every methodology that crosses Level 2 or 3 must satisfy three criteria:
 
-1. **Daemon-computed metrics only.** The metric the optimizer reads is computed by the daemon's projector from events, not by the optimizer itself or any agent it dispatches. (See `metrics.md` §Emission discipline.)
+1. **Daemon-computed metrics only.** The metric the optimizer reads is computed by the daemon's projector from events, not by the optimizer itself or any agent it dispatches. (See `metrics.md` section Emission discipline.)
 2. **Human-gated decision boundary.** The optimizer's output is a proposal — a CR, a tuning request, a draft prompt — never an applied change. The daemon enforces that the optimizer cannot merge its own CR or apply its own tuning beyond bounds.
-3. **DGM test entry.** Every new optimizer capability has an entry in `_dgm-tests.md`: capability, what it can touch, cheat case, prevention, detection metric. (See `self-improvement.md` §The DGM test.)
+3. **DGM test entry.** Every new optimizer capability has an entry in `_dgm-tests.md`: capability, what it can touch, cheat case, prevention, detection metric. (See `self-improvement.md` section The DGM test.)
 
 If any of the three is missing, the capability does not ship. No exceptions.
 
@@ -283,3 +391,4 @@ If any of the three is missing, the capability does not ship. No exceptions.
 6. **Statistical significance is a gate, not a suggestion.** Optimizer proposals carry the evidence (effect size, sample size, confidence interval); the CR is rejectable on insufficient evidence alone.
 7. **Budgeted benchmark mode reuses Story/workflow primitives.** No benchmark-only runner or sidecar subsystem is introduced before the existing evidence substrate is working.
 8. **Benchmark duplicates do not bypass trunk-safety rules.** Under the current shared-trunk model, same-task candidates remain serial unless a future isolated-sandbox primitive is explicitly added.
+9. **External model research is a prior, not an authority.** Public benchmarks and user reports may trigger local evaluation, but project routing changes require local evidence or human override.

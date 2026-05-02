@@ -9,6 +9,8 @@
 - Core concept: steps as the unit
 - Workflow vs pipeline vs loop-plan
 - Prompt file format (frontmatter + body)
+- Prompt context
+- Runtime extension manifests
 - Exec step manifest format
 - Chain grammar in frontmatter
 - Shared instructions via `{{include:path}}`
@@ -44,6 +46,8 @@ Agents are **not hardcoded**. `plan`, `build`, `proof`, `qa`, `review` are bundl
 
 Exec steps are also **not hardcoded**. Projects define them by adding manifests such as `EXEC_regen-api.yml` or `EXEC_sync-issues.yml` under the templates directory and referencing them from `pipeline.yml`.
 
+Exec steps are the first use of Aloop's manifest-backed extension pattern. Prompt context providers use the same discipline: YAML declares a typed manifest, the actual logic lives in checked-in code, and the daemon executes it through a narrow lifecycle. Do not invent a separate plugin mechanism for context, metrics, event projection, or guards without first checking whether it is another typed runtime extension manifest.
+
 ## Workflow vs pipeline vs loop-plan
 
 Three artifacts, compiled in order:
@@ -54,7 +58,7 @@ Three artifacts, compiled in order:
 | `loop-plan.json` (session) | Compile step | Daemon + shell shim | Per session; rewritten on mutations |
 | Live session state | Daemon | Clients (CLI, dashboard) | Per session; in SQLite + JSONL |
 
-The shell shim and the daemon **only** consume `loop-plan.json`, prompt files, and compiled exec manifests. Neither parses YAML. The compile step is the one place YAML gets interpreted.
+The shell shim and the session runner **only** consume `loop-plan.json`, prompt files, and compiled runtime extension descriptors. Neither parses workflow YAML. The compile step is the one place pipeline YAML gets interpreted.
 
 ### pipeline.yml (source of truth)
 
@@ -134,6 +138,7 @@ Every prompt is a markdown file with YAML frontmatter.
 ```markdown
 ---
 agent: build
+context: task_recall
 provider: [opencode, copilot, codex, gemini, claude]
 model: openrouter/openai/gpt-5.1
 reasoning: medium
@@ -151,6 +156,7 @@ You are Aloop, an autonomous build agent...
 Fields (all optional; defaults apply):
 
 - `agent` — identifier (plan, build, review, proof, qa, steer, debug, guard, or project-defined).
+- `context` — optional context id, object, or ordered list. The daemon resolves these before provider invocation and injects normalized context blocks into the prompt. See §Prompt context and `context.md`.
 - `provider` — single reference or ordered array per the chain grammar (see `provider-contract.md`).
 - `model` — provider-specific model ID (optional; resolved from track/version when omitted).
 - `reasoning` — `low` | `medium` | `high` | `xhigh` | `none`.
@@ -168,6 +174,81 @@ Precedence for execution settings at permit-grant time (highest first):
 2. Prompt file's frontmatter
 3. Project `aloop/config.yml`
 4. Daemon `daemon.yml`
+
+## Prompt context
+
+`context` is the prompt-facing primitive for optional, daemon-built context.
+
+It is deliberately generic. A prompt should not know whether its context comes from SQLite projections, JSONL replay, MemPalace, Zep, another memory system, metrics, tracker state, or a project-specific integration. The prompt only names the context it wants; code owns the retrieval, normalization, budgeting, and observation behavior.
+
+Minimal form:
+
+```yaml
+---
+agent: orch_refine
+context: orch_recall
+---
+```
+
+Multiple contexts:
+
+```yaml
+---
+agent: orch_diagnose
+context:
+  - orch_recall
+  - operational_metrics
+---
+```
+
+Optional local override:
+
+```yaml
+---
+agent: orch_conversation
+context:
+  - id: orch_recall
+    budget_tokens: 8000
+---
+```
+
+The override form should remain rare. If prompt frontmatter starts encoding filters, scoring rules, or workflow decisions, that logic belongs in the context plugin code or daemon/project config.
+
+Prompt-facing context names should describe the job, not the implementation:
+
+- `orch_recall`
+- `story_recall`
+- `review_history`
+- `operational_metrics`
+- `human_steering`
+- `proof_context`
+
+Avoid implementation names such as `mempalace_total_recall` in prompt files. A project may later remap `orch_recall` from the built-in store to MemPalace or another backend without changing prompts.
+
+See `context.md` for the plugin boundary, normalized context block shape, and guardrails.
+
+## Runtime extension manifests
+
+Aloop uses one extensibility pattern for project-defined code: **runtime extension manifests**.
+
+A manifest is configuration that points at checked-in code and declares how the daemon may run it. It is not source code. This prevents `pipeline.yml`, prompt frontmatter, or daemon config from becoming an embedded programming language.
+
+Current manifest kinds:
+
+| Kind | Lifecycle | Referenced from | Spec |
+|---|---|---|---|
+| `exec` | Runs as a pipeline step | `pipeline.yml` `exec:` entries | §Exec step manifest format |
+| `context-provider` | Builds and optionally observes prompt context before/after an agent turn | prompt `context:` ids via project/daemon `contexts` config | `context.md` |
+
+Both kinds follow the same rules:
+
+- logic lives in a checked-in file, usually TypeScript for portable project logic
+- the manifest declares runtime, file, args, timeout, cwd, platforms, env allow-list, and capabilities where relevant
+- no inline scripts or expressions in YAML
+- durable state changes go through daemon APIs or `aloop-agent`, never direct session-file writes
+- execution is daemon-supervised with timeout, environment filtering, event logging, and policy checks
+
+Future extension kinds such as `event-projector`, `dispatch-guard`, or `artifact-indexer` should reuse this manifest pattern and define a narrow typed lifecycle. They should not become generic "run code at any hook" plugins.
 
 ## Exec step manifest format
 
@@ -217,6 +298,7 @@ Fields:
 Hard rules:
 
 - Exec manifests are configuration, not source code. The code lives in checked-in files like `scripts/*.ts`, `scripts/*.js`, `scripts/*.sh`, or `scripts/*.ps1`.
+- Exec manifests are one kind of runtime extension manifest. Keep shared execution semantics aligned with `context-provider` manifests in `context.md`.
 - Durable state changes still go through official session contracts. If an exec step needs to add tasks or submit structured output, it calls `aloop-agent`; it does not write daemon/session state files directly.
 - Prefer `bun` or `node` for project-defined logic. `bash` and `pwsh` are valid for environment glue, but cross-platform workflows should not depend on bash alone.
 - Exec steps are for deterministic hooks, code generation, validations, and integrations. They are not a replacement for judgment-heavy prompts such as review, diagnosis, or human conversation.
@@ -308,7 +390,7 @@ Responsibilities:
 5. Resolve trigger name → prompt filename mapping.
 6. Resolve chain grammar for any unspecified `provider:` frontmatter using project defaults.
 7. Copy prompt files into `<session>/prompts/` with template variables expanded (setup-time set).
-8. Copy exec manifests into `<session>/steps/` and compile them to runtime-ready JSON descriptors.
+8. Copy runtime extension manifests referenced by the workflow or prompt context config into the session state dir and compile them to runtime-ready JSON descriptors.
 9. Write `loop-plan.json` to session state dir.
 10. Emit `session.loop_plan.updated` on the bus.
 
@@ -613,4 +695,4 @@ User-facing default `--help` shows ~8 commands: `setup`, `start`, `status`, `ste
 5. **Provider chains are resolved at permit-grant time.** Live overrides and health matter.
 6. **Queue + finalizer + cycle are the only scheduling surfaces.** Everything else is upstream.
 7. **Triggers are keywords, not expressions.** If a project needs a new trigger, it registers a name and a prompt. No predicates in the plan.
-8. **Inline code in YAML is forbidden.** Deterministic code runs through checked-in exec manifests and files, never through shell snippets embedded in `pipeline.yml`.
+8. **Inline code in YAML is forbidden.** Project-defined code runs through checked-in runtime extension manifests and files, never through shell snippets or expressions embedded in `pipeline.yml`, prompt frontmatter, or daemon config.

@@ -1,5 +1,5 @@
-import type { ProjectRegistry } from "@aloop/state-sqlite";
-import { methodNotAllowed, notFoundResponse } from "./http-helpers.ts";
+import type { IdempotencyStore, ProjectRegistry } from "@aloop/state-sqlite";
+import { jsonResponse, methodNotAllowed, notFoundResponse } from "./http-helpers.ts";
 import {
   archiveProject,
   createProject,
@@ -9,7 +9,7 @@ import {
   purgeProject,
 } from "./projects-handlers.ts";
 
-export type ProjectsDeps = { readonly registry: ProjectRegistry; readonly sessionsDir: string };
+export type ProjectsDeps = { readonly registry: ProjectRegistry; readonly sessionsDir: string | (() => string); readonly idempotencyStore?: IdempotencyStore };
 
 /**
  * Dispatcher for /v1/projects/*. Each verb routes to a focused handler in
@@ -24,7 +24,23 @@ export async function handleProjects(
 
   if (pathname === "/v1/projects") {
     if (req.method === "GET") return listProjects(req, deps);
-    if (req.method === "POST") return createProject(req, deps);
+    if (req.method === "POST") {
+      const key = deps.idempotencyStore ? req.headers.get("Idempotency-Key")?.trim() : null;
+      // Idempotency: return cached response for a repeated key.
+      if (key) {
+        const cached = deps.idempotencyStore.get(key);
+        if (cached) {
+          return jsonResponse(200, cached.result);
+        }
+      }
+      const response = await createProject(req, deps);
+      // Cache successful creates for replay.
+      if (key && response.status === 201) {
+        const body = await response.clone().json();
+        deps.idempotencyStore.put(key, body, "ok");
+      }
+      return response;
+    }
     return methodNotAllowed();
   }
 

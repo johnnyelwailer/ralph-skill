@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { applyOverrides, checkSystemGate, checkBurnRateGate } from "./gates.ts";
+import { applyOverrides, checkSystemGate, checkBurnRateGate, checkProjectGate } from "./gates.ts";
 import type { SchedulerLimits } from "./decisions.ts";
-import type { SchedulerProbes, BurnRateSample } from "./probes.ts";
+import type { SchedulerProbes, BurnRateSample, ProjectDailyCostSample } from "./probes.ts";
 
 class MockEventWriter {
   readonly events: Array<{ topic: string; data: Record<string, unknown> }> = [];
@@ -464,5 +464,288 @@ describe("checkBurnRateGate", () => {
     };
     const result = await checkBurnRateGate(events, "s_big", sample, bigBurn);
     expect(result.ok).toBe(true);
+  });
+
+  test("returns ok=false when tokens threshold breached even if event logging throws", async () => {
+    // Denial decision is authoritative; audit log is best-effort.
+    const failingEvents = {
+      append: async (_topic: string, _data: Record<string, unknown>) => {
+        throw new Error("disk full");
+      },
+    };
+    const sample: BurnRateSample = {
+      tokensSinceLastCommit: 5_000_000,
+      commitsPerHour: 10,
+    };
+    const result = await checkBurnRateGate(
+      failingEvents as Parameters<typeof checkBurnRateGate>[0],
+      "sess_fail_tok",
+      sample,
+      defaultBurn,
+    );
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.details).toEqual({
+        observed_tokens_since_commit: 5_000_000,
+        threshold_tokens_since_commit: 2_000_000,
+      });
+    }
+  });
+
+  test("returns ok=false when commits threshold breached even if event logging throws", async () => {
+    const failingEvents = {
+      append: async (_topic: string, _data: Record<string, unknown>) => {
+        throw new Error("disk full");
+      },
+    };
+    const sample: BurnRateSample = {
+      tokensSinceLastCommit: 0,
+      commitsPerHour: 0,
+    };
+    const result = await checkBurnRateGate(
+      failingEvents as Parameters<typeof checkBurnRateGate>[0],
+      "sess_fail_commits",
+      sample,
+      defaultBurn,
+    );
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.details).toEqual({
+        observed_commits_per_hour: 0,
+        threshold_commits_per_hour: 2,
+      });
+    }
+  });
+});
+
+// ─── checkProjectGate ──────────────────────────────────────────────────────
+
+describe("checkProjectGate", () => {
+  // Minimal probes used when no cost-cap is configured
+  const noopProbes: SchedulerProbes = {};
+
+  // Probes that return a sample below the cost cap
+  const lowCostProbes: SchedulerProbes = {
+    projectDailyCost: () => ({ costUsdCents: 50, tokens: 1000 }),
+  };
+
+  // Probes that return a sample at the cost cap (exactly — should pass)
+  const atCostCapProbes: SchedulerProbes = {
+    projectDailyCost: () => ({ costUsdCents: 100, tokens: 2000 }),
+  };
+
+  // Probes that return a sample above the cost cap
+  const overCostCapProbes: SchedulerProbes = {
+    projectDailyCost: () => ({ costUsdCents: 150, tokens: 3000 }),
+  };
+
+  // Probes that return null (probe unavailable — gate passes)
+  const nullCostProbes: SchedulerProbes = {
+    projectDailyCost: () => null,
+  };
+
+  // ── concurrencyCap ────────────────────────────────────────────────────────
+
+  test("returns ok=true when concurrencyCap is not configured", async () => {
+    const result = await checkProjectGate(
+      "proj_1",
+      99, // activePermitsInProject
+      {},
+      noopProbes,
+    );
+    expect(result.ok).toBe(true);
+  });
+
+  test("returns ok=true when concurrencyCap is 0 (disabled)", async () => {
+    const result = await checkProjectGate(
+      "proj_1",
+      99,
+      { concurrencyCap: 0 },
+      noopProbes,
+    );
+    expect(result.ok).toBe(true);
+  });
+
+  test("returns ok=true when active permits are below the concurrency cap", async () => {
+    const result = await checkProjectGate(
+      "proj_1",
+      4,
+      { concurrencyCap: 5 },
+      noopProbes,
+    );
+    expect(result.ok).toBe(true);
+  });
+
+  test("returns ok=true when active permits are exactly at the concurrency cap", async () => {
+    const result = await checkProjectGate(
+      "proj_1",
+      5,
+      { concurrencyCap: 5 },
+      noopProbes,
+    );
+    expect(result.ok).toBe(true);
+  });
+
+  test("returns ok=false with project_concurrency_cap_exceeded when active permits exceed cap", async () => {
+    const result = await checkProjectGate(
+      "proj_abc",
+      6,
+      { concurrencyCap: 5 },
+      noopProbes,
+    );
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.reason).toBe("project_concurrency_cap_exceeded");
+      expect(result.details).toEqual({
+        project_id: "proj_abc",
+        active_permits: 6,
+        concurrency_cap: 5,
+      });
+    }
+  });
+
+  test("concurrency check runs even when dailyCostCapCents is also configured", async () => {
+    // Concurrency exceeded first — should return that denial (check order)
+    const result = await checkProjectGate(
+      "proj_1",
+      6,
+      { concurrencyCap: 5, dailyCostCapCents: 100 },
+      overCostCapProbes,
+    );
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.reason).toBe("project_concurrency_cap_exceeded");
+    }
+  });
+
+  // ── dailyCostCapCents ────────────────────────────────────────────────────
+
+  test("returns ok=true when dailyCostCapCents is not configured", async () => {
+    const result = await checkProjectGate(
+      "proj_1",
+      0,
+      {},
+      overCostCapProbes, // probe would exceed, but gate is disabled
+    );
+    expect(result.ok).toBe(true);
+  });
+
+  test("returns ok=true when dailyCostCapCents is 0 (disabled)", async () => {
+    const result = await checkProjectGate(
+      "proj_1",
+      0,
+      { dailyCostCapCents: 0 },
+      overCostCapProbes,
+    );
+    expect(result.ok).toBe(true);
+  });
+
+  test("returns ok=true when project cost is below the daily cost cap", async () => {
+    const result = await checkProjectGate(
+      "proj_1",
+      0,
+      { dailyCostCapCents: 100 },
+      lowCostProbes,
+    );
+    expect(result.ok).toBe(true);
+  });
+
+  test("returns ok=true when project cost is exactly at the daily cost cap", async () => {
+    const result = await checkProjectGate(
+      "proj_1",
+      0,
+      { dailyCostCapCents: 100 },
+      atCostCapProbes,
+    );
+    expect(result.ok).toBe(true);
+  });
+
+  test("returns ok=false with project_daily_cost_cap_exceeded when cost exceeds cap", async () => {
+    const result = await checkProjectGate(
+      "proj_costly",
+      0,
+      { dailyCostCapCents: 100 },
+      overCostCapProbes,
+    );
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.reason).toBe("project_daily_cost_cap_exceeded");
+      expect(result.details).toEqual({
+        project_id: "proj_costly",
+        cost_usd_cents: 150,
+        daily_cost_cap_cents: 100,
+      });
+    }
+  });
+
+  test("returns ok=true when projectDailyCost probe returns null (probe unavailable)", async () => {
+    const result = await checkProjectGate(
+      "proj_1",
+      0,
+      { dailyCostCapCents: 100 },
+      nullCostProbes,
+    );
+    expect(result.ok).toBe(true);
+  });
+
+  test("projectDailyCost probe receives correct projectId and YYYY-MM-DD date", async () => {
+    let receivedProjectId = "";
+    let receivedDate = "";
+    const capturingProbes: SchedulerProbes = {
+      projectDailyCost: (projectId: string, date: string) => {
+        receivedProjectId = projectId;
+        receivedDate = date;
+        return { costUsdCents: 0, tokens: 0 };
+      },
+    };
+    await checkProjectGate(
+      "proj_target",
+      0,
+      { dailyCostCapCents: 100 },
+      capturingProbes,
+    );
+    expect(receivedProjectId).toBe("proj_target");
+    expect(receivedDate).toMatch(/^\d{4}-\d{2}-\d{2}$/); // YYYY-MM-DD format
+  });
+
+  // ── both limits together ──────────────────────────────────────────────────
+
+  test("both limits disabled: passes regardless of permits and cost", async () => {
+    const result = await checkProjectGate(
+      "proj_1",
+      999,
+      {},
+      overCostCapProbes,
+    );
+    expect(result.ok).toBe(true);
+  });
+
+  test("both limits configured but both pass: returns ok=true", async () => {
+    const result = await checkProjectGate(
+      "proj_1",
+      3,
+      { concurrencyCap: 5, dailyCostCapCents: 100 },
+      lowCostProbes,
+    );
+    expect(result.ok).toBe(true);
+  });
+
+  test("concurrency exceeded takes priority over daily cost cap", async () => {
+    // Concurrency check runs first; if it fails, cost check never runs
+    const neverCalledProbes: SchedulerProbes = {
+      projectDailyCost: () => {
+        throw new Error("probe should not have been called");
+      },
+    };
+    const result = await checkProjectGate(
+      "proj_1",
+      10,
+      { concurrencyCap: 5, dailyCostCapCents: 1 }, // cost cap is tiny but irrelevant
+      neverCalledProbes,
+    );
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.reason).toBe("project_concurrency_cap_exceeded");
+    }
   });
 });

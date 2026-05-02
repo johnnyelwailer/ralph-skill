@@ -11,7 +11,22 @@ export async function handleScheduler(
 ): Promise<Response | undefined> {
   if (pathname === "/v1/scheduler/limits") {
     if (req.method === "GET") {
-      return jsonResponse(200, { _v: 1, ...deps.scheduler.currentLimits() });
+      const limits = deps.scheduler.currentLimits();
+      return jsonResponse(200, {
+        _v: 1,
+        max_permits: limits.concurrencyCap,
+        permit_ttl_default_seconds: limits.permitTtlDefaultSeconds,
+        permit_ttl_max_seconds: limits.permitTtlMaxSeconds,
+        system_limits: {
+          cpu_max_pct: limits.systemLimits.cpuMaxPct,
+          mem_max_pct: limits.systemLimits.memMaxPct,
+          load_max: limits.systemLimits.loadMax,
+        },
+        burn_rate: {
+          max_tokens_since_commit: limits.burnRate.maxTokensSinceCommit,
+          min_commits_per_hour: limits.burnRate.minCommitsPerHour,
+        },
+      });
     }
     if (req.method !== "PUT") return methodNotAllowed();
 
@@ -20,7 +35,22 @@ export async function handleScheduler(
 
     const updated = await deps.scheduler.updateLimits(parsed.data);
     if (!updated.ok) return badRequest("invalid scheduler limits", { errors: updated.errors });
-    return jsonResponse(200, { _v: 1, ...updated.limits });
+    const limits = updated.limits;
+    return jsonResponse(200, {
+      _v: 1,
+      max_permits: limits.concurrencyCap,
+      permit_ttl_default_seconds: limits.permitTtlDefaultSeconds,
+      permit_ttl_max_seconds: limits.permitTtlMaxSeconds,
+      system_limits: {
+        cpu_max_pct: limits.systemLimits.cpuMaxPct,
+        mem_max_pct: limits.systemLimits.memMaxPct,
+        load_max: limits.systemLimits.loadMax,
+      },
+      burn_rate: {
+        max_tokens_since_commit: limits.burnRate.maxTokensSinceCommit,
+        min_commits_per_hour: limits.burnRate.minCommitsPerHour,
+      },
+    });
   }
 
   if (pathname === "/v1/scheduler/permits") {
@@ -33,16 +63,29 @@ export async function handleScheduler(
     if ("error" in parsed) return parsed.error;
 
     const sessionId = asNonEmptyString(parsed.data.session_id);
+    const researchRunId = asNonEmptyString(parsed.data.research_run_id);
+    const composerTurnId = asNonEmptyString(parsed.data.composer_turn_id);
+    const controlSubagentRunId = asNonEmptyString(parsed.data.control_subagent_run_id);
     const providerCandidate = asNonEmptyString(parsed.data.provider_candidate);
     const ttlSeconds = asPositiveInt(parsed.data.ttl_seconds);
     const estimatedCostUsd = asNonNegativeFloat(parsed.data.estimated_cost_usd);
-    if (!sessionId) return badRequest("session_id is required");
+
+    const ownerCount =
+      (sessionId ? 1 : 0) +
+      (researchRunId ? 1 : 0) +
+      (composerTurnId ? 1 : 0) +
+      (controlSubagentRunId ? 1 : 0);
+    if (ownerCount === 0) return badRequest("one of session_id, research_run_id, composer_turn_id, or control_subagent_run_id is required");
+    if (ownerCount > 1) return badRequest("only one of session_id, research_run_id, composer_turn_id, or control_subagent_run_id may be provided");
     if (!providerCandidate) return badRequest("provider_candidate is required");
     if (ttlSeconds === "invalid") return badRequest("ttl_seconds must be a positive integer");
     if (estimatedCostUsd === "invalid") return badRequest("estimated_cost_usd must be a non-negative number");
 
     const decision = await deps.scheduler.acquirePermit({
-      sessionId,
+      ...(sessionId ? { sessionId } : {}),
+      ...(researchRunId ? { researchRunId } : {}),
+      ...(composerTurnId ? { composerTurnId } : {}),
+      ...(controlSubagentRunId ? { controlSubagentRunId } : {}),
       providerCandidate,
       ...(typeof ttlSeconds === "number" ? { ttlSeconds } : {}),
       ...(typeof estimatedCostUsd === "number" ? { estimatedCostUsd } : {}),

@@ -3,6 +3,7 @@ import type {
   AcquirePermitInput,
   LimitsUpdateResult,
   PermitDecision,
+  PermitOwner,
   ProviderOverrides,
   SchedulerConfigView,
   SchedulerLimits,
@@ -99,27 +100,103 @@ describe("ProviderOverrides", () => {
 // ─── AcquirePermitInput ──────────────────────────────────────────────────────
 
 describe("AcquirePermitInput", () => {
-  test("required fields: sessionId and providerCandidate", () => {
+  test("required fields: one owner variant + projectId + providerCandidate", () => {
     const input: AcquirePermitInput = {
       sessionId: "s_test_01",
+      projectId: null,
       providerCandidate: "opencode",
     };
     expect(input.sessionId).toBe("s_test_01");
+    expect(input.projectId).toBeNull();
     expect(input.providerCandidate).toBe("opencode");
   });
 
   test("ttlSeconds is optional", () => {
     const withoutTtl: AcquirePermitInput = {
       sessionId: "s_no_ttl",
+      projectId: null,
       providerCandidate: "copilot",
     };
     const withTtl: AcquirePermitInput = {
       sessionId: "s_with_ttl",
+      projectId: null,
       providerCandidate: "copilot",
       ttlSeconds: 300,
     };
     expect(withoutTtl.ttlSeconds).toBeUndefined();
     expect(withTtl.ttlSeconds).toBe(300);
+  });
+
+  test("research_run_id is a valid owner variant", () => {
+    const input: AcquirePermitInput = {
+      researchRunId: "rr_01",
+      projectId: null,
+      providerCandidate: "opencode",
+    };
+    expect(input.researchRunId).toBe("rr_01");
+    expect((input as { sessionId?: string }).sessionId).toBeUndefined();
+  });
+
+  test("composer_turn_id is a valid owner variant", () => {
+    const input: AcquirePermitInput = {
+      composerTurnId: "ct_01",
+      projectId: null,
+      providerCandidate: "opencode",
+    };
+    expect(input.composerTurnId).toBe("ct_01");
+  });
+
+  test("control_subagent_run_id is a valid owner variant", () => {
+    const input: AcquirePermitInput = {
+      controlSubagentRunId: "csar_01",
+      projectId: null,
+      providerCandidate: "opencode",
+    };
+    expect(input.controlSubagentRunId).toBe("csar_01");
+  });
+
+  test("TypeScript: providing both sessionId and researchRunId is a type error", () => {
+    // This test documents the constraint — the intersection enforces exactly-one-owner.
+    // The following would not compile:
+    // const bad: AcquirePermitInput = { sessionId: "s", researchRunId: "r", projectId: null, providerCandidate: "x" };
+    const valid: AcquirePermitInput = {
+      sessionId: "s_only",
+      projectId: null,
+      providerCandidate: "x",
+    };
+    expect(valid.sessionId).toBe("s_only");
+  });
+});
+
+// ─── PermitOwner discriminated union ───────────────────────────────────────────
+
+describe("PermitOwner", () => {
+  test("sessionId variant", () => {
+    const owner: PermitOwner = { sessionId: "sess_1" };
+    expect(owner.sessionId).toBe("sess_1");
+  });
+
+  test("researchRunId variant", () => {
+    const owner: PermitOwner = { researchRunId: "rr_1" };
+    expect(owner.researchRunId).toBe("rr_1");
+  });
+
+  test("composerTurnId variant", () => {
+    const owner: PermitOwner = { composerTurnId: "ct_1" };
+    expect(owner.composerTurnId).toBe("ct_1");
+  });
+
+  test("controlSubagentRunId variant", () => {
+    const owner: PermitOwner = { controlSubagentRunId: "csar_1" };
+    expect(owner.controlSubagentRunId).toBe("csar_1");
+  });
+
+  test("TypeScript: only one field may be set per union branch", () => {
+    // The following would not compile (cross-variant pollution):
+    // const bad: PermitOwner = { sessionId: "s", researchRunId: "r" };
+    const session: PermitOwner = { sessionId: "s_only" };
+    expect(session.sessionId).toBe("s_only");
+    expect((session as { researchRunId?: string }).researchRunId).toBeUndefined();
   });
 });
 

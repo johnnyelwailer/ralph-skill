@@ -9,8 +9,8 @@ import {
   getProjectById,
   getProjectByPath,
   listProjectsFromDb,
-  type ProjectStatus,
 } from "./projects-queries.ts";
+import type { ProjectStatus } from "./project-types.ts";
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS projects (
@@ -25,6 +25,12 @@ CREATE TABLE IF NOT EXISTS projects (
 );
 CREATE INDEX IF NOT EXISTS idx_projects_status   ON projects(status);
 CREATE INDEX IF NOT EXISTS idx_projects_abs_path ON projects(abs_path);
+CREATE TABLE IF NOT EXISTS workspace_projects (
+  workspace_id TEXT NOT NULL,
+  project_id   TEXT NOT NULL,
+  role         TEXT NOT NULL DEFAULT 'member',
+  PRIMARY KEY (workspace_id, project_id)
+);
 `;
 
 function seedProject(

@@ -68,7 +68,7 @@ When possible, order tasks so the child learns important facts early:
 
 - tests before code when behavior is clear
 - scaffolding before broad edits
-- proof setup early for UI or exploratory Stories
+- proof setup early for UI, API, deployable, or exploratory Stories
 - narrow integrations before large rewrites
 
 ### 4. Respect role routing
@@ -101,6 +101,17 @@ If the Story is explicitly exploratory or variant-driven:
 - keep variant work isolated
 - bias toward proof artifacts, screenshots, API captures, or benchmarks
 - do not let one variant silently become the default decision unless the Story says so
+
+## Preview deployments
+
+If the project constitution or config requires preview deployments, plan for them as part of the proof path.
+
+For every Story expected to produce a previewable PR / change set:
+
+- include a task to create, locate, or verify the clickable preview URL
+- make the URL attachment/comment step explicit before review
+- do not treat screenshots as a substitute for a live preview when the configured mechanism can provide one
+- record a clear opt-out or non-previewable reason when no deployment URL can exist for this Story
 
 ## Output
 

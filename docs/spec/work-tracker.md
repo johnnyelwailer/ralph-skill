@@ -1,6 +1,6 @@
 # Work Tracker
 
-> **Reference document.** The generic work-tracking contract. GitHub is the first-class shipped adapter. The contract is tracker-agnostic; any project can swap adapters — or run with no external tracker at all using the built-in file-based store. Hard rules live in CONSTITUTION.md. Work items live in GitHub issues.
+> **Reference document.** The generic work-tracking contract. GitHub is the first-class shipped adapter. The contract is tracker-agnostic; any project can swap adapters — or run the minimum orchestrator flow offline using the built-in adapter. Hard rules live in CONSTITUTION.md. Work items may be mirrored to GitHub issues or other tracker-native entities, but aloop's full product state is daemon-owned.
 >
 > The name "work tracker" (not "issue tracker") is deliberate — "issue" is GitHub's term for a single entity type, whereas aloop models **Epic**, **Story**, and **ChangeSet** as distinct work items. GitLab calls them issues/MRs/epics, Linear calls them issues/projects, Jira calls them stories/epics, plain text calls them tasks. "Work item" is the abstract vocabulary.
 >
@@ -9,13 +9,14 @@
 ## Table of contents
 
 - Why an abstraction
+- Source of truth
 - Trust boundary
 - Hierarchy: Epic → Story → Task
 - Adapter interface
 - Generic data shapes
 - Abstract status and label mapping
 - Task tracking
-- Built-in adapter (no external deps)
+- Built-in adapter (offline/minimum-flow)
 - GitHub adapter (native sub-issues)
 - Orchestrator-facing contract (generic decomposition schema)
 - Events
@@ -28,7 +29,7 @@
 
 ## Why an abstraction
 
-The orchestrator's job is to break a spec into tracked work items, dispatch loops against them, merge their changes, and react to review feedback. Those concepts exist in GitHub, GitLab, Linear, Jira, self-hosted Gitea, Forgejo, and inside any plain-text project that just wants a queue. Hardcoding GitHub forces aloop users into one platform; embedding `gh` CLI calls throughout the orchestrator makes the code brittle to upstream changes and impossible to use offline.
+The orchestrator's job is to break a spec into tracked work items, dispatch loops against them, merge their changes, and react to review feedback. Those concepts exist in GitHub, GitLab, Linear, Jira, self-hosted Gitea, Forgejo, and inside a local offline adapter that just wants a queue. Hardcoding GitHub forces aloop users into one platform; embedding `gh` CLI calls throughout the orchestrator makes the code brittle to upstream changes and impossible to use offline.
 
 Aloop isolates the tracker behind a single `TrackerAdapter` interface. Orchestrator prompts and workflows speak in terms of generic **Epics**, **Stories**, **Tasks**, and **ChangeSets** — the adapter translates to the tracker's native concepts.
 
@@ -40,6 +41,26 @@ The contract is:
 - Adapters are the only code that speaks tracker-native API.
 
 Setup may establish the **initial Epic baseline** for orchestrator-mode projects during the final setup handoff, but after handoff the runtime orchestrator owns **living decomposition** and all further tracker-side decomposition changes.
+
+Pre-work ideas do not belong in the tracker by default. Raw captures, vague requests, links, screenshots, and background research live in the incubation layer until a proposal is explicitly promoted into an Epic, Story, spec change, setup run, or steering instruction. See `incubation.md`.
+
+## Source of truth
+
+The tracker is not aloop's whole database.
+
+Aloop has three distinct state classes:
+
+| State class | Source of truth | Examples |
+|---|---|---|
+| **Daemon-native state** | `StateStore` projection plus append-only event logs | workspaces, projects, incubation items, research runs, composer turns, control subagent runs, setup runs, sessions, permits, provider health, metrics, artifacts |
+| **Work-tracker state** | tracker adapter plus daemon projection/cache | Epics, Stories, change sets, comments, tracker-native status/labels |
+| **Session-local execution state** | session event log and daemon task store | per-turn tasks, agent todo lists, proofs, usage, build/review loop state |
+
+External trackers are adapter surfaces for the subset humans already expect to see there: Epics, Stories, comments, change sets, review status, and selected task mirrors. They do not own incubation, long-running research, workspace membership, setup chapter state, scheduler policy, provider health, costs, artifacts, or composer/subagent history.
+
+GitHub alone cannot carry the full responsibility set because it has no native model for aloop workspaces, continuous monitors, setup ambiguity ledgers, scheduler permits, provider cooldowns, artifact provenance, or multimodal composer turns. Those stay daemon-owned and may be linked from tracker comments or metadata.
+
+The daemon maintains projections/caches of tracker state in SQLite/Postgres so dashboards and orchestrators can query consistently, replay from events, and survive webhook gaps. The adapter remains responsible for translating mutations and events to/from the tracker-native API.
 
 ## Trust boundary
 
@@ -69,6 +90,7 @@ Aloop models work at three levels. Only the first two are tracked externally; th
 Why this split:
 
 - Epic and Story are human-reviewable, long-lived, permission-scoped — they belong in the tracker humans already use.
+- Incubation items are immature, evidence-gathering, or decision-seeking — they belong in daemon-owned incubation until promoted.
 - Tasks are generated and mutated dozens of times per Story. Syncing them to the tracker would produce noise (issue spam, webhook storms) and slow the loop. Keep them session-local by default.
 - The daemon already has to track tasks for routing and completion detection — integrating that with the tracker is an optional convenience, not a requirement.
 
@@ -334,9 +356,11 @@ The daemon pushes task-state changes to the adapter in batches (default: every 3
 - High-frequency TDD loops — task churn produces tracker spam.
 - Adapters whose available `mirror_shape` options all feel wrong for the project.
 
-## Built-in adapter (no external deps)
+## Built-in adapter (offline/minimum-flow)
 
-For projects that don't want an external tracker — solo, air-gapped, or just avoiding vendor lock-in — the `builtin` adapter stores work items as files inside the project.
+For projects that don't want an external tracker — solo, air-gapped, CI tests, or early bootstrap — the `builtin` adapter provides the minimum Epic/Story/change-set surface without vendor dependencies.
+
+The built-in adapter is not the database for aloop. It is an adapter implementation for the work-tracker interface. Rich daemon-native state still lives in `StateStore` and event logs.
 
 ```
 <project>/.aloop/tracker/
@@ -386,6 +410,7 @@ Each work-item file:
 - Solo experiments, CLI prototypes, unpublished projects.
 - Sensitive/air-gapped work where no tracker is acceptable.
 - Reference environment for adapter tests — orchestrator can exercise the full decomposition flow against builtin in CI with no external services.
+- Bootstrap / local-only runs where minimum work-item flow matters more than collaboration features.
 
 ### Migration
 
@@ -393,7 +418,9 @@ Graduating a project from `builtin` to `github` (or any other tracker) is a futu
 
 ## GitHub adapter (native sub-issues)
 
-Primary shipped adapter. Uses GitHub's native sub-issue API (GA 2025-04-09) for the Epic → Story hierarchy. "Issue" is GitHub's name for the underlying entity — our adapter translates that to WorkItem in both directions.
+Primary shipped external adapter. Uses GitHub's native sub-issue API (GA 2025-04-09) for the Epic → Story hierarchy. "Issue" is GitHub's name for the underlying entity — our adapter translates that to WorkItem in both directions.
+
+GitHub is not the aloop control plane. It owns or mirrors the tracker subset for projects configured to use GitHub; daemon-native state remains in aloop's state store and event logs.
 
 ### Hierarchy implementation
 
@@ -453,10 +480,11 @@ CR #192 (comment-driven PR lifecycle) and CR #134 (inline review) are adapter co
 
 Comments on work items and change sets are markdown bodies and may carry `artifact_refs`.
 
-This supports two complementary patterns:
+This supports three complementary patterns:
 
 - **attachments** — a client or prompt attaches proof artifacts, screenshots, diffs, or mockups alongside the comment
 - **inline images** — the markdown body embeds daemon-managed artifact URLs directly, typically for screenshots or visual comparisons
+- **preview links** — the markdown body includes a clickable deployment or preview URL for the change set when the project has preview deployments enabled
 
 Adapter behavior:
 
@@ -731,6 +759,7 @@ Adding an adapter = implement the interface, declare capabilities, register with
 3. **The adapter is the only code that knows the tracker's names for things.** "Issue" is GitHub vocabulary; aloop says "work item."
 4. **Status and label vocabulary come from project config.** Adding or renaming vocabulary is a config change, not a code change.
 5. **GitHub is a shipped adapter, not a default assumption.** Removing the GH adapter from `aloop/config.yml` must not break the daemon, the loop, or the orchestrator — it shifts the project to whichever adapter is configured (or to builtin).
-6. **The builtin adapter has feature parity with GH for the orchestrator's minimum viable flow** (decompose Epic → sub-decompose Stories → dispatch child sessions → review → merge → close).
-7. **Epic and Story always live in the tracker.** Task tracking is session-internal by default; tracker mirroring is opt-in.
-8. **Native hierarchy APIs are preferred over parent-link metadata** when the tracker offers them (GitHub sub-issues API is the canonical example).
+6. **The builtin adapter is an adapter, not a database.** It has feature parity with GH only for the orchestrator's minimum viable Epic/Story/change-set flow (decompose Epic → sub-decompose Stories → dispatch child sessions → review → merge → close).
+7. **Daemon-native state stays daemon-native.** Workspaces, incubation, research, setup internals, sessions, permits, provider health, metrics, artifacts, and composer/subagent history are not stored in tracker adapters.
+8. **Epic and Story always live in the configured tracker adapter.** Task tracking is session-internal by default; tracker mirroring is opt-in.
+9. **Native hierarchy APIs are preferred over parent-link metadata** when the tracker offers them (GitHub sub-issues API is the canonical example).

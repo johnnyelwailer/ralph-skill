@@ -231,3 +231,76 @@ describe("acquirePermit", () => {
     expect(typeof result.granted).toBe("boolean");
   });
 });
+
+// ─── updateLimits ─────────────────────────────────────────────────────────────
+
+describe("updateLimits", () => {
+  test("returns ok=false with errors when config.updateLimits fails", async () => {
+    const permits = new MockPermitRegistry();
+    const config: SchedulerConfigView = {
+      scheduler: () => ({
+        concurrencyCap: 3,
+        permitTtlDefaultSeconds: 600,
+        permitTtlMaxSeconds: 3600,
+        systemLimits: { cpuMaxPct: 80, memMaxPct: 85, loadMax: 4.0 },
+        burnRate: { maxTokensSinceCommit: 2_000_000, minCommitsPerHour: 2 },
+      }),
+      overrides: () => ({ allow: null, deny: null, force: null }),
+      updateLimits: async () => ({
+        ok: false as const,
+        errors: ["unknown scheduler limits field: nope", "scheduler.burn_rate: must be a mapping"],
+      }),
+    };
+    const events = new MockEventWriter();
+    const service = new SchedulerService(
+      permits as unknown as PermitRegistry,
+      config,
+      events as unknown as EventWriter,
+    );
+
+    const result = await service.updateLimits({ nope: true });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.errors).toHaveLength(2);
+      expect(result.errors[0]).toContain("unknown scheduler limits field");
+    }
+  });
+
+  test("returns ok=true when config.updateLimits succeeds", async () => {
+    const permits = new MockPermitRegistry();
+    const config: SchedulerConfigView = {
+      scheduler: () => ({
+        concurrencyCap: 3,
+        permitTtlDefaultSeconds: 600,
+        permitTtlMaxSeconds: 3600,
+        systemLimits: { cpuMaxPct: 80, memMaxPct: 85, loadMax: 4.0 },
+        burnRate: { maxTokensSinceCommit: 2_000_000, minCommitsPerHour: 2 },
+      }),
+      overrides: () => ({ allow: null, deny: null, force: null }),
+      updateLimits: async () => ({
+        ok: true as const,
+        limits: {
+          concurrencyCap: 5,
+          permitTtlDefaultSeconds: 900,
+          permitTtlMaxSeconds: 3600,
+          systemLimits: { cpuMaxPct: 90, memMaxPct: 95, loadMax: 8.0 },
+          burnRate: { maxTokensSinceCommit: 5_000_000, minCommitsPerHour: 1 },
+        },
+      }),
+    };
+    const events = new MockEventWriter();
+    const service = new SchedulerService(
+      permits as unknown as PermitRegistry,
+      config,
+      events as unknown as EventWriter,
+    );
+
+    const result = await service.updateLimits({ concurrencyCap: 5 });
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.limits.concurrencyCap).toBe(5);
+    }
+  });
+});

@@ -45,6 +45,7 @@ export class InMemoryProviderHealthStore {
       quotaRemaining?: number | null;
       quotaResetsAtMs?: number | null;
       backoffMsByFailureCount?: readonly number[];
+      cooldownMultiplier?: number;
     } = {},
   ): ProviderHealth {
     const next = applyProviderFailure(this.get(providerId), failure, nowMs, options);

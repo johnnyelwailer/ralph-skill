@@ -10,6 +10,9 @@
 - Trust layers
 - Deployment scenarios
 - Agent ↔ daemon interface (`aloop-agent`)
+- Composer and control subagent policy
+- Standards and protocol policy
+- Research source and outreach policy
 - Tracker adapter policy (`aloop gh`, builtin, future adapters)
 - Hardcoded policy tables
 - Environment sanitization (daemon-owned)
@@ -19,7 +22,7 @@
 
 ## Principle
 
-Agents are untrusted. **The daemon (`aloopd`) is the single trust boundary.** Agents never have direct access to tracker APIs (GitHub, GitLab, Linear, or built-in), the `gh` / `glab` / `linear` CLIs, network endpoints, or the `aloop` CLI. All external operations flow through the daemon, which enforces role-based policy before invoking an adapter.
+Agents are untrusted. **The daemon (`aloopd`) is the single trust boundary.** Agents never have direct access to tracker APIs (GitHub, GitLab, Linear, or built-in), the `gh` / `glab` / `linear` CLIs, network endpoints, outreach channels, or the `aloop` CLI. All external operations flow through the daemon, which enforces role-based policy before invoking an adapter.
 
 Restated:
 
@@ -32,10 +35,10 @@ Policy is **hardcoded in the daemon source**, not in project config. This preven
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│  LAYER 1: HOST (where the daemon and shims run)             │
+│  LAYER 1: CONTROL PLANE (durable authority)                 │
 │                                                              │
 │  aloopd (daemon) — the trust anchor                          │
-│    ├─ v1 API (HTTP + SSE, localhost)                         │
+│    ├─ v1 API (HTTP + SSE, local or remote)                   │
 │    ├─ Scheduler (permits, quotas, burn-rate)                 │
 │    ├─ Project registry                                       │
 │    ├─ Overrides store                                        │
@@ -44,9 +47,9 @@ Policy is **hardcoded in the daemon source**, not in project config. This preven
 │    │    ├─ TrackerAdapter (github, builtin, …)               │
 │    │    ├─ ProjectAdapter   (worktrees, git)                 │
 │    │    └─ SandboxAdapter   (execution environment seam)     │
-│    └─ Audit log (JSONL per session + daemon-level)           │
+│    └─ Audit log (EventStore-backed; JSONL in local mode)      │
 │                                                              │
-│  aloop CLI, loop.sh/ps1 shims — clients of the daemon API    │
+│  aloop CLI, dashboard, mobile web, shims, workers — API clients│
 │                                                              │
 ├─────────────────────────────────────────────────────────────┤
 │  LAYER 2: SANDBOX (where agents run)                         │
@@ -71,13 +74,15 @@ The trust boundary holds regardless of where things run:
 | Scenario | Host (Layer 1) | Sandbox (Layer 2) | Daemon location |
 |---|---|---|---|
 | Local dev | Your machine | Host process or local sandbox backend | On the same machine |
-| Cloud orchestrator (future) | Control-plane host | Remote worker VM | On control plane |
+| Cloud orchestrator | Control-plane service | Remote worker VM/container | Hosted control plane |
+| Azure / AWS / GCP hosted | Managed container app, VM, or Kubernetes node | Managed job, container, VM, or sandbox backend | Hosted control plane |
+| Lower-cost hosted | Fly.io, Render, Railway, DigitalOcean, Hetzner, Nomad, Docker host | Container, VM, or sandbox backend | Hosted control plane |
 | GitHub Actions | Runner | Spawned containers | Runner (ephemeral) |
 | Docker-in-Docker | Outer container | Inner containers | Outer container |
 | Devcontainer project | Host | Container | Host (communicates with container over bind-mount for worktree) |
-| Hosted sandbox (future) | Control-plane host | Offloaded sandbox per loop | On control plane |
+| Hosted sandbox | Control-plane service | Offloaded sandbox per loop | Hosted control plane |
 
-In every case: **the daemon lives with the host**; agents live in sandboxes that can only reach the daemon via `aloop-agent` → localhost API.
+In every case: **the daemon/control plane is the trust anchor**; agents live in sandboxes that can only reach it through `aloop-agent` using the configured local socket or authenticated HTTP endpoint. Worker loss is expected; authoritative state remains in the control plane.
 
 ## Agent ↔ daemon interface (`aloop-agent`)
 
@@ -90,6 +95,106 @@ Agents communicate via the `aloop-agent` CLI, which is the ONLY privileged binar
 - **Rate-limited** — per-session token bucket (default: 100 requests/minute, configurable in `daemon.yml`). Exceeding the budget returns exit code 22 and emits `agent_cli.throttled`. Prevents runaway agents from thrashing the daemon with `todo list` loops or submit-spam.
 
 The retired pattern of "agents write `.aloop/output/*.json` and the runtime bridges them" is gone. The session JSONL remains, but it's the output of `aloop-agent submit`, not the other way around.
+
+## Composer and control subagent policy
+
+The composer is a user-facing coordinator, not a policy bypass. It can ask for every system capability, but broad requests are decomposed into scoped control subagent runs with narrow tools.
+
+Control subagent requirements:
+
+- **Scoped capability grant** — every subagent run declares role, target scope, allowed tool classes, budget, timeout, and initiating composer turn.
+- **Least privilege** — a `config-editor` can read/validate/propose config patches for its scope; it does not get runtime session controls. A `runtime-operator` can inspect/steer sessions for its scope; it does not get daemon config write tools.
+- **No direct external APIs** — subagents use daemon tools/adapters only, never raw tracker CLIs, raw network credentials, or filesystem side channels.
+- **Preview before mutation** — policy-sensitive changes become proposed actions. The daemon applies them only after approval/policy checks.
+- **Audited delegation** — creating a subagent run, granting capabilities, producing an action proposal, approving, applying, denying, or cancelling all emit daemon-level audit events.
+- **Revocable** — cancelling the composer turn or subagent run revokes outstanding capability handles and prevents further mutations from that run.
+
+This is the safety boundary for "composer can control everything." The user gets one natural interface, while each internal agent operates in an isolated, inspectable lane.
+
+## Standards and protocol policy
+
+Security-sensitive surfaces should prefer mature protocols and existing platform conventions over custom mechanisms.
+
+Rules:
+
+- Use standard HTTP semantics, status codes, headers, `Authorization: Bearer`, MIME types, and SSE framing.
+- Use JSON Schema/OpenAPI-compatible validation for request and event payloads.
+- Use OAuth/OIDC-compatible designs when remote multi-user authentication arrives; do not invent an auth protocol.
+- Use adapter APIs for external systems; do not tunnel raw provider, tracker, email, social, or survey APIs through generic escape hatches.
+- Use capability grants, typed tool calls, and audited daemon adapters for subagents instead of shell strings or unstructured prompts as authority.
+- Use established media/transcript metadata fields where possible: MIME type, language tag, confidence, duration, timestamps, checksum, source URL, and retrieval time.
+- Any non-standard protocol or file contract requires a written rationale, threat-model note, and conformance tests.
+
+The point is not bureaucracy. Standard protocols have known failure modes, libraries, proxies, logs, auth integrations, and security tooling. Custom cleverness is treated as risk until proven necessary.
+
+## Research source and outreach policy
+
+Incubation research can touch external sources: official documentation, web pages, papers, repositories, issue trackers, forums, social feeds, video transcripts, podcasts, market-data APIs, and user-uploaded artifacts. It can also draft surveys or outreach. These capabilities are useful but must stay daemon-governed.
+
+### Source acquisition
+
+Agents do not receive arbitrary network access for research. They receive bounded source records or fetched excerpts assembled by daemon-controlled source acquisition.
+
+Source acquisition reuses the runtime extension manifest model. A source connector is a supervised extension with declared capabilities, auth, rate limits, output schema, and privacy class. The daemon normalizes connector output into artifacts and source records before provider reasoning sees it.
+
+Policy requirements:
+
+- Source plans declare allowed source kinds, queries/URLs/accounts/channels, time windows, cost caps, and citation requirements.
+- Fetching respects configured credentials, source terms, robots.txt where applicable, provider rate limits, and project privacy policy.
+- Every acquired source gets a provenance record before it is used in synthesis.
+- Private project context and public-source context remain separately attributed in findings.
+- Failed or denied source access is recorded as a limitation, not bypassed by asking the provider to browse independently.
+- Social/forum content is treated as sampled evidence; summaries must preserve uncertainty and avoid overclaiming representativeness.
+- Video/podcast transcripts generated by aloop are marked machine-derived and stored as artifacts.
+
+### Active outreach
+
+Outbound contact has a higher policy bar than passive research.
+
+Outreach uses the same adapter/audit pattern as tracker operations. There is no outreach-specific privileged runtime and no raw send endpoint.
+
+Default denied operations:
+
+- sending email, DMs, social posts, form submissions, survey invitations, or paid-panel requests
+- scraping personal contact data
+- impersonating the user or an organization
+- publishing generated content to public channels
+- purchasing ads, incentives, or panel responses
+
+Allowed without outbound approval:
+
+- drafting survey plans, interview scripts, outreach copy, consent text, and respondent criteria
+- analyzing responses the user uploaded or recorded
+- creating a manual-export artifact for the human to send elsewhere
+
+Outbound approval requirements, before any future adapter may send:
+
+- explicit human approval on the outreach object
+- approved message/survey content snapshot
+- respondent/contact source recorded
+- consent text recorded where applicable
+- personal-data classification set
+- adapter-specific rate limits and unsubscribe/opt-out rules configured
+- audit log entry emitted before send
+
+No project config may grant a blanket "agents can contact people" permission. Outreach authority is per outreach object and per approved content snapshot.
+
+### Experiment loops
+
+AutoResearch-style experiment loops have their own policy risk: an agent may try to edit the benchmark, checker, or success criterion.
+
+Experiment attempts reuse the sandbox adapter and deterministic exec-step pipeline. The daemon owns cwd, timeout, env allow-list, event capture, artifact capture, and metric extraction.
+
+Requirements:
+
+- immutable oracle files/commands are mounted read-only or hash-checked before and after every attempt
+- mutable surfaces are explicitly listed before the run starts
+- attempts outside the mutable surface are rejected before evaluation
+- metric extraction is daemon-owned, not agent-reported
+- environment labels are recorded because results may not transfer across hardware or external services
+- winners become proposals/artifacts, not automatic project mutations
+
+If the daemon cannot protect the oracle from the agent, `experiment_loop` mode is unavailable for that target.
 
 ## Tracker adapter policy (`aloop gh`, builtin, future adapters)
 
@@ -165,6 +270,19 @@ The daemon, not the shim, sanitizes the environment before spawning a provider C
 
 Defense-in-depth: even if a shim sets `CLAUDECODE=$null`, the daemon has already done so. Environment sanitation is a daemon invariant.
 
+## Runtime extension execution
+
+Project-defined runtime extensions (`exec` steps and `context-provider` manifests) use the same execution discipline:
+
+- The daemon supervises the process, timeout, cwd, platform allow-list, and env allow-list.
+- The manifest is configuration only. Code lives in checked-in files; inline YAML scripts are forbidden.
+- Capabilities are declared in the manifest and policy-checked before execution.
+- Extension code receives typed JSON input and returns typed JSON output. It does not receive broad daemon internals.
+- Durable session, tracker, and workflow changes still go through `aloop-agent` or daemon APIs.
+- Extension output is recorded as events before it affects the next turn.
+
+This rule exists so `exec` steps, prompt context providers, and future extension kinds do not grow separate security models.
+
 ## Audit log
 
 Every policy-gated operation produces a log entry **before** the operation executes. Granted or denied, both are logged.
@@ -206,11 +324,11 @@ Every policy-gated operation produces a log entry **before** the operation execu
 
 **Where it lives:**
 
-- Per-session entries in `~/.aloop/state/sessions/<id>/log.jsonl`.
-- Daemon-level entries (cross-session: project registration, overrides changes, daemon config reloads, auth handle rotations) in `~/.aloop/state/aloopd.log` (JSONL).
+- Per-session entries in the configured `EventStore` (`~/.aloop/state/sessions/<id>/log.jsonl` in local mode).
+- Daemon-level entries (cross-session: project registration, overrides changes, daemon config reloads, auth handle rotations) in the configured `EventStore` (`~/.aloop/state/aloopd.log` in local mode).
 - Both are append-only. The daemon never rewrites history.
 
-**Retention** is governed by `daemon.yml` (`retention.completed_sessions_days`, `retention.interrupted_sessions_days`). Audit entries survive the same lifecycle as the session JSONL.
+**Retention** is governed by `daemon.yml` (`retention.completed_sessions_days`, `retention.interrupted_sessions_days`). Audit entries survive the same lifecycle as the session event history.
 
 **Exposure:**
 
@@ -223,5 +341,5 @@ Every policy-gated operation produces a log entry **before** the operation execu
 - **No agent-side policy.** Agents don't check policy before submitting; the daemon is the single source of enforcement.
 - **No configurable bypass.** There is no "dev mode" or env var that relaxes the policy tables. Policy is hardcoded to prevent accidents.
 - **No raw API access via any surface.** `gh api`, `glab api`, direct HTTP to tracker endpoints — all forbidden. If a capability is missing from the adapter, it's added to the adapter, not worked around.
-- **No cross-session read/write.** A session cannot read another session's worktree, JSONL, state, or auth handle. Daemon enforces this at every read path.
+- **No cross-session read/write.** A session cannot read another session's worktree, event history, state, or auth handle. Daemon enforces this at every read path.
 - **No cross-project read/write.** A session scoped to project A cannot touch project B's artifacts.

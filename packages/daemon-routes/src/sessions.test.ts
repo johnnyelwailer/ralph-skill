@@ -623,7 +623,32 @@ describe("POST /v1/sessions", () => {
     expect(res!.status).toBe(400);
   });
 
-  test("accepts child kind", async () => {
+  test("accepts child kind with valid parent_session_id", async () => {
+    const deps = makeDeps();
+    // Create the parent session first
+    const parentReq = new Request("http://x/v1/sessions", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ project_id: "p_parent", kind: "orchestrator" }),
+    });
+    const parentRes = await handleSessions(parentReq, deps, "/v1/sessions");
+    expect(parentRes!.status).toBe(201);
+    const parent = await resJson<{ id: string }>(parentRes!);
+
+    // Now create a valid child session
+    const req = new Request("http://x/v1/sessions", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ project_id: "p_child", kind: "child", parent_session_id: parent.id }),
+    });
+    const res = await handleSessions(req, deps, "/v1/sessions");
+    expect(res!.status).toBe(201);
+    const body = await resJson<{ kind: string; parent_session_id: string }>(res!);
+    expect(body.kind).toBe("child");
+    expect(body.parent_session_id).toBe(parent.id);
+  });
+
+  test("returns 400 when kind=child without parent_session_id", async () => {
     const deps = makeDeps();
     const req = new Request("http://x/v1/sessions", {
       method: "POST",
@@ -631,9 +656,131 @@ describe("POST /v1/sessions", () => {
       body: JSON.stringify({ project_id: "p_child", kind: "child" }),
     });
     const res = await handleSessions(req, deps, "/v1/sessions");
+    expect(res!.status).toBe(400);
+    const body = await resJson<{ error: { code: string } }>(res!);
+    expect(body.error.code).toBe("bad_request");
+  });
+
+  test("returns 400 when kind=child with non-existent parent_session_id", async () => {
+    const deps = makeDeps();
+    const req = new Request("http://x/v1/sessions", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ project_id: "p_child", kind: "child", parent_session_id: "s_nonexistent" }),
+    });
+    const res = await handleSessions(req, deps, "/v1/sessions");
+    expect(res!.status).toBe(400);
+  });
+
+  test("returns 400 when kind=child with grandchild parent", async () => {
+    const deps = makeDeps();
+    // Create grandparent orchestrator
+    const gpReq = new Request("http://x/v1/sessions", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ project_id: "p_gp", kind: "orchestrator" }),
+    });
+    const gpRes = await handleSessions(gpReq, deps, "/v1/sessions");
+    expect(gpRes!.status).toBe(201);
+    const gp = await resJson<{ id: string }>(gpRes!);
+
+    // Create parent child
+    const parentReq = new Request("http://x/v1/sessions", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ project_id: "p_parent", kind: "child", parent_session_id: gp.id }),
+    });
+    const parentRes = await handleSessions(parentReq, deps, "/v1/sessions");
+    expect(parentRes!.status).toBe(201);
+    const parent = await resJson<{ id: string }>(parentRes!);
+
+    // Try to create grandchild — should fail
+    const req = new Request("http://x/v1/sessions", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ project_id: "p_gc", kind: "child", parent_session_id: parent.id }),
+    });
+    const res = await handleSessions(req, deps, "/v1/sessions");
+    expect(res!.status).toBe(400);
+    const body = await resJson<{ error: { code: string } }>(res!);
+    expect(body.error.code).toBe("bad_request");
+  });
+
+  test("persists issue, max_iterations, and notes to session.json", async () => {
+    const deps = makeDeps();
+    const req = new Request("http://x/v1/sessions", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        project_id: "p_fields",
+        kind: "standalone",
+        workflow: "test-workflow",
+        issue: 42,
+        max_iterations: 10,
+        notes: "Test session notes",
+      }),
+    });
+    const res = await handleSessions(req, deps, "/v1/sessions");
     expect(res!.status).toBe(201);
-    const body = await resJson<{ kind: string }>(res!);
-    expect(body.kind).toBe("child");
+    const body = await resJson<{
+      id: string;
+      issue: number;
+      max_iterations: number;
+      notes: string;
+    }>(res!);
+    expect(body.issue).toBe(42);
+    expect(body.max_iterations).toBe(10);
+    expect(body.notes).toBe("Test session notes");
+
+    // Verify persisted to session.json
+    const sessionDir = join(deps.sessionsDir(), body.id);
+    const stored = JSON.parse(readFileSync(join(sessionDir, "session.json"), "utf-8"));
+    expect(stored.issue).toBe(42);
+    expect(stored.max_iterations).toBe(10);
+    expect(stored.notes).toBe("Test session notes");
+  });
+
+  test("accepts null values for optional fields", async () => {
+    const deps = makeDeps();
+    const req = new Request("http://x/v1/sessions", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        project_id: "p_nulls",
+        kind: "standalone",
+        parent_session_id: null,
+        max_iterations: null,
+        notes: null,
+      }),
+    });
+    const res = await handleSessions(req, deps, "/v1/sessions");
+    expect(res!.status).toBe(201);
+    const body = await resJson<{ parent_session_id: null; max_iterations: null; notes: null }>(res!);
+    expect(body.parent_session_id).toBeNull();
+    expect(body.max_iterations).toBeNull();
+    expect(body.notes).toBeNull();
+  });
+
+  test("ignores non-numeric issue, max_iterations and non-string notes", async () => {
+    const deps = makeDeps();
+    const req = new Request("http://x/v1/sessions", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        project_id: "p_bad_types",
+        kind: "standalone",
+        issue: "not a number",
+        max_iterations: "also not",
+        notes: 123,
+      }),
+    });
+    const res = await handleSessions(req, deps, "/v1/sessions");
+    expect(res!.status).toBe(201);
+    const body = await resJson<Record<string, unknown>>(res!);
+    // Invalid types are ignored (not stored)
+    expect(body.issue).toBeUndefined();
+    expect(body.max_iterations).toBeUndefined();
+    expect(body.notes).toBeUndefined();
   });
 });
 
@@ -1028,5 +1175,138 @@ describe("POST /v1/sessions/:id/resume", () => {
     expect(res!.status).toBe(200);
     const body = await resJson<{ status: string }>(res!);
     expect(body.status).toBe("running");
+  });
+});
+
+// ─── session.forced event emission ─────────────────────────────────────────────
+
+function makeMockEventWriter() {
+  const events: Array<{ topic: string; data: Record<string, unknown> }> = [];
+  return {
+    events,
+    writer: {
+      append: async <T>(topic: string, data: T) => {
+        events.push({ topic, data: data as Record<string, unknown> });
+        return { _v: 1, id: "evt_test", timestamp: new Date(0).toISOString(), topic, data };
+      },
+    },
+  };
+}
+
+describe("DELETE /v1/sessions/:id?mode=force emits session.forced", () => {
+  test("emits session.forced event when mode=force", async () => {
+    const { events, writer } = makeMockEventWriter();
+    const deps = makeDeps("s_force_event");
+    const dir = join(deps.sessionsDir(), "s_force_event");
+    writeSessionStatus(dir, "running");
+    const req = new Request("http://x/v1/sessions/s_force_event?mode=force", { method: "DELETE" });
+    const res = await handleSessions(req, { ...deps, events: writer }, "/v1/sessions/s_force_event");
+    expect(res!.status).toBe(200);
+    const forced = events.find((e) => e.topic === "session.forced");
+    expect(forced).toBeDefined();
+    expect(forced!.data.session_id).toBe("s_force_event");
+    expect(forced!.data.previous_status).toBe("running");
+  });
+
+  test("does NOT emit session.forced when mode=graceful (default)", async () => {
+    const { events, writer } = makeMockEventWriter();
+    const deps = makeDeps("s_graceful_event");
+    const dir = join(deps.sessionsDir(), "s_graceful_event");
+    writeSessionStatus(dir, "running");
+    const req = new Request("http://x/v1/sessions/s_graceful_event", { method: "DELETE" });
+    const res = await handleSessions(req, { ...deps, events: writer }, "/v1/sessions/s_graceful_event");
+    expect(res!.status).toBe(200);
+    const forced = events.find((e) => e.topic === "session.forced");
+    expect(forced).toBeUndefined();
+  });
+});
+
+// ─── session.event emission ─────────────────────────────────────────────────────
+
+describe("session.event emission on lifecycle transitions", () => {
+  test("DELETE emits session.event with correct previous and next status", async () => {
+    const { events, writer } = makeMockEventWriter();
+    const deps = makeDeps("s_del_event");
+    const dir = join(deps.sessionsDir(), "s_del_event");
+    writeSessionStatus(dir, "running");
+    const req = new Request("http://x/v1/sessions/s_del_event", { method: "DELETE" });
+    const res = await handleSessions(req, { ...deps, events: writer }, "/v1/sessions/s_del_event");
+    expect(res!.status).toBe(200);
+    const evt = events.find((e) => e.topic === "session.event");
+    expect(evt).toBeDefined();
+    expect(evt!.data.session_id).toBe("s_del_event");
+    expect(evt!.data.previous_status).toBe("running");
+    expect(evt!.data.status).toBe("stopped");
+    expect(evt!.data.kind).toBe("standalone");
+    expect(evt!.data.workflow).toBe("plan-build-review");
+    expect(evt!.data.project_id).toBe("p_test");
+  });
+
+  test("pause emits session.event", async () => {
+    const { events, writer } = makeMockEventWriter();
+    const deps = makeDeps("s_pause_event");
+    const dir = join(deps.sessionsDir(), "s_pause_event");
+    writeSessionStatus(dir, "running");
+    const req = new Request("http://x/v1/sessions/s_pause_event/pause", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: "{}",
+    });
+    const res = await handleSessions(req, { ...deps, events: writer }, "/v1/sessions/s_pause_event/pause");
+    expect(res!.status).toBe(200);
+    const evt = events.find((e) => e.topic === "session.event");
+    expect(evt).toBeDefined();
+    expect(evt!.data.previous_status).toBe("running");
+    expect(evt!.data.status).toBe("paused");
+  });
+
+  test("unpause emits session.event", async () => {
+    const { events, writer } = makeMockEventWriter();
+    const deps = makeDeps("s_unpause_event");
+    const dir = join(deps.sessionsDir(), "s_unpause_event");
+    writeSessionStatus(dir, "paused");
+    const req = new Request("http://x/v1/sessions/s_unpause_event/unpause", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: "{}",
+    });
+    const res = await handleSessions(req, { ...deps, events: writer }, "/v1/sessions/s_unpause_event/unpause");
+    expect(res!.status).toBe(200);
+    const evt = events.find((e) => e.topic === "session.event");
+    expect(evt).toBeDefined();
+    expect(evt!.data.previous_status).toBe("paused");
+    expect(evt!.data.status).toBe("running");
+  });
+
+  test("resume emits session.event", async () => {
+    const { events, writer } = makeMockEventWriter();
+    const deps = makeDeps("s_resume_event");
+    const dir = join(deps.sessionsDir(), "s_resume_event");
+    writeSessionStatus(dir, "stopped");
+    const req = new Request("http://x/v1/sessions/s_resume_event/resume", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: "{}",
+    });
+    const res = await handleSessions(req, { ...deps, events: writer }, "/v1/sessions/s_resume_event/resume");
+    expect(res!.status).toBe(200);
+    const evt = events.find((e) => e.topic === "session.event");
+    expect(evt).toBeDefined();
+    expect(evt!.data.previous_status).toBe("stopped");
+    expect(evt!.data.status).toBe("running");
+  });
+
+  test("lifecycle functions work without events writer (optional dependency)", async () => {
+    const deps = makeDeps("s_no_events");
+    const dir = join(deps.sessionsDir(), "s_no_events");
+    writeSessionStatus(dir, "running");
+    // No events property — should not throw
+    const req = new Request("http://x/v1/sessions/s_no_events/pause", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: "{}",
+    });
+    const res = await handleSessions(req, deps, "/v1/sessions/s_no_events/pause");
+    expect(res!.status).toBe(200);
   });
 });

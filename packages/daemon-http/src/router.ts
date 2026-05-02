@@ -36,6 +36,16 @@ export type RouterDeps = {
     req: Request,
     pathname: string,
   ) => Response | Promise<Response | undefined> | undefined;
+  /** Setup runs: /v1/setup/runs */
+  readonly handleSetup: (
+    req: Request,
+    pathname: string,
+  ) => Response | Promise<Response | undefined> | undefined;
+  /** Workspaces: /v1/workspaces */
+  readonly handleWorkspaces: (
+    req: Request,
+    pathname: string,
+  ) => Response | Promise<Response | undefined> | undefined;
 };
 
 /**
@@ -87,6 +97,12 @@ export function makeFetchHandler(
 
     const eventsResponse = await deps.handleEvents(req, pathname);
     if (eventsResponse) return eventsResponse;
+
+    const setupResponse = await deps.handleSetup(req, pathname);
+    if (setupResponse) return setupResponse;
+
+    const workspacesResponse = await deps.handleWorkspaces(req, pathname);
+    if (workspacesResponse) return workspacesResponse;
 
     return new Response(
       JSON.stringify({

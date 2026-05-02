@@ -1,16 +1,16 @@
 # aloop
 
-> Self-hosted, multi-provider autonomous development harness that turns a spec into merged code without continuous human supervision.
+> Durable, server-backed, multi-provider autonomous development and incubation system with a central voice-capable multimodal composer that delegates to scoped agents and turns captured intent into researched, specified, tracked, reviewed, and merged code without continuous human supervision.
 
-**Status:** rebuild in progress on branch `next`. Pre-rebuild code lived under `aloop/` on `master`; it is retired. The new architecture is a single daemon (`aloopd`) with a typed API, a scheduler-with-permits, tracker-agnostic Epic/Story/Task work items, and a workflow catalog per Story type.
+**Status:** rebuild in progress on branch `next`. Pre-rebuild code lived under `aloop/` on `master`; it is retired. The new architecture is a durable control plane (`aloopd`) with a typed API, scheduler permits, worker leases, tracker-agnostic Epic/Story/Task work items, incubation/research state, and a workflow catalog per Story type.
 
 ## Where to start
 
 - **[docs/VISION.md](docs/VISION.md)** — the product: who it's for, what it does, why it exists.
 - **[docs/CONSTITUTION.md](docs/CONSTITUTION.md)** — non-negotiable invariants. Read before contributing.
 - **[docs/DELIVERY_PLAN.md](docs/DELIVERY_PLAN.md)** — twelve milestones from spec to shipped v1.
-- **[docs/spec/](docs/spec/)** — 20 reference docs covering architecture, daemon, API, pipeline, providers, trackers, orchestrator, agents, security, workflows, metrics, self-improvement, learning, setup, devcontainer.
-- **[docs/research/](docs/research/)** — outside research that informed the rebuild (Karpathy AutoResearch, Anthropic, Cognition, OpenHands, etc.).
+- **[docs/spec/](docs/spec/)** — reference docs covering architecture, daemon, API, incubation, pipeline, providers, trackers, orchestrator, agents, security, workflows, metrics, self-improvement, learning, setup, devcontainer.
+- **[docs/research/](docs/research/)** — outside research that informed the rebuild (Karpathy AutoResearch, Deep Research systems, Anthropic, Cognition, OpenHands, etc.).
 
 ## Repo layout
 
@@ -38,7 +38,7 @@ bun test                         # run all package tests
 bun --filter '*' typecheck       # typecheck all workspace packages
 ```
 
-Run the daemon locally:
+Run the control plane locally:
 
 ```bash
 ALOOP_HOME=/tmp/aloop ALOOP_PORT=7777 bun run packages/daemon/bin/aloopd.ts

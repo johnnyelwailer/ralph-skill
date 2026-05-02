@@ -35,6 +35,9 @@ export async function handleEvents(
   const sessionId = url.searchParams.get("session_id");
   const projectId = url.searchParams.get("project_id");
   const parent = url.searchParams.get("parent");
+  const researchRunId = url.searchParams.get("research_run_id");
+  const composerTurnId = url.searchParams.get("composer_turn_id");
+  const controlSubagentRunId = url.searchParams.get("control_subagent_run_id");
   const since = url.searchParams.get("since") ?? undefined;
 
   // Last-Event-ID header is the standard SSE reconnect token
@@ -96,6 +99,24 @@ export async function handleEvents(
             if (parent) {
               const data = envelope.data as Record<string, unknown>;
               if (data.parent_id !== parent) return;
+            }
+
+            // research_run_id filter — matches data.research_run_id
+            if (researchRunId) {
+              const data = envelope.data as Record<string, unknown>;
+              if (data.research_run_id !== researchRunId) return;
+            }
+
+            // composer_turn_id filter — matches data.composer_turn_id
+            if (composerTurnId) {
+              const data = envelope.data as Record<string, unknown>;
+              if (data.composer_turn_id !== composerTurnId) return;
+            }
+
+            // control_subagent_run_id filter — matches data.control_subagent_run_id
+            if (controlSubagentRunId) {
+              const data = envelope.data as Record<string, unknown>;
+              if (data.control_subagent_run_id !== controlSubagentRunId) return;
             }
 
             const sseLine = `id: ${envelope.id}\nevent: ${envelope.topic}\ndata: ${line}\n\n`;

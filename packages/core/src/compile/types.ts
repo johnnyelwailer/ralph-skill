@@ -23,7 +23,20 @@ export type AgentPhase = {
   readonly model?: string;
   readonly reasoning?: "none" | "low" | "medium" | "high" | "xhigh";
   readonly timeout?: string;
+  /** One or more context ids to inject before this phase runs. */
+  readonly context?: readonly ContextId[];
 };
+
+/**
+ * A context declaration in a pipeline phase frontmatter.
+ * Three forms:
+ *   - string: shorthand for { id: string, budgetTokens: default }
+ *   - object with just id
+ *   - object with id and budgetTokens override
+ */
+export type ContextId =
+  | string
+  | { readonly id: string; readonly budgetTokens?: number };
 
 /** pipeline.yml phase — exec variant (run an external command) */
 export type ExecPhase = {

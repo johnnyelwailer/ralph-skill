@@ -10,9 +10,16 @@ function makeDeps() {
         headers: { "content-type": "application/json" },
       });
     },
+    handleMetrics: () => undefined,
     handleProjects: () => undefined,
     handleProviders: () => undefined,
     handleScheduler: () => undefined,
+    handleSessions: () => undefined,
+    handleArtifacts: () => undefined,
+    handleTurns: () => undefined,
+    handleEvents: () => undefined,
+    handleSetup: () => undefined,
+    handleWorkspaces: () => undefined,
   };
 }
 

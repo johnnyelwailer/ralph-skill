@@ -312,4 +312,142 @@ describe("handleEvents", () => {
       rmSync(base, { recursive: true, force: true });
     });
   });
+
+  describe("research_run_id filter", () => {
+    test("filters events by research_run_id in event data", async () => {
+      const base = mkdtempSync(join(tmpdir(), "aloop-events-rrid-"));
+      const deps = makeDeps(base);
+      mkdirSync(deps.sessionsDir(), { recursive: true });
+      const sessionDir = join(deps.sessionsDir(), "s_rrid");
+      mkdirSync(sessionDir, { recursive: true });
+
+      writeFileSync(join(sessionDir, "log.jsonl"), [
+        makeEvent("incubation.research.update", { session_id: "s_rrid", research_run_id: "rr_alpha" }, "1748537600000.000001"),
+        makeEvent("incubation.research.update", { session_id: "s_rrid", research_run_id: "rr_beta" }, "1748537600000.000002"),
+        makeEvent("incubation.research.update", { session_id: "s_rrid", research_run_id: "rr_alpha" }, "1748537600000.000003"),
+      ].join("\n") + "\n");
+
+      const req = new Request("http://localhost/v1/events?session_id=s_rrid&research_run_id=rr_alpha", { method: "GET" });
+      const res = await handleEvents(req, deps, "/v1/events");
+      const text = await res!.text();
+      expect(text).toContain("1748537600000.000001");
+      expect(text).toContain("1748537600000.000003");
+      expect(text).not.toContain("1748537600000.000002");
+
+      rmSync(base, { recursive: true, force: true });
+    });
+
+    test("returns all events when research_run_id param is absent", async () => {
+      const base = mkdtempSync(join(tmpdir(), "aloop-events-no-rrid-"));
+      const deps = makeDeps(base);
+      mkdirSync(deps.sessionsDir(), { recursive: true });
+      const sessionDir = join(deps.sessionsDir(), "s_norrid");
+      mkdirSync(sessionDir, { recursive: true });
+
+      writeFileSync(join(sessionDir, "log.jsonl"), [
+        makeEvent("incubation.research.update", { session_id: "s_norrid", research_run_id: "rr_alpha" }, "1748537600000.000001"),
+        makeEvent("incubation.research.update", { session_id: "s_norrid", research_run_id: "rr_beta" }, "1748537600000.000002"),
+      ].join("\n") + "\n");
+
+      const req = new Request("http://localhost/v1/events?session_id=s_norrid", { method: "GET" });
+      const res = await handleEvents(req, deps, "/v1/events");
+      const text = await res!.text();
+      expect(text).toContain("1748537600000.000001");
+      expect(text).toContain("1748537600000.000002");
+
+      rmSync(base, { recursive: true, force: true });
+    });
+  });
+
+  describe("composer_turn_id filter", () => {
+    test("filters events by composer_turn_id in event data", async () => {
+      const base = mkdtempSync(join(tmpdir(), "aloop-events-ctid-"));
+      const deps = makeDeps(base);
+      mkdirSync(deps.sessionsDir(), { recursive: true });
+      const sessionDir = join(deps.sessionsDir(), "s_ctid");
+      mkdirSync(sessionDir, { recursive: true });
+
+      writeFileSync(join(sessionDir, "log.jsonl"), [
+        makeEvent("agent.chunk", { session_id: "s_ctid", composer_turn_id: "ct_one" }, "1748537600000.000001"),
+        makeEvent("agent.chunk", { session_id: "s_ctid", composer_turn_id: "ct_two" }, "1748537600000.000002"),
+        makeEvent("agent.chunk", { session_id: "s_ctid" }, "1748537600000.000003"),
+      ].join("\n") + "\n");
+
+      const req = new Request("http://localhost/v1/events?session_id=s_ctid&composer_turn_id=ct_one", { method: "GET" });
+      const res = await handleEvents(req, deps, "/v1/events");
+      const text = await res!.text();
+      expect(text).toContain("1748537600000.000001");
+      expect(text).not.toContain("1748537600000.000002");
+      expect(text).not.toContain("1748537600000.000003");
+
+      rmSync(base, { recursive: true, force: true });
+    });
+
+    test("returns all events when composer_turn_id param is absent", async () => {
+      const base = mkdtempSync(join(tmpdir(), "aloop-events-no-ctid-"));
+      const deps = makeDeps(base);
+      mkdirSync(deps.sessionsDir(), { recursive: true });
+      const sessionDir = join(deps.sessionsDir(), "s_noctid");
+      mkdirSync(sessionDir, { recursive: true });
+
+      writeFileSync(join(sessionDir, "log.jsonl"), [
+        makeEvent("agent.chunk", { session_id: "s_noctid", composer_turn_id: "ct_one" }, "1748537600000.000001"),
+        makeEvent("agent.chunk", { session_id: "s_noctid" }, "1748537600000.000002"),
+      ].join("\n") + "\n");
+
+      const req = new Request("http://localhost/v1/events?session_id=s_noctid", { method: "GET" });
+      const res = await handleEvents(req, deps, "/v1/events");
+      const text = await res!.text();
+      expect(text).toContain("1748537600000.000001");
+      expect(text).toContain("1748537600000.000002");
+
+      rmSync(base, { recursive: true, force: true });
+    });
+  });
+
+  describe("control_subagent_run_id filter", () => {
+    test("filters events by control_subagent_run_id in event data", async () => {
+      const base = mkdtempSync(join(tmpdir(), "aloop-events-csrid-"));
+      const deps = makeDeps(base);
+      mkdirSync(deps.sessionsDir(), { recursive: true });
+      const sessionDir = join(deps.sessionsDir(), "s_csrid");
+      mkdirSync(sessionDir, { recursive: true });
+
+      writeFileSync(join(sessionDir, "log.jsonl"), [
+        makeEvent("agent.chunk", { session_id: "s_csrid", control_subagent_run_id: "csr_alpha" }, "1748537600000.000001"),
+        makeEvent("agent.chunk", { session_id: "s_csrid", control_subagent_run_id: "csr_beta" }, "1748537600000.000002"),
+        makeEvent("agent.chunk", { session_id: "s_csrid", control_subagent_run_id: "csr_alpha" }, "1748537600000.000003"),
+      ].join("\n") + "\n");
+
+      const req = new Request("http://localhost/v1/events?session_id=s_csrid&control_subagent_run_id=csr_alpha", { method: "GET" });
+      const res = await handleEvents(req, deps, "/v1/events");
+      const text = await res!.text();
+      expect(text).toContain("1748537600000.000001");
+      expect(text).toContain("1748537600000.000003");
+      expect(text).not.toContain("1748537600000.000002");
+
+      rmSync(base, { recursive: true, force: true });
+    });
+
+    test("returns all events when control_subagent_run_id param is absent", async () => {
+      const base = mkdtempSync(join(tmpdir(), "aloop-events-no-csrid-"));
+      const deps = makeDeps(base);
+      mkdirSync(deps.sessionsDir(), { recursive: true });
+      const sessionDir = join(deps.sessionsDir(), "s_nocsrid");
+      mkdirSync(sessionDir, { recursive: true });
+
+      writeFileSync(join(sessionDir, "log.jsonl"), [
+        makeEvent("agent.chunk", { session_id: "s_nocsrid", control_subagent_run_id: "csr_alpha" }, "1748537600000.000001"),
+        makeEvent("agent.chunk", { session_id: "s_nocsrid" }, "1748537600000.000002"),
+      ].join("\n") + "\n");
+
+      const req = new Request("http://localhost/v1/events?session_id=s_nocsrid", { method: "GET" });
+      const res = await handleEvents(req, deps, "/v1/events");
+      const text = await res!.text();
+      expect(text).toContain("1748537600000.000001");
+      expect(text).toContain("1748537600000.000002");
+
+      rmSync(base, { recursive: true, force: true });
+    });
+  });
 });

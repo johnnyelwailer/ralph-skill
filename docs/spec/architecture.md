@@ -2,7 +2,7 @@
 
 > **Reference document.** The layers, boundaries, and seams of the `aloopd` daemon. Hard rules live in CONSTITUTION.md. Work items live in GitHub issues.
 >
-> Sources: SPEC.md §Architecture, §Inner Loop vs Runtime, §Cross-Platform; `daemon.md`, `api.md`, `pipeline.md`, `provider-contract.md`, `work-tracker.md`.
+> Sources: SPEC.md §Architecture, §Inner Loop vs Runtime, §Cross-Platform; `daemon.md`, `api.md`, `pipeline.md`, `provider-contract.md`, `work-tracker.md`, `incubation.md`.
 
 ## Table of contents
 
@@ -12,6 +12,8 @@
 - Daemon responsibilities
 - Shim responsibilities
 - Client responsibilities
+- Standards-first design
+- Deployment model
 - Adapter surfaces
 - Cross-platform
 - Trust boundaries
@@ -21,38 +23,43 @@
 
 ## One-line summary
 
-A single long-running local daemon (`aloopd`) owns all state and scheduling. Every client — CLI, dashboard, bot, script, loop shim — talks to it over a versioned HTTP+SSE API. Providers, issue trackers, and sandbox execution backends are adapters behind typed interfaces, swappable without touching core.
+A durable control plane (`aloopd`) owns state, scheduling, policy, and orchestration. Every client — CLI, dashboard, mobile web, bot, script, loop shim, worker — talks to it over a versioned HTTP+SSE API. Provider turns and deterministic execution are delegated to isolated containers, VMs, local sandboxes, or nodes through typed adapters, swappable without touching core.
 
 ## Layers
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
 │  Clients                                                      │
-│    aloop CLI · Dashboard (React) · scripts · future integrations │
+│    aloop CLI · Dashboard · global composer · mobile web      │
+│    bots · scripts                                            │
+│    future integrations                                       │
 │    loop.sh / loop.ps1 shim (≤150 LOC each)                    │
 └──────────────────────────────────────────────────────────────┘
-              │ HTTP + SSE  (v1 API, localhost)
+              │ HTTP + SSE  (v1 API, local or remote)
               ▼
 ┌──────────────────────────────────────────────────────────────┐
 │  aloopd  (daemon, Bun TypeScript)                             │
 │                                                               │
 │    HTTP server · SSE hub · event bus                          │
-│    Session runner · workflow state machine · compile step     │
+│    Composer turns · incubation inbox · research runs          │
+│    promotion proposals                                       │
+│    Setup runs · session runner · workflow state machine       │
+│    Compile step                                               │
 │    Scheduler (permits: system / quota / burn-rate / concurrency)│
 │    Watchdog + reconcile jobs                                  │
-│    Project registry · overrides store                         │
+│    Workspace registry · project registry · overrides store     │
 │                                                               │
 │    Adapter interfaces:                                        │
 │      ProviderAdapter    (5 impls: opencode, copilot, codex,   │
 │                           gemini, claude)                     │
 │      TrackerAdapter      (2 impls: github, builtin)           │
-│      SandboxAdapter      (v1: local execution / devcontainer;  │
-│                           future: sandbox-core-backed backends)│
-│      ProjectAdapter      (1 impl: local-fs; future: remote-clone)│
-│      StateStore          (1 impl: SQLite; future: Postgres)   │
-│      EventStore          (1 impl: JSONL; future: JSONL + S3)  │
+│      SandboxAdapter      (local execution / devcontainer /     │
+│                           container or node worker backend)     │
+│      ProjectAdapter      (local-fs / remote clone)              │
+│      StateStore          (Postgres primary; SQLite local mode)  │
+│      EventStore          (object store primary; JSONL local mode)│
 └──────────────────────────────────────────────────────────────┘
-              │ filesystem (worktrees, logs) + subprocess (CLIs)
+              │ worker leases + git worktrees + provider/runtime subprocesses
               ▼
 ┌──────────────────────────────────────────────────────────────┐
 │  Provider CLIs       Worktrees & git         Tracker APIs     │
@@ -62,7 +69,7 @@ A single long-running local daemon (`aloopd`) owns all state and scheduling. Eve
 └──────────────────────────────────────────────────────────────┘
 ```
 
-The layers are cleanly separated by the API at top and typed adapter interfaces at bottom. There is no supplementary control plane, no sidecar, no second runtime.
+The layers are cleanly separated by the API at top and typed adapter interfaces at bottom. There is no supplementary control plane, no sidecar-specific authority, no second runtime.
 
 ## The one boundary: the API
 
@@ -71,20 +78,27 @@ Every action against aloop — starting a session, listing sessions, steering, s
 This is the load-bearing decision:
 
 - **Any client that exists today, any client that exists tomorrow, uses the same contract.** New surface = new endpoint = everyone gets it.
-- **Moving to distributed deployment is a deployment change, not a rewrite.** The API is already the only boundary. (See `daemon.md` §Forward-compat: distribution seams.)
+- **Local and hosted deployments are compositions of the same primitives.** The always-reachable server shape is primary, and the fully local shape plugs the same control plane, state store, event store, and sandbox adapters together on one machine. (See `daemon.md` §Deployment seams.)
 - **There are no side channels.** No "drop a file here," no "write to this magic directory." Agents interact through `aloop-agent submit`, which itself is an API client.
 
 ## Daemon responsibilities
 
 `aloopd` is the single process that owns:
 
+- **Incubation** — captured ideas, research runs, synthesis proposals, and explicit promotion into setup/spec/tracker/session targets (see `incubation.md`).
+- **Composer turns** — provider-backed, multimodal control turns that translate text, speech, media, links, and selected app context into scoped subagent delegations, daemon-owned objects, normal API mutation proposals, long-running jobs, configuration changes, or status summaries. The composer is an agentic client interface, not a second runtime.
+- **Setup runs** — long-lived onboarding state before a project becomes `ready` (see `setup.md`).
 - **Sessions** — standalone, orchestrator, child. State machine, lifecycle, parent-child relationships (see `daemon.md` §Session kinds).
 - **Scheduler** — the only gate between "a turn is wanted" and "a turn is started." Composes gates for concurrency, system resources, per-provider quota, burn rate, and live overrides.
+- **Trigger engine** — durable time-based and event-based triggers that create daemon work such as research runs, monitor ticks, reconcile jobs, or proposal refreshes. It decides *when to enqueue work*; the scheduler still decides whether provider-backed work may run.
 - **Event bus** — aggregates events from all sessions into per-session JSONL and the global SSE stream. Every state change publishes.
 - **Compile step** — translates `pipeline.yml` into `loop-plan.json`. See `pipeline.md` §Compile step for the canonical description (single YAML reader in the system).
-- **Watchdog / reconcile** — stuck detection, provider quota refresh, permit expiry sweep, orphan cleanup, burn-rate tracking, crash recovery. All internal to the daemon; no external cron.
+- **Prompt context assembly** — resolves prompt `context` declarations through registered context plugins, injects bounded source-cited context blocks, and records what was injected. See `context.md`.
+- **Runtime extension manifests** — supervises typed project-code extensions such as `exec` steps and `context-provider`s through one manifest-backed execution model. See `pipeline.md` §Runtime extension manifests.
+- **Watchdog / reconcile** — stuck detection, provider quota refresh, permit expiry sweep, orphan cleanup, burn-rate tracking, crash recovery. All internal to the daemon and implemented through the trigger/reconcile substrate; no external cron.
+- **Workspace registry** — human/operator grouping across one or more projects/repos, with shared dashboard scope, budgets, incubation, and defaults.
 - **Project registry** — N unrelated repos served by one daemon instance.
-- **Adapter orchestration** — invokes `ProviderAdapter` for agent turns, `TrackerAdapter` for decomposition/review/merge, and `SandboxAdapter` for session execution environments and deterministic exec steps.
+- **Adapter orchestration** — invokes `ProviderAdapter` for agent turns and research reasoning, `TrackerAdapter` for decomposition/review/merge, `SandboxAdapter` for session execution environments and deterministic exec/experiment steps, and future outreach/source adapters only through the same policy-controlled adapter pattern.
 
 Full detail in `daemon.md`.
 
@@ -105,13 +119,126 @@ CONSTITUTION rule: the shim must shrink, never grow. Any change that would push 
 
 ## Client responsibilities
 
-All other clients (CLI, dashboard, bots) translate user intent into API calls. They:
+All other clients (CLI, dashboard, global composer, mobile web, bots) translate user intent into API calls. They:
 
 - Render state they get from `GET /v1/...` endpoints.
 - Subscribe to SSE streams for live updates (`GET /v1/events`, `GET /v1/sessions/:id/events`, `GET /v1/sessions/:id/turns/:turn_id/chunks`).
 - Never persist their own state for things the daemon owns. Client-local state is limited to UI prefs, auth tokens, etc.
+- Treat incubation captures, research results, syntheses, comments, and promotion decisions as daemon-owned state, not local drafts once submitted.
+- Treat composer turns as a natural-language and multimodal interface to the same primitives. If a composer launches work or changes control-plane state, it may delegate to a scoped control subagent; the effect is still a `Project`, `ResearchRun`, `ResearchMonitor`, `SetupRun`, `Session`, tracker mutation, provider override, scheduler/config patch, proposal, comment, or artifact with normal events and projections.
 
 This keeps the system honest: if the CLI can do X, the dashboard can do X, because X is an API endpoint. If the dashboard needs Y that no one else has, the API is missing an endpoint — fix the API, not the dashboard.
+
+The end-to-end object flow is:
+
+```text
+incubation capture
+  -> research / synthesis
+  -> explicit promotion
+  -> setup run | spec proposal | Epic / Story | session steering | decision record
+  -> orchestrator / child sessions
+  -> artifacts, metrics, learning
+```
+
+Each arrow crosses the same daemon API boundary and emits events. There is no private dashboard path from a phone capture to a tracker issue or repo edit.
+
+The composer may accelerate any arrow or coordinate the control plane, including from spoken input, screenshots, voice notes, videos, PDFs, links, or pasted logs, but it does not create a parallel object model. Media becomes artifacts/source records first; speech becomes native model input or transcript artifacts under daemon policy; subagents run with scoped capability grants; mutations become normal policy-checked API calls; the composer observes child work by reading the same projections and event streams as every other client.
+
+## Workspace vs project
+
+`Workspace` and `Project` are intentionally different primitives.
+
+| Primitive | Meaning | Cardinality | Runnable? |
+|---|---|---|---|
+| `Workspace` | Human/operator scope. A product, client, company, initiative, research area, or operational context. May contain many repos and projects. | one workspace -> many projects | No |
+| `Project` | Runnable aloop unit with setup readiness, config, tracker binding, provider chain, sessions, and worktrees. Usually one repo or subfolder, but not necessarily the whole workspace. | one project -> one setup/runtime boundary | Yes, after setup passes |
+
+A workspace can encompass:
+
+- one repo with one project
+- one monorepo with several subfolder projects
+- several independent repos that together form one product
+- greenfield incubation before any repo exists
+- non-code research and planning items that may later promote into one or more projects
+
+Projects remain isolated for execution. Sessions, worktrees, setup readiness, tracker operations, and project config are project-scoped. Workspace-scoped state is coordination and policy: dashboards, budgets, incubation, shared defaults, cross-project research, aggregate metrics, and relationships between projects.
+
+This prevents the product language from collapsing "workspace", "repo", and "project" into one thing. A repo is a version-control object. A project is aloop's runnable unit. A workspace is the user's operating context.
+
+## Standards-first design
+
+Aloop should reuse industry standards wherever a standard exists. The architecture should not invent custom protocols, hidden file handshakes, bespoke plugin formats, or ad hoc transport layers when a mature standard or established ecosystem convention covers the job.
+
+Default choices:
+
+| Area | Preferred standard / convention |
+|---|---|
+| Client/daemon transport | HTTP/1.1 or later, JSON, SSE for server-pushed events |
+| API description | OpenAPI-compatible paths and JSON Schema-compatible payloads |
+| Auth for remote/tunneled deployments | Bearer tokens in v1; OAuth/OIDC-compatible flows when multi-user auth lands |
+| Streaming | `text/event-stream` SSE before custom WebSockets; WebSockets only when bidirectional low-latency semantics are required |
+| Artifacts/media | MIME types, content-length, stable URLs, checksums where needed |
+| Events/logs | JSONL/NDJSON for append-only logs and exports |
+| State | Postgres for durable deployments; SQLite only for local/single-node mode |
+| Version control | Git primitives and normal branch/commit semantics |
+| Tool/subagent contracts | Typed JSON tool calls and established tool protocols where applicable; no raw shell/string protocols |
+| Extensions | Existing runtime extension manifest model; align with external tool standards where possible |
+
+When aloop needs semantics that standards do not provide, keep the custom part narrow and explicit:
+
+- put aloop semantics in resource names, schemas, and daemon policy, not in a new wire protocol
+- prefer adapter implementations over new protocol families
+- document why an existing standard was insufficient before adding a new primitive
+- add conformance tests around the boundary
+- expose the capability through the same v1 API so every client can use it
+
+## Deployment model
+
+Aloop's primary deployment model is an always-reachable durable control plane with individual tasks delegated to isolated workers. The same primitives must also compose into a fully local install, but local is no longer the center of gravity.
+
+This pivot changes the implementation priority:
+
+- Postgres and object/artifact storage are the normal durable state shape.
+- SQLite and local JSONL remain valid for single-node local mode, tests, bootstrap, and cheap offline installs.
+- Workers are explicit capacity: a container, VM, local sandbox, or node that leases one session/research/setup turn at a time.
+- The control plane is the source of truth; workers are replaceable and may disappear.
+- The dashboard/composer/mobile web assume the control plane can be reached even when no developer machine is open.
+
+Aloop should still be easy to deploy on any normal cloud or hosting provider. Azure must be a first-class target, but not a special case. The architecture maps to generic capabilities that exist across Azure, AWS, GCP, Fly.io, Render, Railway, DigitalOcean, Hetzner, bare-metal, and Kubernetes.
+
+Provider-neutral deployment capabilities:
+
+| Capability | Primary durable shape | Fully local shape |
+|---|---|---|
+| Control plane | containerized HTTP service | `aloopd` process |
+| Queryable state | managed or self-hosted Postgres | SQLite or local Postgres |
+| Event/artifact storage | S3-compatible object storage or provider blob storage | JSONL + local files, or MinIO |
+| Session execution | isolated worker container, VM, managed job, or sandbox backend | host/devcontainer/local Docker |
+| Worktree access | git clone/push through `ProjectAdapter` | local filesystem through `ProjectAdapter` |
+| Secrets | provider secret manager or mounted secrets | env/files or local secret store |
+| Auth | TLS + bearer/OIDC-compatible auth | localhost trust or bearer token |
+| Observability | container logs + Prometheus/OpenTelemetry-compatible export | logs + `/v1/metrics` |
+| Scheduling | durable control-plane scheduler with worker leases | same scheduler in one process |
+
+Example mappings, not hard dependencies:
+
+| Provider family | Control plane | State | Artifacts/events | Workers |
+|---|---|---|---|---|
+| Azure | Container Apps, App Service, or AKS | Azure Database for PostgreSQL | Blob Storage | Container Apps jobs, AKS jobs, VM scale set |
+| AWS | ECS/Fargate, App Runner, or EKS | RDS Postgres | S3 | ECS tasks, EKS jobs, EC2 |
+| GCP | Cloud Run or GKE | Cloud SQL Postgres | Cloud Storage | Cloud Run jobs, GKE jobs, Compute Engine |
+| Lower-cost/self-hosted | Docker Compose, Nomad, systemd, Fly.io, Hetzner, DigitalOcean | Postgres container or managed Postgres | S3-compatible storage such as MinIO/R2/B2 | Docker workers, VMs, Nomad jobs |
+
+Rules:
+
+- no provider-specific concepts in core daemon APIs
+- deployment manifests live outside core logic
+- cloud-specific behavior is adapter/configuration, not conditional branches in orchestration
+- object storage should use S3-compatible semantics where possible; provider-native blob storage is allowed behind `EventStore`/artifact storage adapters
+- workers talk to the control plane over the same HTTP API as local shims
+- worker leases are durable control-plane records, not assumptions about child processes
+- local execution is an adapter choice, not a separate architecture
+- the first production deployment may be simple Docker Compose with Postgres + object storage; Kubernetes is optional, never required
 
 ## Adapter surfaces
 
@@ -120,11 +247,11 @@ Six typed interfaces enclose everything external to the daemon core:
 | Adapter | Interface file / spec | V1 implementations | Purpose |
 |---|---|---|---|
 | **ProviderAdapter** | `provider-contract.md` | opencode, copilot, codex, gemini, claude | One per AI provider; runs turns; emits agent chunks |
-| **TrackerAdapter** | `work-tracker.md` | github, builtin | Generic work-item (Epic/Story) + change-set surface; GH is one instance |
-| **SandboxAdapter** | in-daemon (seam) | host execution, project devcontainer | Acquires the execution environment for a session and runs turns inside it; later maps to `sandbox-core` backends for local Docker and hosted sandboxes |
-| **ProjectAdapter** | in-daemon (seam) | local-fs | Worktree operations on local filesystem today; remote clone tomorrow |
-| **StateStore** | in-daemon (seam) | sqlite | Queryable current-state; Postgres tomorrow |
-| **EventStore** | in-daemon (seam) | jsonl | Authoritative append-only event log; JSONL + S3 tomorrow |
+| **TrackerAdapter** | `work-tracker.md` | github, builtin | External/offline work-item projection surface for Epic/Story/change-set workflows; not the full aloop database |
+| **SandboxAdapter** | in-daemon (seam) | worker containers/nodes, host execution, project devcontainer | Acquires the execution environment for a session and runs turns inside it; maps to sandbox-core-compatible local and hosted backends |
+| **ProjectAdapter** | in-daemon (seam) | remote clone, local-fs | Worktree operations through git clones or local filesystem without changing orchestration |
+| **StateStore** | in-daemon (seam) | Postgres, SQLite | Queryable daemon-native current state: workspaces, projects, incubation, setup, sessions, permits, projections, metrics |
+| **EventStore** | in-daemon (seam) | object storage, jsonl | Authoritative append-only event and artifact storage for replay and audit |
 
 Each interface has exactly the implementations v1 needs, plus a deliberate seam for future growth. No interface has zero implementations ("abstractions without users"). No interface has an implementation that isn't actually used.
 
@@ -144,11 +271,11 @@ Operational notes:
 
 The system has one outer boundary and several internal ones:
 
-- **Clients ↔ Daemon**: HTTP request/response, with auth (localhost unauthenticated by default; bearer token when tunneled). Requests are rate-limited per client.
+- **Clients ↔ Daemon**: HTTP request/response, with auth (TLS + bearer/OIDC-compatible auth for reachable deployments; localhost may use local trust or bearer token). Requests are rate-limited per client.
 - **Daemon ↔ Agents (via `aloop-agent`)**: agents run inside a provider process with an `AUTH_HANDLE` env variable scoped to a single session. Agents cannot issue calls outside that scope.
 - **Daemon ↔ Providers**: daemon spawns provider CLIs as child processes with sanitized environments (`CLAUDECODE`, `PATH`, secrets). Providers receive only the prompt body and declared tool definitions.
 - **Daemon ↔ Tracker**: the adapter authenticates to the tracker with credentials supplied in project config (`gh` CLI, env token). Daemon policy restricts allowed operations per role (see `security.md` §Tracker adapter policy for the hardcoded table; GitHub is the shipped example and future adapters follow the same role-based allow-list pattern).
-- **Daemon ↔ Filesystem**: worktrees live under `~/.aloop/state/sessions/<id>/worktree/`. A session cannot read outside its own worktree except through well-defined read-only references (the project's repo root, config files).
+- **Daemon ↔ Workers / filesystem**: worktrees live in the session's worker sandbox or local state path. A session cannot read outside its own worktree except through well-defined read-only references supplied by the control plane.
 
 Agents are the least trusted principal. The daemon is the trust anchor.
 
@@ -157,12 +284,18 @@ Agents are the least trusted principal. The daemon is the trust anchor.
 Explicit non-goals — decisions that must not drift back in:
 
 - **No business logic in the shim.** If shrinking requires moving logic, move it.
+- **No hidden intake channel.** Captures, research, and promotion proposals are first-class daemon state under `incubation.md`, not dashboard-local chat transcripts or ad hoc tracker issues.
+- **No composer-only backend.** The composer can be smart, provider-backed, and always available, but it must express durable effects as scoped subagent runs, normal API mutations, and long-running daemon jobs.
 - **No YAML parsing outside the compile step.** Shims and session runner use `loop-plan.json`.
 - **No direct tracker calls from agents.** Always `aloop-agent submit` → daemon → adapter.
-- **No expressions or inline code in pipeline YAML.** Keywords (`onFailure: retry`, `trigger: merge_conflict`) are data; deterministic code runs through typed exec manifests; evaluation is daemon code.
+- **No expressions or inline code in pipeline YAML, prompt frontmatter, or daemon config.** Keywords (`onFailure: retry`, `trigger: merge_conflict`, `context: orch_recall`) are data; project-defined logic runs through typed runtime extension manifests.
+- **No parallel plugin systems.** New extensibility points must reuse the runtime extension manifest model unless there is a documented reason it cannot fit.
+- **No custom protocol when a standard fits.** Use HTTP/SSE/JSON/JSON Schema/MIME/Git/SQLite/Postgres/OAuth-style conventions and established tool protocols before inventing aloop-specific mechanisms.
+- **No research-specific runtime.** Source acquisition, experiment attempts, monitors, outreach drafts, artifacts, metrics, and events reuse daemon adapters, runtime extension manifests, scheduler permits, StateStore projections, and EventStore history.
 - **No second runtime process.** Orchestrators run as workflows in the same daemon, not separate binaries.
-- **No in-process state that outlives a request.** Session state is SQLite + JSONL, not daemon memory.
-- **No concurrency that bypasses the scheduler.** Every turn goes through the permit protocol, even for standalone single-session runs.
+- **No local-first-only assumption.** Any primitive that only works when the user's laptop is awake is incomplete unless it is explicitly marked local-mode only.
+- **No in-process state that outlives a request.** Session state is StateStore + EventStore, not daemon memory.
+- **No concurrency that bypasses the scheduler.** Every provider-backed session turn or incubation research turn goes through the permit protocol.
 - **No "aloop gh" treated specially.** GitHub is one adapter among potentially many; `security.md`'s policy table applies to all tracker adapters uniformly.
 
 These rules are not preferences. They are the architecture's load-bearing invariants; the rebuild exists to restore them.

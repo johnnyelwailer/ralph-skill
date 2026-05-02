@@ -46,7 +46,7 @@ export class SchedulerService {
     if (!permit) return false;
     await appendPermitRelease(this.events, {
       permitId: permit.id,
-      sessionId: permit.sessionId,
+      owner: { sessionId: permit.sessionId },
     });
     return true;
   }
@@ -56,7 +56,7 @@ export class SchedulerService {
     for (const permit of expired) {
       await appendPermitExpired(this.events, {
         permitId: permit.id,
-        sessionId: permit.sessionId,
+        owner: { sessionId: permit.sessionId },
       });
     }
     return expired.length;

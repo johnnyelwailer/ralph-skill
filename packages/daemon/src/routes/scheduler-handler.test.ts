@@ -306,9 +306,9 @@ describe("GET /v1/scheduler/limits", () => {
 
     expect(res).toBeDefined();
     expect(res!.status).toBe(200);
-    const body = await resJson<{ _v: number; concurrencyCap: number }>(res!);
+    const body = await resJson<{ _v: number; max_permits: number }>(res!);
     expect(body._v).toBe(1);
-    expect(body.concurrencyCap).toBe(3);
+    expect(body.max_permits).toBe(3);
   });
 
   test("returns 405 for POST on limits route", async () => {
@@ -352,9 +352,9 @@ describe("PUT /v1/scheduler/limits", () => {
 
     expect(res).toBeDefined();
     expect(res!.status).toBe(200);
-    const body = await resJson<{ _v: number; concurrencyCap: number }>(res!);
+    const body = await resJson<{ _v: number; max_permits: number }>(res!);
     expect(body._v).toBe(1);
-    expect(body.concurrencyCap).toBe(7);
+    expect(body.max_permits).toBe(7);
   });
 
   test("returns 400 when updateLimits returns errors", async () => {

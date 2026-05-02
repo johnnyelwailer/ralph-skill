@@ -1,5 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import type { EventWriter } from "@aloop/state-sqlite";
 import {
   appendPermitDeny,
   appendPermitExpired,
@@ -62,7 +61,7 @@ describe("appendPermitGrant", () => {
     const mockEvents = { append };
     await appendPermitGrant(mockEvents, {
       permitId: "perm_abc",
-      sessionId: "sess_123",
+      owner: { sessionId: "sess_123" },
       providerId: "opencode",
       ttlSeconds: 600,
       grantedAt: "2024-01-01T00:00:00.000Z",
@@ -85,13 +84,74 @@ describe("appendPermitGrant", () => {
     const { append } = mockEventWriter();
     const result = await appendPermitGrant({ append }, {
       permitId: "p1",
-      sessionId: "s1",
+      owner: { sessionId: "s1" },
       providerId: "prov",
       ttlSeconds: 300,
       grantedAt: "t1",
       expiresAt: "t2",
     });
     expect(result).toBeUndefined();
+  });
+
+  test("serialises research_run_id owner to event", async () => {
+    const { events, append } = mockEventWriter();
+    await appendPermitGrant({ append }, {
+      permitId: "perm_r",
+      owner: { researchRunId: "rr_test_01" },
+      providerId: "opencode",
+      ttlSeconds: 300,
+      grantedAt: "t1",
+      expiresAt: "t2",
+    });
+    expect(events[0]!.data).toEqual({
+      permit_id: "perm_r",
+      research_run_id: "rr_test_01",
+      provider_id: "opencode",
+      ttl_seconds: 300,
+      granted_at: "t1",
+      expires_at: "t2",
+    });
+    expect(events[0]!.data).not.toHaveProperty("session_id");
+  });
+
+  test("serialises composer_turn_id owner to event", async () => {
+    const { events, append } = mockEventWriter();
+    await appendPermitGrant({ append }, {
+      permitId: "perm_c",
+      owner: { composerTurnId: "ct_01" },
+      providerId: "opencode",
+      ttlSeconds: 300,
+      grantedAt: "t1",
+      expiresAt: "t2",
+    });
+    expect(events[0]!.data).toEqual({
+      permit_id: "perm_c",
+      composer_turn_id: "ct_01",
+      provider_id: "opencode",
+      ttl_seconds: 300,
+      granted_at: "t1",
+      expires_at: "t2",
+    });
+  });
+
+  test("serialises control_subagent_run_id owner to event", async () => {
+    const { events, append } = mockEventWriter();
+    await appendPermitGrant({ append }, {
+      permitId: "perm_cs",
+      owner: { controlSubagentRunId: "csar_01" },
+      providerId: "opencode",
+      ttlSeconds: 300,
+      grantedAt: "t1",
+      expiresAt: "t2",
+    });
+    expect(events[0]!.data).toEqual({
+      permit_id: "perm_cs",
+      control_subagent_run_id: "csar_01",
+      provider_id: "opencode",
+      ttl_seconds: 300,
+      granted_at: "t1",
+      expires_at: "t2",
+    });
   });
 });
 
@@ -102,7 +162,7 @@ describe("appendPermitRelease", () => {
     const { events, append } = mockEventWriter();
     await appendPermitRelease({ append }, {
       permitId: "perm_xyz",
-      sessionId: "sess_456",
+      owner: { sessionId: "sess_456" },
     });
 
     expect(events).toHaveLength(1);
@@ -117,20 +177,33 @@ describe("appendPermitRelease", () => {
     const { append } = mockEventWriter();
     const result = await appendPermitRelease({ append }, {
       permitId: "p1",
-      sessionId: "s1",
+      owner: { sessionId: "s1" },
     });
     expect(result).toBeUndefined();
   });
+
+  test("serialises research_run_id owner to event", async () => {
+    const { events, append } = mockEventWriter();
+    await appendPermitRelease({ append }, {
+      permitId: "perm_r",
+      owner: { researchRunId: "rr_02" },
+    });
+    expect(events[0]!.data).toEqual({
+      permit_id: "perm_r",
+      research_run_id: "rr_02",
+    });
+    expect(events[0]!.data).not.toHaveProperty("session_id");
+  });
 });
 
-// ─── appendPermitExpired ─────────────────────────────────────────────────────
+// ─── appendPermitExpired ──────────────────────────────────────────────────────
 
 describe("appendPermitExpired", () => {
   test("appends scheduler.permit.expired event with correct fields", async () => {
     const { events, append } = mockEventWriter();
     await appendPermitExpired({ append }, {
       permitId: "perm_old",
-      sessionId: "sess_old",
+      owner: { sessionId: "sess_old" },
     });
 
     expect(events).toHaveLength(1);
@@ -145,9 +218,21 @@ describe("appendPermitExpired", () => {
     const { append } = mockEventWriter();
     const result = await appendPermitExpired({ append }, {
       permitId: "p1",
-      sessionId: "s1",
+      owner: { sessionId: "s1" },
     });
     expect(result).toBeUndefined();
+  });
+
+  test("serialises composer_turn_id owner to event", async () => {
+    const { events, append } = mockEventWriter();
+    await appendPermitExpired({ append }, {
+      permitId: "perm_c",
+      owner: { composerTurnId: "ct_03" },
+    });
+    expect(events[0]!.data).toEqual({
+      permit_id: "perm_c",
+      composer_turn_id: "ct_03",
+    });
   });
 });
 
@@ -157,7 +242,7 @@ describe("appendPermitDeny", () => {
   test("appends scheduler.permit.deny event and returns PermitDenied without retryAfterSeconds", async () => {
     const { events, append } = mockEventWriter();
     const result = await appendPermitDeny({ append }, {
-      sessionId: "sess_denied",
+      owner: { sessionId: "sess_denied" },
       reason: "concurrency_limit",
       gate: "concurrency_cap",
       details: { current: 5, max: 5 },
@@ -183,7 +268,7 @@ describe("appendPermitDeny", () => {
   test("includes retry_after_seconds in event when retryAfterSeconds is provided", async () => {
     const { events, append } = mockEventWriter();
     await appendPermitDeny({ append }, {
-      sessionId: "sess_retry",
+      owner: { sessionId: "sess_retry" },
       reason: "rate_limit",
       gate: "burn_rate",
       details: {},
@@ -202,7 +287,7 @@ describe("appendPermitDeny", () => {
   test("returns PermitDenied with retryAfterSeconds when provided", async () => {
     const { append } = mockEventWriter();
     const result = await appendPermitDeny({ append }, {
-      sessionId: "sess_retry",
+      owner: { sessionId: "sess_retry" },
       reason: "rate_limit",
       gate: "burn_rate",
       details: {},
@@ -221,7 +306,7 @@ describe("appendPermitDeny", () => {
   test("event omits retry_after_seconds key when retryAfterSeconds is undefined", async () => {
     const { events, append } = mockEventWriter();
     await appendPermitDeny({ append }, {
-      sessionId: "sess_no_retry",
+      owner: { sessionId: "sess_no_retry" },
       reason: "denied",
       gate: "test",
       details: { foo: "bar" },
@@ -235,7 +320,7 @@ describe("appendPermitDeny", () => {
   test("result omits retryAfterSeconds key when retryAfterSeconds is undefined", async () => {
     const { append } = mockEventWriter();
     const result = await appendPermitDeny({ append }, {
-      sessionId: "sess_no_retry",
+      owner: { sessionId: "sess_no_retry" },
       reason: "denied",
       gate: "test",
       details: { foo: "bar" },
@@ -243,5 +328,84 @@ describe("appendPermitDeny", () => {
 
     expect(result).not.toHaveProperty("retryAfterSeconds");
     expect((result as { retryAfterSeconds?: number }).retryAfterSeconds).toBeUndefined();
+  });
+
+  test("returns denial even when events.append throws", async () => {
+    // Audit log failure must not prevent the denial response from being returned.
+    // The permit decision is authoritative; event logging is best-effort.
+    const failingAppend = async (_topic: string, _data: Record<string, unknown>) => {
+      throw new Error("disk full");
+    };
+    const result = await appendPermitDeny({ append: failingAppend }, {
+      owner: { sessionId: "sess_audit_fail" },
+      reason: "concurrency_cap",
+      gate: "concurrency",
+      details: { active_permits: 3, concurrency_cap: 3 },
+    });
+
+    expect(result.granted).toBe(false);
+    const denied = result as { granted: false; reason: string; gate: string; details: Record<string, unknown> };
+    expect(denied.reason).toBe("concurrency_cap");
+    expect(denied.gate).toBe("concurrency");
+    expect(denied.details).toEqual({ active_permits: 3, concurrency_cap: 3 });
+  });
+
+  test("returns denial with retryAfterSeconds even when events.append throws", async () => {
+    const failingAppend = async (_topic: string, _data: Record<string, unknown>) => {
+      throw new Error("disk full");
+    };
+    const result = await appendPermitDeny({ append: failingAppend }, {
+      owner: { sessionId: "sess_retry_audit_fail" },
+      reason: "system_pressure",
+      gate: "system",
+      details: { cpu: 95, limit: 80 },
+      retryAfterSeconds: 30,
+    });
+
+    expect(result.granted).toBe(false);
+    const denied = result as { granted: false; retryAfterSeconds: number };
+    expect(denied.retryAfterSeconds).toBe(30);
+  });
+
+  test("serialises research_run_id owner in deny event", async () => {
+    const { events, append } = mockEventWriter();
+    const result = await appendPermitDeny({ append }, {
+      owner: { researchRunId: "rr_deny_01" },
+      reason: "concurrency_cap",
+      gate: "concurrency",
+      details: {},
+    });
+    expect(events[0]!.data).toEqual({
+      research_run_id: "rr_deny_01",
+      reason: "concurrency_cap",
+      gate: "concurrency",
+      details: {},
+    });
+    expect(events[0]!.data).not.toHaveProperty("session_id");
+    expect(result.granted).toBe(false);
+  });
+
+  test("serialises composer_turn_id owner in deny event", async () => {
+    const { events, append } = mockEventWriter();
+    await appendPermitDeny({ append }, {
+      owner: { composerTurnId: "ct_deny_01" },
+      reason: "system_limit_exceeded",
+      gate: "system",
+      details: {},
+    });
+    expect(events[0]!.data).toHaveProperty("composer_turn_id", "ct_deny_01");
+    expect(events[0]!.data).not.toHaveProperty("session_id");
+  });
+
+  test("serialises control_subagent_run_id owner in deny event", async () => {
+    const { events, append } = mockEventWriter();
+    await appendPermitDeny({ append }, {
+      owner: { controlSubagentRunId: "csar_deny_01" },
+      reason: "provider_quota_exceeded",
+      gate: "provider",
+      details: {},
+    });
+    expect(events[0]!.data).toHaveProperty("control_subagent_run_id", "csar_deny_01");
+    expect(events[0]!.data).not.toHaveProperty("session_id");
   });
 });

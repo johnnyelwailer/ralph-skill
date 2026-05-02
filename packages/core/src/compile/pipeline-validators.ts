@@ -1,4 +1,4 @@
-import type { AgentPhase, ExecPhase, PipelinePhase, TransitionKeyword } from "./types";
+import type { AgentPhase, ContextId, ExecPhase, PipelinePhase, TransitionKeyword } from "./types";
 import {
   parseTransition,
   validateProvider,
@@ -13,6 +13,7 @@ type MutableAgentPhase = {
   model?: string;
   reasoning?: AgentPhase["reasoning"];
   timeout?: string;
+  context?: readonly ContextId[];
 };
 
 type MutableExecPhase = {
@@ -128,6 +129,11 @@ function validateAgentPhase(
     }
   }
 
+  if (obj.context !== undefined) {
+    const validated = validateContext(obj.context, `${path}.context`, errors);
+    if (validated) phase.context = validated;
+  }
+
   return phase as AgentPhase;
 }
 
@@ -233,3 +239,103 @@ export function validateStringMap(
   }
   return out;
 }
+
+/**
+ * Validate a context field value from pipeline.yml.
+ * Accepts:
+ *   - string: shorthand for a context id
+ *   - object with id: string and optional budgetTokens: number
+ *   - array of either form
+ */
+export function validateContext(
+  value: unknown,
+  path: string,
+  errors: string[],
+): readonly ContextId[] | undefined {
+  if (value === undefined) return undefined;
+
+  // Single string shorthand
+  if (typeof value === "string") {
+    if (value.length === 0) {
+      errors.push(`${path}: context id must be a non-empty string`);
+      return undefined;
+    }
+    return [{ id: value }];
+  }
+
+  // Array of context ids
+  if (Array.isArray(value)) {
+    if (value.length === 0) {
+      errors.push(`${path}: context array must not be empty`);
+      return undefined;
+    }
+    const result: ContextId[] = [];
+    let hadError = false;
+    for (let i = 0; i < value.length; i++) {
+      const item = value[i];
+      if (typeof item === "string") {
+        if (item.length === 0) {
+          errors.push(`${path}[${i}]: context id must be a non-empty string`);
+          hadError = true;
+          continue;
+        }
+        result.push({ id: item });
+      } else if (typeof item === "object" && item !== null) {
+        const obj = item as Record<string, unknown>;
+        if (typeof obj.id !== "string" || obj.id.length === 0) {
+          errors.push(`${path}[${i}].id: must be a non-empty string`);
+          hadError = true;
+          continue;
+        }
+        if (obj.budgetTokens !== undefined) {
+          if (
+            typeof obj.budgetTokens !== "number" ||
+            !Number.isInteger(obj.budgetTokens) ||
+            obj.budgetTokens <= 0
+          ) {
+            errors.push(`${path}[${i}].budgetTokens: must be a positive integer`);
+            hadError = true;
+            // budgetTokens invalid — push id without it
+            result.push({ id: obj.id });
+            continue;
+          }
+          result.push({ id: obj.id, budgetTokens: obj.budgetTokens });
+        } else {
+          result.push({ id: obj.id });
+        }
+      } else {
+        errors.push(`${path}[${i}]: must be a string or a context object with id`);
+        hadError = true;
+        continue;
+      }
+    }
+    // Reject the whole context field if any item had errors, but still collect all errors.
+    if (hadError) return undefined;
+    return result;
+  }
+
+  // Object form — single context with optional budgetTokens
+  if (typeof value === "object" && value !== null) {
+    const obj = value as Record<string, unknown>;
+    if (typeof obj.id !== "string" || obj.id.length === 0) {
+      errors.push(`${path}.id: must be a non-empty string`);
+      return undefined;
+    }
+    if (obj.budgetTokens !== undefined) {
+      if (
+        typeof obj.budgetTokens !== "number" ||
+        !Number.isInteger(obj.budgetTokens) ||
+        obj.budgetTokens <= 0
+      ) {
+        errors.push(`${path}.budgetTokens: must be a positive integer`);
+        return undefined;
+      }
+      return [{ id: obj.id, budgetTokens: obj.budgetTokens }];
+    }
+    return [{ id: obj.id }];
+  }
+
+  errors.push(`${path}: must be a context id string, an object with id, or an array of these`);
+  return undefined;
+}
+
