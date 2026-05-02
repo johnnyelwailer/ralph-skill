@@ -117,10 +117,6 @@ test("updateDescription updates description", () => {
     expect(() => workspaceRegistry.updateDescription("nope", "x")).toThrow(WorkspaceNotFoundError);
   });
 
-  test("updateDescription throws WorkspaceNotFoundError for unknown id", () => {
-    expect(() => workspaceRegistry.updateDescription("nope", "x")).toThrow(WorkspaceNotFoundError);
-  });
-
   test("archive sets archivedAt", () => {
     const ws = workspaceRegistry.create({ name: "Test" });
     expect(ws.archivedAt).toBeNull();
@@ -132,36 +128,40 @@ test("updateDescription updates description", () => {
     expect(() => workspaceRegistry.archive("nope")).toThrow(WorkspaceNotFoundError);
   });
 
-  test.skip("addProject inserts project with role", () => {
+  test("addProject inserts project with role", () => {
     const p = projectRegistry.create({ absPath: tmpProjectDir });
-    workspaceRegistry.addProject("ws1", p.id, "primary");
-    const projects = workspaceRegistry.listProjects("ws1");
+    const ws = workspaceRegistry.create({ name: "Test" });
+    workspaceRegistry.addProject(ws.id, p.id, "primary");
+    const projects = workspaceRegistry.listProjects(ws.id);
     expect(projects.length).toBe(1);
     expect(projects[0]!.projectId).toBe(p.id);
     expect(projects[0]!.role).toBe("primary");
   });
 
-  test.skip("addProject updates role when already exists", () => {
+  test("addProject updates role when already exists", () => {
     const p = projectRegistry.create({ absPath: tmpProjectDir });
-    workspaceRegistry.addProject("ws1", p.id, "primary");
-    workspaceRegistry.addProject("ws1", p.id, "supporting");
-    const projects = workspaceRegistry.listProjects("ws1");
+    const ws = workspaceRegistry.create({ name: "Test" });
+    workspaceRegistry.addProject(ws.id, p.id, "primary");
+    workspaceRegistry.addProject(ws.id, p.id, "supporting");
+    const projects = workspaceRegistry.listProjects(ws.id);
     expect(projects.length).toBe(1);
     expect(projects[0]!.role).toBe("supporting");
   });
 
-  test.skip("removeProject deletes project from workspace", () => {
+  test("removeProject deletes project from workspace", () => {
     const p = projectRegistry.create({ absPath: tmpProjectDir });
-    workspaceRegistry.addProject("ws1", p.id, "primary");
-    workspaceRegistry.removeProject("ws1", p.id);
-    const projects = workspaceRegistry.listProjects("ws1");
+    const ws = workspaceRegistry.create({ name: "Test" });
+    workspaceRegistry.addProject(ws.id, p.id, "primary");
+    workspaceRegistry.removeProject(ws.id, p.id);
+    const projects = workspaceRegistry.listProjects(ws.id);
     expect(projects).toEqual([]);
   });
 
-  test.skip("listProjects returns projects with details", () => {
+  test("listProjects returns projects with details", () => {
     const p = projectRegistry.create({ absPath: tmpProjectDir, name: "My Project" });
-    workspaceRegistry.addProject("ws1", p.id, "primary");
-    const projects = workspaceRegistry.listProjects("ws1");
+    const ws = workspaceRegistry.create({ name: "Test" });
+    workspaceRegistry.addProject(ws.id, p.id, "primary");
+    const projects = workspaceRegistry.listProjects(ws.id);
     expect(projects.length).toBe(1);
     expect(projects[0]!.projectId).toBe(p.id);
     expect(projects[0]!.projectName).toBe("My Project");
@@ -169,15 +169,17 @@ test("updateDescription updates description", () => {
     expect(projects[0]!.projectStatus).toBe(p.status);
   });
 
-  test.skip("getProjectRole returns role for existing project", () => {
+  test("getProjectRole returns role for existing project", () => {
     const p = projectRegistry.create({ absPath: tmpProjectDir });
-    workspaceRegistry.addProject("ws1", p.id, "dependency");
-    const role = workspaceRegistry.getProjectRole("ws1", p.id);
+    const ws = workspaceRegistry.create({ name: "Test" });
+    workspaceRegistry.addProject(ws.id, p.id, "dependency");
+    const role = workspaceRegistry.getProjectRole(ws.id, p.id);
     expect(role).toBe("dependency");
   });
 
-  test.skip("getProjectRole returns null for non-existent project", () => {
-    const role = workspaceRegistry.getProjectRole("ws1", "nonexistent");
+  test("getProjectRole returns null for non-existent project", () => {
+    const ws = workspaceRegistry.create({ name: "Test" });
+    const role = workspaceRegistry.getProjectRole(ws.id, "nonexistent");
     expect(role).toBeNull();
   });
 });
