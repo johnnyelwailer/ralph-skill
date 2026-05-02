@@ -23,7 +23,7 @@ function makeGrant(
   expiresAt: string,
   estimatedCostUsdCents?: number,
 ) {
-  return makeEvent(
+  const event = makeEvent(
     "scheduler.permit.grant",
     {
       permit_id: permitId,
@@ -36,6 +36,10 @@ function makeGrant(
     },
     makeIdGenerator(),
   );
+  // Inject project_id so ProjectDailyCostProjector can route the cost correctly.
+  // This mirrors how createEventWriter injects session.project_id at write time.
+  (event as Record<string, unknown>).metadata = { project_id: projectId };
+  return event;
 }
 
 function makeRelease(permitId: string) {

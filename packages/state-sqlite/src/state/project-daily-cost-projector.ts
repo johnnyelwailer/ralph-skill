@@ -25,8 +25,12 @@ export class ProjectDailyCostProjector implements Projector {
       const data = event.data as PermitGrantEvent;
       const projectId = (event.metadata as Record<string, unknown> | undefined)?.project_id as string | null | undefined;
       if (!projectId) return;
+      // Skip only if cost is absent (undefined) or explicitly ≤ 0.
+      // Undefined means "no cost data" — insert a row with cost 0 so the project
+      // has a daily cost record. Explicit 0 or negative means "known to be no cost"
+      // and should not create a record.
+      if (data.estimated_cost_usd_cents !== undefined && data.estimated_cost_usd_cents <= 0) return;
       const costCents = data.estimated_cost_usd_cents ?? 0;
-      if (costCents <= 0) return;
 
       const date = data.granted_at.slice(0, 10); // YYYY-MM-DD
       db.run(
