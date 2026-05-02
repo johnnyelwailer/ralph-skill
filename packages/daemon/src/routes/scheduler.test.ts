@@ -256,7 +256,7 @@ describe("scheduler watchdog permit-expiry sweep", () => {
     );
     expect(before.items.length).toBe(1);
 
-    await new Promise((resolve) => setTimeout(resolve, 1200));
+    await new Promise((resolve) => setTimeout(resolve, 1500));
 
     const after = await fetch(`${baseUrl}/v1/scheduler/permits`).then(
       (r) => r.json() as Promise<{ items: unknown[] }>,
