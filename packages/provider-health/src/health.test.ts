@@ -136,6 +136,54 @@ describe("applyProviderFailure", () => {
     expect(next.status).toBe("cooldown");
     expect(next.cooldownUntil).toBe(new Date(NOW + 10_000).toISOString());
   });
+
+  test("cooldownMultiplier of 2.0 doubles the backoff duration", () => {
+    const prev = { ...unknown(), consecutiveFailures: 1 }; // backoff[2] = 2 min = 120_000ms
+    const next = applyProviderFailure(prev, "timeout", NOW, {
+      cooldownMultiplier: 2.0,
+    });
+    expect(next.status).toBe("cooldown");
+    // 120_000ms * 2.0 = 240_000ms
+    expect(next.cooldownUntil).toBe(new Date(NOW + 240_000).toISOString());
+  });
+
+  test("cooldownMultiplier of 0.5 halves the backoff duration", () => {
+    const prev = { ...unknown(), consecutiveFailures: 2 }; // backoff[3] = 5 min = 300_000ms
+    const next = applyProviderFailure(prev, "timeout", NOW, {
+      cooldownMultiplier: 0.5,
+    });
+    expect(next.status).toBe("cooldown");
+    // 300_000ms * 0.5 = 150_000ms
+    expect(next.cooldownUntil).toBe(new Date(NOW + 150_000).toISOString());
+  });
+
+  test("cooldownMultiplier defaults to 1.0 when not provided", () => {
+    const prev = { ...unknown(), consecutiveFailures: 1 }; // backoff[2] = 2 min
+    const next = applyProviderFailure(prev, "timeout", NOW, {});
+    expect(next.status).toBe("cooldown");
+    expect(next.cooldownUntil).toBe(new Date(NOW + 120_000).toISOString());
+  });
+
+  test("cooldownMultiplier of 4.0 (max) quadruples the backoff", () => {
+    const prev = { ...unknown(), consecutiveFailures: 1 }; // backoff[2] = 2 min = 120_000ms
+    const next = applyProviderFailure(prev, "timeout", NOW, {
+      cooldownMultiplier: 4.0,
+    });
+    expect(next.status).toBe("cooldown");
+    // 120_000ms * 4.0 = 480_000ms = 8 min
+    expect(next.cooldownUntil).toBe(new Date(NOW + 480_000).toISOString());
+  });
+
+  test("cooldownMultiplier works with custom backoff schedule", () => {
+    const prev = { ...unknown(), consecutiveFailures: 0 };
+    const next = applyProviderFailure(prev, "timeout", NOW, {
+      backoffMsByFailureCount: [0, 10_000, 20_000],
+      cooldownMultiplier: 3.0,
+    });
+    expect(next.status).toBe("cooldown");
+    // backoff[1] = 10_000ms * 3.0 = 30_000ms
+    expect(next.cooldownUntil).toBe(new Date(NOW + 30_000).toISOString());
+  });
 });
 
 describe("isProviderAvailable", () => {

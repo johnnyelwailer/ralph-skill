@@ -108,6 +108,20 @@ describe("InMemoryProviderHealthStore", () => {
     expect(state2.cooldownUntil).toBe("2026-01-01T00:00:32.000Z"); // NOW + 30s
   });
 
+  test("noteFailure passes cooldownMultiplier to applyProviderFailure", () => {
+    const store = new InMemoryProviderHealthStore(["opencode"], NOW);
+    const backoffSchedule = [0, 10_000, 30_000] as const;
+
+    // With multiplier 2.0 and backoff[1] = 10_000ms → cooldown = 20_000ms
+    const state = store.noteFailure("opencode", "rate_limit", NOW + 1_000, {
+      backoffMsByFailureCount: backoffSchedule,
+      cooldownMultiplier: 2.0,
+    });
+    expect(state.status).toBe("cooldown");
+    expect(state.consecutiveFailures).toBe(1);
+    expect(state.cooldownUntil).toBe("2026-01-01T00:00:21.000Z"); // NOW + 20s
+  });
+
   test("noteFailure records quota hints from options", () => {
     const store = new InMemoryProviderHealthStore(["opencode"], NOW);
     const state = store.noteFailure("opencode", "rate_limit", NOW + 1_000, {

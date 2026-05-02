@@ -36,6 +36,7 @@ export type MakeRouterDepsInput = {
   readonly providerHealth: InMemoryProviderHealthStore;
   readonly artifactRegistry: ArtifactRegistry;
   readonly idempotencyStore: IdempotencyStore;
+  readonly cooldownMultipliers?: ReadonlyMap<string, number>;
 };
 
 export function makeRouterDeps(input: MakeRouterDepsInput): RouterDeps {
@@ -77,6 +78,7 @@ export function makeRouterDeps(input: MakeRouterDepsInput): RouterDeps {
           events: input.events,
           providerRegistry: input.providerRegistry,
           providerHealth: input.providerHealth,
+          cooldownMultipliers: input.cooldownMultipliers,
         },
         pathname,
       ),

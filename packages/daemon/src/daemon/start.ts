@@ -105,6 +105,7 @@ export async function startDaemon(opts: StartDaemonOptions = {}): Promise<Runnin
     providerHealth,
     artifactRegistry,
     idempotencyStore,
+    cooldownMultipliers: buildCooldownMultipliers(config),
   });
   const sessionsDir = join(paths.stateDir, "sessions");
   await recoverCrashedSessions(sessionsDir, events);
@@ -157,3 +158,18 @@ export async function startDaemon(opts: StartDaemonOptions = {}): Promise<Runnin
 }
 
 export type { DaemonConfig, OverridesConfig };
+
+/**
+ * Build a ReadonlyMap of providerId → cooldownMultiplier from daemon config.
+ * Reads `provider_tuning.<id>.cooldown_multiplier` entries; absent providers
+ * default to 1.0 (no multiplier). Values are clamped to [0.5, 4.0] per spec.
+ */
+function buildCooldownMultipliers(config: ConfigStore): ReadonlyMap<string, number> {
+  const tuning = config.daemon().providerTuning ?? {};
+  const entries: [string, number][] = Object.entries(tuning).map(([providerId, tune]) => {
+    const raw = (tune as Record<string, unknown>).cooldown_multiplier;
+    const clamped = typeof raw === "number" ? Math.min(4.0, Math.max(0.5, raw)) : 1.0;
+    return [providerId, clamped];
+  });
+  return new Map(entries);
+}

@@ -24,6 +24,7 @@ export type FailureUpdateOptions = {
   readonly quotaRemaining?: number | null;
   readonly quotaResetsAtMs?: number | null;
   readonly backoffMsByFailureCount?: readonly number[];
+  readonly cooldownMultiplier?: number;
 };
 
 const DEFAULT_BACKOFF_MS_BY_FAILURE_COUNT = [
@@ -72,7 +73,8 @@ export function applyProviderFailure(
   const consecutiveFailures = prev.consecutiveFailures + 1;
   const quotaResetsAtMs = options.quotaResetsAtMs ?? null;
   const backoff = options.backoffMsByFailureCount ?? DEFAULT_BACKOFF_MS_BY_FAILURE_COUNT;
-  const backoffMs = backoff[Math.min(consecutiveFailures, backoff.length - 1)] ?? 0;
+  const multiplier = options.cooldownMultiplier ?? 1.0;
+  const backoffMs = (backoff[Math.min(consecutiveFailures, backoff.length - 1)] ?? 0) * multiplier;
   const backoffUntilMs = backoffMs > 0 ? nowMs + backoffMs : null;
   const cooldownUntilMs = maxNullableMs(backoffUntilMs, quotaResetsAtMs);
 

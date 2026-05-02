@@ -47,6 +47,13 @@ export type DaemonConfig = {
     readonly daemonConfigWrite: boolean;
   };
   /**
+   * Per-provider tuning knobs.  Key is provider id; value is a tuning record.
+   * Supports `cooldown_multiplier` (number, 0.5–4.0, default 1.0).
+   */
+  readonly providerTuning?: Readonly<Record<string, {
+    readonly cooldown_multiplier?: number;
+  }>>;
+  /**
    * Context plugin registry. Maps prompt-facing context ids (e.g. "orch_recall")
    * to their backing provider manifests and default parameters.
    *
