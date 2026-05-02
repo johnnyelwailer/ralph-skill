@@ -139,6 +139,74 @@ describe("createSetupRun", () => {
   });
 });
 
+describe("listSetupRuns", () => {
+  let tmp: string;
+  let deps: SetupDeps;
+
+  beforeEach(() => {
+    tmp = mkdtempSync(join(tmpdir(), "aloop-setup-handlers-"));
+    deps = makeDeps(tmp);
+  });
+
+  afterEach(() => {
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  test("returns 200 with empty items when no runs exist", async () => {
+    const req = new Request("http://localhost/v1/setup/runs");
+    const res = listSetupRuns(req, deps);
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body._v).toBe(1);
+    expect(body.items).toEqual([]);
+  });
+
+  test("returns 200 with created runs listed", async () => {
+    // Create two runs
+    const req1 = new Request("http://localhost/v1/setup/runs", {
+      method: "POST",
+      body: JSON.stringify({ abs_path: "/test/project-a" }),
+    });
+    const created1 = await (await createSetupRun(req1, deps)).json();
+
+    const req2 = new Request("http://localhost/v1/setup/runs", {
+      method: "POST",
+      body: JSON.stringify({ abs_path: "/test/project-b", mode: "orchestrator" }),
+    });
+    const created2 = await (await createSetupRun(req2, deps)).json();
+
+    const listReq = new Request("http://localhost/v1/setup/runs");
+    const res = listSetupRuns(listReq, deps);
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.items).toHaveLength(2);
+    expect(body.items.map((r: { id: string }) => r.id)).toContain(created1.id);
+    expect(body.items.map((r: { id: string }) => r.id)).toContain(created2.id);
+  });
+
+  test("each listed item has required envelope fields", async () => {
+    const createReq = new Request("http://localhost/v1/setup/runs", {
+      method: "POST",
+      body: JSON.stringify({ abs_path: "/test/project" }),
+    });
+    await createSetupRun(createReq, deps);
+
+    const listReq = new Request("http://localhost/v1/setup/runs");
+    const res = listSetupRuns(listReq, deps);
+    const body = await res.json();
+    const item = body.items[0];
+    expect(item._v).toBe(1);
+    expect(item.id).toBeDefined();
+    expect(item.abs_path).toBe("/test/project");
+    expect(item.status).toBe("active");
+    expect(item.phase).toBe("discovery");
+    expect(item.verdict).toBe("unresolved");
+    expect(item.non_interactive).toBe(false);
+    expect(item.events_url).toContain(`/v1/setup/runs/${item.id}/events`);
+    expect(item.chapters_url).toContain(`/v1/setup/runs/${item.id}/chapters`);
+  });
+});
+
 describe("getSetupRun", () => {
   let tmp: string;
   let deps: SetupDeps;
