@@ -133,7 +133,7 @@ export async function checkProjectGate(
   config: ProjectGateConfig,
   probes: SchedulerProbes,
 ): Promise<{ ok: true } | GateDenied> {
-  if (config.concurrencyCap > 0 && activePermitsInProject >= config.concurrencyCap) {
+  if (config.concurrencyCap > 0 && activePermitsInProject > config.concurrencyCap) {
     return {
       ok: false,
       reason: "project_concurrency_cap_exceeded",
@@ -148,7 +148,7 @@ export async function checkProjectGate(
   if (config.dailyCostCapCents > 0) {
     const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
     const sample = await probes.projectDailyCost?.(projectId, today);
-    if (sample && sample.costUsdCents >= config.dailyCostCapCents) {
+    if (sample && sample.costUsdCents > config.dailyCostCapCents) {
       return {
         ok: false,
         reason: "project_daily_cost_cap_exceeded",
