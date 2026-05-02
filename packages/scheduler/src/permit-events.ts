@@ -1,20 +1,48 @@
 import type { EventWriter } from "@aloop/state-sqlite";
-import type { PermitDecision } from "./decisions.ts";
+import type { PermitDecision, PermitOwner } from "./decisions.ts";
+
+export type PermitGrantEvent = {
+  readonly permitId: string;
+  readonly owner: PermitOwner;
+  readonly providerId: string;
+  readonly ttlSeconds: number;
+  readonly grantedAt: string;
+  readonly expiresAt: string;
+};
+
+export type PermitReleaseEvent = {
+  readonly permitId: string;
+  readonly owner: PermitOwner;
+};
+
+export type PermitExpiredEvent = {
+  readonly permitId: string;
+  readonly owner: PermitOwner;
+};
+
+export type PermitDenyEvent = {
+  readonly owner: PermitOwner;
+  readonly reason: string;
+  readonly gate: string;
+  readonly details: Record<string, unknown>;
+  readonly retryAfterSeconds?: number;
+};
+
+/** Serialise a PermitOwner to snake_case event fields. */
+function ownerToFields(owner: PermitOwner): Record<string, string> {
+  if ("sessionId" in owner) return { session_id: owner.sessionId };
+  if ("researchRunId" in owner) return { research_run_id: owner.researchRunId };
+  if ("composerTurnId" in owner) return { composer_turn_id: owner.composerTurnId };
+  return { control_subagent_run_id: (owner as { controlSubagentRunId: string }).controlSubagentRunId };
+}
 
 export async function appendPermitGrant(
   events: EventWriter,
-  input: {
-    permitId: string;
-    sessionId: string;
-    providerId: string;
-    ttlSeconds: number;
-    grantedAt: string;
-    expiresAt: string;
-  },
+  input: PermitGrantEvent,
 ): Promise<void> {
   await events.append("scheduler.permit.grant", {
     permit_id: input.permitId,
-    session_id: input.sessionId,
+    ...ownerToFields(input.owner),
     provider_id: input.providerId,
     ttl_seconds: input.ttlSeconds,
     granted_at: input.grantedAt,
@@ -24,37 +52,31 @@ export async function appendPermitGrant(
 
 export async function appendPermitRelease(
   events: EventWriter,
-  input: { permitId: string; sessionId: string },
+  input: PermitReleaseEvent,
 ): Promise<void> {
   await events.append("scheduler.permit.release", {
     permit_id: input.permitId,
-    session_id: input.sessionId,
+    ...ownerToFields(input.owner),
   });
 }
 
 export async function appendPermitExpired(
   events: EventWriter,
-  input: { permitId: string; sessionId: string },
+  input: PermitExpiredEvent,
 ): Promise<void> {
   await events.append("scheduler.permit.expired", {
     permit_id: input.permitId,
-    session_id: input.sessionId,
+    ...ownerToFields(input.owner),
   });
 }
 
 export async function appendPermitDeny(
   events: EventWriter,
-  input: {
-    sessionId: string;
-    reason: string;
-    gate: string;
-    details: Record<string, unknown>;
-    retryAfterSeconds?: number;
-  },
+  input: PermitDenyEvent,
 ): Promise<PermitDecision> {
   try {
     await events.append("scheduler.permit.deny", {
-      session_id: input.sessionId,
+      ...ownerToFields(input.owner),
       reason: input.reason,
       gate: input.gate,
       details: input.details,

@@ -63,16 +63,29 @@ export async function handleScheduler(
     if ("error" in parsed) return parsed.error;
 
     const sessionId = asNonEmptyString(parsed.data.session_id);
+    const researchRunId = asNonEmptyString(parsed.data.research_run_id);
+    const composerTurnId = asNonEmptyString(parsed.data.composer_turn_id);
+    const controlSubagentRunId = asNonEmptyString(parsed.data.control_subagent_run_id);
     const providerCandidate = asNonEmptyString(parsed.data.provider_candidate);
     const ttlSeconds = asPositiveInt(parsed.data.ttl_seconds);
     const estimatedCostUsd = asNonNegativeFloat(parsed.data.estimated_cost_usd);
-    if (!sessionId) return badRequest("session_id is required");
+
+    const ownerCount =
+      (sessionId ? 1 : 0) +
+      (researchRunId ? 1 : 0) +
+      (composerTurnId ? 1 : 0) +
+      (controlSubagentRunId ? 1 : 0);
+    if (ownerCount === 0) return badRequest("one of session_id, research_run_id, composer_turn_id, or control_subagent_run_id is required");
+    if (ownerCount > 1) return badRequest("only one of session_id, research_run_id, composer_turn_id, or control_subagent_run_id may be provided");
     if (!providerCandidate) return badRequest("provider_candidate is required");
     if (ttlSeconds === "invalid") return badRequest("ttl_seconds must be a positive integer");
     if (estimatedCostUsd === "invalid") return badRequest("estimated_cost_usd must be a non-negative number");
 
     const decision = await deps.scheduler.acquirePermit({
-      sessionId,
+      ...(sessionId ? { sessionId } : {}),
+      ...(researchRunId ? { researchRunId } : {}),
+      ...(composerTurnId ? { composerTurnId } : {}),
+      ...(controlSubagentRunId ? { controlSubagentRunId } : {}),
       providerCandidate,
       ...(typeof ttlSeconds === "number" ? { ttlSeconds } : {}),
       ...(typeof estimatedCostUsd === "number" ? { estimatedCostUsd } : {}),

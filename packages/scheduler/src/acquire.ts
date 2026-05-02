@@ -8,6 +8,7 @@ import {
 import type {
   AcquirePermitInput,
   PermitDecision,
+  PermitOwner,
   SchedulerConfigView,
 } from "./decisions.ts";
 import {
@@ -23,14 +24,33 @@ export type AcquirePermitDeps = {
   readonly probes: SchedulerProbes;
 };
 
+/** Extract the PermitOwner discriminant from an AcquirePermitInput. */
+function ownerFrom(input: AcquirePermitInput): PermitOwner {
+  if ("sessionId" in input) return { sessionId: input.sessionId };
+  if ("researchRunId" in input) return { researchRunId: input.researchRunId };
+  if ("composerTurnId" in input) return { composerTurnId: input.composerTurnId };
+  return { controlSubagentRunId: (input as { controlSubagentRunId: string }).controlSubagentRunId };
+}
+
+/** Primary ID string for a PermitOwner (used as lookup key in gates/probes). */
+function primaryId(owner: PermitOwner): string {
+  if ("sessionId" in owner) return owner.sessionId;
+  if ("researchRunId" in owner) return owner.researchRunId;
+  if ("composerTurnId" in owner) return owner.composerTurnId;
+  return (owner as { controlSubagentRunId: string }).controlSubagentRunId;
+}
+
 export async function acquirePermitDecision(
   deps: AcquirePermitDeps,
   input: AcquirePermitInput,
 ): Promise<PermitDecision> {
+  const owner = ownerFrom(input);
+  const primaryKey = primaryId(owner);
+
   const overrideDecision = applyOverrides(input.providerCandidate, deps.config.overrides());
   if (!overrideDecision.ok) {
     return appendPermitDeny(deps.events, {
-      sessionId: input.sessionId,
+      owner,
       reason: overrideDecision.reason,
       gate: "overrides",
       details: overrideDecision.details,
@@ -41,7 +61,7 @@ export async function acquirePermitDecision(
   const active = deps.permits.countActive();
   if (active >= cap) {
     return appendPermitDeny(deps.events, {
-      sessionId: input.sessionId,
+      owner,
       reason: "concurrency_cap_reached",
       gate: "concurrency",
       details: {
@@ -57,7 +77,7 @@ export async function acquirePermitDecision(
   );
   if (!systemGate.ok) {
     return appendPermitDeny(deps.events, {
-      sessionId: input.sessionId,
+      owner,
       reason: systemGate.reason,
       gate: "system",
       details: systemGate.details,
@@ -67,7 +87,7 @@ export async function acquirePermitDecision(
   const quota = await deps.probes.providerQuota?.(overrideDecision.providerId);
   if (quota && !quota.ok) {
     return appendPermitDeny(deps.events, {
-      sessionId: input.sessionId,
+      owner,
       reason: quota.reason ?? "provider_quota_exceeded",
       gate: "provider",
       details: {
@@ -82,17 +102,17 @@ export async function acquirePermitDecision(
     });
   }
 
-  const burn = await deps.probes.burnRate?.(input.sessionId);
+  const burn = await deps.probes.burnRate?.(primaryKey);
   if (burn) {
     const burnGate = await checkBurnRateGate(
       deps.events,
-      input.sessionId,
+      primaryKey,
       burn,
       deps.config.scheduler().burnRate,
     );
     if (!burnGate.ok) {
       return appendPermitDeny(deps.events, {
-        sessionId: input.sessionId,
+        owner,
         reason: "burn_rate_exceeded",
         gate: "burn_rate",
         details: burnGate.details,
@@ -112,7 +132,7 @@ export async function acquirePermitDecision(
 
   await appendPermitGrant(deps.events, {
     permitId,
-    sessionId: input.sessionId,
+    owner,
     providerId: overrideDecision.providerId,
     ttlSeconds,
     grantedAt,

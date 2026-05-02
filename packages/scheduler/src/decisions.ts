@@ -9,9 +9,19 @@ export type SchedulerConfigView = {
   updateLimits(rawPatch: Record<string, unknown>): Promise<LimitsUpdateResult>;
 };
 
-export type AcquirePermitInput = {
-  readonly sessionId: string;
-  /** The project this session belongs to. Used for project-gate evaluation. */
+/**
+ * The owner of a scheduler permit. Exactly one of these four fields must be set.
+ * A permit may be owned by an implementation session, an incubation research run,
+ * a composer turn, or a scoped control subagent run.
+ */
+export type PermitOwner =
+  | { readonly sessionId: string; readonly researchRunId?: undefined; readonly composerTurnId?: undefined; readonly controlSubagentRunId?: undefined }
+  | { readonly sessionId?: undefined; readonly researchRunId: string; readonly composerTurnId?: undefined; readonly controlSubagentRunId?: undefined }
+  | { readonly sessionId?: undefined; readonly researchRunId?: undefined; readonly composerTurnId: string; readonly controlSubagentRunId?: undefined }
+  | { readonly sessionId?: undefined; readonly researchRunId?: undefined; readonly composerTurnId?: undefined; readonly controlSubagentRunId: string };
+
+export type AcquirePermitInput = PermitOwner & {
+  /** The project this owner belongs to. Used for project-gate evaluation. */
   readonly projectId: string | null;
   readonly providerCandidate: string;
   readonly ttlSeconds?: number;
