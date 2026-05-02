@@ -66,9 +66,7 @@ describe("SetupStore", () => {
     });
   });
 
-  // NOTE: list() has a pre-existing bug — readdirSync is called but never imported from "node:fs".
-  // These tests are skipped until that bug is fixed in setup-store.ts.
-  describe.skip("list", () => {
+  describe("list", () => {
     test("returns empty array when no runs exist", () => {
       expect(store.list()).toEqual([]);
     });
