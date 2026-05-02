@@ -11,6 +11,7 @@ function makeDeps() {
       });
     },
     handleMetrics: () => undefined,
+    handleMetricsAggregates: () => undefined,
     handleProjects: (req: Request, pathname: string) => {
       if (req.method !== "GET" || pathname !== "/v1/projects") return undefined;
       return new Response(JSON.stringify({ _v: 1, items: [] }), {
@@ -145,6 +146,7 @@ describe("makeFetchHandler dispatch order", () => {
         return undefined;
       },
       handleMetrics: () => undefined,
+      handleMetricsAggregates: () => undefined,
       handleProjects: (req: Request, pathname: string) => {
         if (pathname === "/v1/projects") {
           return new Response(JSON.stringify({ _v: 1, handler: "projects" }), {
