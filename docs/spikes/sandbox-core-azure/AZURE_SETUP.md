@@ -381,6 +381,8 @@ Estimated monthly baseline if one session-equivalent stays up `24/7`:
 
 With `readySessionInstances=1`, treat this as the approximate always-on baseline. Multiply linearly for more continuously warm capacity.
 
+For a normalized comparison against hosted sandbox alternatives, see `PRICING_COMPARISON.md`. The short version: Azure is competitive for a continuously warm `2 vCPU / 4 GiB` sandbox. It is cheaper than E2B, Daytona, Modal, Runloop, and Vercel on the documented always-warm baseline; Cloudflare and Freestyle can be cheaper for specific idle-heavy or paused workloads, but Azure keeps the strongest security/identity fit for the first hosted backend.
+
 ## Phase 4: Verification Checklist
 
 ```bash

@@ -19,6 +19,7 @@ This directory contains the complete proof-of-concept setup for running aloop sa
 |------|---------|
 | `SPIKE_PLAN.md` | Full spike plan: scope, phases, risks, estimates |
 | `AZURE_SETUP.md` | Detailed Azure setup guide with security considerations |
+| `PRICING_COMPARISON.md` | Azure cost baseline compared with hosted sandbox alternatives |
 | `run-setup.sh` | Orchestrated setup script (Phases 1–3 automated) |
 | `submit-job.sh` | Submit a sandbox job to Container Apps |
 | `poll-job.sh` | Poll for job completion and retrieve results |
