@@ -28,6 +28,7 @@ export { type EventStore } from "./events/store.ts";
 export {
   makeEvent,
   makeIdGenerator,
+  type AgentChunkData,
   type EventEnvelope,
   type SessionKind,
   type SessionStatus,

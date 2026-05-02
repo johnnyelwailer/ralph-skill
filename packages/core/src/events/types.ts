@@ -72,3 +72,39 @@ export function makeEvent<T>(
     data,
   };
 }
+
+/**
+ * Canonical payload shape for `agent.chunk` events persisted to JSONL.
+ *
+ * Spec: docs/spec/observability.md §agent.chunk payload shape.
+ * The `content` discriminated union covers all five chunk variants:
+ *   text / reasoning  — delta string, final=true carries optional summary
+ *   usage            — tokens + cost_usd
+ *   error            — error string
+ *   result           — submit payload (arbitrary)
+ */
+export type AgentChunkData = {
+  readonly session_id: string;
+  readonly turn_id: string;
+  /** Set when this turn belongs to an orchestrator session. */
+  readonly parent_id?: string;
+  /** Monotonically increasing per turn. */
+  readonly sequence: number;
+  readonly type: "text" | "reasoning" | "usage" | "error" | "result";
+  readonly content: {
+    /** For type=text or type=reasoning. */
+    readonly delta?: string;
+    /** Present on the final chunk of a turn. */
+    readonly summary?: string;
+    /** For type=usage. */
+    readonly tokens?: number;
+    /** For type=usage. */
+    readonly cost_usd?: number;
+    /** For type=error. */
+    readonly error?: string;
+    /** For type=result — the submit payload. */
+    readonly result?: unknown;
+  };
+  /** True = last chunk for this turn. */
+  readonly final: boolean;
+};
