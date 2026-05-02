@@ -3,9 +3,15 @@ import type { Permit } from "@aloop/state-sqlite";
 
 export type { ProviderOverrides, SchedulerLimits };
 
+export type ProjectLimits = {
+  readonly concurrencyCap?: number;
+  readonly dailyCostCapCents?: number;
+};
+
 export type SchedulerConfigView = {
   scheduler(): SchedulerLimits;
   overrides(): ProviderOverrides;
+  projectLimits(projectId: string): ProjectLimits;
   updateLimits(rawPatch: Record<string, unknown>): Promise<LimitsUpdateResult>;
 };
 

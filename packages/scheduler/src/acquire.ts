@@ -120,6 +120,45 @@ export async function acquirePermitDecision(
     }
   }
 
+  // Project-level gates — only evaluated when projectId is set
+  if (input.projectId != null) {
+    const limits = deps.config.projectLimits(input.projectId);
+
+    // Project concurrency cap
+    if (limits.concurrencyCap != null) {
+      const activeInProject = deps.permits.countByProject(input.projectId);
+      if (activeInProject >= limits.concurrencyCap) {
+        return appendPermitDeny(deps.events, {
+          owner,
+          reason: "project_concurrency_cap_exceeded",
+          gate: "project",
+          details: {
+            project_id: input.projectId,
+            active_permits: activeInProject,
+            concurrency_cap: limits.concurrencyCap,
+          },
+        });
+      }
+    }
+
+    // Project daily cost cap
+    if (limits.dailyCostCapCents != null) {
+      const dailyCostProbe = deps.probes.projectDailyCost?.(input.projectId);
+      if (dailyCostProbe && dailyCostProbe.costUsdCents > limits.dailyCostCapCents) {
+        return appendPermitDeny(deps.events, {
+          owner,
+          reason: "project_daily_cost_cap_exceeded",
+          gate: "project",
+          details: {
+            project_id: input.projectId,
+            cost_usd_cents: dailyCostProbe.costUsdCents,
+            daily_cost_cap_cents: limits.dailyCostCapCents,
+          },
+        });
+      }
+    }
+  }
+
   const scheduler = deps.config.scheduler();
   const ttlSeconds = resolvePermitTtl(
     input.ttlSeconds,

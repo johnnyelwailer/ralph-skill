@@ -94,7 +94,7 @@ export class SetupStore {
     return runs.sort((a, b) => {
       const cmp = b.updatedAt.localeCompare(a.updatedAt);
       if (cmp !== 0) return cmp;
-      return b.id.localeCompare(a.id);
+      return a.id.localeCompare(b.id);
     });
   }
 

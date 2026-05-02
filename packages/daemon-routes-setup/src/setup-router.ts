@@ -77,7 +77,7 @@ export function handleSetup(
   {
     const match = pathname.match(/^\/v1\/setup\/runs\/([^/]+)\/resume$/);
     if (match && req.method === "POST") {
-      return resumeSetupRun(match[1]!, req, deps);
+      return resumeSetupRun(match[1]!, deps);
     }
   }
 
