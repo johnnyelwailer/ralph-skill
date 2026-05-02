@@ -17,13 +17,16 @@ class MockEventWriter {
 class MockPermitRegistry {
   private _permits = new Map<string, Permit>();
   private _countActiveResult = 0;
+  private _countByProjectResults: Record<string, number> = {};
 
   get(id: string): Permit | undefined { return this._permits.get(id); }
   list(): Permit[] { return [...this._permits.values()]; }
   listExpired(): Permit[] { return []; }
   countActive(): number { return this._countActiveResult; }
+  countByProject(projectId: string): number { return this._countByProjectResults[projectId] ?? 0; }
 
   setCountActive(n: number) { this._countActiveResult = n; }
+  setCountByProject(projectId: string, n: number) { this._countByProjectResults[projectId] = n; }
   addPermit(permit: Permit) { this._permits.set(permit.id, permit); }
 }
 
@@ -43,6 +46,7 @@ function makeConfig(overrides: Partial<{
       burnRate: overrides.burnRate ?? { maxTokensSinceCommit: 2_000_000, minCommitsPerHour: 2 },
     }),
     overrides: () => ({ allow: null, deny: null, force: null }),
+    projectLimits: (_projectId: string) => ({}),
     updateLimits: () => Promise.resolve({ ok: true, limits: { concurrencyCap: 3, permitTtlDefaultSeconds: 600, permitTtlMaxSeconds: 3600, systemLimits: { cpuMaxPct: 80, memMaxPct: 85, loadMax: 4.0 }, burnRate: { maxTokensSinceCommit: 2_000_000, minCommitsPerHour: 2 } } }),
   };
 }
@@ -51,11 +55,13 @@ function makeProbes(overrides: Partial<{
   systemSample: SchedulerProbes["systemSample"];
   providerQuota: SchedulerProbes["providerQuota"];
   burnRate: SchedulerProbes["burnRate"];
+  projectDailyCost: SchedulerProbes["projectDailyCost"];
 }> = {}): SchedulerProbes {
   return {
     systemSample: overrides.systemSample ?? (() => ({ cpuPct: 10, memPct: 20, loadAvg: 0.5 })),
     providerQuota: overrides.providerQuota,
     burnRate: overrides.burnRate,
+    projectDailyCost: overrides.projectDailyCost,
   };
 }
 
@@ -87,7 +93,7 @@ function makeDeps(
   } as AcquirePermitDeps;
 }
 
-const BASE_INPUT = { sessionId: "s_test_01", providerCandidate: "opencode" };
+const BASE_INPUT = { sessionId: "s_test_01", providerCandidate: "opencode", projectId: null };
 
 // ─── override denial ───────────────────────────────────────────────────────────
 
@@ -515,5 +521,126 @@ describe("TTL resolution", () => {
     expect(result.granted).toBe(true);
     const grantEvent = events.events.find(e => e.topic === "scheduler.permit.grant");
     expect((grantEvent as { data: { ttl_seconds: number } }).data.ttl_seconds).toBe(300);
+  });
+});
+
+// ─── project gate ────────────────────────────────────────────────────────────
+
+describe("project gate", () => {
+  // BASE_INPUT has projectId: null, so project gate is never evaluated.
+  // Use a PROJECT_INPUT to exercise the project gate path.
+  const PROJECT_INPUT = { sessionId: "s_proj_01", providerCandidate: "opencode", projectId: "proj_test_1" };
+
+  test("skips project gate when projectId is null", async () => {
+    const permits = new MockPermitRegistry();
+    // Even with a restrictive project config, null projectId should bypass
+    const deps = makeDeps({
+      permits,
+      config: makeConfig({
+        // This would deny if evaluated: concurrencyCap=1 but project has 99 active permits
+      }),
+    });
+    // Override projectLimits to return a restrictive config — but it should never be called
+    // because projectId is null, so the gate is skipped entirely.
+    (deps.config as { projectLimits: (id: string) => { concurrencyCap: number } }).projectLimits = (id: string) => {
+      throw new Error("projectLimits should not be called when projectId is null");
+    };
+
+    const result = await acquirePermitDecision(deps, BASE_INPUT);
+    expect(result.granted).toBe(true);
+  });
+
+  test("denies when project concurrency cap is exceeded", async () => {
+    const permits = new MockPermitRegistry();
+    permits.setCountByProject("proj_test_1", 5); // 5 active in project
+
+    const deps = makeDeps({
+      permits,
+      config: makeConfig(),
+    });
+    // Override projectLimits to return a concurrency cap of 3
+    (deps.config as { projectLimits: (id: string) => { concurrencyCap: number } }).projectLimits = (id: string) => ({
+      concurrencyCap: 3,
+    });
+
+    const result = await acquirePermitDecision(deps, PROJECT_INPUT);
+
+    expect(result.granted).toBe(false);
+    expect(result.gate).toBe("project");
+    expect((result as { reason: string }).reason).toBe("project_concurrency_cap_exceeded");
+    expect((result as { details: { project_id: string; active_permits: number; concurrency_cap: number } }).details.project_id).toBe("proj_test_1");
+    expect((result as { details: { active_permits: number; concurrency_cap: number } }).details.active_permits).toBe(5);
+    expect((result as { details: { active_permits: number; concurrency_cap: number } }).details.concurrency_cap).toBe(3);
+  });
+
+  test("allows when project concurrency is below cap", async () => {
+    const permits = new MockPermitRegistry();
+    permits.setCountByProject("proj_test_1", 2); // 2 active in project, cap is 5
+
+    const deps = makeDeps({
+      permits,
+      config: makeConfig(),
+    });
+    (deps.config as { projectLimits: (id: string) => { concurrencyCap: number } }).projectLimits = (id: string) => ({
+      concurrencyCap: 5,
+    });
+
+    const result = await acquirePermitDecision(deps, PROJECT_INPUT);
+
+    expect(result.granted).toBe(true);
+  });
+
+  test("allows when project has no limits configured", async () => {
+    const permits = new MockPermitRegistry();
+    permits.setCountByProject("proj_test_1", 999);
+
+    const deps = makeDeps({
+      permits,
+      config: makeConfig(),
+    });
+    // projectLimits returns empty config — no caps enforced
+    (deps.config as { projectLimits: (id: string) => Record<string, never> }).projectLimits = () => ({});
+
+    const result = await acquirePermitDecision(deps, PROJECT_INPUT);
+
+    expect(result.granted).toBe(true);
+  });
+
+  test("denies when project daily cost cap is exceeded", async () => {
+    const permits = new MockPermitRegistry();
+    const deps = makeDeps({
+      permits,
+      config: makeConfig(),
+      probes: makeProbes({
+        projectDailyCost: () => ({ costUsdCents: 500, tokens: 1_000_000 }),
+      }),
+    });
+    (deps.config as { projectLimits: (id: string) => { dailyCostCapCents: number } }).projectLimits = () => ({
+      dailyCostCapCents: 300,
+    });
+
+    const result = await acquirePermitDecision(deps, PROJECT_INPUT);
+
+    expect(result.granted).toBe(false);
+    expect(result.gate).toBe("project");
+    expect((result as { reason: string }).reason).toBe("project_daily_cost_cap_exceeded");
+  });
+
+  test("allows when project daily cost is below cap", async () => {
+    const permits = new MockPermitRegistry();
+    const deps = makeDeps({
+      permits,
+      config: makeConfig(),
+      probes: makeProbes({
+        projectDailyCost: () => ({ costUsdCents: 100, tokens: 200_000 }),
+      }),
+    });
+    (deps.config as { projectLimits: (id: string) => { dailyCostCapCents: number } }).projectLimits = () => ({
+      dailyCostCapCents: 300,
+    });
+
+    const result = await acquirePermitDecision(deps, PROJECT_INPUT);
+
+    expect(result.granted).toBe(true);
   });
 });
