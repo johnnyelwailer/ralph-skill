@@ -1,9 +1,13 @@
-import { isMapping, loadYamlFile } from "@aloop/config-schema-utils";
+import {
+  isMapping,
+  loadYamlFile,
+} from "@aloop/config-schema-utils";
 import type { ParseResult } from "@aloop/core";
 import { writeFileSync } from "node:fs";
 import { stringify as yamlStringify } from "yaml";
 import { DAEMON_DEFAULTS, type DaemonConfig } from "./daemon-types.ts";
 import {
+  mergeContexts,
   mergeFeatures,
   mergeHttp,
   mergeLogging,
@@ -14,7 +18,15 @@ import {
 
 export { DAEMON_DEFAULTS, type DaemonConfig };
 
-const TOP_LEVEL_KEYS = ["http", "scheduler", "watchdog", "retention", "logging", "features"] as const;
+const TOP_LEVEL_KEYS = [
+  "http",
+  "scheduler",
+  "watchdog",
+  "retention",
+  "logging",
+  "features",
+  "contexts",
+] as const;
 
 /** Load daemon.yml from disk. Missing file → returns DEFAULTS (typed ok). */
 export function loadDaemonConfig(path: string): ParseResult<DaemonConfig> {
@@ -51,6 +63,7 @@ export function parseDaemonConfig(raw: unknown): ParseResult<DaemonConfig> {
     retention: mergeRetention(raw.retention, errors),
     logging: mergeLogging(raw.logging, errors),
     features: mergeFeatures(raw.features, errors),
+    contexts: mergeContexts(raw.contexts, errors),
   };
 
   if (errors.length > 0) return { ok: false, errors };
@@ -103,5 +116,15 @@ export function daemonConfigToRaw(config: DaemonConfig): Record<string, unknown>
     features: {
       daemon_config_write: config.features?.daemonConfigWrite ?? false,
     },
+    contexts: Object.fromEntries(
+      Object.entries(config.contexts).map(([k, v]) => [
+        k,
+        {
+          provider: v.provider,
+          budget_tokens: v.budgetTokens,
+          include_sources: v.includeSources,
+        },
+      ]),
+    ),
   };
 }

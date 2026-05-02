@@ -5,6 +5,7 @@ export {
 } from "./compile/pipeline.ts";
 export type {
   AffectsCompletedWork,
+  ContextId,
   LoopPlan,
   ParseResult,
   PipelineConfig,
@@ -14,6 +15,15 @@ export type {
   SteeringQueueEntry,
   TransitionKeyword,
 } from "./compile/types.ts";
+export type {
+  ContextBlock,
+  ContextCapabilities,
+  ContextInput,
+  ContextPlugin,
+  ContextProviderManifest,
+  SourceRef,
+  TurnObservation,
+} from "./context/types.ts";
 export { type EventStore } from "./events/store.ts";
 export {
   makeEvent,

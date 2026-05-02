@@ -46,6 +46,27 @@ export type DaemonConfig = {
     /** Enable PUT /v1/daemon/config — write daemon config at runtime (hot-reload). Default: false. */
     readonly daemonConfigWrite: boolean;
   };
+  /**
+   * Context plugin registry. Maps prompt-facing context ids (e.g. "orch_recall")
+   * to their backing provider manifests and default parameters.
+   *
+   * Project pipelines declare `context: orch_recall`; the daemon resolves each
+   * id through this map to find the actual context-provider manifest to invoke.
+   */
+  readonly contexts: Readonly<Record<string, ContextConfig>>;
+};
+
+/**
+ * Per-context-id configuration. References a context-provider runtime extension
+ * manifest and carries default parameters overridable per-pipeline-phase.
+ */
+export type ContextConfig = {
+  /** Path to the context-provider manifest (YAML), relative to the project root. */
+  readonly provider: string;
+  /** Default token budget for this context when not overridden in pipeline frontmatter. */
+  readonly budgetTokens: number;
+  /** Whether to include source citations in rendered context blocks. Default: true. */
+  readonly includeSources: boolean;
 };
 
 export const DAEMON_DEFAULTS: DaemonConfig = {
@@ -69,4 +90,5 @@ export const DAEMON_DEFAULTS: DaemonConfig = {
   },
   logging: { level: "info" },
   features: { daemonConfigWrite: false },
+  contexts: {},
 };

@@ -7,6 +7,7 @@ import {
   loadDaemonConfig,
 } from "./daemon.ts";
 import {
+  mergeContexts,
   mergeHttp,
   mergeWatchdog,
   mergeRetention,
@@ -307,5 +308,230 @@ describe("mergeLogging", () => {
     const result = mergeLogging({ level: { actual: "debug" } }, errors);
     expect(result.level).toBe(def.level);
     expect(errors.some((e) => e.includes("logging.level"))).toBe(true);
+  });
+});
+
+describe("mergeContexts", () => {
+  const def = DAEMON_DEFAULTS.contexts;
+
+  test("returns defaults when input is undefined", () => {
+    const errors: string[] = [];
+    const result = mergeContexts(undefined, errors);
+    expect(result).toBe(def);
+    expect(errors).toHaveLength(0);
+  });
+
+  test("returns defaults and adds error when input is not a mapping", () => {
+    const errors: string[] = [];
+    const result = mergeContexts("not a mapping" as unknown, errors);
+    expect(result).toBe(def);
+    expect(errors).toContain("contexts: must be a mapping of context_id → config");
+  });
+
+  test("accepts a valid context entry", () => {
+    const errors: string[] = [];
+    const result = mergeContexts(
+      {
+        orch_recall: {
+          provider: "CONTEXT_orch-recall.yml",
+          budget_tokens: 8000,
+          include_sources: true,
+        },
+      },
+      errors,
+    );
+    expect(result).toHaveProperty("orch_recall");
+    expect(result["orch_recall"]).toEqual({
+      provider: "CONTEXT_orch-recall.yml",
+      budgetTokens: 8000,
+      includeSources: true,
+    });
+    expect(errors).toHaveLength(0);
+  });
+
+  test("accepts camelCase variant (budgetTokens, includeSources)", () => {
+    const errors: string[] = [];
+    const result = mergeContexts(
+      {
+        task_recall: {
+          provider: "CONTEXT_task-recall.yml",
+          budgetTokens: 5000,
+          includeSources: false,
+        },
+      },
+      errors,
+    );
+    expect(result["task_recall"]).toEqual({
+      provider: "CONTEXT_task-recall.yml",
+      budgetTokens: 5000,
+      includeSources: false,
+    });
+    expect(errors).toHaveLength(0);
+  });
+
+  test("defaults budgetTokens to 6000 and includeSources to true", () => {
+    const errors: string[] = [];
+    const result = mergeContexts(
+      {
+        story_recall: {
+          provider: "CONTEXT_story-recall.yml",
+        },
+      },
+      errors,
+    );
+    expect(result["story_recall"]).toEqual({
+      provider: "CONTEXT_story-recall.yml",
+      budgetTokens: 6000,
+      includeSources: true,
+    });
+    expect(errors).toHaveLength(0);
+  });
+
+  test("rejects null context entry", () => {
+    const errors: string[] = [];
+    const result = mergeContexts(
+      {
+        orch_recall: null,
+      } as unknown,
+      errors,
+    );
+    expect(result).not.toHaveProperty("orch_recall");
+    expect(errors).toContain("contexts.orch_recall: must not be null");
+  });
+
+  test("rejects non-mapping context entry", () => {
+    const errors: string[] = [];
+    const result = mergeContexts(
+      {
+        orch_recall: ["not", "a", "mapping"],
+      } as unknown,
+      errors,
+    );
+    expect(errors).toContain("contexts.orch_recall: must be a mapping");
+  });
+
+  test("rejects missing provider field", () => {
+    const errors: string[] = [];
+    const result = mergeContexts(
+      {
+        orch_recall: {
+          budget_tokens: 8000,
+        },
+      } as unknown,
+      errors,
+    );
+    expect(errors).toContain("contexts.orch_recall.provider: must be a non-empty string");
+  });
+
+  test("rejects empty provider string", () => {
+    const errors: string[] = [];
+    const result = mergeContexts(
+      {
+        orch_recall: {
+          provider: "",
+          budget_tokens: 8000,
+        },
+      },
+      errors,
+    );
+    expect(errors).toContain("contexts.orch_recall.provider: must be a non-empty string");
+  });
+
+  test("rejects invalid budgetTokens (string)", () => {
+    const errors: string[] = [];
+    const result = mergeContexts(
+      {
+        orch_recall: {
+          provider: "CONTEXT_orch-recall.yml",
+          budget_tokens: "not a number",
+        },
+      },
+      errors,
+    );
+    expect(errors.some((e) => e.includes("budget_tokens"))).toBe(true);
+  });
+
+  test("rejects negative budgetTokens", () => {
+    const errors: string[] = [];
+    const result = mergeContexts(
+      {
+        orch_recall: {
+          provider: "CONTEXT_orch-recall.yml",
+          budget_tokens: -100,
+        },
+      },
+      errors,
+    );
+    expect(errors.some((e) => e.includes("budget_tokens"))).toBe(true);
+  });
+
+  test("rejects zero budgetTokens", () => {
+    const errors: string[] = [];
+    const result = mergeContexts(
+      {
+        orch_recall: {
+          provider: "CONTEXT_orch-recall.yml",
+          budget_tokens: 0,
+        },
+      },
+      errors,
+    );
+    expect(errors.some((e) => e.includes("budget_tokens"))).toBe(true);
+  });
+
+  test("includeSources is false for explicit boolean false", () => {
+    const errors: string[] = [];
+    const result = mergeContexts(
+      {
+        test_ctx: {
+          provider: "test.yml",
+          include_sources: false,
+        },
+      },
+      errors,
+    );
+    expect(result["test_ctx"].includeSources).toBe(false);
+    expect(errors).toHaveLength(0);
+  });
+
+  test("includeSources is true for any truthy value besides explicit false/0", () => {
+    const errors: string[] = [];
+    const result = mergeContexts(
+      {
+        test_ctx: {
+          provider: "test.yml",
+          include_sources: "yes",
+        },
+      },
+      errors,
+    );
+    expect(result["test_ctx"].includeSources).toBe(true);
+    expect(errors).toHaveLength(0);
+  });
+
+  test("collects multiple errors across multiple entries", () => {
+    const errors: string[] = [];
+    mergeContexts(
+      {
+        ctx_a: null,
+        ctx_b: { not_provider: "x" },
+        ctx_c: { provider: "" },
+      } as unknown,
+      errors,
+    );
+    expect(errors).toContain("contexts.ctx_a: must not be null");
+    expect(errors).toContain("contexts.ctx_b.provider: must be a non-empty string");
+    expect(errors).toContain("contexts.ctx_c.provider: must be a non-empty string");
+  });
+
+  test("returns frozen object", () => {
+    const errors: string[] = [];
+    const result = mergeContexts(
+      {
+        orch_recall: { provider: "x.yml" },
+      },
+      errors,
+    );
+    expect(Object.isFrozen(result)).toBe(true);
   });
 });
