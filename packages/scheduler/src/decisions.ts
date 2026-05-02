@@ -11,6 +11,8 @@ export type SchedulerConfigView = {
 
 export type AcquirePermitInput = {
   readonly sessionId: string;
+  /** The project this session belongs to. Used for project-gate evaluation. */
+  readonly projectId: string | null;
   readonly providerCandidate: string;
   readonly ttlSeconds?: number;
   /** Estimated USD cost of the turn, used for budget gate decisions. */

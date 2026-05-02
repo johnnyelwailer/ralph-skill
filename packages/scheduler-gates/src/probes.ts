@@ -20,6 +20,12 @@ export type BurnRateSample = {
   readonly commitsPerHour: number;
 };
 
+/** Per-project daily cost snapshot returned by the projectDailyCost probe. */
+export type ProjectDailyCostSample = {
+  readonly costUsdCents: number;
+  readonly tokens: number;
+};
+
 export type SchedulerProbes = {
   systemSample?: () => SystemSample;
   providerQuota?: (
@@ -28,6 +34,17 @@ export type SchedulerProbes = {
   burnRate?: (
     sessionId: string,
   ) => BurnRateSample | Promise<BurnRateSample | null> | null;
+  /**
+   * Returns per-project daily cost/token usage for the project a session belongs to.
+   * Called when a permit request arrives to evaluate the project-gate.
+   *
+   * @param projectId - the project the requesting session belongs to
+   * @param date      - YYYY-MM-DD date string for the daily bucket
+   */
+  projectDailyCost?: (
+    projectId: string,
+    date: string,
+  ) => ProjectDailyCostSample | Promise<ProjectDailyCostSample | null> | null;
 };
 
 export const DEFAULT_SCHEDULER_PROBES: Required<Pick<SchedulerProbes, "systemSample">> = {
