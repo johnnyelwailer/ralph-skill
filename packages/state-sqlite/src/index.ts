@@ -61,4 +61,22 @@ export {
   runProjector,
   type Projector,
 } from "./state/projector.ts";
+export {
+  IncubationItemNotFoundError,
+  IncubationItemRegistry,
+  IncubationProposalNotFoundError,
+  IncubationProposalRegistry,
+  OutreachPlanNotFoundError,
+  OutreachPlanRegistry,
+  ResearchMonitorNotFoundError,
+  ResearchMonitorRegistry,
+  ResearchRunNotFoundError,
+  ResearchRunRegistry,
+  type CreateIncubationItemInput,
+  type CreateIncubationProposalInput,
+  type CreateOutreachPlanInput,
+  type CreateResearchMonitorInput,
+  type CreateResearchRunInput,
+  type IncubationItemFilter,
+} from "./state/incubation.ts";
 export { createIdempotencyStore, type IdempotencyStore } from "./state/idempotency.ts";
