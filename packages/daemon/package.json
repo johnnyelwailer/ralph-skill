@@ -25,6 +25,7 @@
     "@aloop/daemon-routes": "workspace:*",
     "@aloop/daemon-routes-artifacts": "workspace:*",
     "@aloop/daemon-routes-providers": "workspace:*",
+    "@aloop/daemon-routes-incubation": "workspace:*",
     "@aloop/daemon-routes-setup": "workspace:*",
     "@aloop/daemon-routes-turns": "workspace:*",
     "@aloop/daemon-routes-triggers": "workspace:*",

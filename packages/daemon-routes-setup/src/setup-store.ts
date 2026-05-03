@@ -90,11 +90,11 @@ export class SetupStore {
         // corrupted — skip
       }
     }
-    // Most recently updated first; tiebreak by id for deterministic order (higher id = newer)
+    // Most recently updated first; tiebreak by createdAt ascending (older created = first)
     return runs.sort((a, b) => {
       const cmp = a.updatedAt.localeCompare(b.updatedAt);
       if (cmp !== 0) return -cmp;
-      return b.id.localeCompare(a.id, "en", { sensitivity: "base" });
+      return a.createdAt.localeCompare(b.createdAt);
     });
   }
 
