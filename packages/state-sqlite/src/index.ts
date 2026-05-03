@@ -72,11 +72,14 @@ export {
   ResearchMonitorRegistry,
   ResearchRunNotFoundError,
   ResearchRunRegistry,
+type CreateIncubationCommentInput,
   type CreateIncubationItemInput,
   type CreateIncubationProposalInput,
   type CreateOutreachPlanInput,
   type CreateResearchMonitorInput,
   type CreateResearchRunInput,
-  type IncubationItemFilter,
+  IncubationCommentNotFoundError,
+  IncubationCommentRegistry,
+  IncubationItemFilter,
 } from "./state/incubation.ts";
 export { createIdempotencyStore, type IdempotencyStore } from "./state/idempotency.ts";

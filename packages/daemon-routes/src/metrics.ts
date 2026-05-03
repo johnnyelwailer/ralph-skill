@@ -3,11 +3,17 @@ import type { SchedulerLimits } from "@aloop/scheduler-gates";
 import type { SchedulerProbes, SystemSample } from "@aloop/scheduler-gates";
 import type { Permit } from "@aloop/state-sqlite";
 import type { SchedulerService } from "@aloop/scheduler";
+import type { Database } from "bun:sqlite";
+import { badRequest, jsonResponse } from "./http-helpers.ts";
 
 export type MetricsDeps = {
   readonly scheduler: SchedulerService;
   readonly providerHealth: InMemoryProviderHealthStore;
   readonly systemSample: SchedulerProbes["systemSample"];
+};
+
+export type MetricsAggregatesDeps = {
+  readonly db: Database;
 };
 
 const CONTENT_TYPE = "text/plain; version=0.0.4; charset=utf-8";
@@ -211,6 +217,99 @@ function emitSystemMetrics(
   lines.push(
     `aloop_system_load_avg ${sample?.loadAvg ?? "NaN"}`,
   );
+}
+
+// ---------------------------------------------------------------------------
+// Metrics aggregates — GET /v1/metrics/aggregates
+// ---------------------------------------------------------------------------
+
+/**
+ * Handle GET /v1/metrics/aggregates.
+ *
+ * Queries the materialized `metric_aggregates` table with scope, window,
+ * group_by, and metrics filters. Returns the shape documented in api.md
+ * §Metrics.
+ */
+export async function handleMetricsAggregates(
+  req: Request,
+  deps: MetricsAggregatesDeps,
+  pathname: string,
+): Promise<Response | undefined> {
+  if (pathname !== "/v1/metrics/aggregates") return undefined;
+  if (req.method !== "GET") return undefined;
+
+  const url = new URL(req.url);
+  const scope = url.searchParams.get("scope");
+  const windowLabel = url.searchParams.get("window") ?? "all";
+  const groupByParam = url.searchParams.get("group_by") ?? "";
+  const metricsParam = url.searchParams.get("metrics") ?? "";
+
+  if (!scope) {
+    return badRequest("scope query parameter is required", { scope });
+  }
+
+  const groupBy = groupByParam ? groupByParam.split(",").map((s) => s.trim()) : [];
+  const requestedMetrics = metricsParam
+    ? metricsParam.split(",").map((s) => s.trim())
+    : [];
+
+  let sql = "SELECT * FROM metric_aggregates WHERE window_label = ?";
+  const params: (string | number | null)[] = [windowLabel];
+
+  sql += " AND scope = ?";
+  params.push(scope);
+
+  if (groupBy.length > 0) {
+    sql += " AND group_by = ?";
+    params.push(JSON.stringify(groupBy));
+  }
+
+  sql += " ORDER BY updated_at DESC";
+
+  const rows = deps.db
+    .query<{
+      id: string;
+      scope: string;
+      window_start: string;
+      window_end: string;
+      window_label: string;
+      group_by: string;
+      labels: string;
+      sample_size: number;
+      directional: number;
+      metrics: string;
+      updated_at: string;
+    }, (string | number | null)[]>(sql)
+    .all(...params);
+
+  const items = rows.map((row) => {
+    const metrics = JSON.parse(row.metrics) as Record<string, unknown>;
+    // Filter to requested metrics if specified
+    const filteredMetrics =
+      requestedMetrics.length > 0
+        ? Object.fromEntries(
+            requestedMetrics.filter((k) => k in metrics).map((k) => [k, metrics[k]]),
+          )
+        : metrics;
+
+    return {
+      labels: JSON.parse(row.labels) as Record<string, string>,
+      sample_size: row.sample_size,
+      directional: row.directional === 1,
+      metrics: filteredMetrics,
+    };
+  });
+
+  // Compute a representative window from the first row
+  const windowStart = rows[0]?.window_start ?? "";
+  const windowEnd = rows[0]?.window_end ?? "";
+
+  return jsonResponse(200, {
+    _v: 1,
+    window: { start: windowStart, end: windowEnd },
+    group_by: groupBy,
+    items,
+  });
 }
 
 /** Escape double-quotes and backslashes in Prometheus label values. */

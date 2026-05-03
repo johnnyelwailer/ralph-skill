@@ -274,6 +274,8 @@ export type IncubationItemFilter = {
   readonly state?: IncubationItemState;
   readonly project_id?: string;
   readonly scope_kind?: "global" | "project" | "candidate_project";
+  /** Full-text search across title and body. */
+  readonly q?: string;
 };
 
 export type CreateIncubationItemInput = {
@@ -364,6 +366,11 @@ export class IncubationItemRegistry {
     if (filter.scope_kind) {
       sql += " AND scope_kind = ?";
       params.push(filter.scope_kind);
+    }
+    if (filter.q) {
+      sql += " AND (title LIKE ? OR body LIKE ?)";
+      const term = `%${filter.q}%`;
+      params.push(term, term);
     }
 
     sql += " ORDER BY created_at DESC";
@@ -844,5 +851,86 @@ export class IncubationProposalNotFoundError extends Error {
   readonly code = "incubation_proposal_not_found";
   constructor(readonly id: string) {
     super(`incubation proposal not found: ${id}`);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// IncubationCommentRegistry
+// ---------------------------------------------------------------------------
+
+import type { IncubationItemComment } from "@aloop/core";
+
+type IncubationCommentRow = {
+  id: string;
+  item_id: string;
+  author: string;
+  body: string;
+  created_at: string;
+  updated_at: string;
+};
+
+function rowToIncubationComment(row: IncubationCommentRow): IncubationItemComment {
+  return {
+    _v: 1 as const,
+    id: row.id,
+    item_id: row.item_id,
+    author: row.author,
+    body: row.body,
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+  };
+}
+
+export type CreateIncubationCommentInput = {
+  readonly id?: string;
+  readonly item_id: string;
+  readonly author: string;
+  readonly body?: string;
+  readonly now?: string;
+};
+
+export class IncubationCommentRegistry {
+  constructor(private readonly db: Database) {}
+
+  create(input: CreateIncubationCommentInput): IncubationItemComment {
+    const id = input.id ?? crypto.randomUUID();
+    const now = input.now ?? new Date().toISOString();
+
+    this.db.run(
+      `INSERT INTO incubation_comments (id, item_id, author, body, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [id, input.item_id, input.author, input.body ?? "", now, now],
+    );
+
+    return this.getRequired(id);
+  }
+
+  get(id: string): IncubationItemComment | undefined {
+    const row = this.db
+      .query<IncubationCommentRow, [string]>("SELECT * FROM incubation_comments WHERE id = ?")
+      .get(id);
+    return row ? rowToIncubationComment(row) : undefined;
+  }
+
+  listByItem(itemId: string): IncubationItemComment[] {
+    return this.db
+      .query<IncubationCommentRow, [string]>(
+        "SELECT * FROM incubation_comments WHERE item_id = ? ORDER BY created_at ASC",
+      )
+      .all(itemId)
+      .map(rowToIncubationComment);
+  }
+
+  private getRequired(id: string): IncubationItemComment {
+    const comment = this.get(id);
+    if (!comment) throw new IncubationCommentNotFoundError(id);
+    return comment;
+  }
+}
+
+export class IncubationCommentNotFoundError extends Error {
+  readonly code = "incubation_comment_not_found";
+  constructor(readonly id: string) {
+    super(`incubation comment not found: ${id}`);
   }
 }

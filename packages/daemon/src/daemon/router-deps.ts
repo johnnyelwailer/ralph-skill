@@ -1,4 +1,5 @@
 import { join } from "node:path";
+import type { Database } from "bun:sqlite";
 import type { ConfigStore } from "@aloop/daemon-config";
 import type { RouterDeps } from "@aloop/daemon-http";
 import type { InMemoryProviderHealthStore, ProviderRegistry } from "@aloop/provider";
@@ -25,6 +26,7 @@ import type { ArtifactRegistry, EventWriter, IdempotencyStore, ProjectRegistry, 
 import type { SchedulerService } from "@aloop/scheduler";
 import { DEFAULT_SCHEDULER_PROBES } from "@aloop/scheduler-gates";
 import { handleDaemon as handleDaemonRoute } from "../routes/daemon.ts";
+import { handleIncubation as handleIncubationRoute, type IncubationDeps } from "@aloop/daemon-routes-incubation";
 
 export type MakeRouterDepsInput = {
   readonly registry: ProjectRegistry;
@@ -38,6 +40,7 @@ export type MakeRouterDepsInput = {
   readonly artifactRegistry: ArtifactRegistry;
   readonly idempotencyStore: IdempotencyStore;
   readonly cooldownMultipliers?: ReadonlyMap<string, number>;
+  readonly db: Database;
 };
 
 export function makeRouterDeps(input: MakeRouterDepsInput): RouterDeps {
@@ -149,6 +152,12 @@ export function makeRouterDeps(input: MakeRouterDepsInput): RouterDeps {
       handleTriggersRoute(
         req,
         { store: new TriggerStore({ triggersDir: join(input.config.paths().stateDir, "triggers") }) },
+        pathname,
+      ),
+    handleIncubation: (req, pathname) =>
+      handleIncubationRoute(
+        req,
+        { db: input.db, sessionsDir: () => join(input.config.paths().stateDir, "sessions") },
         pathname,
       ),
   };

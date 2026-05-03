@@ -303,3 +303,18 @@ export type IncubationProposal = {
   readonly created_at: string;
   readonly updated_at: string;
 };
+
+// ---------------------------------------------------------------------------
+// Comment types
+// ---------------------------------------------------------------------------
+
+/** Comment on an incubation item. See docs/spec/api.md §Comments. */
+export type IncubationItemComment = {
+  readonly _v: 1;
+  readonly id: string;
+  readonly item_id: string;
+  readonly author: string;
+  readonly body: string;
+  readonly created_at: string;
+  readonly updated_at: string;
+};

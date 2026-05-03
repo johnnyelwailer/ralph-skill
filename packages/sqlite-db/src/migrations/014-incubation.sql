@@ -75,6 +75,7 @@ CREATE TABLE IF NOT EXISTS research_monitors (
   cadence_cron        TEXT,                        -- present when cadence_kind = 'cron'
   event_triggers      TEXT NOT NULL DEFAULT '[]',  -- JSON array
   question            TEXT NOT NULL,
+  source_plan         TEXT NOT NULL,               -- JSON object (ResearchSourcePlan)
   synthesis_policy    TEXT NOT NULL,               -- JSON object
   next_run_at         TEXT NOT NULL,
   last_run_at         TEXT,
@@ -98,7 +99,7 @@ CREATE TABLE IF NOT EXISTS outreach_plans (
   draft                          TEXT NOT NULL DEFAULT '',
   consent_text                   TEXT,
   personal_data_classification   TEXT NOT NULL DEFAULT 'none'
-                                  CHECK (personal_data_classification IN ('none','public','private','sensitive')),
+                                  CHECK (personal_data_classification IN ('none','public','private','sensitive','anonymous')),
   send_mode                      TEXT NOT NULL DEFAULT 'manual_export'
                                   CHECK (send_mode IN ('manual_export','adapter_send')),
   approved_snapshot_id           TEXT,

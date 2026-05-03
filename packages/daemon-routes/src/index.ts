@@ -1,4 +1,4 @@
-export { handleMetrics, type MetricsDeps } from "./metrics.ts";
+export { handleMetrics, handleMetricsAggregates, type MetricsDeps, type MetricsAggregatesDeps } from "./metrics.ts";
 export { handleProjects, type ProjectsDeps } from "./projects.ts";
 export { handleWorkspaces, type WorkspacesDeps } from "./workspaces-handlers.ts";
 export { handleScheduler, type SchedulerDeps } from "./scheduler.ts";

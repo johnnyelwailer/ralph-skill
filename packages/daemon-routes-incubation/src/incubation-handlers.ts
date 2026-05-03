@@ -13,6 +13,7 @@ import {
 } from "@aloop/daemon-routes";
 import type {
   IncubationItem,
+  IncubationItemComment,
   IncubationItemState,
   IncubationScope,
   IncubationItemSourceClient,
@@ -25,6 +26,8 @@ import type {
   IncubationProposalState,
 } from "@aloop/core";
 import {
+  IncubationCommentNotFoundError,
+  IncubationCommentRegistry,
   IncubationItemNotFoundError,
   IncubationItemRegistry,
   ResearchRunNotFoundError,
@@ -35,6 +38,7 @@ import {
   OutreachPlanRegistry,
   IncubationProposalNotFoundError,
   IncubationProposalRegistry,
+  type CreateIncubationCommentInput,
   type CreateIncubationItemInput,
   type CreateResearchRunInput,
   type CreateResearchMonitorInput,
@@ -151,6 +155,18 @@ function proposalResponse(proposal: IncubationProposal): Record<string, unknown>
   };
 }
 
+function commentResponse(comment: IncubationItemComment): Record<string, unknown> {
+  return {
+    _v: 1 as const,
+    id: comment.id,
+    item_id: comment.item_id,
+    author: comment.author,
+    body: comment.body,
+    created_at: comment.created_at,
+    updated_at: comment.updated_at,
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Validators
 // ---------------------------------------------------------------------------
@@ -215,7 +231,10 @@ export async function handleIncubation(
   deps: IncubationDeps,
   pathname: string,
 ): Promise<Response | undefined> {
-  if (!pathname.startsWith("/v1/incubation")) return undefined;
+  // Strip query string so pathname comparisons are clean
+  const [pathBase] = pathname.split("?");
+  if (!pathBase.startsWith("/v1/incubation")) return undefined;
+  const pathnameForResponse = pathname; // preserve original for error messages
 
   const db = deps.db;
   const itemReg = new IncubationItemRegistry(db);
@@ -227,12 +246,13 @@ export async function handleIncubation(
   // -------------------------------------------------------------------------
   // /v1/incubation/items
   // -------------------------------------------------------------------------
-  if (pathname === "/v1/incubation/items") {
+  if (pathBase === "/v1/incubation/items") {
     if (req.method === "GET") {
       const url = new URL(req.url);
       const state = url.searchParams.get("state");
       const projectId = url.searchParams.get("project_id");
       const scopeKind = url.searchParams.get("scope_kind") as "global" | "project" | "candidate_project" | null;
+      const q = url.searchParams.get("q");
 
       if (state && !isValidState(state)) {
         return badRequest(`invalid state: ${state}`, { state });
@@ -242,6 +262,7 @@ export async function handleIncubation(
         ...(state && { state: state as IncubationItemState }),
         ...(projectId && { project_id: projectId }),
         ...(scopeKind && { scope_kind: scopeKind }),
+        ...(q && { q }),
       });
 
       return jsonResponse(200, {
@@ -309,7 +330,7 @@ export async function handleIncubation(
   // -------------------------------------------------------------------------
   // /v1/incubation/items/:id
   // -------------------------------------------------------------------------
-  const itemsMatch = pathname.match(/^\/v1\/incubation\/items\/([^/]+)$/);
+  const itemsMatch = pathBase.match(/^\/v1\/incubation\/items\/([^/]+)$/);
   if (itemsMatch) {
     const id = itemsMatch[1]!;
 
@@ -363,7 +384,7 @@ export async function handleIncubation(
   // -------------------------------------------------------------------------
   // /v1/incubation/items/:id/research-runs
   // -------------------------------------------------------------------------
-  const runsMatch = pathname.match(/^\/v1\/incubation\/items\/([^/]+)\/research-runs$/);
+  const runsMatch = pathBase.match(/^\/v1\/incubation\/items\/([^/]+)\/research-runs$/);
   if (runsMatch) {
     const itemId = runsMatch[1]!;
 
@@ -412,7 +433,7 @@ export async function handleIncubation(
   // -------------------------------------------------------------------------
   // /v1/incubation/items/:id/research-monitors
   // -------------------------------------------------------------------------
-  const monitorsMatch = pathname.match(/^\/v1\/incubation\/items\/([^/]+)\/research-monitors$/);
+  const monitorsMatch = pathBase.match(/^\/v1\/incubation\/items\/([^/]+)\/research-monitors$/);
   if (monitorsMatch) {
     const itemId = monitorsMatch[1]!;
 
@@ -459,6 +480,7 @@ export async function handleIncubation(
         });
         return jsonResponse(201, monitorResponse(mon));
       } catch (err) {
+        console.error("[incubation] monitor create error:", err);
         return errorResponse(500, "internal_error", (err as Error).message);
       }
     }
@@ -469,7 +491,7 @@ export async function handleIncubation(
   // -------------------------------------------------------------------------
   // /v1/incubation/items/:id/outreach-plans
   // -------------------------------------------------------------------------
-  const outreachMatch = pathname.match(/^\/v1\/incubation\/items\/([^/]+)\/outreach-plans$/);
+  const outreachMatch = pathBase.match(/^\/v1\/incubation\/items\/([^/]+)\/outreach-plans$/);
   if (outreachMatch) {
     const itemId = outreachMatch[1]!;
 
@@ -524,7 +546,7 @@ export async function handleIncubation(
   // -------------------------------------------------------------------------
   // /v1/incubation/items/:id/proposals
   // -------------------------------------------------------------------------
-  const proposalsMatch = pathname.match(/^\/v1\/incubation\/items\/([^/]+)\/proposals$/);
+  const proposalsMatch = pathBase.match(/^\/v1\/incubation\/items\/([^/]+)\/proposals$/);
   if (proposalsMatch) {
     const itemId = proposalsMatch[1]!;
 
@@ -575,7 +597,7 @@ export async function handleIncubation(
   // -------------------------------------------------------------------------
   // /v1/incubation/proposals/:id
   // -------------------------------------------------------------------------
-  const proposalMatch = pathname.match(/^\/v1\/incubation\/proposals\/([^/]+)$/);
+  const proposalMatch = pathBase.match(/^\/v1\/incubation\/proposals\/([^/]+)$/);
   if (proposalMatch) {
     const id = proposalMatch[1]!;
 
@@ -614,7 +636,7 @@ export async function handleIncubation(
   // -------------------------------------------------------------------------
   // /v1/incubation/research-runs/:id
   // -------------------------------------------------------------------------
-  const runMatch = pathname.match(/^\/v1\/incubation\/research-runs\/([^/]+)$/);
+  const runMatch = pathBase.match(/^\/v1\/incubation\/research-runs\/([^/]+)$/);
   if (runMatch) {
     const id = runMatch[1]!;
 
@@ -656,7 +678,7 @@ export async function handleIncubation(
   // -------------------------------------------------------------------------
   // /v1/incubation/research-monitors/:id
   // -------------------------------------------------------------------------
-  const monitorMatch = pathname.match(/^\/v1\/incubation\/research-monitors\/([^/]+)$/);
+  const monitorMatch = pathBase.match(/^\/v1\/incubation\/research-monitors\/([^/]+)$/);
   if (monitorMatch) {
     const id = monitorMatch[1]!;
 
@@ -687,6 +709,44 @@ export async function handleIncubation(
         if (err instanceof ResearchMonitorNotFoundError) return notFoundResponse(pathname);
         return errorResponse(500, "internal_error", (err as Error).message);
       }
+    }
+
+    return methodNotAllowed();
+  }
+
+  // -------------------------------------------------------------------------
+  // /v1/incubation/items/:id/comments
+  // -------------------------------------------------------------------------
+  const commentsMatch = pathBase.match(/^\/v1\/incubation\/items\/([^/]+)\/comments$/);
+  if (commentsMatch) {
+    const itemId = commentsMatch[1]!;
+    const commentReg = new IncubationCommentRegistry(db);
+
+    if (req.method === "GET") {
+      const comments = commentReg.listByItem(itemId);
+      return jsonResponse(200, { _v: 1, item_id: itemId, comments });
+    }
+
+    if (req.method === "POST") {
+      const parsed = await parseJsonBody(req);
+      if ("error" in parsed) return parsed.error;
+      const body = parsed.data;
+
+      if (!body || typeof body.author !== "string" || !body.author) {
+        return badRequest("author is required", { author: body?.author });
+      }
+
+      // Verify the item exists
+      if (!itemReg.get(itemId)) return notFoundResponse(pathnameForResponse);
+
+      const input: CreateIncubationCommentInput = {
+        item_id: itemId,
+        author: body.author,
+        body: typeof body.body === "string" ? body.body : "",
+      };
+
+      const comment = commentReg.create(input);
+      return jsonResponse(201, commentResponse(comment));
     }
 
     return methodNotAllowed();

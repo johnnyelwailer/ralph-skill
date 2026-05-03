@@ -39,6 +39,7 @@ export type {
   IncubationItemLinks,
   IncubationItemSource,
   IncubationPriority,
+  IncubationItemComment,
   IncubationProposal,
   IncubationProposalKind,
   IncubationProposalState,

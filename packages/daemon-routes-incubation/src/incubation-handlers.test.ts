@@ -33,9 +33,8 @@ async function makeRequest(
   pathname: string,
   body?: unknown,
 ): Promise<Response> {
-  // Strip query string — the handler receives only the path portion.
-  const [pathOnly] = pathname.split("?");
-  const url = `http://localhost${pathOnly}`;
+  // Preserve full URL (including query string) so the handler can read params via new URL(req.url).
+  const url = `http://localhost${pathname}`;
   const headers: Record<string, string> = { "content-type": "application/json" };
   const init: RequestInit = { method, headers };
   if (body !== undefined) {
