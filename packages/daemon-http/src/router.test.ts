@@ -28,6 +28,7 @@ function makeDeps() {
     handleSetup: () => undefined,
     handleWorkspaces: () => undefined,
     handleTriggers: () => undefined,
+    handleIncubation: () => undefined,
   };
 }
 
@@ -182,6 +183,7 @@ describe("makeFetchHandler dispatch order", () => {
       handleSetup: () => undefined,
       handleWorkspaces: () => undefined,
       handleTriggers: () => undefined,
+      handleIncubation: () => undefined,
     };
   }
 
