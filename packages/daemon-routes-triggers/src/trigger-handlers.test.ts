@@ -482,7 +482,7 @@ describe("TriggerStore", () => {
   });
 
   describe("recordError", () => {
-    test("sets last_error and updates updated_at without changing fire_count", async () => {
+    test("sets last_error and updates updated_at without changing fire_count", () => {
       const created = store.create({
         scope: { kind: "global", id: null },
         source: { kind: "time", schedule: "P7D" },
@@ -496,7 +496,7 @@ describe("TriggerStore", () => {
       expect(updated.updated_at).not.toBe(created.updated_at);
     });
 
-    test("overwrites previous last_error", async () => {
+    test("overwrites previous last_error", () => {
       const created = store.create({
         scope: { kind: "global", id: null },
         source: { kind: "time" },
