@@ -92,9 +92,9 @@ export class SetupStore {
     }
     // Most recently updated first; tiebreak by id for deterministic order (higher id = newer)
     return runs.sort((a, b) => {
-      const cmp = b.updatedAt.localeCompare(a.updatedAt);
-      if (cmp !== 0) return cmp;
-      return b.id.localeCompare(a.id);
+      const cmp = a.updatedAt.localeCompare(b.updatedAt);
+      if (cmp !== 0) return -cmp;
+      return b.id.localeCompare(a.id, "en", { sensitivity: "base" });
     });
   }
 
