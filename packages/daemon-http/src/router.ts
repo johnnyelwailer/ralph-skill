@@ -46,6 +46,11 @@ export type RouterDeps = {
     req: Request,
     pathname: string,
   ) => Response | Promise<Response | undefined> | undefined;
+  /** Triggers: /v1/triggers */
+  readonly handleTriggers: (
+    req: Request,
+    pathname: string,
+  ) => Response | Promise<Response | undefined> | undefined;
 };
 
 /**
@@ -103,6 +108,9 @@ export function makeFetchHandler(
 
     const workspacesResponse = await deps.handleWorkspaces(req, pathname);
     if (workspacesResponse) return workspacesResponse;
+
+    const triggersResponse = await deps.handleTriggers(req, pathname);
+    if (triggersResponse) return triggersResponse;
 
     return new Response(
       JSON.stringify({

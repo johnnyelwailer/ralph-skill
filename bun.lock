@@ -61,6 +61,7 @@
         "@aloop/daemon-routes-artifacts": "workspace:*",
         "@aloop/daemon-routes-providers": "workspace:*",
         "@aloop/daemon-routes-setup": "workspace:*",
+        "@aloop/daemon-routes-triggers": "workspace:*",
         "@aloop/daemon-routes-turns": "workspace:*",
         "@aloop/provider": "workspace:*",
         "@aloop/provider-opencode": "workspace:*",
@@ -136,6 +137,18 @@
         "@aloop/core": "workspace:*",
         "@aloop/daemon-routes": "workspace:*",
         "@aloop/state-sqlite": "workspace:*",
+      },
+      "devDependencies": {
+        "@types/bun": "latest",
+        "typescript": "^5.6.0",
+      },
+    },
+    "packages/daemon-routes-triggers": {
+      "name": "@aloop/daemon-routes-triggers",
+      "version": "0.1.0",
+      "dependencies": {
+        "@aloop/core": "workspace:*",
+        "@aloop/daemon-routes": "workspace:*",
       },
       "devDependencies": {
         "@types/bun": "latest",
@@ -289,6 +302,8 @@
     "@aloop/daemon-routes-providers": ["@aloop/daemon-routes-providers@workspace:packages/daemon-routes-providers"],
 
     "@aloop/daemon-routes-setup": ["@aloop/daemon-routes-setup@workspace:packages/daemon-routes-setup"],
+
+    "@aloop/daemon-routes-triggers": ["@aloop/daemon-routes-triggers@workspace:packages/daemon-routes-triggers"],
 
     "@aloop/daemon-routes-turns": ["@aloop/daemon-routes-turns@workspace:packages/daemon-routes-turns"],
 
