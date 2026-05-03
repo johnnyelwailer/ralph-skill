@@ -3,8 +3,19 @@ import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { SetupStore } from "./setup-store.ts";
-import { SetupRunNotFoundError, SetupRunNotActiveError } from "./setup-types.ts";
-import type { CreateSetupRunInput, SetupQuestion, SetupChapter, SetupCommentInput } from "./setup-types.ts";
+import {
+  SetupRunNotFoundError,
+  SetupRunNotActiveError,
+} from "./setup-types.ts";
+import type {
+  CreateSetupRunInput,
+  SetupQuestion,
+  SetupChapter,
+  SetupCommentInput,
+  RepoInventoryFinding,
+  StackDetectionFinding,
+  EnvironmentDetectionFinding,
+} from "./setup-types.ts";
 
 function makeStore(tmp: string) {
   return new SetupStore({ stateDir: join(tmp, "state") });
@@ -73,8 +84,10 @@ describe("SetupStore", () => {
 
     test("returns runs sorted by updatedAt descending", async () => {
       const run1 = store.create({ absPath: "/project1" });
+      // Yield to event loop so run2 gets a strictly later timestamp
+      await new Promise((r) => setTimeout(r, 10));
       const run2 = store.create({ absPath: "/project2" });
-      // Update run1 to make it newer
+      // Update run1 to make it definitively newer than run2
       store.updatePhase(run1.id, "interview");
       const runs = store.list();
       expect(runs[0].id).toBe(run1.id);
@@ -262,6 +275,92 @@ describe("SetupStore", () => {
 
     test("throws SetupRunNotFoundError for unknown id", () => {
       expect(() => store.setProjectId("nonexistent", "proj_123")).toThrow(SetupRunNotFoundError);
+    });
+  });
+
+  describe("updateFindings", () => {
+    test("sets a single finding field", () => {
+      const run = store.create({ absPath: "/test" });
+      const inventory: RepoInventoryFinding = {
+        fileCount: 42,
+        moduleBoundaries: ["packages/core", "packages/cli"],
+        notableHotspots: ["packages/cli/src/index.ts"],
+        classifications: { typescript: ["src/**/*.ts"], markdown: ["*.md"] },
+      };
+      const updated = store.updateFindings(run.id, { repoInventory: inventory });
+      expect(updated.findings.repoInventory).toEqual(inventory);
+    });
+
+    test("merges multiple finding fields independently", () => {
+      const run = store.create({ absPath: "/test" });
+      const env: EnvironmentDetectionFinding = {
+        availableProviders: ["opencode", "claude"],
+        usableProviders: ["claude"],
+        trackerAdapter: "builtin",
+        devcontainerJsonPresent: false,
+        ghAuthAvailable: false,
+        providerAuthDetails: { opencode: "needs_config", claude: "usable" },
+      };
+      const stack: StackDetectionFinding = {
+        language: "typescript",
+        framework: null,
+        testRunner: "bun",
+        cssApproach: null,
+        bundler: "vite",
+        runtimeVersions: { node: "20.x" },
+        configFiles: ["package.json", "tsconfig.json"],
+      };
+      store.updateFindings(run.id, { environment: env });
+      const updated = store.updateFindings(run.id, { stackDetection: stack });
+      expect(updated.findings.environment).toEqual(env);
+      expect(updated.findings.stackDetection).toEqual(stack);
+    });
+
+    test("overwrites an existing finding field", () => {
+      const run = store.create({ absPath: "/test" });
+      const stack1: StackDetectionFinding = {
+        language: "typescript",
+        framework: null,
+        testRunner: "bun",
+        cssApproach: null,
+        bundler: null,
+        runtimeVersions: {},
+        configFiles: [],
+      };
+      const stack2: StackDetectionFinding = {
+        language: "rust",
+        framework: null,
+        testRunner: "cargo",
+        cssApproach: null,
+        bundler: null,
+        runtimeVersions: {},
+        configFiles: ["Cargo.toml"],
+      };
+      store.updateFindings(run.id, { stackDetection: stack1 });
+      const updated = store.updateFindings(run.id, { stackDetection: stack2 });
+      expect(updated.findings.stackDetection).toEqual(stack2);
+    });
+
+    test("updates updatedAt timestamp", async () => {
+      const run = store.create({ absPath: "/test" });
+      const before = run.updatedAt;
+      await new Promise((r) => setTimeout(r, 10));
+      const env: EnvironmentDetectionFinding = {
+        availableProviders: [],
+        usableProviders: [],
+        trackerAdapter: null,
+        devcontainerJsonPresent: false,
+        ghAuthAvailable: false,
+        providerAuthDetails: {},
+      };
+      const updated = store.updateFindings(run.id, { environment: env });
+      expect(updated.updatedAt > before).toBe(true);
+    });
+
+    test("throws SetupRunNotFoundError for unknown id", () => {
+      expect(() =>
+        store.updateFindings("nonexistent", { environment: { availableProviders: [], usableProviders: [], trackerAdapter: null, devcontainerJsonPresent: false, ghAuthAvailable: false, providerAuthDetails: {} } }),
+      ).toThrow(SetupRunNotFoundError);
     });
   });
 

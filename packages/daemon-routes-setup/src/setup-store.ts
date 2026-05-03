@@ -4,6 +4,7 @@ import type {
   CreateSetupRunInput,
   SetupChapter,
   SetupCommentInput,
+  SetupFindings,
   SetupPhase,
   SetupQuestion,
   SetupRun,
@@ -174,6 +175,24 @@ export class SetupStore {
     const run = this.read(id);
     const now = new Date().toISOString();
     const updated: SetupRun = { ...run, projectId, updatedAt: now };
+    this.write(updated);
+    return updated;
+  }
+
+  /**
+   * Merges partial findings into the existing findings object.
+   * Subsequent phases (ambiguity, review) read from findings to drive decisions.
+   * Per setup.md §Phase 1: Discovery outputs a structured DiscoveryResult
+   * persisted in the setup run state; later background research appends or refines it.
+   */
+  updateFindings(id: string, partial: Partial<SetupFindings>): SetupRun {
+    const run = this.read(id);
+    const now = new Date().toISOString();
+    const updated: SetupRun = {
+      ...run,
+      findings: { ...run.findings, ...partial },
+      updatedAt: now,
+    };
     this.write(updated);
     return updated;
   }

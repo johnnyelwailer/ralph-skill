@@ -33,14 +33,91 @@ export type SetupPhase =
   | "handoff"
   | "completed";
 
+// ─── Discovery lane output types ─────────────────────────────────────────────
+// These correspond to the seven parallel discovery lanes defined in setup.md §Phase 1.
+
+/** Repository inventory lane output (setup.md §Phase 1: Repository inventory). */
+export type RepoInventoryFinding = {
+  readonly fileCount: number;
+  readonly moduleBoundaries: string[];
+  readonly notableHotspots: string[];
+  readonly classifications: Record<string, string[]>;
+};
+
+/** Stack detection lane output (setup.md §Phase 1: Stack detection). */
+export type StackDetectionFinding = {
+  readonly language: string | null;
+  readonly framework: string | null;
+  readonly testRunner: string | null;
+  readonly cssApproach: string | null;
+  readonly bundler: string | null;
+  readonly runtimeVersions: Record<string, string>;
+  readonly configFiles: string[];
+};
+
+/** Structure analysis lane output (setup.md §Phase 1: Structure analysis). */
+export type StructureAnalysisFinding = {
+  readonly projectShape: "library" | "application" | "monorepo" | "greenfield" | "unknown";
+  readonly organizationPattern: string;
+  readonly moduleSeams: string[];
+  readonly maturity: "greenfield" | "early" | "established";
+};
+
+/** Pattern analysis lane output (setup.md §Phase 1: Pattern analysis). */
+export type PatternAnalysisFinding = {
+  readonly namingConventions: string[];
+  readonly modulePatterns: string[];
+  readonly errorHandlingStyle: string;
+  readonly testStyle: string;
+  readonly uiLibrary: string | null;
+  readonly apiStyle: string | null;
+  readonly inconsistencies: string[];
+};
+
+/** Build & test baseline lane output (setup.md §Phase 1: Build & test baseline). */
+export type BuildBaselineFinding = {
+  readonly installCommand: string | null;
+  readonly buildCommand: string | null;
+  readonly testCommand: string | null;
+  readonly lintCommand: string | null;
+  readonly installPassed: boolean | null;
+  readonly buildPassed: boolean | null;
+  readonly testPassed: boolean | null;
+  readonly lintPassed: boolean | null;
+  readonly installError: string | null;
+  readonly buildError: string | null;
+  readonly testError: string | null;
+  readonly lintError: string | null;
+};
+
+/** Intent signals lane output (setup.md §Phase 1: Intent signals). */
+export type IntentSignalsFinding = {
+  readonly claudeMdPresent: boolean;
+  readonly agentsMdPresent: boolean;
+  readonly readmeMdPresent: boolean;
+  readonly specMdPresent: boolean;
+  readonly preExistingAloopState: boolean;
+  readonly declaredGoals: string[];
+};
+
+/** Environment detection lane output (setup.md §Phase 1: Environment detection). */
+export type EnvironmentDetectionFinding = {
+  readonly availableProviders: string[];
+  readonly usableProviders: string[];
+  readonly trackerAdapter: "github" | "builtin" | null;
+  readonly devcontainerJsonPresent: boolean;
+  readonly ghAuthAvailable: boolean;
+  readonly providerAuthDetails: Record<string, "usable" | "needs_config" | "unavailable">;
+};
+
 export type SetupFindings = {
-  readonly repoInventory?: unknown;
-  readonly stackDetection?: unknown;
-  readonly structureAnalysis?: unknown;
-  readonly patternAnalysis?: unknown;
-  readonly buildBaseline?: unknown;
-  readonly intentSignals?: unknown;
-  readonly environment?: unknown;
+  readonly repoInventory?: RepoInventoryFinding;
+  readonly stackDetection?: StackDetectionFinding;
+  readonly structureAnalysis?: StructureAnalysisFinding;
+  readonly patternAnalysis?: PatternAnalysisFinding;
+  readonly buildBaseline?: BuildBaselineFinding;
+  readonly intentSignals?: IntentSignalsFinding;
+  readonly environment?: EnvironmentDetectionFinding;
 };
 
 export type SetupQuestion = {
