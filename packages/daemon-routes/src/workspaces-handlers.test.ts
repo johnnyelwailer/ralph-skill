@@ -66,13 +66,26 @@ describe("handleWorkspaces", () => {
     expect(res?.status).toBe(404);
   });
 
-  test("GET /v1/workspaces/:id returns workspace", async () => {
+  test("GET /v1/workspaces/:id returns workspace with project_counts", async () => {
     const created = deps.workspaceRegistry.create({ name: "Test" });
     const req = new Request(`http://localhost/v1/workspaces/${created.id}`);
     const res = await handleWorkspaces(req, deps, `/v1/workspaces/${created.id}`);
     expect(res?.status).toBe(200);
     const body = await res!.json();
     expect(body.id).toBe(created.id);
+    expect(body.project_counts).toEqual({ total: 0, by_status: {} });
+  });
+
+  test("GET /v1/workspaces/:id project_counts reflects added projects", async () => {
+    const ws = deps.workspaceRegistry.create({ name: "Test" });
+    const proj = deps.projectRegistry.create({ absPath: "/tmp/test", name: "TestProj" });
+    deps.workspaceRegistry.addProject(ws.id, proj.id, "primary");
+    const req = new Request(`http://localhost/v1/workspaces/${ws.id}`);
+    const res = await handleWorkspaces(req, deps, `/v1/workspaces/${ws.id}`);
+    expect(res?.status).toBe(200);
+    const body = await res!.json();
+    expect(body.project_counts.total).toBe(1);
+    expect(body.project_counts.by_status.setup_pending).toBe(1);
   });
 
   test("PATCH /v1/workspaces/:id updates name", async () => {

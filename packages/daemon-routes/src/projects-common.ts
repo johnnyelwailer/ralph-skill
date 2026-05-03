@@ -77,3 +77,21 @@ export function projectResponse(p: Project, sessionsDir: string): Record<string,
     session_counts: countProjectSessions(sessionsDir, p.id),
   };
 }
+
+export type ProjectCounts = {
+  total: number;
+  by_status: Record<string, number>;
+};
+
+/**
+ * Count projects in a workspace grouped by status.
+ * Uses the listProjects results to derive the count shape.
+ */
+export function countWorkspaceProjects(projects: Array<{ projectStatus: string }>): ProjectCounts {
+  const byStatus: Record<string, number> = {};
+  for (const p of projects) {
+    const s = p.projectStatus ?? "unknown";
+    byStatus[s] = (byStatus[s] ?? 0) + 1;
+  }
+  return { total: projects.length, by_status: byStatus };
+}

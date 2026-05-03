@@ -7,6 +7,7 @@ import {
   notFoundResponse,
   parseJsonBody,
 } from "./http-helpers.ts";
+import { countWorkspaceProjects } from "./projects-common.ts";
 
 export type WorkspacesDeps = {
   readonly workspaceRegistry: WorkspaceRegistry;
@@ -14,7 +15,7 @@ export type WorkspacesDeps = {
   readonly sessionsDir: string | (() => string);
 };
 
-function workspaceResponse(w: { id: string; name: string; description: string; defaultProjectId: string | null; metadata: Readonly<Record<string, unknown>>; createdAt: string; updatedAt: string; archivedAt: string | null }): Record<string, unknown> {
+function workspaceResponse(w: { id: string; name: string; description: string; defaultProjectId: string | null; metadata: Readonly<Record<string, unknown>>; createdAt: string; updatedAt: string; archivedAt: string | null }, projectCounts?: { total: number; by_status: Record<string, number> }): Record<string, unknown> {
   return {
     _v: 1,
     id: w.id,
@@ -25,6 +26,7 @@ function workspaceResponse(w: { id: string; name: string; description: string; d
     created_at: w.createdAt,
     updated_at: w.updatedAt,
     archived_at: w.archivedAt,
+    ...(projectCounts !== undefined && { project_counts: projectCounts }),
   };
 }
 
@@ -55,7 +57,12 @@ export async function handleWorkspaces(
       const archivedParam = url.searchParams.get("archived");
       const includeArchived = archivedParam === "true";
       const items = deps.workspaceRegistry.list({ archived: includeArchived });
-      return jsonResponse(200, { _v: 1, items: items.map(workspaceResponse), next_cursor: null });
+      const enriched = items.map((w) => {
+        const projects = deps.workspaceRegistry.listProjects(w.id);
+        const projectCounts = countWorkspaceProjects(projects);
+        return workspaceResponse(w, projectCounts);
+      });
+      return jsonResponse(200, { _v: 1, items: enriched, next_cursor: null });
     }
     if (req.method === "POST") {
       const body = await parseJsonBody(req);
@@ -83,11 +90,13 @@ export async function handleWorkspaces(
   const [id, action] = rest.split("/", 2);
   if (!id) return notFoundResponse(pathname);
 
-  if (!action) {
+    if (!action) {
     if (req.method === "GET") {
       const w = deps.workspaceRegistry.get(id);
       if (!w) return errorResponse(404, "workspace_not_found", `workspace not found: ${id}`, { id });
-      return jsonResponse(200, workspaceResponse(w));
+      const projects = deps.workspaceRegistry.listProjects(id);
+      const projectCounts = countWorkspaceProjects(projects);
+      return jsonResponse(200, workspaceResponse(w, projectCounts));
     }
     if (req.method === "PATCH") {
       const body = await parseJsonBody(req);
