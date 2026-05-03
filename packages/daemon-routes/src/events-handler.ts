@@ -151,7 +151,7 @@ export async function handleEvents(
 }
 
 /** Glob match for topic patterns. Supports '*' wildcard. */
-function matchGlob(pattern: string, topic: string): boolean {
+export function matchGlob(pattern: string, topic: string): boolean {
   const parts = pattern.split(".");
   const tparts = topic.split(".");
   return matchGlobParts(parts, tparts);
@@ -163,8 +163,9 @@ function matchGlobParts(pattern: string[], topic: string[]): boolean {
   const [p, ...prest] = pattern;
   const [t, ...trest] = topic;
   if (p === "*") {
-    // '*' matches this segment and any number of remaining segments
-    return matchGlobParts(prest, topic) || matchGlobParts(prest, trest) || matchGlobParts(pattern, trest);
+    // '*' matches exactly one segment.
+    // Consume this segment and continue with remaining pattern + remaining topic.
+    return matchGlobParts(prest, trest);
   }
   if (p !== t) return false;
   return matchGlobParts(prest, trest);

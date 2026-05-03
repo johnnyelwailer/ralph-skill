@@ -451,3 +451,84 @@ describe("handleEvents", () => {
     });
   });
 });
+
+// ─── matchGlob unit tests ─────────────────────────────────────────────────────
+
+describe("matchGlob", () => {
+  // topic filter uses a dot-separated glob: * matches any single segment.
+  // A pattern like "session.*" must NOT match a two-segment topic like "a.b".
+
+  test("'*' matches a single segment but not multiple segments", () => {
+    // matchGlob is exported from events-handler.ts
+    const { matchGlob } = require("./events-handler.ts") as {
+      matchGlob: (pattern: string, topic: string) => boolean;
+    };
+
+    // session.* must match "session.update" (one segment after the dot)
+    expect(matchGlob("session.*", "session.update")).toBe(true);
+    // session.* must NOT match "a.b" (two segments total)
+    expect(matchGlob("session.*", "a.b")).toBe(false);
+  });
+
+  test("'*' wildcard does not span multiple dot segments", () => {
+    const { matchGlob } = require("./events-handler.ts") as {
+      matchGlob: (pattern: string, topic: string) => boolean;
+    };
+
+    // "*.update" should match "session.update" and "scheduler.update"
+    expect(matchGlob("*.update", "session.update")).toBe(true);
+    expect(matchGlob("*.update", "scheduler.update")).toBe(true);
+    // "*.update" should NOT match "a.b.update" (three segments)
+    expect(matchGlob("*.update", "a.b.update")).toBe(false);
+  });
+
+  test("'**' or absence of wildcard handles multi-segment topics correctly", () => {
+    const { matchGlob } = require("./events-handler.ts") as {
+      matchGlob: (pattern: string, topic: string) => boolean;
+    };
+
+    // Exact segment match
+    expect(matchGlob("scheduler.permit.grant", "scheduler.permit.grant")).toBe(true);
+    // Exact segment mismatch
+    expect(matchGlob("scheduler.permit.grant", "scheduler.permit.deny")).toBe(false);
+  });
+
+  test("empty pattern only matches empty topic", () => {
+    const { matchGlob } = require("./events-handler.ts") as {
+      matchGlob: (pattern: string, topic: string) => boolean;
+    };
+
+    expect(matchGlob("", "")).toBe(true);
+    expect(matchGlob("", "a")).toBe(false);
+    expect(matchGlob("a", "")).toBe(false);
+  });
+
+  test("wildcard at end of pattern", () => {
+    const { matchGlob } = require("./events-handler.ts") as {
+      matchGlob: (pattern: string, topic: string) => boolean;
+    };
+
+    expect(matchGlob("session.*", "session.running")).toBe(true);
+    expect(matchGlob("session.*", "session")).toBe(false);
+  });
+
+  test("wildcard at start of pattern", () => {
+    const { matchGlob } = require("./events-handler.ts") as {
+      matchGlob: (pattern: string, topic: string) => boolean;
+    };
+
+    expect(matchGlob("*.update", "session.update")).toBe(true);
+    expect(matchGlob("*.update", "provider.update")).toBe(true);
+    expect(matchGlob("*.update", "a.b.update")).toBe(false);
+  });
+
+  test("wildcard in middle of pattern", () => {
+    const { matchGlob } = require("./events-handler.ts") as {
+      matchGlob: (pattern: string, topic: string) => boolean;
+    };
+
+    expect(matchGlob("session.*.update", "session.foo.update")).toBe(true);
+    expect(matchGlob("session.*.update", "session.bar.update")).toBe(true);
+    expect(matchGlob("session.*.update", "session.a.b.update")).toBe(false);
+  });
+});
