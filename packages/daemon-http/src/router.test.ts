@@ -208,11 +208,40 @@ describe("makeFetchHandler dispatch order", () => {
     expect(body.handler).toBe("providers");
   });
 
-  test("scheduler route is checked last among route handlers", async () => {
+  test("scheduler route is checked before incubation (incubation is last)", async () => {
+    // Incubation must be the last route checked — everything after it falls to 404.
     const fetch = makeFetchHandler(makeDeps());
     const res = await fetch(new Request("http://x/v1/scheduler/limits"));
     const body = await res.json() as { handler: string };
     expect(body.handler).toBe("scheduler");
+  });
+
+  test("handleIncubation is dispatched for /v1/incubation/* routes", async () => {
+    const customDeps = makeDeps();
+    customDeps.handleIncubation = (_req, pathname) => {
+      if (pathname.startsWith("/v1/incubation/")) {
+        return new Response(JSON.stringify({ _v: 1, handler: "incubation", pathname }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      return undefined;
+    };
+    const fetch = makeFetchHandler(customDeps);
+    const res = await fetch(new Request("http://x/v1/incubation/sessions"));
+    expect(res.status).toBe(200);
+    const body = await res.json() as { handler: string; pathname: string };
+    expect(body.handler).toBe("incubation");
+    expect(body.pathname).toBe("/v1/incubation/sessions");
+  });
+
+  test("handleIncubation is the last route checked (fallthrough after it = 404)", async () => {
+    const customDeps = makeDeps();
+    // Incubate explicitly returns undefined — no route should match after it
+    const fetch = makeFetchHandler(customDeps);
+    const res = await fetch(new Request("http://x/v1/incubation/any-path"));
+    // handleIncubation returns undefined, so router falls through to 404
+    expect(res.status).toBe(404);
   });
 
   test("unknown route falls through to 404 with not_found envelope", async () => {
