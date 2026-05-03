@@ -25,19 +25,20 @@ export async function handleProjects(
   if (pathname === "/v1/projects") {
     if (req.method === "GET") return listProjects(req, deps);
     if (req.method === "POST") {
-      const key = deps.idempotencyStore ? req.headers.get("Idempotency-Key")?.trim() : null;
+      const store = deps.idempotencyStore;
+      const key = store ? req.headers.get("Idempotency-Key")?.trim() : null;
       // Idempotency: return cached response for a repeated key.
       if (key) {
-        const cached = deps.idempotencyStore.get(key);
+        const cached = store.get(key);
         if (cached) {
           return jsonResponse(200, cached.result);
         }
       }
       const response = await createProject(req, deps);
       // Cache successful creates for replay.
-      if (key && response.status === 201) {
+      if (store && key && response.status === 201) {
         const body = await response.clone().json();
-        deps.idempotencyStore.put(key, body, "ok");
+        store.put(key, body, "ok");
       }
       return response;
     }

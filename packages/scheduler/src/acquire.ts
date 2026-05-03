@@ -26,17 +26,17 @@ export type AcquirePermitDeps = {
 
 /** Extract the PermitOwner discriminant from an AcquirePermitInput. */
 function ownerFrom(input: AcquirePermitInput): PermitOwner {
-  if ("sessionId" in input) return { sessionId: input.sessionId };
-  if ("researchRunId" in input) return { researchRunId: input.researchRunId };
-  if ("composerTurnId" in input) return { composerTurnId: input.composerTurnId };
-  return { controlSubagentRunId: (input as { controlSubagentRunId: string }).controlSubagentRunId };
+  if (input.sessionId !== undefined) return { sessionId: input.sessionId };
+  if (input.researchRunId !== undefined) return { researchRunId: input.researchRunId };
+  if (input.composerTurnId !== undefined) return { composerTurnId: input.composerTurnId };
+  return { controlSubagentRunId: input.controlSubagentRunId as string };
 }
 
 /** Primary ID string for a PermitOwner (used as lookup key in gates/probes). */
 function primaryId(owner: PermitOwner): string {
-  if ("sessionId" in owner) return owner.sessionId;
-  if ("researchRunId" in owner) return owner.researchRunId;
-  if ("composerTurnId" in owner) return owner.composerTurnId;
+  if (owner.sessionId !== undefined) return owner.sessionId;
+  if (owner.researchRunId !== undefined) return owner.researchRunId;
+  if (owner.composerTurnId !== undefined) return owner.composerTurnId;
   return (owner as { controlSubagentRunId: string }).controlSubagentRunId;
 }
 

@@ -24,19 +24,20 @@ export async function handleSessions(
   if (pathname === "/v1/sessions") {
     if (req.method === "GET") return listSessions(req, deps);
     if (req.method === "POST") {
-      const key = deps.idempotencyStore ? req.headers.get("Idempotency-Key")?.trim() : null;
+      const store = deps.idempotencyStore;
+      const key = store ? req.headers.get("Idempotency-Key")?.trim() : null;
       // Idempotency: if the client sent a known key, return the cached response.
       if (key) {
-        const cached = deps.idempotencyStore.get(key);
+        const cached = store.get(key);
         if (cached) {
           return jsonResponse(200, cached.result);
         }
       }
       const response = await createSession(req, deps);
       // Cache successful creates for replay.
-      if (key && response.status === 201) {
+      if (store && key && response.status === 201) {
         const body = await response.clone().json();
-        deps.idempotencyStore.put(key, body, "ok");
+        store.put(key, body, "ok");
       }
       return response;
     }
@@ -144,13 +145,29 @@ async function createSession(req: Request, deps: SessionsDeps): Promise<Response
 
   // Parse optional fields — null is accepted and stored as null; wrong types are ignored
   const hasIssue = "issue" in body.data;
-  const issue: number | null = hasIssue && body.data.issue === null ? null : hasIssue && typeof body.data.issue === "number" ? body.data.issue : undefined;
+  const issue: number | null | undefined = hasIssue && body.data.issue === null
+    ? null
+    : hasIssue && typeof body.data.issue === "number"
+      ? body.data.issue
+      : undefined;
   const hasParentSessionId = "parent_session_id" in body.data;
-  const parentSessionId: string | null = hasParentSessionId && body.data.parent_session_id === null ? null : hasParentSessionId && typeof body.data.parent_session_id === "string" ? body.data.parent_session_id : undefined;
+  const parentSessionId: string | null | undefined = hasParentSessionId && body.data.parent_session_id === null
+    ? null
+    : hasParentSessionId && typeof body.data.parent_session_id === "string"
+      ? body.data.parent_session_id
+      : undefined;
   const hasMaxIterations = "max_iterations" in body.data;
-  const maxIterations: number | null = hasMaxIterations && body.data.max_iterations === null ? null : hasMaxIterations && typeof body.data.max_iterations === "number" ? body.data.max_iterations : undefined;
+  const maxIterations: number | null | undefined = hasMaxIterations && body.data.max_iterations === null
+    ? null
+    : hasMaxIterations && typeof body.data.max_iterations === "number"
+      ? body.data.max_iterations
+      : undefined;
   const hasNotes = "notes" in body.data;
-  const notes: string | null = hasNotes && body.data.notes === null ? null : hasNotes && typeof body.data.notes === "string" ? body.data.notes : undefined;
+  const notes: string | null | undefined = hasNotes && body.data.notes === null
+    ? null
+    : hasNotes && typeof body.data.notes === "string"
+      ? body.data.notes
+      : undefined;
 
   // kind=child requires parent_session_id as a string and forbids grandchildren
   if (kind === "child") {
