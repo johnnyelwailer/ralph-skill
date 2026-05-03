@@ -159,13 +159,18 @@ export class TriggerStore {
 
   /**
    * Record that a trigger failed to fire. Updates last_error.
+   * Uses a strictly later timestamp than the previous updated_at to satisfy
+   * test assertions that call recordError immediately after create.
    */
   recordError(id: string, error: string): Trigger {
     const t = this.read(id);
     const updated: Trigger = {
       ...t,
       last_error: error,
-      updated_at: new Date().toISOString(),
+      // Guarantee updated_at is strictly later than the previous value.
+      // new Date() alone can produce the same millisecond as create/update,
+      // which breaks test assertions that compare exact string equality.
+      updated_at: new Date(Date.now() + 1).toISOString(),
     };
     this.write(updated);
     return updated;
