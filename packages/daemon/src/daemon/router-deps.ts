@@ -4,6 +4,7 @@ import type { RouterDeps } from "@aloop/daemon-http";
 import type { InMemoryProviderHealthStore, ProviderRegistry } from "@aloop/provider";
 import { handleProviders as handleProvidersRoute } from "@aloop/daemon-routes-providers";
 import { handleSetup as handleSetupRoute, SetupStore } from "@aloop/daemon-routes-setup";
+import { handleTriggers as handleTriggersRoute, TriggerStore } from "@aloop/daemon-routes-triggers";
 import {
   handleMetrics as handleMetricsRoute,
   type MetricsDeps as MetricsDeps,
@@ -142,6 +143,12 @@ export function makeRouterDeps(input: MakeRouterDepsInput): RouterDeps {
           projectRegistry: input.registry,
           sessionsDir: () => join(input.config.paths().stateDir, "sessions"),
         },
+        pathname,
+      ),
+    handleTriggers: (req, pathname) =>
+      handleTriggersRoute(
+        req,
+        { store: new TriggerStore({ triggersDir: join(input.config.paths().stateDir, "triggers") }) },
         pathname,
       ),
   };
