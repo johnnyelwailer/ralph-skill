@@ -338,6 +338,45 @@ describe("GET /v1/composer/turns", () => {
     expect(body.next_cursor).toBeDefined();
   });
 
+  test("cursor pagination returns next page of results", async () => {
+    for (let i = 0; i < 5; i++) {
+      await makeRequest(handler, deps, "POST", "/v1/composer/turns", {
+        scope: { kind: "global" }, message: `Turn ${i}`,
+      });
+    }
+    // First page
+    const page1 = await (await makeRequest(handler, deps, "GET", "/v1/composer/turns?limit=2")).json();
+    expect(page1.items).toHaveLength(2);
+    expect(page1.next_cursor).toBeDefined();
+
+    // Second page using cursor
+    const page2 = await (await makeRequest(handler, deps, "GET", `/v1/composer/turns?limit=2&cursor=${page1.next_cursor}`)).json();
+    expect(page2.items).toHaveLength(2);
+    // No overlap between pages
+    const page1Ids = page1.items.map((t: { id: string }) => t.id);
+    const page2Ids = page2.items.map((t: { id: string }) => t.id);
+    for (const id of page1Ids) {
+      expect(page2Ids).not.toContain(id);
+    }
+  });
+
+  test("filters by scope_id", async () => {
+    await makeRequest(handler, deps, "POST", "/v1/composer/turns", {
+      scope: { kind: "global" }, message: "Global",
+    });
+    await makeRequest(handler, deps, "POST", "/v1/composer/turns", {
+      scope: { kind: "project", id: "p_abc" }, message: "Project ABC",
+    });
+    await makeRequest(handler, deps, "POST", "/v1/composer/turns", {
+      scope: { kind: "project", id: "p_xyz" }, message: "Project XYZ",
+    });
+    const resp = await makeRequest(handler, deps, "GET", "/v1/composer/turns?scope_kind=project&scope_id=p_abc");
+    const body = await resp.clone().json();
+    expect(body.items).toHaveLength(1);
+    expect(body.items[0]!.message).toBe("Project ABC");
+    expect(body.items[0]!.scope.id).toBe("p_abc");
+  });
+
   test("caps limit at 100", async () => {
     for (let i = 0; i < 5; i++) {
       await makeRequest(handler, deps, "POST", "/v1/composer/turns", {
