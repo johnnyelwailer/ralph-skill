@@ -8,6 +8,8 @@ export {
   detectStuckSessions,
   recoverCrashedSessions,
   refreshProviderHealth,
+  tickIncubationMonitors,
+  watchSessionBurnRates,
   readLastLineOfLog,
   parseEventTimestamp,
 } from "./watchdog-jobs.ts";

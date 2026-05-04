@@ -30,6 +30,8 @@ import {
   detectStuckSessions,
   refreshProviderHealth,
   recoverCrashedSessions,
+  tickIncubationMonitors,
+  watchSessionBurnRates,
 } from "@aloop/scheduler";
 import type { ConfigStore, DaemonConfig, DaemonPaths, OverridesConfig } from "@aloop/daemon-config";
 import { InMemoryProviderHealthStore, ProviderRegistry } from "@aloop/provider";
