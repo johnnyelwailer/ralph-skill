@@ -12,12 +12,13 @@ import {
   parseJsonBody,
 } from "@aloop/daemon-routes";
 import type {
-  IncubationItem,
-  IncubationItemComment,
-  IncubationItemState,
+  IncubationProposal,
+  IncubationProposalKind,
+  IncubationProposalState,
   IncubationScope,
   IncubationItemSourceClient,
   OutreachPlan,
+  OutreachPlanState,
   ResearchMonitor,
   ResearchMonitorEventTrigger,
   ResearchRun,
@@ -544,6 +545,102 @@ export async function handleIncubation(
         });
         return jsonResponse(201, outreachResponse(plan));
       } catch (err) {
+        return errorResponse(500, "internal_error", (err as Error).message);
+      }
+    }
+
+    return methodNotAllowed();
+  }
+
+  // -------------------------------------------------------------------------
+  // /v1/incubation/outreach/:id
+  // -------------------------------------------------------------------------
+  const outreachIdMatch = pathBase.match(/^\/v1\/incubation\/outreach\/([^/]+)$/);
+  if (outreachIdMatch) {
+    const id = outreachIdMatch[1]!;
+
+    if (req.method === "GET") {
+      const plan = outreachReg.get(id);
+      if (!plan) return notFoundResponse(pathname);
+      return jsonResponse(200, outreachResponse(plan));
+    }
+
+    if (req.method === "PATCH") {
+      const parsed = await parseJsonBody(req);
+      if ("error" in parsed) return parsed.error;
+      const body = parsed.data;
+
+      try {
+        let plan = outreachReg.get(id);
+        if (!plan) return notFoundResponse(pathname);
+
+        if (typeof body.state === "string") {
+          if (!isValidOutreachState(body.state)) {
+            return badRequest(`invalid state: ${body.state}`, { state: body.state });
+          }
+          plan = outreachReg.updateState(id, body.state as OutreachPlanState);
+        }
+
+        return jsonResponse(200, outreachResponse(plan));
+      } catch (err) {
+        if (err instanceof OutreachPlanNotFoundError) return notFoundResponse(pathname);
+        return errorResponse(500, "internal_error", (err as Error).message);
+      }
+    }
+
+    return methodNotAllowed();
+  }
+
+  // -------------------------------------------------------------------------
+  // /v1/incubation/outreach/:id/approve
+  // -------------------------------------------------------------------------
+  const outreachApproveMatch = pathBase.match(/^\/v1\/incubation\/outreach\/([^/]+)\/approve$/);
+  if (outreachApproveMatch) {
+    const id = outreachApproveMatch[1]!;
+
+    if (req.method === "POST") {
+      try {
+        const plan = outreachReg.get(id);
+        if (!plan) return notFoundResponse(pathname);
+        if (plan.state !== "ready_for_approval") {
+          return badRequest("outreach plan must be in ready_for_approval state to approve", {
+            current_state: plan.state,
+          });
+        }
+        const updated = outreachReg.updateState(id, "approved");
+        return jsonResponse(200, outreachResponse(updated));
+      } catch (err) {
+        if (err instanceof OutreachPlanNotFoundError) return notFoundResponse(pathname);
+        return errorResponse(500, "internal_error", (err as Error).message);
+      }
+    }
+
+    return methodNotAllowed();
+  }
+
+  // -------------------------------------------------------------------------
+  // /v1/incubation/outreach/:id/record-response
+  // -------------------------------------------------------------------------
+  const outreachRecordResponseMatch = pathBase.match(
+    /^\/v1\/incubation\/outreach\/([^/]+)\/record-response$/,
+  );
+  if (outreachRecordResponseMatch) {
+    const id = outreachRecordResponseMatch[1]!;
+
+    if (req.method === "POST") {
+      try {
+        const plan = outreachReg.get(id);
+        if (!plan) return notFoundResponse(pathname);
+        // Transition from approved or collecting to collecting
+        if (plan.state !== "approved" && plan.state !== "collecting") {
+          return badRequest("outreach plan must be in approved or collecting state to record a response", {
+            current_state: plan.state,
+          });
+        }
+        const updated = outreachReg.updateState(id, "collecting");
+        return jsonResponse(200, outreachResponse(updated));
+      } catch (err) {
+        if (err instanceof OutreachPlanNotFoundError) return notFoundResponse(pathname);
         return errorResponse(500, "internal_error", (err as Error).message);
       }
     }
