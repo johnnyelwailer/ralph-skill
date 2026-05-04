@@ -1,10 +1,7 @@
-import type { InMemoryProviderHealthStore } from "@aloop/provider";
-import type { SchedulerLimits } from "@aloop/scheduler-gates";
-import type { SchedulerProbes, SystemSample } from "@aloop/scheduler-gates";
-import type { Permit } from "@aloop/state-sqlite";
-import type { SchedulerService } from "@aloop/scheduler";
 import type { Database } from "bun:sqlite";
-import { badRequest, jsonResponse } from "./http-helpers.ts";
+import type { InMemoryProviderHealthStore } from "@aloop/provider";
+import type { SchedulerProbes, SystemSample } from "@aloop/scheduler-gates";
+import type { SchedulerService } from "@aloop/scheduler";
 
 export type MetricsDeps = {
   readonly scheduler: SchedulerService;
@@ -14,6 +11,22 @@ export type MetricsDeps = {
 
 export type MetricsAggregatesDeps = {
   readonly db: Database;
+};
+
+export type MetricsAggregatesResponse = {
+  readonly window: {
+    readonly start: string;
+    readonly end: string;
+  };
+  readonly group_by: readonly string[];
+  readonly items: readonly MetricsAggregatesItem[];
+};
+
+export type MetricsAggregatesItem = {
+  readonly labels: Record<string, string>;
+  readonly sample_size: number;
+  readonly directional: boolean;
+  readonly metrics: Record<string, number>;
 };
 
 const CONTENT_TYPE = "text/plain; version=0.0.4; charset=utf-8";
@@ -219,100 +232,201 @@ function emitSystemMetrics(
   );
 }
 
-// ---------------------------------------------------------------------------
-// Metrics aggregates — GET /v1/metrics/aggregates
-// ---------------------------------------------------------------------------
+/** Escape double-quotes and backslashes in Prometheus label values. */
+function escapeLabel(value: string): string {
+  return value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+}
+
+// ─── Metrics aggregates ───────────────────────────────────────────────────────
+
+/** Allowed group-by dimension fields, per metrics.md §Metric dimensions. */
+const ALLOWED_GROUP_BY = new Set([
+  "scope",
+  "provider_route",
+  "model_id",
+  "deployment_route",
+  "workflow",
+  "workflow_phase",
+  "task_family",
+  "story_complexity",
+  "spec_quality_tier",
+  "outcome",
+]);
+
+/** Allowed metric names for the aggregates endpoint. */
+const ALLOWED_METRICS = new Set([
+  "model_approval_rate",
+  "model_merge_rate",
+  "model_cost_per_merged_pr",
+  "model_changes_requested_rate",
+  "model_review_gate_pass_rate",
+  "model_cost_per_approved_change",
+  "model_turn_success_rate",
+  "change_set_approval_rate",
+  "change_set_merge_rate",
+  "keeper_rate",
+  "burn_rate_tokens_per_merged_pr",
+  "permit_denial_rate",
+]);
 
 /**
  * Handle GET /v1/metrics/aggregates.
  *
- * Queries the materialized `metric_aggregates` table with scope, window,
- * group_by, and metrics filters. Returns the shape documented in api.md
- * §Metrics.
+ * Returns materialized aggregates from the `metric_aggregates` table.
+ * Query params:
+ *   scope        — scope filter (e.g. "project:p_123", "workspace:w_abc", "global")
+ *   window       — time window label: "24h", "7d", "30d", "all"  (default "30d")
+ *   group_by     — comma-separated dimension names (subset of ALLOWED_GROUP_BY)
+ *   metrics      — comma-separated metric names to return (subset of ALLOWED_METRICS)
+ *
+ * Returns 400 bad_request for unknown group_by fields or unknown metric names.
+ *
+ * The `metric_aggregates` table is populated by a background projector; this
+ * handler only reads from it.  When no rows exist it returns an empty items
+ * array — the table is rebuildable from events per metrics.md §Invariants.
  */
 export async function handleMetricsAggregates(
-  req: Request,
+  _req: Request,
   deps: MetricsAggregatesDeps,
   pathname: string,
 ): Promise<Response | undefined> {
   if (pathname !== "/v1/metrics/aggregates") return undefined;
-  if (req.method !== "GET") return undefined;
 
-  const url = new URL(req.url);
-  const scope = url.searchParams.get("scope");
-  const windowLabel = url.searchParams.get("window") ?? "all";
+  const url = new URL(_req.url);
+  const scope = url.searchParams.get("scope") ?? "global";
+  const windowLabel = url.searchParams.get("window") ?? "30d";
   const groupByParam = url.searchParams.get("group_by") ?? "";
   const metricsParam = url.searchParams.get("metrics") ?? "";
 
-  if (!scope) {
-    return badRequest("scope query parameter is required", { scope });
+  // Validate window label
+  if (!["24h", "7d", "30d", "all"].includes(windowLabel)) {
+    return jsonError("bad_request", `window must be one of: 24h, 7d, 30d, all`, 400);
   }
 
-  const groupBy = groupByParam ? groupByParam.split(",").map((s) => s.trim()) : [];
+  // Parse and validate group_by
+  const groupBy = groupByParam
+    ? groupByParam.split(",").map((s) => s.trim())
+    : [];
+  for (const dim of groupBy) {
+    if (!ALLOWED_GROUP_BY.has(dim)) {
+      return jsonError(
+        "bad_request",
+        `Unknown or high-cardinality group_by field: "${dim}". Allowed: ${[...ALLOWED_GROUP_BY].join(", ")}`,
+        400,
+      );
+    }
+  }
+
+  // Parse and validate metrics
   const requestedMetrics = metricsParam
     ? metricsParam.split(",").map((s) => s.trim())
     : [];
-
-  let sql = "SELECT * FROM metric_aggregates WHERE window_label = ?";
-  const params: (string | number | null)[] = [windowLabel];
-
-  sql += " AND scope = ?";
-  params.push(scope);
-
-  if (groupBy.length > 0) {
-    sql += " AND group_by = ?";
-    params.push(JSON.stringify(groupBy));
+  for (const m of requestedMetrics) {
+    if (!ALLOWED_METRICS.has(m)) {
+      return jsonError(
+        "bad_request",
+        `Unknown metric: "${m}". Allowed: ${[...ALLOWED_METRICS].join(", ")}`,
+        400,
+      );
+    }
   }
 
-  sql += " ORDER BY updated_at DESC";
+  // Compute window bounds
+  const now = new Date();
+  const windowEndIso = now.toISOString();
+  const windowStart = subtractWindow(now, windowLabel);
+  const windowStartIso = windowStart.toISOString();
 
+  // Query the metric_aggregates table
   const rows = deps.db
-    .query<{
-      id: string;
-      scope: string;
-      window_start: string;
-      window_end: string;
-      window_label: string;
-      group_by: string;
-      labels: string;
-      sample_size: number;
-      directional: number;
-      metrics: string;
-      updated_at: string;
-    }, (string | number | null)[]>(sql)
-    .all(...params);
+    .query<
+      { labels: string; sample_size: number; directional: number; metrics: string },
+      [string, string, string, string],
+    >(
+      `SELECT labels, sample_size, directional, metrics
+       FROM metric_aggregates
+       WHERE scope = ?
+         AND window_label = ?
+         AND window_start = ?
+         AND window_end = ?
+       ORDER BY sample_size DESC`,
+      [scope, windowLabel, windowStartIso, windowEndIso],
+    )
+    .all();
 
   const items = rows.map((row) => {
-    const metrics = JSON.parse(row.metrics) as Record<string, unknown>;
-    // Filter to requested metrics if specified
+    let labels: Record<string, string> = {};
+    try {
+      labels = JSON.parse(row.labels) as Record<string, string>;
+    } catch {
+      labels = {};
+    }
+
+    let rawMetrics: Record<string, number> = {};
+    try {
+      rawMetrics = JSON.parse(row.metrics) as Record<string, number>;
+    } catch {
+      rawMetrics = {};
+    }
+
+    // Filter to only requested metrics if specified
     const filteredMetrics =
       requestedMetrics.length > 0
         ? Object.fromEntries(
-            requestedMetrics.filter((k) => k in metrics).map((k) => [k, metrics[k]]),
+            Object.entries(rawMetrics).filter(([k]) => requestedMetrics.includes(k)),
           )
-        : metrics;
+        : rawMetrics;
 
     return {
-      labels: JSON.parse(row.labels) as Record<string, string>,
+      labels,
       sample_size: row.sample_size,
       directional: row.directional === 1,
       metrics: filteredMetrics,
     };
   });
 
-  // Compute a representative window from the first row
-  const windowStart = rows[0]?.window_start ?? "";
-  const windowEnd = rows[0]?.window_end ?? "";
-
-  return jsonResponse(200, {
-    _v: 1,
-    window: { start: windowStart, end: windowEnd },
+  const body: MetricsAggregatesResponse = {
+    window: {
+      start: windowStartIso,
+      end: windowEndIso,
+    },
     group_by: groupBy,
     items,
+  };
+
+  return new Response(JSON.stringify(body), {
+    status: 200,
+    headers: { "content-type": "application/json" },
   });
 }
 
-/** Escape double-quotes and backslashes in Prometheus label values. */
-function escapeLabel(value: string): string {
-  return value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+function subtractWindow(now: Date, label: string): Date {
+  const copy = new Date(now);
+  switch (label) {
+    case "24h":
+      copy.setHours(copy.getHours() - 24);
+      break;
+    case "7d":
+      copy.setDate(copy.getDate() - 7);
+      break;
+    case "30d":
+      copy.setDate(copy.getDate() - 30);
+      break;
+    case "all":
+      copy.setFullYear(2000, 0, 1); // far-past sentinel for "all time"
+      break;
+  }
+  return copy;
+}
+
+function jsonError(code: string, message: string, status: number): Response {
+  return new Response(
+    JSON.stringify({
+      error: { _v: 1, code, message },
+    }),
+    {
+      status,
+      headers: { "content-type": "application/json" },
+    },
+  );
 }

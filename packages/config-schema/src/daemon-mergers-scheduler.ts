@@ -6,7 +6,11 @@ import {
   posIntField,
   posNumField,
 } from "@aloop/config-schema-utils";
-import { DAEMON_DEFAULTS, type DaemonConfig } from "./daemon-types.ts";
+import {
+  DAEMON_DEFAULTS,
+  type DaemonConfig,
+  type ProjectSchedulerConfig,
+} from "./daemon-types.ts";
 
 export function mergeScheduler(raw: unknown, errors: string[]): DaemonConfig["scheduler"] {
   const def = DAEMON_DEFAULTS.scheduler;
@@ -36,7 +40,50 @@ export function mergeScheduler(raw: unknown, errors: string[]): DaemonConfig["sc
     ),
     systemLimits: mergeSystemLimits(pick(raw, "system_limits", "systemLimits"), errors),
     burnRate: mergeBurnRate(pick(raw, "burn_rate", "burnRate"), errors),
+    projects: mergeProjectSchedulerConfig(pick(raw, "projects", "projects"), errors),
   };
+}
+
+function mergeProjectSchedulerConfig(
+  raw: unknown,
+  errors: string[],
+): DaemonConfig["scheduler"]["projects"] {
+  const def = DAEMON_DEFAULTS.scheduler.projects ?? {};
+  if (raw === undefined) return def;
+  if (!isMapping(raw)) {
+    errors.push("scheduler.projects: must be a mapping of project_id → config");
+    return def;
+  }
+  const result: Record<string, ProjectSchedulerConfig> = {};
+  for (const [projectId, value] of Object.entries(raw)) {
+    if (value === null) {
+      errors.push(`scheduler.projects.${projectId}: must not be null`);
+      continue;
+    }
+    if (!isMapping(value)) {
+      errors.push(`scheduler.projects.${projectId}: must be a mapping`);
+      continue;
+    }
+    const concurrencyCap = posIntField(
+      pick(value, "concurrency_cap", "concurrencyCap"),
+      `scheduler.projects.${projectId}.concurrency_cap`,
+      undefined,
+      errors,
+    );
+    const dailyCostCapCents = nonNegIntField(
+      pick(value, "daily_cost_cap_cents", "dailyCostCapCents"),
+      `scheduler.projects.${projectId}.daily_cost_cap_cents`,
+      undefined,
+      errors,
+    );
+    if (concurrencyCap !== undefined || dailyCostCapCents !== undefined) {
+      result[projectId] = Object.freeze({
+        ...(concurrencyCap !== undefined ? { concurrencyCap } : {}),
+        ...(dailyCostCapCents !== undefined ? { dailyCostCapCents } : {}),
+      });
+    }
+  }
+  return Object.freeze(result);
 }
 
 function mergeSystemLimits(

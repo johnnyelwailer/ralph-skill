@@ -99,6 +99,19 @@ export function daemonConfigToRaw(config: DaemonConfig): Record<string, unknown>
         max_tokens_since_commit: config.scheduler.burnRate.maxTokensSinceCommit,
         min_commits_per_hour: config.scheduler.burnRate.minCommitsPerHour,
       },
+      ...(config.scheduler.projects && Object.keys(config.scheduler.projects).length > 0
+        ? {
+            projects: Object.fromEntries(
+              Object.entries(config.scheduler.projects).map(([k, v]) => [
+                k,
+                {
+                  ...(v.concurrencyCap !== undefined ? { concurrency_cap: v.concurrencyCap } : {}),
+                  ...(v.dailyCostCapCents !== undefined ? { daily_cost_cap_cents: v.dailyCostCapCents } : {}),
+                },
+              ]),
+            ),
+          }
+        : {}),
     },
     watchdog: {
       tick_interval: config.watchdog.tickIntervalSeconds,

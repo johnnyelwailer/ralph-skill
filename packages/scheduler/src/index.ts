@@ -19,6 +19,7 @@ export type {
   AcquirePermitInput,
   PermitDecision,
   LimitsUpdateResult,
+  ProjectGateConfig,
 } from "./decisions.ts";
 export type {
   SystemSample,

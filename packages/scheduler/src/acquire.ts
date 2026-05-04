@@ -2,6 +2,7 @@ import { PermitRegistry, type EventWriter } from "@aloop/state-sqlite";
 import {
   applyOverrides,
   checkBurnRateGate,
+  checkProjectGate,
   checkSystemGate,
   type SchedulerProbes,
 } from "@aloop/scheduler-gates";
@@ -26,17 +27,17 @@ export type AcquirePermitDeps = {
 
 /** Extract the PermitOwner discriminant from an AcquirePermitInput. */
 function ownerFrom(input: AcquirePermitInput): PermitOwner {
-  if (input.sessionId !== undefined) return { sessionId: input.sessionId };
-  if (input.researchRunId !== undefined) return { researchRunId: input.researchRunId };
-  if (input.composerTurnId !== undefined) return { composerTurnId: input.composerTurnId };
-  return { controlSubagentRunId: input.controlSubagentRunId as string };
+  if ("sessionId" in input) return { sessionId: input.sessionId };
+  if ("researchRunId" in input) return { researchRunId: input.researchRunId };
+  if ("composerTurnId" in input) return { composerTurnId: input.composerTurnId };
+  return { controlSubagentRunId: (input as { controlSubagentRunId: string }).controlSubagentRunId };
 }
 
 /** Primary ID string for a PermitOwner (used as lookup key in gates/probes). */
 function primaryId(owner: PermitOwner): string {
-  if (owner.sessionId !== undefined) return owner.sessionId;
-  if (owner.researchRunId !== undefined) return owner.researchRunId;
-  if (owner.composerTurnId !== undefined) return owner.composerTurnId;
+  if ("sessionId" in owner) return owner.sessionId;
+  if ("researchRunId" in owner) return owner.researchRunId;
+  if ("composerTurnId" in owner) return owner.composerTurnId;
   return (owner as { controlSubagentRunId: string }).controlSubagentRunId;
 }
 
@@ -120,42 +121,22 @@ export async function acquirePermitDecision(
     }
   }
 
-  // Project-level gates — only evaluated when projectId is set
-  if (input.projectId != null) {
-    const limits = deps.config.projectLimits(input.projectId);
-
-    // Project concurrency cap
-    if (limits.concurrencyCap != null) {
-      const activeInProject = deps.permits.countByProject(input.projectId);
-      if (activeInProject >= limits.concurrencyCap) {
-        return appendPermitDeny(deps.events, {
-          owner,
-          reason: "project_concurrency_cap_exceeded",
-          gate: "project",
-          details: {
-            project_id: input.projectId,
-            active_permits: activeInProject,
-            concurrency_cap: limits.concurrencyCap,
-          },
-        });
-      }
-    }
-
-    // Project daily cost cap
-    if (limits.dailyCostCapCents != null) {
-      const dailyCostProbe = deps.probes.projectDailyCost?.(input.projectId);
-      if (dailyCostProbe && dailyCostProbe.costUsdCents > limits.dailyCostCapCents) {
-        return appendPermitDeny(deps.events, {
-          owner,
-          reason: "project_daily_cost_cap_exceeded",
-          gate: "project",
-          details: {
-            project_id: input.projectId,
-            cost_usd_cents: dailyCostProbe.costUsdCents,
-            daily_cost_cap_cents: limits.dailyCostCapCents,
-          },
-        });
-      }
+  // Project-level gate: concurrency cap and daily cost cap per project.
+  // Only evaluated when input.projectId is non-null and project limits are configured.
+  if (input.projectId !== null) {
+    const projectGate = await checkProjectGate(
+      input.projectId,
+      deps.permits.countByProject(input.projectId),
+      deps.config.projectLimits(input.projectId),
+      deps.probes,
+    );
+    if (!projectGate.ok) {
+      return appendPermitDeny(deps.events, {
+        owner,
+        reason: projectGate.reason,
+        gate: "project",
+        details: projectGate.details,
+      });
     }
   }
 
@@ -172,6 +153,7 @@ export async function acquirePermitDecision(
   await appendPermitGrant(deps.events, {
     permitId,
     owner,
+    projectId: input.projectId,
     providerId: overrideDecision.providerId,
     ttlSeconds,
     grantedAt,

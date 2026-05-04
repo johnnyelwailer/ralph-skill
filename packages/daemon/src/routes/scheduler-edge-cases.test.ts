@@ -40,6 +40,7 @@ function makeDeps() {
   const schedulerConfig: SchedulerConfigView = {
     scheduler: () => config.daemon().scheduler,
     overrides: () => config.overrides(),
+    projectLimits: (_projectId: string) => ({}),
     updateLimits: async () => ({ ok: true, limits: config.daemon().scheduler }),
   };
   const scheduler = new SchedulerService(
@@ -69,6 +70,7 @@ function makeDepsWithFailingLimits() {
   const schedulerConfig: SchedulerConfigView = {
     scheduler: () => config.daemon().scheduler,
     overrides: () => config.overrides(),
+    projectLimits: (_projectId: string) => ({}),
     updateLimits: async (rawPatch: Record<string, unknown>) => {
       if ("nope" in rawPatch) {
         return { ok: false, errors: ["unknown scheduler limits field: nope"] };

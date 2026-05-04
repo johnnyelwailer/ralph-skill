@@ -41,6 +41,7 @@ function makeDeps() {
   const schedulerConfig: SchedulerConfigView = {
     scheduler: () => config.daemon().scheduler,
     overrides: () => config.overrides(),
+    projectLimits: (_projectId: string) => ({}),
     updateLimits: async (rawPatch: Record<string, unknown>) => {
       const limits = config.daemon().scheduler;
       const knownKeys = [
@@ -108,6 +109,7 @@ function makeDepsWithQuota(
   const schedulerConfig: SchedulerConfigView = {
     scheduler: () => config.daemon().scheduler,
     overrides: () => config.overrides(),
+    projectLimits: (_projectId: string) => ({}),
     updateLimits: async (rawPatch: Record<string, unknown>) => {
       const limits = config.daemon().scheduler;
       return { ok: true, limits };

@@ -19,11 +19,14 @@ class MockPermitRegistry {
   private _listResult: Permit[] = [];
   private _listExpiredResult: Permit[] = [];
   private _countActiveResult = 0;
+  private _countByProjectResults: Record<string, number> = {};
 
   get(id: string): Permit | undefined { return this._permits.get(id); }
   list(): Permit[] { return this._listResult; }
   listExpired(_nowIso: string): Permit[] { return this._listExpiredResult; }
   countActive(): number { return this._countActiveResult; }
+  countByProject(projectId: string): number { return this._countByProjectResults[projectId] ?? 0; }
+  remove(id: string): void { this._permits.delete(id); }
 
   setPermits(permits: Permit[]) {
     this._listResult = permits;
@@ -31,6 +34,7 @@ class MockPermitRegistry {
   }
   setExpired(permits: Permit[]) { this._listExpiredResult = permits; }
   setCountActive(n: number) { this._countActiveResult = n; }
+  setCountByProject(projectId: string, n: number) { this._countByProjectResults[projectId] = n; }
 }
 
 function makePermit(overrides: Partial<Permit> = {}): Permit {
@@ -65,6 +69,7 @@ function makeConfig(overrides: Partial<{
       permitTtlMaxSeconds: overrides.permitTtlMaxSeconds ?? 3600,
     }),
     overrides: () => ({ allow: null, deny: null, force: null }),
+    projectLimits: (_projectId: string) => ({}),
     updateLimits: () =>
       Promise.resolve({ ok: true, limits: { max_permits: 5, ttl_seconds: 1800 } }),
   };
@@ -188,7 +193,7 @@ describe("acquirePermit", () => {
       config,
       events as unknown as EventWriter,
     );
-    const result = await service.acquirePermit({ sessionId: "sess_test", providerCandidate: "opencode" });
+    const result = await service.acquirePermit({ sessionId: "sess_test", providerCandidate: "opencode", projectId: null });
     // acquirePermitDecision is called and returns a PermitDecision
     expect(typeof result.granted).toBe("boolean");
     // Verify the decision is well-formed: either granted (with permit) or denied (with reason/gate)
@@ -210,7 +215,7 @@ describe("acquirePermit", () => {
       config,
       events as unknown as EventWriter,
     );
-    const result = await service.acquirePermit({ sessionId: "sess_blocked", providerCandidate: "opencode" });
+    const result = await service.acquirePermit({ sessionId: "sess_blocked", providerCandidate: "opencode", projectId: null });
     expect(result.granted).toBe(false);
   });
 
@@ -226,6 +231,7 @@ describe("acquirePermit", () => {
     const result = await service.acquirePermit({
       sessionId: "sess_ttl",
       providerCandidate: "opencode",
+      projectId: null,
       ttlSeconds: 300,
     });
     expect(typeof result.granted).toBe("boolean");
@@ -246,6 +252,7 @@ describe("updateLimits", () => {
         burnRate: { maxTokensSinceCommit: 2_000_000, minCommitsPerHour: 2 },
       }),
       overrides: () => ({ allow: null, deny: null, force: null }),
+      projectLimits: (_projectId: string) => ({}),
       updateLimits: async () => ({
         ok: false as const,
         errors: ["unknown scheduler limits field: nope", "scheduler.burn_rate: must be a mapping"],
@@ -261,10 +268,9 @@ describe("updateLimits", () => {
     const result = await service.updateLimits({ nope: true });
 
     expect(result.ok).toBe(false);
-    if (!result.ok) {
-      expect(result.errors).toHaveLength(2);
-      expect(result.errors[0]).toContain("unknown scheduler limits field");
-    }
+    const errors = (result as { ok: false; errors: string[] }).errors;
+    expect(errors).toHaveLength(2);
+    expect(errors[0]).toContain("unknown scheduler limits field");
   });
 
   test("returns ok=true when config.updateLimits succeeds", async () => {
@@ -278,6 +284,7 @@ describe("updateLimits", () => {
         burnRate: { maxTokensSinceCommit: 2_000_000, minCommitsPerHour: 2 },
       }),
       overrides: () => ({ allow: null, deny: null, force: null }),
+      projectLimits: (_projectId: string) => ({}),
       updateLimits: async () => ({
         ok: true as const,
         limits: {

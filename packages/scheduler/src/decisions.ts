@@ -1,17 +1,16 @@
-import type { ProviderOverrides, SchedulerLimits } from "@aloop/scheduler-gates";
+import type { ProjectGateConfig, ProviderOverrides, SchedulerLimits } from "@aloop/scheduler-gates";
 import type { Permit } from "@aloop/state-sqlite";
 
-export type { ProviderOverrides, SchedulerLimits };
-
-export type ProjectLimits = {
-  readonly concurrencyCap?: number;
-  readonly dailyCostCapCents?: number;
-};
+export type { ProviderOverrides, SchedulerLimits, ProjectGateConfig };
 
 export type SchedulerConfigView = {
   scheduler(): SchedulerLimits;
   overrides(): ProviderOverrides;
-  projectLimits(projectId: string): ProjectLimits;
+  /**
+   * Returns per-project gate limits for the given project.
+   * Returns an empty config (both caps = 0 / absent) when the project has no overrides.
+   */
+  projectLimits(projectId: string): ProjectGateConfig;
   updateLimits(rawPatch: Record<string, unknown>): Promise<LimitsUpdateResult>;
 };
 

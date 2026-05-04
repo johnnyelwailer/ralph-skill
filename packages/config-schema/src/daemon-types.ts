@@ -8,6 +8,13 @@
  * without a consumer is acceptable IF it's documented in
  * docs/spec/daemon.md or docs/spec/self-improvement.md (tunable knobs).
  */
+export type ProjectSchedulerConfig = {
+  /** Maximum active permits for this project. Omit to inherit the global concurrency cap. */
+  readonly concurrencyCap?: number;
+  /** Maximum USD cents this project may accumulate in a calendar day. Omit to disable. */
+  readonly dailyCostCapCents?: number;
+};
+
 export type DaemonConfig = {
   readonly http: {
     readonly bind: string;
@@ -27,6 +34,12 @@ export type DaemonConfig = {
       readonly maxTokensSinceCommit: number;
       readonly minCommitsPerHour: number;
     };
+    /**
+     * Per-project scheduler overrides.
+     * Key is the project id (e.g. "proj_1").
+     * Omitting a project → it uses global limits.
+     */
+    readonly projects?: Readonly<Record<string, ProjectSchedulerConfig>>;
   };
   readonly watchdog: {
     readonly tickIntervalSeconds: number;
@@ -84,6 +97,7 @@ export const DAEMON_DEFAULTS: DaemonConfig = {
     permitTtlMaxSeconds: 3600,
     systemLimits: { cpuMaxPct: 80, memMaxPct: 85, loadMax: 4.0 },
     burnRate: { maxTokensSinceCommit: 1_000_000, minCommitsPerHour: 1 },
+    projects: {},
   },
   watchdog: {
     tickIntervalSeconds: 15,

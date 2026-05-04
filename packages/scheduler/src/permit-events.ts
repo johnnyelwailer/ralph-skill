@@ -4,6 +4,7 @@ import type { PermitDecision, PermitOwner } from "./decisions.ts";
 export type PermitGrantEvent = {
   readonly permitId: string;
   readonly owner: PermitOwner;
+  readonly projectId: string | null;
   readonly providerId: string;
   readonly ttlSeconds: number;
   readonly grantedAt: string;
@@ -43,6 +44,7 @@ export async function appendPermitGrant(
   await events.append("scheduler.permit.grant", {
     permit_id: input.permitId,
     ...ownerToFields(input.owner),
+    ...(input.projectId !== null ? { project_id: input.projectId } : {}),
     provider_id: input.providerId,
     ttl_seconds: input.ttlSeconds,
     granted_at: input.grantedAt,
