@@ -337,22 +337,24 @@ export async function handleMetricsAggregates(
   const windowStart = subtractWindow(now, windowLabel);
   const windowStartIso = windowStart.toISOString();
 
-  // Query the metric_aggregates table
+  // Query the metric_aggregates table.
+  // window_end uses <= to capture all window snapshots that have closed by
+  // the current moment (the projector may have run at a slightly earlier
+  // millisecond than the query).
   const rows = deps.db
     .query<
       { labels: string; sample_size: number; directional: number; metrics: string },
-      [string, string, string, string],
+      [string, string, string, string]
     >(
       `SELECT labels, sample_size, directional, metrics
        FROM metric_aggregates
        WHERE scope = ?
          AND window_label = ?
          AND window_start = ?
-         AND window_end = ?
+         AND window_end <= ?
        ORDER BY sample_size DESC`,
-      [scope, windowLabel, windowStartIso, windowEndIso],
     )
-    .all();
+    .all(scope, windowLabel, windowStartIso, windowEndIso);
 
   const items = rows.map((row) => {
     let labels: Record<string, string> = {};
