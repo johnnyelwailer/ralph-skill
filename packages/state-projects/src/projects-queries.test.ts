@@ -83,6 +83,24 @@ describe("getProjectById", () => {
     expect(project!.name).toBe("Project B");
     expect(project!.status).toBe("archived");
   });
+
+  test("returns workspaceIds when project belongs to one or more workspaces", () => {
+    db.run(
+      `INSERT INTO workspace_projects (workspace_id, project_id, role) VALUES (?, ?, ?)`,
+      ["ws_alpha", "id-1", "admin"],
+    );
+    db.run(
+      `INSERT INTO workspace_projects (workspace_id, project_id, role) VALUES (?, ?, ?)`,
+      ["ws_beta", "id-1", "member"],
+    );
+    const project = getProjectById(db, "id-1")!;
+    expect(project.workspaceIds).toEqual(["ws_alpha", "ws_beta"]);
+  });
+
+  test("returns empty workspaceIds array when project has no workspace associations", () => {
+    const project = getProjectById(db, "id-1")!;
+    expect(project.workspaceIds).toEqual([]);
+  });
 });
 
 describe("getProjectByPath", () => {
@@ -188,7 +206,7 @@ describe("listProjectsFromDb", () => {
   });
 });
 
-describe("canonicalizeProjectPath", () => {
+describe("getProjectByPath", () => {
   let dir: string;
 
   beforeEach(() => {
