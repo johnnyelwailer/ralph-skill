@@ -595,3 +595,291 @@ describe("Routing", () => {
     expect(resp.status).toBe(404);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Validator helpers — isValidState, isValidProposalKind, isValidProposalState
+// ---------------------------------------------------------------------------
+//
+// These are package-private helpers in incubation-handlers.ts.  We test them
+// by exercising the API routes whose correctness depends on them:
+//   - POST /v1/incubation/items  → isValidState used in PATCH (item state transitions)
+//   - POST /v1/incubation/items/:id/proposals  → isValidProposalKind used here
+//   - PATCH /v1/incubation/proposals/:id  → isValidProposalState used here
+//
+// We do NOT import the validators directly (they are not exported).  Instead we
+// test them through the handler to assert what they *should* do per spec.
+// ---------------------------------------------------------------------------
+
+describe("isValidState validator", () => {
+  test("returns true for every valid IncubationItemState", async () => {
+    const states = [
+      "captured",
+      "clarifying",
+      "researching",
+      "synthesized",
+      "ready_for_promotion",
+      "promoted",
+      "discarded",
+      "archived",
+    ] as const;
+    for (const state of states) {
+      const item = await createItem(handler, deps, { title: "State test" });
+      const resp = await makeRequest(handler, deps, "PATCH", `/v1/incubation/items/${item.id}`, { state });
+      expect(resp.status).toBe(200, `state "${state}" should be accepted`);
+    }
+  });
+
+  test("returns false for an invalid state — PATCH returns 400", async () => {
+    const item = await createItem(handler, deps);
+    const resp = await makeRequest(handler, deps, "PATCH", `/v1/incubation/items/${item.id}`, {
+      state: "not_a_valid_state",
+    });
+    expect(resp.status).toBe(400);
+  });
+
+  test("returns false for empty string state — PATCH returns 400", async () => {
+    const item = await createItem(handler, deps);
+    const resp = await makeRequest(handler, deps, "PATCH", `/v1/incubation/items/${item.id}`, {
+      state: "",
+    });
+    expect(resp.status).toBe(400);
+  });
+
+  test("isValidState is case-sensitive — capitalised valid word is rejected", async () => {
+    const item = await createItem(handler, deps);
+    const resp = await makeRequest(handler, deps, "PATCH", `/v1/incubation/items/${item.id}`, {
+      state: "Captured",
+    });
+    expect(resp.status).toBe(400);
+  });
+});
+
+describe("isValidProposalKind validator", () => {
+  test("returns true for every valid IncubationProposalKind", async () => {
+    const kinds = [
+      "setup_candidate",
+      "spec_change",
+      "epic",
+      "story",
+      "steering",
+      "decision_record",
+      "discard",
+    ] as const;
+    for (const kind of kinds) {
+      const item = await createItem(handler, deps, { title: "Kind test" });
+      const resp = await makeRequest(handler, deps, "POST", `/v1/incubation/items/${item.id}/proposals`, {
+        kind,
+        title: "Test proposal",
+      });
+      expect(resp.status).toBe(201, `kind "${kind}" should be accepted`);
+    }
+  });
+
+  test("returns false for an invalid kind — POST returns 400", async () => {
+    const item = await createItem(handler, deps);
+    const resp = await makeRequest(handler, deps, "POST", `/v1/incubation/items/${item.id}/proposals`, {
+      kind: "not_a_valid_kind",
+      title: "Invalid",
+    });
+    expect(resp.status).toBe(400);
+  });
+
+  test("returns false for empty string kind — POST returns 400", async () => {
+    const item = await createItem(handler, deps);
+    const resp = await makeRequest(handler, deps, "POST", `/v1/incubation/items/${item.id}/proposals`, {
+      kind: "",
+      title: "Invalid",
+    });
+    expect(resp.status).toBe(400);
+  });
+
+  test("isValidProposalKind is case-sensitive — lowercase with underscore is required", async () => {
+    const item = await createItem(handler, deps);
+    const resp = await makeRequest(handler, deps, "POST", `/v1/incubation/items/${item.id}/proposals`, {
+      kind: "SPEC_CHANGE",
+      title: "Invalid",
+    });
+    expect(resp.status).toBe(400);
+  });
+});
+
+describe("isValidProposalState validator", () => {
+  test("returns true for every valid IncubationProposalState", async () => {
+    const validStates = ["draft", "ready", "applied", "rejected"] as const;
+    for (const state of validStates) {
+      const item = await createItem(handler, deps, { title: "Proposal state test" });
+      const createResp = await makeRequest(handler, deps, "POST", `/v1/incubation/items/${item.id}/proposals`, {
+        kind: "story",
+        title: "State transition test",
+      });
+      const proposal = await createResp.json() as Record<string, unknown>;
+      const resp = await makeRequest(handler, deps, "PATCH", `/v1/incubation/proposals/${proposal.id}`, { state });
+      expect(resp.status).toBe(200, `proposal state "${state}" should be accepted`);
+    }
+  });
+
+  test("returns false for an invalid proposal state — PATCH returns 400", async () => {
+    const item = await createItem(handler, deps);
+    const createResp = await makeRequest(handler, deps, "POST", `/v1/incubation/items/${item.id}/proposals`, {
+      kind: "story",
+      title: "Invalid state test",
+    });
+    const proposal = await createResp.json() as Record<string, unknown>;
+    const resp = await makeRequest(handler, deps, "PATCH", `/v1/incubation/proposals/${proposal.id}`, {
+      state: "not_valid",
+    });
+    expect(resp.status).toBe(400);
+  });
+
+  test("returns false for empty string proposal state — PATCH returns 400", async () => {
+    const item = await createItem(handler, deps);
+    const createResp = await makeRequest(handler, deps, "POST", `/v1/incubation/items/${item.id}/proposals`, {
+      kind: "story",
+      title: "Empty state test",
+    });
+    const proposal = await createResp.json() as Record<string, unknown>;
+    const resp = await makeRequest(handler, deps, "PATCH", `/v1/incubation/proposals/${proposal.id}`, {
+      state: "",
+    });
+    expect(resp.status).toBe(400);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// parseScope — validates and extracts IncubationScope from request body
+// ---------------------------------------------------------------------------
+//
+// parseScope is a private helper called during POST /v1/incubation/items.
+// It maps the raw scope object from the request body to the typed IncubationScope
+// union.  We test it through the API:
+//   - kind "global"       → { kind: "global" }
+//   - kind "project"      → { kind: "project", project_id: string }
+//   - kind "candidate_project" → { kind: "candidate_project", abs_path?, repo_url? }
+//   - missing/invalid kind → defaults to { kind: "global" } (per spec: spec.md)
+// ---------------------------------------------------------------------------
+
+describe("parseScope — scope kind routing", () => {
+  test("accepts explicit global scope", async () => {
+    const resp = await makeRequest(handler, deps, "POST", "/v1/incubation/items", {
+      title: "Global item",
+      scope: { kind: "global" },
+      source: { client: "api" },
+    });
+    expect(resp.status).toBe(201);
+    const body = await resp.json() as Record<string, unknown>;
+    expect(body.scope).toEqual({ kind: "global" });
+  });
+
+  test("accepts project scope with project_id", async () => {
+    const resp = await makeRequest(handler, deps, "POST", "/v1/incubation/items", {
+      title: "Project item",
+      scope: { kind: "project", project_id: "proj_test_123" },
+      source: { client: "api" },
+    });
+    expect(resp.status).toBe(201);
+    const body = await resp.json() as Record<string, unknown>;
+    expect(body.scope).toEqual({ kind: "project", project_id: "proj_test_123" });
+  });
+
+  test("project scope without project_id returns 400", async () => {
+    const resp = await makeRequest(handler, deps, "POST", "/v1/incubation/items", {
+      title: "Bad project scope",
+      scope: { kind: "project" },
+      source: { client: "api" },
+    });
+    expect(resp.status).toBe(400);
+  });
+
+  test("project scope with non-string project_id returns 400", async () => {
+    const resp = await makeRequest(handler, deps, "POST", "/v1/incubation/items", {
+      title: "Bad project id type",
+      scope: { kind: "project", project_id: 12345 },
+      source: { client: "api" },
+    });
+    expect(resp.status).toBe(400);
+  });
+
+  test("accepts candidate_project scope with abs_path only", async () => {
+    const resp = await makeRequest(handler, deps, "POST", "/v1/incubation/items", {
+      title: "Candidate project (path only)",
+      scope: { kind: "candidate_project", abs_path: "/home/user/new-project" },
+      source: { client: "api" },
+    });
+    expect(resp.status).toBe(201);
+    const body = await resp.json() as Record<string, unknown>;
+    expect(body.scope).toEqual({ kind: "candidate_project", abs_path: "/home/user/new-project" });
+  });
+
+  test("accepts candidate_project scope with repo_url only", async () => {
+    const resp = await makeRequest(handler, deps, "POST", "/v1/incubation/items", {
+      title: "Candidate project (url only)",
+      scope: { kind: "candidate_project", repo_url: "https://github.com/user/repo" },
+      source: { client: "api" },
+    });
+    expect(resp.status).toBe(201);
+    const body = await resp.json() as Record<string, unknown>;
+    expect(body.scope).toEqual({ kind: "candidate_project", repo_url: "https://github.com/user/repo" });
+  });
+
+  test("accepts candidate_project scope with both fields", async () => {
+    const resp = await makeRequest(handler, deps, "POST", "/v1/incubation/items", {
+      title: "Candidate project (both fields)",
+      scope: {
+        kind: "candidate_project",
+        abs_path: "/home/user/repo",
+        repo_url: "https://github.com/user/repo",
+      },
+      source: { client: "api" },
+    });
+    expect(resp.status).toBe(201);
+    const body = await resp.json() as Record<string, unknown>;
+    expect(body.scope).toEqual({
+      kind: "candidate_project",
+      abs_path: "/home/user/repo",
+      repo_url: "https://github.com/user/repo",
+    });
+  });
+
+  test("candidate_project scope with invalid abs_path type returns 400", async () => {
+    const resp = await makeRequest(handler, deps, "POST", "/v1/incubation/items", {
+      title: "Bad abs_path type",
+      scope: { kind: "candidate_project", abs_path: 42 },
+      source: { client: "api" },
+    });
+    // abs_path must be a string if provided; non-string is rejected
+    expect(resp.status).toBe(400);
+  });
+
+  test("unknown kind falls back to global scope", async () => {
+    const resp = await makeRequest(handler, deps, "POST", "/v1/incubation/items", {
+      title: "Unknown scope kind",
+      scope: { kind: "not_real_kind" },
+      source: { client: "api" },
+    });
+    expect(resp.status).toBe(201);
+    const body = await resp.json() as Record<string, unknown>;
+    // Per parseScope: unrecognized kind → { kind: "global" }
+    expect(body.scope).toEqual({ kind: "global" });
+  });
+
+  test("missing scope field defaults to global", async () => {
+    const resp = await makeRequest(handler, deps, "POST", "/v1/incubation/items", {
+      title: "No scope provided",
+      source: { client: "api" },
+    });
+    expect(resp.status).toBe(201);
+    const body = await resp.json() as Record<string, unknown>;
+    expect(body.scope).toEqual({ kind: "global" });
+  });
+
+  test("scope as non-object (number) defaults to global", async () => {
+    const resp = await makeRequest(handler, deps, "POST", "/v1/incubation/items", {
+      title: "Bad scope type",
+      scope: 42,
+      source: { client: "api" },
+    });
+    expect(resp.status).toBe(201);
+    const body = await resp.json() as Record<string, unknown>;
+    expect(body.scope).toEqual({ kind: "global" });
+  });
+});
