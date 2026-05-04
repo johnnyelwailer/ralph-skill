@@ -1,5 +1,12 @@
 import { describe, expect, test } from "bun:test";
-import type { AgentChunkData, SessionKind, SessionStatus } from "./types.ts";
+import type {
+  AgentChunkData,
+  DaemonLogData,
+  ProviderHealthData,
+  SessionKind,
+  SessionStatus,
+  WarningDroppedData,
+} from "./types.ts";
 
 describe("SessionKind", () => {
   test('"standalone" is a valid SessionKind', () => {
@@ -182,5 +189,109 @@ describe("AgentChunkData", () => {
     chunk.session_id = "s_other";
     // @ts-expect-error — content is also readonly
     chunk.content = { delta: "nope" };
+  });
+});
+
+describe("DaemonLogData", () => {
+  test("accepts minimal daemon.log event", () => {
+    const d: DaemonLogData = {
+      level: "info",
+      message: "daemon started",
+    };
+    expect(d.level).toBe("info");
+    expect(d.message).toBe("daemon started");
+    expect(d.fields).toBeUndefined();
+  });
+
+  test("accepts daemon.log with optional fields", () => {
+    const d: DaemonLogData = {
+      level: "warn",
+      message: "permit denied",
+      fields: { provider: "opencode", gate: "burn_rate" },
+    };
+    expect(d.level).toBe("warn");
+    expect(d.fields?.provider).toBe("opencode");
+    expect(d.fields?.gate).toBe("burn_rate");
+  });
+
+  test("all fields are readonly", () => {
+    const d: DaemonLogData = { level: "info", message: "test" };
+    // @ts-expect-error — fields are readonly
+    d.level = "error";
+    // @ts-expect-error — fields are readonly
+    d.message = "other";
+  });
+});
+
+describe("WarningDroppedData", () => {
+  test("accepts warning.dropped event", () => {
+    const w: WarningDroppedData = { dropped_count: 42 };
+    expect(w.dropped_count).toBe(42);
+  });
+
+  test("dropped_count must be a number", () => {
+    const w: WarningDroppedData = { dropped_count: 0 };
+    expect(w.dropped_count).toBe(0);
+  });
+
+  test("all fields are readonly", () => {
+    const w: WarningDroppedData = { dropped_count: 1 };
+    // @ts-expect-error — fields are readonly
+    w.dropped_count = 99;
+  });
+});
+
+describe("ProviderHealthData", () => {
+  test("accepts ok status", () => {
+    const h: ProviderHealthData = {
+      provider_id: "opencode",
+      status: "ok",
+    };
+    expect(h.provider_id).toBe("opencode");
+    expect(h.status).toBe("ok");
+  });
+
+  test("accepts cooldown status with cooldown_until", () => {
+    const h: ProviderHealthData = {
+      provider_id: "claude",
+      status: "cooldown",
+      cooldown_until: "2026-05-01T12:00:00.000Z",
+    };
+    expect(h.status).toBe("cooldown");
+    expect(h.cooldown_until).toBe("2026-05-01T12:00:00.000Z");
+  });
+
+  test("accepts unavailable status with failure_class", () => {
+    const h: ProviderHealthData = {
+      provider_id: "gemini",
+      status: "unavailable",
+      failure_class: "rate_limit",
+      message: "rate limit exceeded",
+    };
+    expect(h.status).toBe("unavailable");
+    expect(h.failure_class).toBe("rate_limit");
+    expect(h.message).toBe("rate limit exceeded");
+  });
+
+  test("accepts all failure_class variants", () => {
+    const classes: ProviderHealthData["failure_class"][] = [
+      "rate_limit",
+      "auth",
+      "network",
+      "server_error",
+      "unknown",
+    ];
+    for (const cls of classes) {
+      const h: ProviderHealthData = { provider_id: "p", status: "unavailable", failure_class: cls };
+      expect(h.failure_class).toBe(cls);
+    }
+  });
+
+  test("all fields are readonly", () => {
+    const h: ProviderHealthData = { provider_id: "opencode", status: "ok" };
+    // @ts-expect-error — fields are readonly
+    h.provider_id = "claude";
+    // @ts-expect-error — fields are readonly
+    h.status = "cooldown";
   });
 });

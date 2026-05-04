@@ -29,9 +29,12 @@ export {
   makeEvent,
   makeIdGenerator,
   type AgentChunkData,
+  type DaemonLogData,
   type EventEnvelope,
+  type ProviderHealthData,
   type SessionKind,
   type SessionStatus,
+  type WarningDroppedData,
 } from "./events/types.ts";
 export type {
   IncubationItem,

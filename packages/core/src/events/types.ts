@@ -108,3 +108,38 @@ export type AgentChunkData = {
   /** True = last chunk for this turn. */
   readonly final: boolean;
 };
+
+/**
+ * Canonical payload shape for `daemon.log` events — daemon stdout relayed over SSE.
+ *
+ * Spec: docs/spec/observability.md §daemon.* — daemon.log.
+ */
+export type DaemonLogData = {
+  readonly level: string;
+  readonly message: string;
+  readonly fields?: Record<string, unknown>;
+};
+
+/**
+ * Canonical payload shape for `warning.dropped` events — SSE client buffer overflow.
+ *
+ * Spec: docs/spec/observability.md §warning.* — warning.dropped.
+ */
+export type WarningDroppedData = {
+  readonly dropped_count: number;
+};
+
+/**
+ * Canonical payload shape for `provider.health` events.
+ *
+ * Spec: docs/spec/observability.md §provider.* — provider.health.
+ * The provider adapter emits this when cooldown enters/exits or when failure
+ * classification is updated.
+ */
+export type ProviderHealthData = {
+  readonly provider_id: string;
+  readonly status: "ok" | "cooldown" | "unavailable";
+  readonly cooldown_until?: string; // ISO-8601; present when status is "cooldown"
+  readonly failure_class?: "rate_limit" | "auth" | "network" | "server_error" | "unknown";
+  readonly message?: string;
+};
