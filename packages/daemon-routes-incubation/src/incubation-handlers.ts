@@ -201,25 +201,31 @@ function isValidProposalState(state: string): state is IncubationProposalState {
 // Scope parser
 // ---------------------------------------------------------------------------
 
-function parseScope(body: Record<string, unknown>): IncubationScope {
+function parseScope(body: Record<string, unknown>): { ok: true; scope: IncubationScope } | { ok: false; response: Response } {
   const s = body.scope as Record<string, unknown> | undefined;
-  if (!s || typeof s !== "object") return { kind: "global" };
+  if (!s || typeof s !== "object") return { ok: true, scope: { kind: "global" } };
 
   const kind = s.kind as string;
-  if (kind === "global") return { kind: "global" };
+  if (kind === "global") return { ok: true, scope: { kind: "global" } };
   if (kind === "project") {
     const projectId = s.project_id;
-    if (typeof projectId !== "string") throw new Error("scope.project_id must be a string");
-    return { kind: "project", project_id: projectId };
+    if (typeof projectId !== "string") return { ok: false, response: badRequest("scope.project_id must be a string") };
+    return { ok: true, scope: { kind: "project", project_id: projectId } };
   }
   if (kind === "candidate_project") {
+    if (typeof s.abs_path !== "undefined" && typeof s.abs_path !== "string") {
+      return { ok: false, response: badRequest("scope.abs_path must be a string") };
+    }
     return {
-      kind: "candidate_project",
-      abs_path: typeof s.abs_path === "string" ? s.abs_path : undefined,
-      repo_url: typeof s.repo_url === "string" ? s.repo_url : undefined,
+      ok: true,
+      scope: {
+        kind: "candidate_project",
+        abs_path: typeof s.abs_path === "string" ? s.abs_path : undefined,
+        repo_url: typeof s.repo_url === "string" ? s.repo_url : undefined,
+      },
     };
   }
-  return { kind: "global" };
+  return { ok: true, scope: { kind: "global" } };
 }
 
 // ---------------------------------------------------------------------------
@@ -280,7 +286,9 @@ export async function handleIncubation(
       const title = typeof body.title === "string" ? body.title.trim() : "";
       if (!title) return badRequest("title is required");
 
-      const scope = parseScope(body);
+      const scopeResult = parseScope(body);
+      if (!scopeResult.ok) return scopeResult.response;
+      const scope = scopeResult.scope;
       const labels = Array.isArray(body.labels) ? body.labels as string[] : [];
       const priority = typeof body.priority === "string" && ["low", "normal", "high"].includes(body.priority)
         ? (body.priority as "low" | "normal" | "high")
