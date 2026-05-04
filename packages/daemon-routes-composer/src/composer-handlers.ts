@@ -51,10 +51,20 @@ function turnResponse(turn: ComposerTurn): Record<string, unknown> {
     _v: 1,
     id: turn.id,
     scope: turn.scope,
+    message: turn.message,
     status: turn.status,
     intent_hint: turn.intent_hint,
     media_mode: turn.media_mode,
     voice_mode: turn.voice_mode,
+    artifact_refs: turn.artifact_refs,
+    media_inputs: turn.media_inputs,
+    context_refs: turn.context_refs,
+    allowed_action_classes: turn.allowed_action_classes,
+    delegation_policy: turn.delegation_policy,
+    provider_chain: turn.provider_chain,
+    transcription: turn.transcription,
+    max_cost_usd: turn.max_cost_usd,
+    approval_policy: turn.approval_policy,
     delegated_refs: turn.delegated_refs,
     launched_refs: turn.launched_refs,
     proposed_actions: turn.proposed_actions,
@@ -228,6 +238,11 @@ function validateCreateInput(data: unknown): {
   const message = d.message;
   if (typeof message !== "string") return { ok: false, error: "message is required and must be a string" };
 
+  const id = d.id;
+  if (id !== undefined && typeof id !== "string") {
+    return { ok: false, error: "id must be a string" };
+  }
+
   const artifact_refs = d.artifact_refs;
   if (artifact_refs !== undefined && !Array.isArray(artifact_refs)) {
     return { ok: false, error: "artifact_refs must be an array" };
@@ -301,6 +316,7 @@ function validateCreateInput(data: unknown): {
   return {
     ok: true,
     input: {
+      ...(id ? { id: id as string } : {}),
       scope,
       message,
       ...(parsedArtifactRefs.length > 0 ? { artifact_refs: parsedArtifactRefs } : {}),
@@ -332,9 +348,11 @@ export async function handleComposer(
 ): Promise<Response | undefined> {
   const db = deps.db;
   const registry = new ComposerTurnRegistry(db);
+  // Strip query string from pathname for route matching
+  const cleanPathname = pathname.split("?")[0]!;
 
   // GET /v1/composer/turns
-  if (req.method === "GET" && pathname === "/v1/composer/turns") {
+  if (req.method === "GET" && cleanPathname === "/v1/composer/turns") {
     const url = new URL(req.url);
     const filter: ComposerTurnFilter = {
       scope_kind: url.searchParams.get("scope_kind") as ComposerTurnScopeKind | undefined,
@@ -346,11 +364,11 @@ export async function handleComposer(
       cursor: url.searchParams.get("cursor") ?? undefined,
     };
     const turns = registry.list(filter);
-    return jsonResponse(turnListResponse(turns, filter));
+    return jsonResponse(200, turnListResponse(turns, filter));
   }
 
   // POST /v1/composer/turns
-  if (req.method === "POST" && pathname === "/v1/composer/turns") {
+  if (req.method === "POST" && cleanPathname === "/v1/composer/turns") {
     const parsed = await parseJsonBody(req);
     if (parsed.error) return parsed.error;
 
@@ -358,7 +376,22 @@ export async function handleComposer(
     if (!validated.ok) return errorResponse(400, "validation_error", validated.error);
 
     const turn = registry.create(validated.input);
-    return jsonResponse(turnResponse(turn), 201);
+    return jsonResponse(201, turnResponse(turn));
+  }
+
+  // POST /v1/composer/turns/:id/cancel — must come before singleMatch
+  const cancelMatch = pathname.match(/^\/v1\/composer\/turns\/([^/]+)\/cancel$/);
+  if (cancelMatch && req.method === "POST") {
+    const id = cancelMatch[1]!;
+    try {
+      const turn = registry.updateStatus(id, "cancelled");
+      return jsonResponse(200, turnResponse(turn));
+    } catch (err) {
+      if (err instanceof ComposerTurnNotFoundError) {
+        return errorResponse(404, "composer_turn_not_found", err.message);
+      }
+      return errorResponse(500, "internal_error", String(err));
+    }
   }
 
   // GET /v1/composer/turns/:id
@@ -369,7 +402,7 @@ export async function handleComposer(
     if (req.method === "GET") {
       try {
         const turn = registry.getById(id);
-        return jsonResponse(turnResponse(turn));
+        return jsonResponse(200, turnResponse(turn));
       } catch (err) {
         if (err instanceof ComposerTurnNotFoundError) {
           return errorResponse(404, "composer_turn_not_found", err.message);
@@ -381,30 +414,13 @@ export async function handleComposer(
     if (req.method === "DELETE") {
       try {
         registry.delete(id);
-        return new Response(null, { status: 204 });
+        return jsonResponse(204, null);
       } catch (err) {
         if (err instanceof ComposerTurnNotFoundError) {
           return errorResponse(404, "composer_turn_not_found", err.message);
         }
         return errorResponse(500, "internal_error", String(err));
       }
-    }
-
-    return methodNotAllowed();
-  }
-
-  // POST /v1/composer/turns/:id/cancel
-  const cancelMatch = pathname.match(/^\/v1\/composer\/turns\/([^/]+)\/cancel$/);
-  if (cancelMatch && req.method === "POST") {
-    const id = cancelMatch[1]!;
-    try {
-      const turn = registry.updateStatus(id, "cancelled");
-      return jsonResponse(turnResponse(turn));
-    } catch (err) {
-      if (err instanceof ComposerTurnNotFoundError) {
-        return errorResponse(404, "composer_turn_not_found", err.message);
-      }
-      return errorResponse(500, "internal_error", String(err));
     }
   }
 
@@ -453,7 +469,7 @@ export async function handleComposer(
     const id = launchedMatch[1]!;
     try {
       const turn = registry.getById(id);
-      return jsonResponse({ _v: 1, launched_refs: turn.launched_refs });
+      return jsonResponse(200, { _v: 1, launched_refs: turn.launched_refs });
     } catch (err) {
       if (err instanceof ComposerTurnNotFoundError) {
         return errorResponse(404, "composer_turn_not_found", err.message);
