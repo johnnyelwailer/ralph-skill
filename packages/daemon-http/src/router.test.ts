@@ -282,6 +282,47 @@ describe("makeFetchHandler dispatch order", () => {
     expect(res.status).toBe(404);
   });
 
+  test("handleMetricsAggregates is dispatched for /v1/metrics/aggregates", async () => {
+    const customDeps = makeDeps();
+    customDeps.handleMetricsAggregates = (_req, pathname) => {
+      if (pathname === "/v1/metrics/aggregates") {
+        return new Response(JSON.stringify({ _v: 1, handler: "metrics_aggregates" }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      return undefined;
+    };
+    const fetch = makeFetchHandler(customDeps);
+    const res = await fetch(new Request("http://x/v1/metrics/aggregates"));
+    expect(res.status).toBe(200);
+    const body = await res.json() as { handler: string };
+    expect(body.handler).toBe("metrics_aggregates");
+  });
+
+  test("metrics/aggregates route is checked after /v1/metrics (handleMetrics takes precedence)", async () => {
+    const customDeps = makeDeps();
+    let callOrder: string[] = [];
+    customDeps.handleMetrics = (_req, pathname) => {
+      if (pathname === "/v1/metrics") {
+        callOrder.push("metrics");
+        return new Response("{}", { status: 200 });
+      }
+      return undefined;
+    };
+    customDeps.handleMetricsAggregates = (_req, pathname) => {
+      if (pathname === "/v1/metrics/aggregates") {
+        callOrder.push("metrics_aggregates");
+        return new Response("{}", { status: 200 });
+      }
+      return undefined;
+    };
+    const fetch = makeFetchHandler(customDeps);
+    // /v1/metrics should go to handleMetrics
+    await fetch(new Request("http://x/v1/metrics"));
+    expect(callOrder).toEqual(["metrics"]);
+  });
+
   test("route handlers returning undefined results in 404", async () => {
     const fetch = makeFetchHandler(makeDeps());
     // /v1/daemon/config is not handled by any handler → 404

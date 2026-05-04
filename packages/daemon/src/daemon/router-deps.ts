@@ -8,7 +8,9 @@ import { handleSetup as handleSetupRoute, SetupStore } from "@aloop/daemon-route
 import { handleTriggers as handleTriggersRoute, TriggerStore } from "@aloop/daemon-routes-triggers";
 import {
   handleMetrics as handleMetricsRoute,
+  handleMetricsAggregates as handleMetricsAggregatesRoute,
   type MetricsDeps as MetricsDeps,
+  type MetricsAggregatesDeps,
 } from "@aloop/daemon-routes";
 import {
   handleProjects as handleProjectsRoute,
@@ -51,6 +53,10 @@ export function makeRouterDeps(input: MakeRouterDepsInput): RouterDeps {
     systemSample: DEFAULT_SCHEDULER_PROBES.systemSample,
   };
 
+  const metricsAggregatesDeps: MetricsAggregatesDeps = {
+    db: input.db,
+  };
+
   const sessionsDir = () => join(input.config.paths().stateDir, "sessions");
   const setupStore = new SetupStore({ stateDir: input.config.paths().stateDir });
 
@@ -65,6 +71,8 @@ export function makeRouterDeps(input: MakeRouterDepsInput): RouterDeps {
       }, pathname),
     handleMetrics: (req, pathname) =>
       handleMetricsRoute(req, metricsDeps, pathname),
+    handleMetricsAggregates: (req, pathname) =>
+      handleMetricsAggregatesRoute(req, metricsAggregatesDeps, pathname),
     handleProjects: (req, pathname) =>
       handleProjectsRoute(
         req,

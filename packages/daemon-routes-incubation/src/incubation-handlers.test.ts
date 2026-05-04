@@ -436,6 +436,78 @@ describe("ResearchMonitor", () => {
 });
 
 // ---------------------------------------------------------------------------
+// ResearchMonitorRuns tests
+// ---------------------------------------------------------------------------
+
+describe("ResearchMonitorRuns", () => {
+  test("GET /v1/incubation/monitors/:id/runs returns runs for a monitor", async () => {
+    const item = await createItem(handler, deps, { title: "Monitored item" });
+    const createResp = await makeRequest(handler, deps, "POST", `/v1/incubation/items/${item.id}/research-monitors`, {
+      cadence: "daily",
+      question: "Track model capability changes",
+      source_plan: { allowed_kinds: ["official_docs", "repository"] },
+      synthesis_policy: { mode: "digest" },
+    });
+    expect(createResp.status).toBe(201);
+    const mon = await createResp.json() as Record<string, unknown>;
+    expect(mon.id).toBeDefined();
+
+    // First create the run via the API (without monitor_id)
+    const runResp = await makeRequest(handler, deps, "POST", `/v1/incubation/items/${item.id}/research-runs`, {
+      mode: "monitor_tick",
+      question: "Tick 1",
+      provider_chain: ["opencode/default"],
+    });
+    const runBody = await runResp.clone().json() as Record<string, unknown>;
+    console.log("Created run:", runBody.id, "monitor_id:", runBody.monitor_id);
+
+    // Now update the run's monitor_id directly via the registry
+    const { ResearchRunRegistry } = await import("@aloop/state-sqlite");
+    const runReg = new ResearchRunRegistry(deps.db);
+    const updated = runReg.updateMonitor(runBody.id as string, mon.id as string);
+    console.log("Updated run monitor_id:", updated.monitor_id);
+
+    const resp = await makeRequest(handler, deps, "GET", `/v1/incubation/monitors/${mon.id}/runs`);
+    const body = await resp.clone().json() as Record<string, unknown>;
+    console.log("GET /monitors/:id/runs items count:", (body.items as unknown[]).length);
+    expect(resp.status).toBe(200);
+    expect(body._v).toBe(1);
+    expect((body.items as unknown[]).length).toBe(1);
+    expect((body.items as Record<string, unknown>[])[0].id).toBe(runBody.id);
+    expect((body.items as Record<string, unknown>[])[0].mode).toBe("monitor_tick");
+    expect(body.next_cursor).toBe(null);
+  });
+
+  test("GET /v1/incubation/monitors/:id/runs returns empty list when no runs exist", async () => {
+    const item = await createItem(handler, deps);
+    const createResp = await makeRequest(handler, deps, "POST", `/v1/incubation/items/${item.id}/research-monitors`, {
+      cadence: "weekly",
+      question: "Track something else",
+      source_plan: { allowed_kinds: ["repository"] },
+    });
+    const mon = await createResp.json() as Record<string, unknown>;
+
+    const resp = await makeRequest(handler, deps, "GET", `/v1/incubation/monitors/${mon.id}/runs`);
+    expect(resp.status).toBe(200);
+    const body = await resp.json() as Record<string, unknown>;
+    expect((body.items as unknown[]).length).toBe(0);
+  });
+
+  test("GET /v1/incubation/monitors/:id/runs returns 405 for non-GET", async () => {
+    const item = await createItem(handler, deps);
+    const createResp = await makeRequest(handler, deps, "POST", `/v1/incubation/items/${item.id}/research-monitors`, {
+      cadence: "daily",
+      question: "Track this",
+      source_plan: { allowed_kinds: ["repository"] },
+    });
+    const mon = await createResp.json() as Record<string, unknown>;
+
+    const resp = await makeRequest(handler, deps, "POST", `/v1/incubation/monitors/${mon.id}/runs`);
+    expect(resp.status).toBe(405);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // OutreachPlan tests
 // ---------------------------------------------------------------------------
 

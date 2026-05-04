@@ -504,6 +504,15 @@ export class ResearchRunRegistry {
       .map(rowToResearchRun);
   }
 
+  listByMonitor(monitorId: string): ResearchRun[] {
+    return this.db
+      .query<ResearchRunRow, [string]>(
+        "SELECT * FROM research_runs WHERE monitor_id = ? ORDER BY created_at DESC",
+      )
+      .all(monitorId)
+      .map(rowToResearchRun);
+  }
+
   updateStatus(
     id: string,
     status: ResearchRunStatus,
@@ -541,6 +550,16 @@ export class ResearchRunRegistry {
       WHERE id = ?`,
       [costUsd, tokensIn, tokensOut, now, id],
     );
+    return this.getRequired(id);
+  }
+
+  updateMonitor(id: string, monitorId: string | null): ResearchRun {
+    const now = new Date().toISOString();
+    const changes = this.db.run(
+      "UPDATE research_runs SET monitor_id = ?, updated_at = ? WHERE id = ?",
+      [monitorId, now, id],
+    );
+    if (changes.changes === 0) throw new ResearchRunNotFoundError(id);
     return this.getRequired(id);
   }
 

@@ -760,5 +760,24 @@ export async function handleIncubation(
     return methodNotAllowed();
   }
 
+  // -------------------------------------------------------------------------
+  // /v1/incubation/monitors/:id/runs
+  // -------------------------------------------------------------------------
+  const monitorRunsMatch = pathBase.match(/^\/v1\/incubation\/monitors\/([^/]+)\/runs$/);
+  if (monitorRunsMatch) {
+    const monitorId = monitorRunsMatch[1]!;
+
+    if (req.method === "GET") {
+      const runs = runReg.listByMonitor(monitorId);
+      return jsonResponse(200, {
+        _v: 1,
+        items: runs.map(runResponse),
+        next_cursor: null,
+      });
+    }
+
+    return methodNotAllowed();
+  }
+
   return undefined;
 }
