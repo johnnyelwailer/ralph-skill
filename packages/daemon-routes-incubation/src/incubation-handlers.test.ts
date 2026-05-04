@@ -883,3 +883,144 @@ describe("parseScope — scope kind routing", () => {
     expect(body.scope).toEqual({ kind: "global" });
   });
 });
+
+// ---------------------------------------------------------------------------
+// IncubationComment tests
+// ---------------------------------------------------------------------------
+
+describe("IncubationComment", () => {
+  test("POST /v1/incubation/items/:id/comments creates a comment", async () => {
+    const item = await createItem(handler, deps, { title: "Item for comment" });
+
+    const resp = await makeRequest(handler, deps, "POST", `/v1/incubation/items/${item.id}/comments`, {
+      author: "researcher@example.com",
+      body: "This needs more investigation.",
+    });
+
+    expect(resp.status).toBe(201);
+    const body = await resp.json() as Record<string, unknown>;
+    expect(body._v).toBe(1);
+    expect(typeof body.id).toBe("string");
+    expect(body.item_id).toBe(item.id);
+    expect(body.author).toBe("researcher@example.com");
+    expect(body.body).toBe("This needs more investigation.");
+  });
+
+  test("POST /v1/incubation/items/:id/comments with minimal fields", async () => {
+    const item = await createItem(handler, deps);
+
+    const resp = await makeRequest(handler, deps, "POST", `/v1/incubation/items/${item.id}/comments`, {
+      author: "analyst",
+    });
+
+    expect(resp.status).toBe(201);
+    const body = await resp.json() as Record<string, unknown>;
+    expect(body.author).toBe("analyst");
+    expect(body.body).toBe("");
+  });
+
+  test("POST /v1/incubation/items/:id/comments returns 400 when author is missing", async () => {
+    const item = await createItem(handler, deps);
+    const resp = await makeRequest(handler, deps, "POST", `/v1/incubation/items/${item.id}/comments`, {
+      body: "Has a body but no author",
+    });
+    expect(resp.status).toBe(400);
+  });
+
+  test("POST /v1/incubation/items/:id/comments returns 400 when author is empty string", async () => {
+    const item = await createItem(handler, deps);
+    const resp = await makeRequest(handler, deps, "POST", `/v1/incubation/items/${item.id}/comments`, {
+      author: "",
+      body: "Empty author",
+    });
+    expect(resp.status).toBe(400);
+  });
+
+  test("POST /v1/incubation/items/:id/comments returns 404 for unknown item", async () => {
+    const resp = await makeRequest(handler, deps, "POST", "/v1/incubation/items/unknown-item-id/comments", {
+      author: "someone",
+    });
+    expect(resp.status).toBe(404);
+  });
+
+  test("GET /v1/incubation/items/:id/comments returns comments for an item", async () => {
+    const item = await createItem(handler, deps, { title: "Item with comments" });
+    await makeRequest(handler, deps, "POST", `/v1/incubation/items/${item.id}/comments`, {
+      author: "reviewer",
+      body: "First comment",
+    });
+    await makeRequest(handler, deps, "POST", `/v1/incubation/items/${item.id}/comments`, {
+      author: "lead",
+      body: "Second comment",
+    });
+
+    const resp = await makeRequest(handler, deps, "GET", `/v1/incubation/items/${item.id}/comments`);
+    expect(resp.status).toBe(200);
+    const body = await resp.json() as Record<string, unknown>;
+    expect(body._v).toBe(1);
+    expect(body.item_id).toBe(item.id);
+    expect((body.comments as unknown[]).length).toBe(2);
+  });
+
+  test("GET /v1/incubation/items/:id/comments returns empty list for item with no comments", async () => {
+    const item = await createItem(handler, deps);
+    const resp = await makeRequest(handler, deps, "GET", `/v1/incubation/items/${item.id}/comments`);
+    expect(resp.status).toBe(200);
+    const body = await resp.json() as Record<string, unknown>;
+    expect(body.comments).toEqual([]);
+  });
+
+  test("POST /v1/incubation/items/:id/comments returns method not allowed for PUT", async () => {
+    const item = await createItem(handler, deps);
+    const resp = await makeRequest(handler, deps, "PUT", `/v1/incubation/items/${item.id}/comments`, {
+      author: "someone",
+    });
+    expect(resp.status).toBe(405);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// ResearchMonitor — next_run_at update
+// ---------------------------------------------------------------------------
+
+describe("ResearchMonitor next_run_at", () => {
+  function makeMonitorBody() {
+    return {
+      cadence: "daily",
+      question: "Track capability changes",
+      source_plan: { allowed_kinds: ["official_docs"], require_citations: false },
+      synthesis_policy: { mode: "digest", alert_conditions: ["new_frontier_model"] },
+    };
+  }
+
+  test("PATCH /v1/incubation/research-monitors/:id updates next_run_at", async () => {
+    const item = await createItem(handler, deps);
+    const createResp = await makeRequest(
+      handler,
+      deps,
+      "POST",
+      `/v1/incubation/items/${item.id}/research-monitors`,
+      makeMonitorBody(),
+    );
+    const mon = await createResp.json() as Record<string, unknown>;
+
+    const newRunAt = "2026-07-01T09:00:00.000Z";
+    const resp = await makeRequest(handler, deps, "PATCH", `/v1/incubation/research-monitors/${mon.id}`, {
+      next_run_at: newRunAt,
+    });
+    expect(resp.status).toBe(200);
+    const body = await resp.json() as Record<string, unknown>;
+    expect(body.next_run_at).toBe(newRunAt);
+  });
+
+  test("PATCH /v1/incubation/research-monitors/:id returns 404 for unknown id", async () => {
+    const resp = await makeRequest(
+      handler,
+      deps,
+      "PATCH",
+      "/v1/incubation/research-monitors/unknown-mon-id",
+      { next_run_at: "2026-07-01T00:00:00.000Z" },
+    );
+    expect(resp.status).toBe(404);
+  });
+});

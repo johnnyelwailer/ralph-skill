@@ -27,6 +27,7 @@ import type { SchedulerService } from "@aloop/scheduler";
 import { DEFAULT_SCHEDULER_PROBES } from "@aloop/scheduler-gates";
 import { handleDaemon as handleDaemonRoute } from "../routes/daemon.ts";
 import { handleIncubation as handleIncubationRoute, type IncubationDeps } from "@aloop/daemon-routes-incubation";
+import { handleComposer as handleComposerRoute, type ComposerDeps } from "@aloop/daemon-routes-composer";
 
 export type MakeRouterDepsInput = {
   readonly registry: ProjectRegistry;
@@ -160,5 +161,7 @@ export function makeRouterDeps(input: MakeRouterDepsInput): RouterDeps {
         { db: input.db, sessionsDir: () => join(input.config.paths().stateDir, "sessions") },
         pathname,
       ),
+    handleComposer: (req, pathname) =>
+      handleComposerRoute(req, { db: input.db }, pathname),
   };
 }

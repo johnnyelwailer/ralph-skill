@@ -92,3 +92,8 @@ export {
   IncubationCommentRegistry,
 } from "./state/incubation.ts";
 export { createIdempotencyStore, type IdempotencyStore } from "./state/idempotency.ts";
+export {
+  ComposerTurnNotFoundError,
+  ComposerTurnRegistry,
+  type CreateComposerTurnInput,
+} from "./state/composer.ts";
