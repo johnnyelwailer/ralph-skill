@@ -339,10 +339,15 @@ describe("GET /v1/composer/turns", () => {
   });
 
   test("cursor pagination returns next page of results", async () => {
+    // Insert with a 1ms delay between each to ensure distinct created_at timestamps.
+    // Without delays, multiple inserts in the same millisecond share the same created_at,
+    // which can cause items from page 1 to reappear on page 2 when using created_at < cursor.
     for (let i = 0; i < 5; i++) {
       await makeRequest(handler, deps, "POST", "/v1/composer/turns", {
         scope: { kind: "global" }, message: `Turn ${i}`,
       });
+      // Wait 1ms so the next insert gets a strictly later created_at
+      await new Promise<void>((resolve) => setTimeout(resolve, 1));
     }
     // First page
     const page1 = await (await makeRequest(handler, deps, "GET", "/v1/composer/turns?limit=2")).json();

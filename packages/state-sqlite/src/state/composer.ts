@@ -231,10 +231,12 @@ export class ComposerTurnRegistry {
     const limit = Math.min(filter.limit ?? 20, 100);
     const cursorClause = filter.cursor ? `AND created_at < ?` : "";
 
+    // When cursor is present but there are no other conditions, use 1=1 as base
+    // so the AND cursorClause is valid SQL.
+    const sql = `SELECT * FROM composer_turns${where ? ` ${where} ${cursorClause}` : cursorClause ? ` WHERE 1=1 ${cursorClause}` : ""} ORDER BY created_at DESC LIMIT ?`;
+
     const rows = this.db
-      .query<ComposerTurnRow, (string | number)[]>(
-        `SELECT * FROM composer_turns ${where} ${cursorClause} ORDER BY created_at DESC LIMIT ?`,
-      )
+      .query<ComposerTurnRow, (string | number)[]>(sql)
       .all([...params, ...(filter.cursor ? [filter.cursor] : []), limit]);
 
     return rows.map(turnFromRow);
