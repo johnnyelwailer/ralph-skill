@@ -59,6 +59,7 @@
         "@aloop/daemon-http": "workspace:*",
         "@aloop/daemon-routes": "workspace:*",
         "@aloop/daemon-routes-artifacts": "workspace:*",
+        "@aloop/daemon-routes-composer": "workspace:*",
         "@aloop/daemon-routes-incubation": "workspace:*",
         "@aloop/daemon-routes-providers": "workspace:*",
         "@aloop/daemon-routes-setup": "workspace:*",
@@ -111,6 +112,19 @@
       "name": "@aloop/daemon-routes-artifacts",
       "version": "0.1.0",
       "dependencies": {
+        "@aloop/state-sqlite": "workspace:*",
+      },
+      "devDependencies": {
+        "@types/bun": "latest",
+        "typescript": "^5.6.0",
+      },
+    },
+    "packages/daemon-routes-composer": {
+      "name": "@aloop/daemon-routes-composer",
+      "version": "0.1.0",
+      "dependencies": {
+        "@aloop/core": "workspace:*",
+        "@aloop/daemon-routes": "workspace:*",
         "@aloop/state-sqlite": "workspace:*",
       },
       "devDependencies": {
@@ -311,6 +325,8 @@
     "@aloop/daemon-routes": ["@aloop/daemon-routes@workspace:packages/daemon-routes"],
 
     "@aloop/daemon-routes-artifacts": ["@aloop/daemon-routes-artifacts@workspace:packages/daemon-routes-artifacts"],
+
+    "@aloop/daemon-routes-composer": ["@aloop/daemon-routes-composer@workspace:packages/daemon-routes-composer"],
 
     "@aloop/daemon-routes-incubation": ["@aloop/daemon-routes-incubation@workspace:packages/daemon-routes-incubation"],
 
