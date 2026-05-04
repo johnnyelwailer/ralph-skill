@@ -7,7 +7,7 @@
 export type TriggerSourceKind = "time" | "event";
 
 /** Trigger action kinds */
-export type TriggerActionKind = "tick_monitor" | "create_research_run" | "queue_orchestrator_trigger" | "emit_alert";
+export type TriggerActionKind = "tick_monitor" | "create_research_run" | "queue_orchestrator_trigger" | "emit_alert" | "refresh_projection" | "create_proposal";
 
 /** Scope kinds a trigger can be attached to */
 export type TriggerScopeKind = "project" | "workspace" | "incubation_monitor" | "global";

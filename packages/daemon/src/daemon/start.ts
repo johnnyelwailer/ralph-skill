@@ -14,6 +14,8 @@ import {
   type EventWriter,
   ArtifactRegistry,
   WorkspaceRegistry,
+  SchedulerMetricsProjector,
+  WorkspaceProjector,
 } from "@aloop/state-sqlite";
 import { resolveDaemonPaths } from "@aloop/daemon-config";
 import { startHttp, startSocket, type RunningHttp, type RunningSocket } from "@aloop/daemon-http";
@@ -86,7 +88,7 @@ export async function startDaemon(opts: StartDaemonOptions = {}): Promise<Runnin
   const events = createEventWriter({
     db,
     store: eventStore,
-    projectors: [new EventCountsProjector(), new PermitProjector()],
+    projectors: [new EventCountsProjector(), new PermitProjector(), new SchedulerMetricsProjector(), new WorkspaceProjector()],
     nextId: makeIdGenerator(),
   });
   const providerRegistry = new ProviderRegistry();
