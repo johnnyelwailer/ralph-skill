@@ -228,6 +228,12 @@ Orchestrator pipelines use a different catalog. Each still obeys the universal c
 | Agent | Submit type | Purpose |
 |---|---|---|
 | `orch_product_analyst` | — (no tracker side effect) | Reads spec files; produces theme map + out-of-scope list as scratchpad |
+| `orch_scan` | scan result / queued events | Heartbeat pass that decides whether decomposition, refinement, dispatch, review, diagnose, conversation, or no action should happen next |
+| `orch_maintenance_dependencies` | scan result / queued events | Finds bounded dependency, lockfile, generated artifact, toolchain upkeep work, and dependency-tool change sets surfaced through runtime events |
+| `orch_maintenance_tests` | scan result / queued events | Finds bounded test coverage, flaky/skipped test, and testability maintenance work |
+| `orch_maintenance_docs` | scan result / queued events | Finds bounded README, docs, API docs, examples, comments, and changelog drift |
+| `orch_maintenance_demos` | scan result / queued events | Finds bounded demos, examples, previews, fixtures, and Storybook state coverage work |
+| `orch_maintenance_refactor` | scan result / queued events | Finds bounded behavior-preserving refactor work driven by constitution and quality factors |
 | `orch_decompose` | `decompose_result` | Produces Epics |
 | `orch_refine` | `refine_result` | Tightens scope of one Epic or Story |
 | `orch_sub_decompose` | `sub_decompose_result` | Produces Stories under one Epic |
@@ -240,6 +246,8 @@ Orchestrator pipelines use a different catalog. Each still obeys the universal c
 | `orch_conversation` | `conversation_result` | Handles human comments on Epics/Stories (reply, edit work item, re-decompose, pause, inject into child, file follow-up) |
 
 `orch_refine`, `orch_conversation`, `setup_judge`, and `setup_questioner` share the ambiguity/decision-handling prompt discipline from `refinement.md`. The architecture stays the same; the prompts become more explicit about classification, option synthesis, recommendation, and evidence-backed human feedback.
+
+Specialized orchestrator workflows may add dedicated orchestrator-side prompts when shared scan context would pollute the default workflow or mix unrelated responsibilities. A maintenance loop splits repo-health discovery by category, then reuses `orch_refine` to turn findings into bounded Epics/Stories and `orch_dispatch` to launch children through normal Story workflows.
 
 ## Setup-side agents
 

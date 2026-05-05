@@ -605,6 +605,10 @@ Runtime-level truths:
 
 Self-healing is intelligent because it is an agent turn (the diagnose prompt), not a shell script reacting to metrics. The diagnose turn's output is either a new queue item (e.g., "kill child X," "pause dispatch," "raise burn-rate threshold") or a `no_action` submit.
 
+Projects may run different orchestrator workflows with the same mechanism. For example, `maintenance-loop.yaml` is a long-running repository-upkeep orchestrator: its category-specific maintenance agents look for dependency drift, coverage gaps, documentation drift, stale demos or Storybook stories, and behavior-preserving refactor opportunities. It still creates normal Epics/Stories, still runs `orch_refine` and `orch_consistency`, and still dispatches children using ordinary Story workflows such as `refactor`, `docs-only`, `frontend-slice`, `migration`, or `plan-build-review`.
+
+`maintenance-loop` is therefore not a new daemon mode. It is just another workflow file for a `kind: orchestrator` session.
+
 ## Child loops as workflows
 
 A child loop is a session of kind `child` running a workflow like `plan-build-review.yaml`. No separate runtime.

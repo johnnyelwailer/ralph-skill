@@ -30,6 +30,71 @@ aloop's framework already supports this — `dispatch_result` carries a `workflo
 
 All ship under `aloop/workflows/` and install into `~/.aloop/workflows/` on `aloop install`. Projects may override any of them by placing a same-named file under `<project>/.aloop/workflows/`.
 
+The catalog contains two ordinary workflow shapes:
+
+- **Story workflows** run in `kind: child` or `kind: standalone` sessions and execute one bounded Story.
+- **Orchestrator workflows** run in `kind: orchestrator` sessions and keep producing, refining, dispatching, reviewing, and merging Stories.
+
+Both shapes use the same YAML format, runner, scheduler permits, event handlers, provider chains, and prompt contracts. The difference is only the session kind and agent catalog selected by the workflow.
+
+### `orchestrator`
+
+```
+start:     orch_scan → orch_consistency → orch_dispatch
+handlers:  decompose_needed, refine_needed, estimate_needed, pr_review_needed,
+           merge_conflict_pr, child_stuck, burn_rate_alert, user_comment
+events:    tracker change, child event, scheduler alert, human comment
+```
+
+For: feature/spec delivery. It keeps the live Epic/Story decomposition aligned with the project's spec, dispatches ready Stories to child workflows, reviews change sets, merges approved work into `agent/trunk`, and reacts to comments or anomalies.
+
+This is the default long-running orchestrator workflow for projects that are still building new scoped functionality from a spec.
+
+### `maintenance-loop`
+
+```
+start:     orch_maintenance_dependencies → orch_maintenance_tests →
+           orch_maintenance_docs → orch_maintenance_demos →
+           orch_maintenance_refactor → orch_consistency → orch_dispatch
+handlers:  decompose_needed, refine_needed, estimate_needed, pr_review_needed,
+           merge_conflict_pr, child_stuck, burn_rate_alert, user_comment
+events:    tracker change, child event, scheduler alert, human comment
+```
+
+For: long-running repository maintenance after the project is already in useful shape.
+
+It is intentionally not a new mode, daemon, or subsystem. It is an orchestrator workflow profile that reuses the same aloop workflow format and dispatches ordinary Stories through the existing Story workflows below.
+
+Maintenance discovery is split by responsibility so each agent has clean context:
+
+- `orch_maintenance_dependencies` — dependencies, lockfiles, generated artifacts, toolchain drift, and normalized external dependency-tool change sets
+- `orch_maintenance_tests` — test coverage targets, flaky/skipped/weak tests, testability gaps
+- `orch_maintenance_docs` — README, docs, API docs, examples, comments, changelog drift
+- `orch_maintenance_demos` — demos, examples, previews, fixtures, Storybook stories and states
+- `orch_maintenance_refactor` — behavior-preserving structural improvements driven by constitution factors
+
+The maintenance agents look for bounded, behavior-preserving maintenance work:
+
+- keeping dependencies and generated artifacts up to date
+- raising or preserving configured test coverage targets
+- keeping README, docs, API docs, comments, examples, demos, and Storybook stories consistent with code
+- improving demo and story coverage for relevant states and edge cases
+- splitting or reshaping code only when that makes tests, docs, or reviewability better
+- filing follow-up Stories for larger work instead of silently expanding scope
+
+Maintenance work still becomes normal Epics and Stories before dispatch. The selected child workflow depends on the Story:
+
+- dependency upgrades with compatibility risk use `migration`
+- existing dependency-tool change sets, such as Dependabot-style PRs surfaced through runtime events, go through normal orchestrator change-set review before any follow-up child work is created
+- behavior-preserving structure changes use `refactor`
+- tests and coverage work use `plan-build-review` unless file scope or labels route more specifically
+- docs drift uses `docs-only`
+- UI demo and Storybook work uses `frontend-slice`
+- security/dependency remediation uses `security-fix`
+- performance upkeep uses `perf-opt`
+
+The workflow must not invent product functionality. If maintenance discovers missing behavior, unclear public API expectations, or a product decision, it files or refines a normal Story and leaves it below `dor_validated` until the decision is clear.
+
 ### `quick-fix`
 
 ```
@@ -268,6 +333,10 @@ Workflow choice happens during `orch_refine` (when Story scope is known). Select
 5. **Default.** If nothing matches: `plan-build-review`.
 
 Selection is logged: `Story.metadata.workflow_selection_trace = [{ rule: "label_match", value: "frontend" }, ...]`. Audit-friendly. The orchestrator can be challenged via human comment if a Story landed in the wrong workflow.
+
+`maintenance-loop` is selected for an orchestrator session, not for an individual child Story. Inside a maintenance loop, each generated Story still receives a normal child workflow through the same selection rules above.
+
+For orchestrator session creation, project or user intent may choose `workflow: maintenance-loop` explicitly, or route abstract project labels such as `maintenance`, `upkeep`, and `repo-health` to that workflow. That routing is session selection, not Story workflow selection.
 
 ## Project overrides
 

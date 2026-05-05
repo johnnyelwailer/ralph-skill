@@ -232,7 +232,7 @@ Provider-specific deployment recipes are templates. Core code must not learn clo
 ## M9 — Full orchestrator workflow + parallel dispatch + file-scope enforcement
 
 **Deliverable:**
-- Full orchestrator prompt set: `orch_product_analyst`, `orch_decompose`, `orch_refine`, `orch_sub_decompose`, `orch_estimate`, `orch_dispatch`, `orch_review`, `orch_resolver`, `orch_diagnose`, `orch_conversation`.
+- Full orchestrator prompt set: `orch_product_analyst`, `orch_scan`, `orch_maintenance_dependencies`, `orch_maintenance_tests`, `orch_maintenance_docs`, `orch_maintenance_demos`, `orch_maintenance_refactor`, `orch_decompose`, `orch_refine`, `orch_sub_decompose`, `orch_estimate`, `orch_consistency`, `orch_dispatch`, `orch_review`, `orch_resolver`, `orch_diagnose`, `orch_conversation`.
 - Parallel child dispatch via scheduler permits.
 - `file_scope.owned` enforcement at dispatch: overlap with in-flight Stories → permit denied.
 - Epic/Story conversation flow: `comment.created` (source=human) → `triggers.user_comment` → `PROMPT_orch_conversation.md`.
@@ -287,7 +287,7 @@ Provider-specific deployment recipes are templates. Core code must not learn clo
 ## M12 — Remaining workflows + agent roster + install + release
 
 **Deliverable:**
-- Remaining shipped workflows: `plan-build-review`, `frontend-slice`, `backend-slice`, `fullstack-slice`, `refactor`, `migration`, `docs-only`, `security-fix`, `perf-opt`.
+- Remaining shipped workflows: `plan-build-review`, `frontend-slice`, `backend-slice`, `fullstack-slice`, `refactor`, `migration`, `docs-only`, `security-fix`, `perf-opt`, `maintenance-loop`.
 - Agent prompt set complete: `plan`, `build`, `qa`, `review`, `proof`, `spec-gap`, `docs`, `spec-review`, `final-review`, `final-qa`, `frontend`, `backend`, `fullstack`, `refactor` (builder), `migration` (builder), `docs-generator`, plus orchestrator-side from M9.
 - Subagent catalog installed for opencode projects.
 - `aloop install` / `aloop uninstall` for systemd / launchd / NSSM.

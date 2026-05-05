@@ -1,0 +1,81 @@
+name: maintenance-loop
+description: Long-running repository upkeep orchestrator
+
+on:
+  start:
+    cycle: true
+    pipeline:
+      - agent: orch_maintenance_dependencies
+      - agent: orch_maintenance_tests
+      - agent: orch_maintenance_docs
+      - agent: orch_maintenance_demos
+      - agent: orch_maintenance_refactor
+      - agent: orch_consistency
+      - agent: orch_dispatch
+    finalizer:
+      - agent: orch_cleanup
+
+  decompose_needed:
+    pipeline:
+      - agent: orch_decompose
+      - agent: orch_refine
+      - agent: orch_estimate
+
+  refine_needed:
+    pipeline:
+      - agent: orch_refine
+      - agent: orch_estimate
+
+  estimate_needed:
+    pipeline:
+      - agent: orch_estimate
+
+  pr_review_needed:
+    pipeline:
+      - agent: orch_review
+
+  merge_conflict_pr:
+    pipeline:
+      - agent: orch_resolver
+
+  orch_diagnose:
+    pipeline:
+      - agent: orch_diagnose
+
+  burn_rate_alert:
+    pipeline:
+      - agent: orch_diagnose
+
+  child_stuck:
+    pipeline:
+      - agent: orch_diagnose
+
+  user_comment:
+    pipeline:
+      - agent: orch_conversation
+
+selection_hints:
+  labels:
+    - maintenance
+    - upkeep
+    - repo-health
+  capabilities_required:
+    - tracker
+    - scheduler
+
+defaults:
+  provider_chain: [opencode, copilot, codex, claude, gemini]
+  reasoning:
+    orch_maintenance_dependencies: medium
+    orch_maintenance_tests: high
+    orch_maintenance_docs: medium
+    orch_maintenance_demos: medium
+    orch_maintenance_refactor: high
+    orch_consistency: medium
+    orch_dispatch: medium
+    orch_decompose: high
+    orch_refine: high
+    orch_estimate: medium
+    orch_review: xhigh
+    orch_diagnose: high
+    orch_conversation: high

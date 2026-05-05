@@ -88,6 +88,8 @@ Practical consequences:
 - It observes children via `GET /v1/events?parent=<self.id>` (SSE). Self-healing is a *workflow* that subscribes to events and queues diagnose prompts — not a daemon-side daemon.
 - It has no worktree, or it uses project root read-only. Its work is API calls, not file edits.
 
+Different long-running orchestrator behaviors are represented as different workflow files, not different runtime concepts. For example, `maintenance-loop` is a `kind: orchestrator` workflow whose dedicated maintenance agents look for bounded repo-health work by category and then dispatch ordinary child Stories through the existing child workflow catalog.
+
 ## Inputs, outputs, and the tracker abstraction
 
 The orchestrator never speaks to GitHub, GitLab, Linear, or any tracker directly. It speaks in the abstract vocabulary defined by `work-tracker.md`: `WorkItem` (with `kind: epic | story | task_mirror | other`), `ChangeSet`, `Comment`, `Review`, abstract labels (`priority_critical`, `change_request`, `epic`), abstract statuses (`needs_refinement`, `refined`, `in_progress`, `in_review`, `done`).
