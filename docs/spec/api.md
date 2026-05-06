@@ -5,6 +5,8 @@
 > Every action against aloop goes through this API. No side channels.
 >
 > Hard rules live in CONSTITUTION.md. Work items live in GitHub issues.
+>
+> External implementation reference for overlapping command, thread, approval, proposed-plan, checkpoint, diff, and provider-streaming shapes: [pingdotgg/t3code](https://github.com/pingdotgg/t3code).
 
 ## Table of contents
 
@@ -603,6 +605,8 @@ GET /v1/sessions/:id
 
 Full detail: current phase, iteration, provider, permit state, aggregates (cost, tokens, commits), last-event-id.
 
+**Checkpoint/diff reference.** T3 Code exposes per-turn checkpoint summaries, checkpoint revert requests, turn diffs, full-thread diffs, and provider conversation rollback/read operations. Aloop's v1 API does not yet specify those endpoints, but the overlapping feature should use the same design principle when added: filesystem checkpoint storage is distinct from provider conversation rollback, both are represented as daemon commands/events, and the dashboard receives compact summaries plus on-demand diff detail. Reference: [pingdotgg/t3code](https://github.com/pingdotgg/t3code).
+
 ### Stop
 
 ```
@@ -816,6 +820,8 @@ Comments may also carry structured artifact references so clients do not need to
 ## Agent streaming (forward-compat)
 
 Providers fall into two classes: **non-streaming** (output arrives once the turn completes) and **streaming** (output arrives in chunks as the model produces it). The API exposes the same shape for both; only the cadence of chunks differs.
+
+**Runtime event reference.** T3 Code's canonical provider runtime events are useful prior art for the eventual richer `agent.chunk` taxonomy: session/thread/turn lifecycle, plan updates, proposed-plan deltas/completion, item lifecycle, content deltas, approvals/user input, task progress, tool progress, hooks, auth status, rate-limit updates, model reroutes, config warnings, and runtime errors. Aloop should map provider-native signals into stable daemon-owned events before projecting them into UI state. Reference: [pingdotgg/t3code](https://github.com/pingdotgg/t3code).
 
 ### Subscribe
 

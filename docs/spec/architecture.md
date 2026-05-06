@@ -2,7 +2,7 @@
 
 > **Reference document.** The layers, boundaries, and seams of the `aloopd` daemon. Hard rules live in CONSTITUTION.md. Work items live in GitHub issues.
 >
-> Sources: SPEC.md §Architecture, §Inner Loop vs Runtime, §Cross-Platform; `daemon.md`, `api.md`, `pipeline.md`, `provider-contract.md`, `work-tracker.md`, `incubation.md`.
+> Sources: SPEC.md §Architecture, §Inner Loop vs Runtime, §Cross-Platform; `daemon.md`, `api.md`, `pipeline.md`, `provider-contract.md`, `work-tracker.md`, `incubation.md`. External implementation reference for overlapping server/client/provider boundary patterns: [pingdotgg/t3code](https://github.com/pingdotgg/t3code).
 
 ## Table of contents
 
@@ -24,6 +24,8 @@
 ## One-line summary
 
 A durable control plane (`aloopd`) owns state, scheduling, policy, and orchestration. Every client — CLI, dashboard, mobile web, bot, script, loop shim, worker — talks to it over a versioned HTTP+SSE API. Provider turns and deterministic execution are delegated to isolated containers, VMs, local sandboxes, or nodes through typed adapters, swappable without touching core.
+
+T3 Code is a useful smaller-scope implementation reference for the same shape: server-owned project/thread state, typed client contracts, provider adapters, canonical runtime events, web/desktop clients, local trace artifacts, and git/worktree/checkpoint services. Aloop intentionally extends the pattern into autonomous orchestrator, setup, incubation, tracker, scheduler, and multi-worker concerns. Reference: [pingdotgg/t3code](https://github.com/pingdotgg/t3code).
 
 ## Layers
 

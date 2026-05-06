@@ -3,6 +3,8 @@
 > **Reference document.** Invariants and contracts for the `aloopd` daemon — the long-running service that owns session state, scheduling, and event aggregation.
 >
 > Hard rules live in CONSTITUTION.md. Work items live in GitHub issues.
+>
+> External implementation reference for overlapping server-backed project/thread/session runtime concepts: [pingdotgg/t3code](https://github.com/pingdotgg/t3code).
 
 ## Table of contents
 
@@ -162,6 +164,8 @@ The daemon serves N projects in one control plane. A project is the smallest set
 - `added_at`, `last_active_at`
 
 `setup_pending` may represent an active multi-day setup orchestration, not just a newly registered repo. The daemon remains the single authority over that run's lifecycle and over the transition to `ready`.
+
+**Implementation reference.** T3 Code's server model is a useful concrete example of daemon-owned project/thread state, provider session runtime, projection snapshots, persisted pending approvals, proposed plans, checkpoints, and worktree metadata. Aloop generalizes those concepts across orchestrator/child/setup/incubation flows, but the same boundary applies: the server owns durable state and projections; provider adapters and UI clients do not become alternate sources of truth. Reference: [pingdotgg/t3code](https://github.com/pingdotgg/t3code).
 
 **Per-project config** at `<abs_path>/.aloop/config.yml` — pipeline, provider chain, validation commands, safety rules. Daemon reads on session start; does not cache across sessions unless a file watcher invalidates.
 

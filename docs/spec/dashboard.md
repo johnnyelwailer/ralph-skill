@@ -1,6 +1,8 @@
 # Dashboard
 
 > **Reference document.** The dashboard is the human operator workstation for aloop. It is still only an HTTP/SSE client of the daemon: no privileged backend, no hidden state, no UI-only mutations. If the workstation needs something the CLI cannot also do through the API, the API is missing an endpoint.
+>
+> External implementation reference for overlapping workstation/thread concepts: [pingdotgg/t3code](https://github.com/pingdotgg/t3code), especially its project/thread shell snapshots, pending approvals/user input indicators, proposed plans, checkpoint summaries, streaming chat surfaces, and desktop/web split.
 
 The earlier draft intentionally kept this file thin. That is no longer enough. The product promise in `VISION.md`, `incubation.md`, `setup.md`, `metrics.md`, `work-tracker.md`, and `api.md` already implies a much richer surface: capture inbox, research queue, setup shell, runtime control plane, tracker editing, session inspection, artifacts, provider health, cost, and configuration. This document specifies that workstation at the product level. Visual implementation details stay in `DESIGN_BRIEF.md`; transport and payload shapes stay in `api.md`.
 
@@ -67,6 +69,8 @@ It therefore needs multiple levels of abstraction in one shell, not a single log
 9. **Durable over ephemeral.** Streams are helpful; persisted records win. Every live panel should have a replay or inspectable history behind it.
 10. **The composer is the universal intent interface, not the state store.** Users should be able to ask for anything the app can do from one intelligent composer, but durable state still lands in daemon-owned objects.
 11. **Fast paths matter.** The workstation should feel immediate in the composer, stream, panel switching, and inspect flows; latency should not be amplified by heavy UI chrome or unnecessary rerenders.
+
+**Implementation reference.** T3 Code's web/desktop app is a useful concrete reference for fast coding-agent UI mechanics: a thin shell snapshot for project/thread lists, detail snapshots for selected threads, explicit pending approval and pending user-input flags, actionable proposed-plan state, per-turn checkpoint summaries, and smooth streamed transcript rendering. Aloop should borrow those interaction patterns where they overlap, while retaining its broader hierarchy of incubation, setup, tracker, orchestrator, Story, session, and artifact objects. Reference: [pingdotgg/t3code](https://github.com/pingdotgg/t3code).
 
 ## Client forms
 

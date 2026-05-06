@@ -2,7 +2,7 @@
 
 > **Reference document.** Contracts between the daemon's scheduler, provider adapters, and workflows. Hard rules live in CONSTITUTION.md. Work items live in GitHub issues.
 >
-> Sources: SPEC.md §Global Provider Health & Rate-Limit Resilience, §OpenCode First-Class Parity, §OpenRouter Cost Monitoring; CR #287 (aloop-runner foundation), #288 (runtime override policy), #302 (provider load balancing).
+> Sources: SPEC.md §Global Provider Health & Rate-Limit Resilience, §OpenCode First-Class Parity, §OpenRouter Cost Monitoring; CR #287 (aloop-runner foundation), #288 (runtime override policy), #302 (provider load balancing). External implementation reference for overlapping provider-runtime ideas: [pingdotgg/t3code](https://github.com/pingdotgg/t3code), especially its provider adapter shape and canonical provider runtime event stream.
 
 ## Table of contents
 
@@ -84,6 +84,8 @@ interface ProviderAdapter {
 - `probeQuota` is optional; adapters without quota endpoints (opencode, copilot, codex CLIs today) omit it. The scheduler falls back to failure-driven backoff.
 - Adapters never write to the event bus directly — they yield chunks; the daemon publishes.
 - Adapters never touch the health FSM — they classify failures and emit them; the daemon mutates state.
+
+**Implementation reference.** T3 Code is useful prior art for this boundary: provider-native session operations (`startSession`, `sendTurn`, `interruptTurn`, approvals/user input, thread read/rollback, `stopAll`) live behind one adapter interface, while the rest of the app consumes a canonical runtime event stream. Aloop should preserve that separation while keeping scheduler permits, health, quota, fallthrough, and policy daemon-owned rather than adapter-owned. Reference: [pingdotgg/t3code](https://github.com/pingdotgg/t3code).
 
 ### Chunk types (summary; full shape in api.md)
 

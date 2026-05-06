@@ -3,6 +3,8 @@
 > **Reference document.** The event bus, JSONL log schema, SSE streaming contract, and projector model for aloop's observability layer.
 >
 > Hard rules live in CONSTITUTION.md. Work items live in GitHub issues.
+>
+> External implementation reference for overlapping trace/event concepts: [pingdotgg/t3code](https://github.com/pingdotgg/t3code), especially its local `server.trace.ndjson`, provider event NDJSON, OTLP export path, and trace/debugging guide.
 
 ---
 
@@ -30,6 +32,8 @@
 4. **Metrics that gate permits are daemon-computed.** Agents produce events; projectors compute metrics from events. No agent emits a metric value that gates its own permits — the DGM-resistance rule (CONSTITUTION.md §IX.36).
 
 5. **Silent fallbacks are forbidden.** If a metric value is missing and has no documented default, the endpoint fails loud. Hidden defaults are bugs.
+
+6. **Operator debugging starts local.** T3 Code's observability split is a useful model: human-readable console logs are ephemeral, while completed spans are persisted as local NDJSON and can optionally export to OTLP. Aloop's authoritative session truth remains per-session JSONL, but daemon/service traces should follow the same local-first pattern: inspectable files by default, backend export as an add-on, and provider runtime event logs separate from service traces. Reference: [pingdotgg/t3code](https://github.com/pingdotgg/t3code).
 
 ---
 
@@ -78,6 +82,8 @@ Append-only. One JSON line per event, terminated by `\n`. Empty lines are skippe
 | Access | `GET /v1/sessions/:id/log` | `GET /v1/events` |
 
 Clients needing lossless tail read JSONL directly. The SSE stream is for live monitoring.
+
+**Trace-file reference.** For daemon-level debugging that is not itself session truth, use a separate NDJSON trace file rather than overloading `log.jsonl`. T3 Code's `docs/observability.md` is the relevant external reference for practical queries: failed spans, slow spans, orchestration command latency, git spans, provider turn spans, and OTLP startup configuration. Reference: [pingdotgg/t3code](https://github.com/pingdotgg/t3code).
 
 **Write atomicity:** Each `append` call writes exactly one line. A crash mid-write results in either a complete line or nothing — never a partial line. This is guaranteed by the `JsonlEventStore` lazy-open file handle: the line is buffered and flushed (`fsync`) before the call returns.
 

@@ -2,7 +2,7 @@
 
 > **Reference document.** The contract for orchestrator sessions — how a spec becomes tracked work, how children are dispatched, how results are gated and merged, how self-healing happens. Hard rules live in CONSTITUTION.md. Work items live in GitHub issues (or the configured tracker).
 >
-> Sources: SPEC.md §Parallel Orchestrator Mode, §State Machine, §Budget; SPEC-ADDENDUM.md §Adapter Pattern, §Scan Agent Self-Healing, §Orchestrator Autonomy Fix, §PR Review, §Self-Healing, §Session Resumability (pre-decomposition, 2026-04-18). Consolidated against `daemon.md`, `api.md`, `pipeline.md`, `work-tracker.md`, `refinement.md`.
+> Sources: SPEC.md §Parallel Orchestrator Mode, §State Machine, §Budget; SPEC-ADDENDUM.md §Adapter Pattern, §Scan Agent Self-Healing, §Orchestrator Autonomy Fix, §PR Review, §Self-Healing, §Session Resumability (pre-decomposition, 2026-04-18). Consolidated against `daemon.md`, `api.md`, `pipeline.md`, `work-tracker.md`, `refinement.md`. External implementation reference for overlapping command/projector/thread-runtime ideas: [pingdotgg/t3code](https://github.com/pingdotgg/t3code).
 
 ## Table of contents
 
@@ -149,6 +149,8 @@ At any point:
 ```
 
 The state machine is encoded in `orchestrator.yaml` as cycle + triggers, not in code. The session runner executes it mechanically. Every orchestrator turn goes through the scheduler like any other turn (see `daemon.md` §Scheduler authority).
+
+**Implementation reference.** T3 Code's command/invariant/projector split is useful prior art for keeping orchestration mutations auditable: commands are validated against a projected read model, produce durable events, and projections feed shell/detail snapshots. Aloop's runtime orchestrator is broader and tracker-driven, but it should use the same discipline for daemon-owned mutations such as dispatch, pause/stop, approve/merge, proposed-plan implementation, checkpoint revert, and thread/session metadata updates. Reference: [pingdotgg/t3code](https://github.com/pingdotgg/t3code).
 
 ## Refinement pipeline
 

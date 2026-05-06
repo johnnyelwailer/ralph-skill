@@ -24,6 +24,10 @@ What it did not yet cover well enough for the current vision:
 - project-wide command center beyond one selected session
 - deeper configurable workstation layouts
 
+## External reference: T3 Code
+
+Use [pingdotgg/t3code](https://github.com/pingdotgg/t3code) as the concrete reference for the overlapping coding-agent workstation pieces: project/thread sidebar, always-ready composer, streaming transcript, pending approval/user-input surfaces, proposed plans, checkpoint/diff affordances, branch/worktree metadata, and a web client that can also live inside a desktop shell. Aloop should copy those interaction lessons where they fit, but the dashboard hierarchy remains broader: incubation, setup, tracker, orchestrator, Story/session runtime, artifacts, provider health, scheduler, and costs.
+
 ## Variant A — Operator Tri-Pane
 
 Best when the user spends most of the day supervising active work and drilling into one story/session at a time.
