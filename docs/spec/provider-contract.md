@@ -17,6 +17,7 @@
 - Round-robin: authoring pattern, not runtime mode
 - Cost and usage capture
 - OpenCode parity
+- Candidate harnesses after v1
 - Capability registry
 
 ---
@@ -288,6 +289,35 @@ Parity with other providers:
 | Subagent delegation | native `task` tool | provider-specific; adapter hides the difference |
 | Streaming (future) | native | requires adapter work per provider |
 | Quota probe | via OpenRouter usage payloads embedded in responses | provider-specific |
+
+## Candidate harnesses after v1
+
+The v1 first-class provider set remains intentionally narrow:
+
+```yaml
+first_class:
+  - opencode
+  - copilot
+  - codex
+  - gemini
+  - claude
+```
+
+Additional harnesses should be treated as candidates until they prove they can run under Aloop's daemon-owned scheduler, permits, quota policy, fallthrough, event stream, cancellation, and artifact model. A candidate graduates only if it can be invoked non-interactively, reports or allows classification of failures, has a usable session identity, respects cwd/worktree isolation, and can emit enough structured output to normalize into `AgentChunk` plus a final `usage` chunk.
+
+Recommended candidate order:
+
+| Candidate | Tier | Why it matters | Admission concern |
+|---|---|---|---|
+| `pi` | first candidate | Terminal harness with JSON/RPC/SDK modes, model-provider flexibility, steer/follow-up behavior, AGENTS.md-style context, and tree-shaped resumable session history. See [pi.dev](https://pi.dev/). | Confirm stable noninteractive execution, cancellation, usage capture, and failure classification. |
+| `aider` | git-native worker | Mature patch-producing CLI for focused repairs, refactors, and test work where diff quality matters more than rich runtime UX. | Treat as a constrained worker path unless session streaming, structured usage, and cancellation are strong enough for normal turns. |
+| `goose` | MCP-heavy worker | Open local agent path with strong MCP alignment, useful if tool ecosystems become central to worker execution. | Must not move scheduling, approvals, or policy decisions out of the daemon. |
+| `mastra-code` | spike | Terminal coding agent with modes, tools, MCP, hooks, custom commands, subagents, storage, token/cost tracking, and broad model coverage. See [Mastra Code](https://code.mastra.ai/). | Significant overlap with Aloop-owned harness, memory, mode, and storage responsibilities. Only adopt if it cleanly subordinates to Aloop's control plane. |
+| `openhands` | sandbox/runtime candidate | Useful for containerized task-environment execution rather than plain terminal CLI execution. | May belong behind a separate runtime or sandbox-agent adapter family. |
+| `harnext` | watch/spike | Aligned with issue-to-PR automation and self-hosted runner ideas. See [harnext](https://www.harnext.dev/). | Overlaps with Aloop orchestration; support only if its runner can be subordinated to Aloop's scheduler. |
+| `agents-cli` | compatibility shim | Normalizes access to many agent CLIs and may be useful for development or fallback compatibility. See [agents-cli](https://agents-cli.sh/). | Avoid making it the core adapter path; direct adapters keep Aloop's contract and health semantics explicit. |
+
+This is a provider-adapter roadmap, not a mandate to wrap every popular coding agent. The default answer to a new harness is "spike it behind the standard adapter contract"; first-class status comes only after the daemon can observe, steer, limit, stop, resume, and account for it with the same guarantees as the v1 providers.
 
 ## Capability registry
 
