@@ -188,4 +188,63 @@ describe("handleWorkspaces", () => {
     const body = await res!.json();
     expect(body.items.length).toBe(2);
   });
+
+  test("GET /v1/workspaces ?q searches workspace names (case-insensitive)", async () => {
+    deps.workspaceRegistry.create({ name: "Alpha" });
+    deps.workspaceRegistry.create({ name: "Beta" });
+    deps.workspaceRegistry.create({ name: "ALPHA2" });
+
+    const req = new Request("http://localhost/v1/workspaces?q=alpha");
+    const res = await handleWorkspaces(req, deps, "/v1/workspaces");
+    expect(res?.status).toBe(200);
+    const body = await res!.json();
+    expect(body.items.length).toBe(2);
+    expect(body.items.map((w: { name: string }) => w.name).sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()))).toEqual(["Alpha", "ALPHA2"]);
+    expect(body.next_cursor).toBeNull();
+  });
+
+  test("GET /v1/workspaces ?limit caps at 100 and returns next_cursor", async () => {
+    // Create 5 workspaces
+    const created = [];
+    for (let i = 0; i < 5; i++) {
+      created.push(deps.workspaceRegistry.create({ name: `Ws${i}` }));
+    }
+    // Request limit=2 — should get 2 items and a next_cursor
+    const req = new Request("http://localhost/v1/workspaces?limit=2");
+    const res = await handleWorkspaces(req, deps, "/v1/workspaces");
+    expect(res?.status).toBe(200);
+    const body = await res!.json();
+    expect(body.items.length).toBe(2);
+    expect(body.next_cursor).not.toBeNull();
+    // Cursor should allow fetching next page
+    const req2 = new Request(`http://localhost/v1/workspaces?limit=2&cursor=${body.next_cursor}`);
+    const res2 = await handleWorkspaces(req2, deps, "/v1/workspaces");
+    expect(res2?.status).toBe(200);
+    const body2 = await res2!.json();
+    expect(body2.items.length).toBe(2);
+  });
+
+  test("GET /v1/workspaces ?limit above 100 is capped", async () => {
+    deps.workspaceRegistry.create({ name: "Ws1" });
+    deps.workspaceRegistry.create({ name: "Ws2" });
+    const req = new Request("http://localhost/v1/workspaces?limit=200");
+    const res = await handleWorkspaces(req, deps, "/v1/workspaces");
+    expect(res?.status).toBe(200);
+    const body = await res!.json();
+    // Only 2 workspaces exist, so we get 2 items and no next_cursor
+    expect(body.items.length).toBe(2);
+    expect(body.next_cursor).toBeNull();
+  });
+
+  test("GET /v1/workspaces ?limit=0 returns 400", async () => {
+    const req = new Request("http://localhost/v1/workspaces?limit=0");
+    const res = await handleWorkspaces(req, deps, "/v1/workspaces");
+    expect(res?.status).toBe(400);
+  });
+
+  test("GET /v1/workspaces ?limit=invalid returns 400", async () => {
+    const req = new Request("http://localhost/v1/workspaces?limit=abc");
+    const res = await handleWorkspaces(req, deps, "/v1/workspaces");
+    expect(res?.status).toBe(400);
+  });
 });

@@ -69,8 +69,8 @@ describe("WorkspaceRegistry", () => {
     const ws2 = workspaceRegistry.create({ name: "Archived" });
     workspaceRegistry.archive(ws2.id);
     const active = workspaceRegistry.list();
-    expect(active.map((w) => w.id)).toEqual([ws1.id]);
-    expect(active.find((w) => w.id === ws2.id)).toBeUndefined();
+    expect(active.items.map((w) => w.id)).toEqual([ws1.id]);
+    expect(active.items.find((w) => w.id === ws2.id)).toBeUndefined();
   });
 
   test("list includes archived when filtered", () => {
@@ -78,17 +78,17 @@ describe("WorkspaceRegistry", () => {
     const ws2 = workspaceRegistry.create({ name: "Archived" });
     workspaceRegistry.archive(ws2.id);
     const all = workspaceRegistry.list({ archived: true });
-    expect(all.map((w) => w.id)).toContain(ws1.id);
-    expect(all.map((w) => w.id)).toContain(ws2.id);
+    expect(all.items.map((w) => w.id)).toContain(ws1.id);
+    expect(all.items.map((w) => w.id)).toContain(ws2.id);
   });
 
   test("list orders by created_at", () => {
     const t = (n: number) => new Date(Date.UTC(2026, 0, 1, 0, 0, n)).toISOString();
     workspaceRegistry.create({ name: "First", now: t(5) });
     workspaceRegistry.create({ name: "Second", now: t(10) });
-    const list = workspaceRegistry.list();
-    expect(list[0]!.name).toBe("First");
-    expect(list[1]!.name).toBe("Second");
+    const result = workspaceRegistry.list();
+    expect(result.items[0]!.name).toBe("First");
+    expect(result.items[1]!.name).toBe("Second");
   });
 
   test("updateName updates name and updatedAt", () => {

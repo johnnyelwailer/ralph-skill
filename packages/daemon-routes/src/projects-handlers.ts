@@ -18,21 +18,34 @@ export function listProjects(req: Request, deps: Deps): Response {
   const url = new URL(req.url);
   const statusParam = url.searchParams.get("status");
   const path = url.searchParams.get("path");
+  const workspaceId = url.searchParams.get("workspace_id");
+  const q = url.searchParams.get("q");
+  const limitParam = url.searchParams.get("limit");
+  const cursor = url.searchParams.get("cursor");
   const sessionsDir = typeof deps.sessionsDir === "function" ? deps.sessionsDir() : deps.sessionsDir;
 
   if (statusParam !== null && !VALID_STATUSES.includes(statusParam as ProjectStatus)) {
     return badRequest(`invalid status: ${statusParam}`, { statusParam });
   }
 
-  const items = deps.registry.list({
+  const limit = limitParam !== null ? Math.floor(Number(limitParam)) : undefined;
+  if (limit !== undefined && (isNaN(limit) || limit < 1)) {
+    return badRequest(`invalid limit: ${limitParam}`, { limit: limitParam });
+  }
+
+  const { items, nextCursor } = deps.registry.list({
     ...(statusParam !== null && { status: statusParam as ProjectStatus }),
     ...(path !== null && { absPath: path }),
+    ...(workspaceId !== null && { workspaceId }),
+    ...(q !== null && { q }),
+    ...(limit !== undefined && { limit }),
+    ...(cursor !== null && { cursor }),
   });
 
   return jsonResponse(200, {
     _v: 1,
     items: items.map((p) => projectResponse(p, sessionsDir)),
-    next_cursor: null,
+    next_cursor: nextCursor,
   });
 }
 

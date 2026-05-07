@@ -26,6 +26,11 @@ export type WorkspaceProject = {
 
 export type WorkspaceFilter = {
   readonly archived?: boolean;
+  /**
+   * Full-text search across name. Matches anywhere in the name (case-insensitive).
+   * Returns all workspaces when omitted.
+   */
+  readonly q?: string;
 };
 
 export type CreateWorkspaceInput = {
@@ -109,17 +114,43 @@ export class WorkspaceRegistry {
     return row ? rowToWorkspace(row) : undefined;
   }
 
-  list(filter: WorkspaceFilter = {}): Workspace[] {
-    if (filter.archived) {
-      return this.db
-        .query<WorkspaceRow, []>(`SELECT * FROM workspaces ORDER BY created_at`)
-        .all()
-        .map(rowToWorkspace);
+  list(filter: WorkspaceFilter & { limit?: number; cursor?: string } = {}): { items: Workspace[]; nextCursor: string | null } {
+    const { archived, q, limit, cursor } = filter;
+
+    const conditions: string[] = [];
+    const params: (string | number)[] = [];
+
+    if (!archived) {
+      conditions.push("archived_at IS NULL");
     }
-    return this.db
-      .query<WorkspaceRow, []>(`SELECT * FROM workspaces WHERE archived_at IS NULL ORDER BY created_at`)
-      .all()
-      .map(rowToWorkspace);
+    if (q !== undefined && q.trim() !== "") {
+      conditions.push("LOWER(name) LIKE ?");
+      params.push(`%${q.toLowerCase().trim()}%`);
+    }
+    if (cursor !== undefined) {
+      conditions.push("(created_at || ':' || id) > ?");
+      params.push(cursor);
+    }
+
+    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+    const effectiveLimit = limit !== undefined ? Math.min(limit, 100) : 100;
+
+    const rows = this.db
+      .query<WorkspaceRow, (string | number)[]>(
+        `SELECT * FROM workspaces ${whereClause} ORDER BY created_at ASC, id ASC LIMIT ?`,
+      )
+      .all(...params, effectiveLimit + 1);
+
+    const hasMore = rows.length > effectiveLimit;
+    const items = hasMore ? rows.slice(0, effectiveLimit) : rows;
+    const nextCursor = hasMore && items.length > 0
+      ? `${items[items.length - 1]!.created_at}:${items[items.length - 1]!.id}`
+      : null;
+
+    return {
+      items: items.map(rowToWorkspace),
+      nextCursor,
+    };
   }
 
   updateName(id: string, name: string): Workspace {

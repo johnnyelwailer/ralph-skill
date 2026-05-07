@@ -68,6 +68,7 @@ export function projectResponse(p: Project, sessionsDir: string): Record<string,
   return {
     _v: 1,
     id: p.id,
+    workspace_ids: p.workspaceIds,
     abs_path: p.absPath,
     name: p.name,
     status: p.status,

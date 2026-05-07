@@ -134,8 +134,8 @@ describe("projects-queries helpers", () => {
        VALUES (?, ?, ?, 'ready', ?, ?)`,
       ["proj-earlier", "/earlier", "earlier", "2026-01-01T00:00:00.000Z", "2026-01-01T00:00:00.000Z"],
     );
-    const list = listProjectsFromDb(db);
-    expect(list.map((p) => p.id)).toEqual(["proj-earlier", "proj-later"]);
+    const result = listProjectsFromDb(db);
+    expect(result.items.map((p) => p.id)).toEqual(["proj-earlier", "proj-later"]);
     db.close();
   });
 
@@ -152,9 +152,9 @@ describe("projects-queries helpers", () => {
       ["proj-archived", "/archived", "archived", "2026-01-01T00:01:00.000Z", "2026-01-01T00:00:00.000Z"],
     );
     const ready = listProjectsFromDb(db, { status: "ready" as ProjectStatus });
-    expect(ready.map((p) => p.id)).toEqual(["proj-ready"]);
+    expect(ready.items.map((p) => p.id)).toEqual(["proj-ready"]);
     const archived = listProjectsFromDb(db, { status: "archived" as ProjectStatus });
-    expect(archived.map((p) => p.id)).toEqual(["proj-archived"]);
+    expect(archived.items.map((p) => p.id)).toEqual(["proj-archived"]);
     db.close();
   });
 
@@ -172,8 +172,8 @@ describe("projects-queries helpers", () => {
        VALUES (?, ?, ?, 'ready', ?, ?)`,
       ["proj-b", pathB, "b", "2026-01-01T00:01:00.000Z", "2026-01-01T00:00:00.000Z"],
     );
-    const list = listProjectsFromDb(db, { absPath: pathA });
-    expect(list.map((p) => p.id)).toEqual(["proj-a"]);
+    const result = listProjectsFromDb(db, { absPath: pathA });
+    expect(result.items.map((p) => p.id)).toEqual(["proj-a"]);
     db.close();
   });
 
@@ -193,13 +193,13 @@ describe("projects-queries helpers", () => {
     );
     // Filter by 'archived' status — only the archived row matches
     const result = listProjectsFromDb(db, { status: "archived" as ProjectStatus, absPath: pathArchived });
-    expect(result.map((p) => p.id)).toEqual(["proj-x-archived"]);
+    expect(result.items.map((p) => p.id)).toEqual(["proj-x-archived"]);
     db.close();
   });
 
   test("listProjectsFromDb returns empty array when no projects exist", () => {
     const { db } = openDatabase(dbPath);
-    expect(listProjectsFromDb(db)).toEqual([]);
+    expect(listProjectsFromDb(db)).toEqual({ items: [], nextCursor: null });
     db.close();
   });
 
@@ -210,7 +210,7 @@ describe("projects-queries helpers", () => {
        VALUES (?, ?, ?, 'ready', ?, ?)`,
       ["proj-exist", "/exist", "exist", "2026-01-01T00:00:00.000Z", "2026-01-01T00:00:00.000Z"],
     );
-    expect(listProjectsFromDb(db, { status: "archived" as ProjectStatus })).toEqual([]);
+    expect(listProjectsFromDb(db, { status: "archived" as ProjectStatus })).toEqual({ items: [], nextCursor: null });
     db.close();
   });
 });

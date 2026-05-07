@@ -56,13 +56,28 @@ export async function handleWorkspaces(
       const url = new URL(req.url);
       const archivedParam = url.searchParams.get("archived");
       const includeArchived = archivedParam === "true";
-      const items = deps.workspaceRegistry.list({ archived: includeArchived });
+      const q = url.searchParams.get("q");
+      const limitParam = url.searchParams.get("limit");
+      const cursor = url.searchParams.get("cursor");
+
+      const limit = limitParam !== null ? Math.floor(Number(limitParam)) : undefined;
+      if (limit !== undefined && (isNaN(limit) || limit < 1)) {
+        return badRequest(`invalid limit: ${limitParam}`, { limit: limitParam });
+      }
+
+      const { items, nextCursor } = deps.workspaceRegistry.list({
+        ...(includeArchived && { archived: true }),
+        ...(q !== null && { q }),
+        ...(limit !== undefined && { limit }),
+        ...(cursor !== null && { cursor }),
+      });
+
       const enriched = items.map((w) => {
         const projects = deps.workspaceRegistry.listProjects(w.id);
         const projectCounts = countWorkspaceProjects(projects);
         return workspaceResponse(w, projectCounts);
       });
-      return jsonResponse(200, { _v: 1, items: enriched, next_cursor: null });
+      return jsonResponse(200, { _v: 1, items: enriched, next_cursor: nextCursor });
     }
     if (req.method === "POST") {
       const body = await parseJsonBody(req);

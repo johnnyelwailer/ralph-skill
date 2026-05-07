@@ -93,10 +93,10 @@ describe("ProjectRegistry", () => {
     try {
       registry.create({ absPath: dirA, now: t(10) });
       registry.create({ absPath: dirB, now: t(5) });
-      const list = registry.list();
-      expect(list.length).toBe(2);
-      expect(list[0]!.absPath.includes("/b-")).toBe(true);
-      expect(list[1]!.absPath.includes("/a-")).toBe(true);
+      const result = registry.list();
+      expect(result.items.length).toBe(2);
+      expect(result.items[0]!.absPath.includes("/b-")).toBe(true);
+      expect(result.items[1]!.absPath.includes("/a-")).toBe(true);
     } finally {
       rmSync(dirA, { recursive: true, force: true });
       rmSync(dirB, { recursive: true, force: true });
@@ -109,9 +109,9 @@ describe("ProjectRegistry", () => {
     try {
       const p2 = registry.create({ absPath: dir2 });
       registry.updateStatus(p2.id, "ready");
-      expect(registry.list({ status: "ready" }).map((p) => p.id)).toEqual([p2.id]);
-      expect(registry.list({ status: "setup_pending" }).map((p) => p.id)).toEqual([p1.id]);
-      expect(registry.list({ status: "archived" })).toEqual([]);
+      expect(registry.list({ status: "ready" }).items.map((p) => p.id)).toEqual([p2.id]);
+      expect(registry.list({ status: "setup_pending" }).items.map((p) => p.id)).toEqual([p1.id]);
+      expect(registry.list({ status: "archived" }).items).toEqual([]);
     } finally {
       rmSync(dir2, { recursive: true, force: true });
     }

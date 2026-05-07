@@ -122,6 +122,64 @@ describe("listProjects", () => {
       name: "proj-c",
       status: "setup_pending",
     });
+    expect(body.items[0]!.workspace_ids).toEqual([]);
+  });
+
+  test("filters by q query param (name search)", async () => {
+    deps.registry.create({ absPath: "/a", name: "alpha-service" });
+    deps.registry.create({ absPath: "/b", name: "beta-api" });
+    deps.registry.create({ absPath: "/c", name: "gamma-worker" });
+
+    const req = new Request("http://localhost/v1/projects?q=alpha");
+    const res = listProjects(req, deps);
+    expect(res.status).toBe(200);
+    const body = await (res as Response).json();
+    expect(body.items).toHaveLength(1);
+    expect(body.items[0]!.name).toBe("alpha-service");
+  });
+
+  test("q search is case-insensitive", async () => {
+    deps.registry.create({ absPath: "/a", name: "AlphaService" });
+    deps.registry.create({ absPath: "/b", name: "beta-api" });
+
+    const req = new Request("http://localhost/v1/projects?q=ALPHA");
+    const res = listProjects(req, deps);
+    expect(res.status).toBe(200);
+    const body = await (res as Response).json();
+    expect(body.items).toHaveLength(1);
+  });
+
+  test("limit query param caps at 100 and returns next_cursor when more exist", async () => {
+    for (let i = 0; i < 5; i++) {
+      deps.registry.create({ absPath: `/p${i}`, name: `proj-${i}` });
+    }
+
+    const req = new Request("http://localhost/v1/projects?limit=2");
+    const res = listProjects(req, deps);
+    expect(res.status).toBe(200);
+    const body = await (res as Response).json();
+    expect(body.items).toHaveLength(2);
+    expect(body.next_cursor).not.toBeNull();
+  });
+
+  test("cursor pagination returns next page of results", async () => {
+    for (let i = 0; i < 4; i++) {
+      deps.registry.create({ absPath: `/p${i}`, name: `proj-${i}` });
+    }
+
+    const page1 = await (listProjects(new Request("http://localhost/v1/projects?limit=2"), deps) as Response).json();
+    expect(page1.items).toHaveLength(2);
+    expect(page1.next_cursor).not.toBeNull();
+
+    const page2 = await (listProjects(new Request(`http://localhost/v1/projects?limit=2&cursor=${page1.next_cursor}`), deps) as Response).json();
+    expect(page2.items).toHaveLength(2);
+    expect(page2.next_cursor).toBeNull();
+  });
+
+  test("returns 400 for invalid limit value", async () => {
+    const req = new Request("http://localhost/v1/projects?limit=-1");
+    const res = listProjects(req, deps);
+    expect(res.status).toBe(400);
   });
 });
 

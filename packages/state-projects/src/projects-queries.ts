@@ -75,59 +75,66 @@ export function getProjectByPath(db: Database, absPath: string): Project | undef
   return row ? rowToProject(row, parseWorkspaceIds(row.workspace_ids)) : undefined;
 }
 
-export function listProjectsFromDb(db: Database, filter: ProjectFilter = {}): Project[] {
-  if (filter.status !== undefined && filter.absPath !== undefined) {
-    const canonical = canonicalizeProjectPath(filter.absPath);
-    return db
-      .query<ProjectRow, [ProjectStatus, string]>(
-        `SELECT p.*, COALESCE(GROUP_CONCAT(wp.workspace_id), '') as workspace_ids
-         FROM projects p
-         LEFT JOIN workspace_projects wp ON wp.project_id = p.id
-         WHERE p.status = ? AND p.abs_path = ?
-         GROUP BY p.id
-         ORDER BY p.added_at`,
-      )
-      .all(filter.status, canonical)
-      .map((row) => rowToProject(row, parseWorkspaceIds(row.workspace_ids)));
+/** Supports cursor-based pagination, text search, workspace filter. */
+export function listProjectsFromDb(
+  db: Database,
+  filter: ProjectFilter & { limit?: number; cursor?: string } = {},
+): { items: Project[]; nextCursor: string | null } {
+  const { status, absPath, workspaceId, q, limit, cursor } = filter;
+
+  // Build conditions and params for the WHERE clause.
+  const conditions: string[] = [];
+  const params: (string | number)[] = [];
+
+  if (status !== undefined) {
+    conditions.push("p.status = ?");
+    params.push(status);
+  }
+  if (absPath !== undefined) {
+    const canonical = canonicalizeProjectPath(absPath);
+    conditions.push("p.abs_path = ?");
+    params.push(canonical);
+  }
+  if (workspaceId !== undefined) {
+    conditions.push("EXISTS (SELECT 1 FROM workspace_projects wp WHERE wp.project_id = p.id AND wp.workspace_id = ?)");
+    params.push(workspaceId);
+  }
+  if (q !== undefined && q.trim() !== "") {
+    conditions.push("LOWER(p.name) LIKE ?");
+    params.push(`%${q.toLowerCase().trim()}%`);
   }
 
-  if (filter.status !== undefined) {
-    return db
-      .query<ProjectRow, [ProjectStatus]>(
-        `SELECT p.*, COALESCE(GROUP_CONCAT(wp.workspace_id), '') as workspace_ids
-         FROM projects p
-         LEFT JOIN workspace_projects wp ON wp.project_id = p.id
-         WHERE p.status = ?
-         GROUP BY p.id
-         ORDER BY p.added_at`,
-      )
-      .all(filter.status)
-      .map((row) => rowToProject(row, parseWorkspaceIds(row.workspace_ids)));
+  const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+
+  // Cursor-based pagination: resume after the last seen `added_at || ':' || id`.
+  if (cursor !== undefined) {
+    conditions.push("(p.added_at || ':' || p.id) > ?");
+    params.push(cursor);
   }
 
-  if (filter.absPath !== undefined) {
-    const canonical = canonicalizeProjectPath(filter.absPath);
-    return db
-      .query<ProjectRow, [string]>(
-        `SELECT p.*, COALESCE(GROUP_CONCAT(wp.workspace_id), '') as workspace_ids
-         FROM projects p
-         LEFT JOIN workspace_projects wp ON wp.project_id = p.id
-         WHERE p.abs_path = ?
-         GROUP BY p.id
-         ORDER BY p.added_at`,
-      )
-      .all(canonical)
-      .map((row) => rowToProject(row, parseWorkspaceIds(row.workspace_ids)));
-  }
+  const finalWhere = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+  const effectiveLimit = limit !== undefined ? Math.min(limit, 100) : 100;
 
-  return db
-    .query<ProjectRow, []>(
+  const rows = db
+    .query<ProjectRow, (string | number)[]>(
       `SELECT p.*, COALESCE(GROUP_CONCAT(wp.workspace_id), '') as workspace_ids
        FROM projects p
        LEFT JOIN workspace_projects wp ON wp.project_id = p.id
+       ${finalWhere}
        GROUP BY p.id
-       ORDER BY p.added_at`,
+       ORDER BY p.added_at ASC, p.id ASC
+       LIMIT ?`,
     )
-    .all()
-    .map((row) => rowToProject(row, parseWorkspaceIds(row.workspace_ids)));
+    .all(...params, effectiveLimit + 1);
+
+  const hasMore = rows.length > effectiveLimit;
+  const items = hasMore ? rows.slice(0, effectiveLimit) : rows;
+  const nextCursor = hasMore && items.length > 0
+    ? `${items[items.length - 1]!.added_at}:${items[items.length - 1]!.id}`
+    : null;
+
+  return {
+    items: items.map((row) => rowToProject(row, parseWorkspaceIds(row.workspace_ids))),
+    nextCursor,
+  };
 }

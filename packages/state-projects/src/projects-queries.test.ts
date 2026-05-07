@@ -154,37 +154,38 @@ describe("listProjectsFromDb", () => {
   });
 
   test("returns all projects with no filter", () => {
-    const projects = listProjectsFromDb(db);
-    expect(projects).toHaveLength(5);
+    const result = listProjectsFromDb(db);
+    expect(result.items).toHaveLength(5);
+    expect(result.nextCursor).toBeNull();
   });
 
   test("filters by status", () => {
     const ready = listProjectsFromDb(db, { status: "ready" });
-    expect(ready).toHaveLength(3);
-    expect(ready.every((p) => p.status === "ready")).toBe(true);
+    expect(ready.items).toHaveLength(3);
+    expect(ready.items.every((p) => p.status === "ready")).toBe(true);
   });
 
   test("filters by absPath", () => {
     const results = listProjectsFromDb(db, { absPath: "/tmp/alpha" });
-    expect(results).toHaveLength(1);
-    expect(results[0]!.id).toBe("p1");
+    expect(results.items).toHaveLength(1);
+    expect(results.items[0]!.id).toBe("p1");
   });
 
   test("combines status and absPath filters", () => {
     const results = listProjectsFromDb(db, { status: "ready", absPath: "/tmp/alpha" });
-    expect(results).toHaveLength(1);
-    expect(results[0]!.id).toBe("p1");
+    expect(results.items).toHaveLength(1);
+    expect(results.items[0]!.id).toBe("p1");
   });
 
   test("returns empty array when status filter matches nothing", () => {
     const results = listProjectsFromDb(db, { status: "archived", absPath: "/tmp/nonexistent" });
-    expect(results).toHaveLength(0);
+    expect(results.items).toHaveLength(0);
   });
 
   test("returns projects ordered by added_at ascending", () => {
-    const projects = listProjectsFromDb(db);
-    expect(projects[0]!.id).toBe("p5"); // earliest added
-    expect(projects[4]!.id).toBe("p4"); // latest added
+    const result = listProjectsFromDb(db);
+    expect(result.items[0]!.id).toBe("p5"); // earliest added
+    expect(result.items[4]!.id).toBe("p4"); // latest added
   });
 
   test("maps all row fields correctly to Project shape", () => {

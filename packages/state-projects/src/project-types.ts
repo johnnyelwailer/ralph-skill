@@ -16,6 +16,13 @@ export type Project = {
 export type ProjectFilter = {
   readonly status?: ProjectStatus;
   readonly absPath?: string;
+  /** Filter to projects that belong to this workspace (joins workspace_projects). */
+  readonly workspaceId?: string;
+  /**
+   * Full-text search across name. Matches anywhere in the name (case-insensitive).
+   * Returns all projects when omitted.
+   */
+  readonly q?: string;
 };
 
 export type CreateProjectInput = {

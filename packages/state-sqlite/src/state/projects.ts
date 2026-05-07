@@ -57,7 +57,7 @@ export class ProjectRegistry {
     return getProjectByPath(this.db, absPath);
   }
 
-  list(filter: ProjectFilter = {}): Project[] {
+  list(filter: ProjectFilter & { limit?: number; cursor?: string } = {}): { items: Project[]; nextCursor: string | null } {
     return listProjectsFromDb(this.db, filter);
   }
 
