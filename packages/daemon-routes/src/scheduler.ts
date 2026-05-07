@@ -34,7 +34,11 @@ export async function handleScheduler(
     if ("error" in parsed) return parsed.error;
 
     const updated = await deps.scheduler.updateLimits(parsed.data);
-    if (!updated.ok) return badRequest("invalid scheduler limits", { errors: updated.errors });
+    if (!updated.ok) {
+      const details: Record<string, unknown> = { errors: updated.errors };
+      if (updated.outOfBounds) details.outOfBounds = updated.outOfBounds;
+      return badRequest("invalid scheduler limits", details);
+    }
     const limits = updated.limits;
     return jsonResponse(200, {
       _v: 1,

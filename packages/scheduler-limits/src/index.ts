@@ -1,2 +1,9 @@
 export { normalizeLimitsPatch } from "./limits-patch.ts";
-export { updateSchedulerLimits, type LimitsUpdateResult, type SchedulerLimits } from "./limits-update.ts";
+export {
+  updateSchedulerLimits,
+  TUNABLE_BOUNDS,
+  type LimitsUpdateResult,
+  type SchedulerLimits,
+  type OutOfBoundsError,
+  type TuningBoundKey,
+} from "./limits-update.ts";
