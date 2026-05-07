@@ -98,12 +98,11 @@ export class MetricAggregatesProjector implements Projector {
     ];
 
     for (const { key, value, directional } of metricDefs) {
-      // Labels include metric_key so the UNIQUE constraint differentiates rows while
-      // preserving the human-readable gate label that queries filter on
-      const labelsWithKey = JSON.stringify({ gate, metric_key: key });
+      // Labels is just { gate } — the id carries metric_key via metricSuffix so
+      // denial+decision rows remain distinct despite sharing all other fields
       const metrics = { [key]: value };
-      this.upsertMetric(db, scope, "all", this.epochAnchor(), now, "gate", labelsWithKey, metrics, directional);
-      this.upsertMetric(db, scope, "24h", this.windowStart24h(now), now, "gate", labelsWithKey, metrics, directional);
+      this.upsertMetric(db, scope, "all", this.epochAnchor(), now, "gate", labels, metrics, directional, key);
+      this.upsertMetric(db, scope, "24h", this.windowStart24h(now), now, "gate", labels, metrics, directional, key);
     }
   }
 
@@ -165,13 +164,26 @@ export class MetricAggregatesProjector implements Projector {
     metricKey?: string,
   ): void {
     const tx = db.transaction(() => {
-      // Read existing row under the transaction lock
+      // Compute id before the SELECT so we can use it in the query predicate.
+      // metricSuffix is prepended so it survives the 64-char truncation intact,
+      // guaranteeing denial+decision rows get distinct ids even when their
+      // gate+scope+window prefix is long.
+      const metricSuffix = metricKey ? `${metricKey}_` : "";
+      const id = `${metricSuffix}agg_${scope}_${windowLabel}_${labels}_${groupBy}`
+        .replace(/[^a-zA-Z0-9_]/g, "_")
+        .slice(0, 64);
+
+      // Read existing row under the transaction lock.
+      // id is included in the SELECT so that two metrics with the same
+      // (scope, windowLabel, groupBy, labels) produce distinct rows — e.g.
+      // permit_denial_total and permit_decision_total both write to the same
+      // gate label but must not UPDATE each other's row.
       const existing = db
-        .query<{ id: string; metrics: string; sample_size: number }, [string, string, string, string]>(
+        .query<{ id: string; metrics: string; sample_size: number }, [string, string, string, string, string]>(
           `SELECT id, metrics, sample_size FROM metric_aggregates
-           WHERE scope = ? AND window_label = ? AND group_by = ? AND labels = ?`,
+           WHERE scope = ? AND window_label = ? AND group_by = ? AND labels = ? AND id = ?`,
         )
-        .get(scope, windowLabel, groupBy, labels);
+        .get(scope, windowLabel, groupBy, labels, id);
 
       let mergedMetrics: Record<string, number>;
       let totalDelta: number;
@@ -199,10 +211,6 @@ export class MetricAggregatesProjector implements Projector {
         // Insert new row
         mergedMetrics = { ...newMetrics };
         totalDelta = Object.values(newMetrics).reduce((a, b) => a + b, 0);
-        const metricSuffix = metricKey ? `_${metricKey}` : "";
-        const id = `agg_${scope}_${windowLabel}_${labels}_${groupBy}${metricSuffix}`
-          .replace(/[^a-zA-Z0-9_]/g, "_")
-          .slice(0, 64);
 
         db.run(
           `INSERT INTO metric_aggregates (scope, window_label, window_start, window_end, group_by, labels, sample_size, directional, metrics, updated_at, id)
