@@ -469,6 +469,40 @@ describe("CommentArtifactRef", () => {
   });
 });
 
+// ─── CommentRef ───────────────────────────────────────────────────────────────
+
+describe("CommentRef", () => {
+  test("accepts minimal ref with id only", () => {
+    const ref: CommentRef = { id: "c_abc123" };
+    expect(ref.id).toBe("c_abc123");
+    expect(ref.url).toBeUndefined();
+  });
+
+  test("accepts ref with optional url", () => {
+    const ref: CommentRef = { id: "c_xyz789", url: "https://github.com/org/repo/pull/1#discussion_r123" };
+    expect(ref.id).toBe("c_xyz789");
+    expect(ref.url).toBe("https://github.com/org/repo/pull/1#discussion_r123");
+  });
+
+  test("id field is readonly", () => {
+    const ref: CommentRef = { id: "c_readonly" };
+    // @ts-expect-error — id is readonly
+    ref.id = "changed";
+  });
+
+  test("url field is readonly", () => {
+    const ref: CommentRef = { id: "c_url", url: "https://example.com" };
+    // @ts-expect-error — url is readonly
+    ref.url = "https://changed.com";
+  });
+
+  test("type-level: id must be string, not number", () => {
+    // This exercises the readonly string type — assigning a number is a type error
+    const id: CommentRef["id"] = "c_numeric_id";
+    expect(id).toBe("c_numeric_id");
+  });
+});
+
 // ─── Comment ─────────────────────────────────────────────────────────────────
 
 describe("Comment", () => {
