@@ -41,6 +41,8 @@ export type MakeRouterDepsInput = {
   readonly db: Database;
 };
 
+export type RouterDeps = ReturnType<typeof makeRouterDeps> extends Promise<infer T> ? T : ReturnType<typeof makeRouterDeps>;
+
 export function makeRouterDeps(input: MakeRouterDepsInput): RouterDeps {
   const metricsDeps = createMetricsDeps({
     scheduler: input.scheduler,

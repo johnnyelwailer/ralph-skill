@@ -62,7 +62,7 @@ export type PipelineConfig = {
 
 /** A single entry in the compiled loop-plan cycle. */
 export type StepDescriptor =
-  | { readonly kind: "agent"; readonly ref: string; readonly reasoning?: ReasoningEffort }
+  | { readonly kind: "agent"; readonly ref: string; readonly reasoning?: ReasoningEffort; readonly context?: readonly ContextId[] }
   | { readonly kind: "exec"; readonly ref: string };
 
 /** loop-plan.json — the compiled artifact consumed by the runtime. */

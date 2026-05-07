@@ -24,11 +24,16 @@ export type {
   SourceRef,
   TurnObservation,
 } from "./context/types.ts";
+export {
+  createContextRegistry,
+  type ContextRegistry,
+} from "./context/context-registry.ts";
 export { type EventStore } from "./events/store.ts";
 export {
   makeEvent,
   makeIdGenerator,
   type AgentChunkData,
+  type ContextInjectedData,
   type DaemonLogData,
   type EventEnvelope,
   type ProviderHealthData,

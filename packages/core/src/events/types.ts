@@ -130,6 +130,25 @@ export type WarningDroppedData = {
 };
 
 /**
+ * Canonical payload shape for `context.injected` events — emitted after context
+ * blocks are resolved and rendered into the prompt, before provider invocation.
+ *
+ * Spec: docs/spec/context.md §Runtime lifecycle step 6.
+ */
+export type ContextInjectedData = {
+  readonly session_id: string;
+  readonly turn_id: string;
+  /** Context ids that were resolved (in declaration order). */
+  readonly context_ids: readonly string[];
+  /** Blocks each plugin returned, in declaration order. */
+  readonly blocks: readonly import("../context/types.ts").ContextBlock[];
+  /** Per-context-id token counts used by the renderer. */
+  readonly token_counts?: Readonly<Record<string, number>>;
+  /** Total token count of all rendered blocks. */
+  readonly total_tokens: number;
+};
+
+/**
  * Canonical payload shape for `provider.health` events.
  *
  * Spec: docs/spec/observability.md §provider.* — provider.health.

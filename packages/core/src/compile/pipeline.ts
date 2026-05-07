@@ -135,6 +135,7 @@ function appendPhase(
       kind: "agent",
       ref: `PROMPT_${phase.agent}.md`,
       ...(phase.reasoning !== undefined && { reasoning: phase.reasoning }),
+      ...(phase.context !== undefined && { context: phase.context }),
     });
     if (phase.onFailure) {
       transitions[String(cyclePosition)] = phase.onFailure;
