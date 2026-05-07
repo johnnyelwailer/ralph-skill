@@ -259,34 +259,40 @@ describe("handleMetricsAggregates", () => {
       }
     });
 
-    test("returns a 200 response for POST (implementation currently handles non-GET without method guard)", async () => {
-      // NOTE: The implementation does not check HTTP method for /v1/metrics/aggregates.
-      // Per api.md this should return undefined (to fall through to 404), but currently
-      // the implementation processes POST as a 200 with empty results.
-      // This test documents actual behavior; the spec mismatch is a finding.
+    test("returns undefined for POST (method not allowed — GET only per spec)", async () => {
       const db = new Database(":memory:");
       try {
         db.exec(SCHEMA);
         const deps = makeAggregatesDeps(db);
         const req = new Request("http://localhost/v1/metrics/aggregates", { method: "POST" });
         const result = await handleMetricsAggregates(req, deps, "/v1/metrics/aggregates");
-        expect(result).toBeDefined();
-        expect(result!.status).toBe(200);
+        expect(result).toBeUndefined();
       } finally {
         db.close();
       }
     });
 
-    test("returns a 200 response for DELETE (implementation currently handles non-GET without method guard)", async () => {
-      // NOTE: Same spec mismatch as POST above.
+    test("returns undefined for DELETE (method not allowed — GET only per spec)", async () => {
       const db = new Database(":memory:");
       try {
         db.exec(SCHEMA);
         const deps = makeAggregatesDeps(db);
         const req = new Request("http://localhost/v1/metrics/aggregates", { method: "DELETE" });
         const result = await handleMetricsAggregates(req, deps, "/v1/metrics/aggregates");
-        expect(result).toBeDefined();
-        expect(result!.status).toBe(200);
+        expect(result).toBeUndefined();
+      } finally {
+        db.close();
+      }
+    });
+
+    test("returns undefined for PUT (method not allowed — GET only per spec)", async () => {
+      const db = new Database(":memory:");
+      try {
+        db.exec(SCHEMA);
+        const deps = makeAggregatesDeps(db);
+        const req = new Request("http://localhost/v1/metrics/aggregates", { method: "PUT" });
+        const result = await handleMetricsAggregates(req, deps, "/v1/metrics/aggregates");
+        expect(result).toBeUndefined();
       } finally {
         db.close();
       }

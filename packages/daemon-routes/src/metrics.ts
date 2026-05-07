@@ -291,6 +291,7 @@ export async function handleMetricsAggregates(
   pathname: string,
 ): Promise<Response | undefined> {
   if (pathname !== "/v1/metrics/aggregates") return undefined;
+  if (_req.method !== "GET") return undefined;
 
   const url = new URL(_req.url);
   const scope = url.searchParams.get("scope") ?? "global";
