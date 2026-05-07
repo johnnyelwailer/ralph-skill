@@ -198,6 +198,14 @@ function isValidProposalState(state: string): state is IncubationProposalState {
   return (VALID_PROPOSAL_STATES as readonly string[]).includes(state);
 }
 
+const VALID_OUTREACH_STATES: readonly OutreachPlanState[] = [
+  "draft", "ready_for_approval", "approved", "collecting", "completed", "cancelled",
+];
+
+function isValidOutreachState(state: string): state is OutreachPlanState {
+  return (VALID_OUTREACH_STATES as readonly string[]).includes(state);
+}
+
 // ---------------------------------------------------------------------------
 // Scope parser
 // ---------------------------------------------------------------------------
@@ -786,6 +794,164 @@ export async function handleIncubation(
   const monitorMatch = pathBase.match(/^\/v1\/incubation\/research-monitors\/([^/]+)$/);
   if (monitorMatch) {
     const id = monitorMatch[1]!;
+
+    if (req.method === "GET") {
+      const mon = monitorReg.get(id);
+      if (!mon) return notFoundResponse(pathname);
+      return jsonResponse(200, monitorResponse(mon));
+    }
+
+    if (req.method === "PATCH") {
+      const parsed = await parseJsonBody(req);
+      if ("error" in parsed) return parsed.error;
+      const body = parsed.data;
+
+      try {
+        let mon = monitorReg.get(id);
+        if (!mon) return notFoundResponse(pathname);
+
+        if (typeof body.status === "string") {
+          mon = monitorReg.updateStatus(id, body.status as ResearchMonitor["status"]);
+        }
+        if (typeof body.next_run_at === "string") {
+          mon = monitorReg.updateNextRun(id, body.next_run_at);
+        }
+
+        return jsonResponse(200, monitorResponse(mon));
+      } catch (err) {
+        if (err instanceof ResearchMonitorNotFoundError) return notFoundResponse(pathname);
+        return errorResponse(500, "internal_error", (err as Error).message);
+      }
+    }
+
+    return methodNotAllowed();
+  }
+
+  // -------------------------------------------------------------------------
+  // /v1/incubation/research-runs/:id/pause
+  // -------------------------------------------------------------------------
+  const runPauseMatch = pathBase.match(/^\/v1\/incubation\/research-runs\/([^/]+)\/pause$/);
+  if (runPauseMatch) {
+    const id = runPauseMatch[1]!;
+
+    if (req.method === "POST") {
+      try {
+        const run = runReg.updateStatus(id, "paused");
+        return jsonResponse(200, runResponse(run));
+      } catch (err) {
+        if (err instanceof ResearchRunNotFoundError) return notFoundResponse(pathname);
+        return errorResponse(500, "internal_error", (err as Error).message);
+      }
+    }
+
+    return methodNotAllowed();
+  }
+
+  // -------------------------------------------------------------------------
+  // /v1/incubation/research-runs/:id/resume
+  // -------------------------------------------------------------------------
+  const runResumeMatch = pathBase.match(/^\/v1\/incubation\/research-runs\/([^/]+)\/resume$/);
+  if (runResumeMatch) {
+    const id = runResumeMatch[1]!;
+
+    if (req.method === "POST") {
+      try {
+        const run = runReg.updateStatus(id, "running");
+        return jsonResponse(200, runResponse(run));
+      } catch (err) {
+        if (err instanceof ResearchRunNotFoundError) return notFoundResponse(pathname);
+        return errorResponse(500, "internal_error", (err as Error).message);
+      }
+    }
+
+    return methodNotAllowed();
+  }
+
+  // -------------------------------------------------------------------------
+  // /v1/incubation/research-runs/:id/events
+  // -------------------------------------------------------------------------
+  const runEventsMatch = pathBase.match(/^\/v1\/incubation\/research-runs\/([^/]+)\/events$/);
+  if (runEventsMatch) {
+    const id = runEventsMatch[1]!;
+
+    if (req.method === "GET") {
+      const run = runReg.get(id);
+      if (!run) return notFoundResponse(pathname);
+      // Research runs share the same session-dir / event-store pattern as sessions.
+      // Use the sessions dir if a project_id is set, otherwise use a flat run-events dir.
+      let eventsDir: string;
+      if (run.project_id) {
+        const sessionsDir = typeof deps.sessionsDir === "function"
+          ? deps.sessionsDir()
+          : deps.sessionsDir;
+        eventsDir = `${sessionsDir}/research-run-${id}`;
+      } else {
+        eventsDir = `${typeof deps.sessionsDir === "function" ? deps.sessionsDir() : deps.sessionsDir}/research-run-${id}`;
+      }
+      const logPath = `${eventsDir}/log.jsonl`;
+      let events: unknown[] = [];
+      try {
+        const content = await Bun.file(logPath).text();
+        events = content
+          .split("\n")
+          .filter((line) => line.trim())
+          .map((line) => JSON.parse(line));
+      } catch {
+        // File does not exist yet — return empty list
+      }
+      return jsonResponse(200, { _v: 1, run_id: id, events });
+    }
+
+    return methodNotAllowed();
+  }
+
+  // -------------------------------------------------------------------------
+  // /v1/incubation/research-monitors/:id/pause
+  // -------------------------------------------------------------------------
+  const monitorPauseMatch = pathBase.match(/^\/v1\/incubation\/research-monitors\/([^/]+)\/pause$/);
+  if (monitorPauseMatch) {
+    const id = monitorPauseMatch[1]!;
+
+    if (req.method === "POST") {
+      try {
+        const mon = monitorReg.updateStatus(id, "paused");
+        return jsonResponse(200, monitorResponse(mon));
+      } catch (err) {
+        if (err instanceof ResearchMonitorNotFoundError) return notFoundResponse(pathname);
+        return errorResponse(500, "internal_error", (err as Error).message);
+      }
+    }
+
+    return methodNotAllowed();
+  }
+
+  // -------------------------------------------------------------------------
+  // /v1/incubation/research-monitors/:id/resume
+  // -------------------------------------------------------------------------
+  const monitorResumeMatch = pathBase.match(/^\/v1\/incubation\/research-monitors\/([^/]+)\/resume$/);
+  if (monitorResumeMatch) {
+    const id = monitorResumeMatch[1]!;
+
+    if (req.method === "POST") {
+      try {
+        const mon = monitorReg.updateStatus(id, "active");
+        return jsonResponse(200, monitorResponse(mon));
+      } catch (err) {
+        if (err instanceof ResearchMonitorNotFoundError) return notFoundResponse(pathname);
+        return errorResponse(500, "internal_error", (err as Error).message);
+      }
+    }
+
+    return methodNotAllowed();
+  }
+
+  // -------------------------------------------------------------------------
+  // /v1/incubation/monitors/:id
+  // Spec path: GET/PATCH /v1/incubation/monitors/:id (aliased to research-monitors)
+  // -------------------------------------------------------------------------
+  const monitorsIdMatch = pathBase.match(/^\/v1\/incubation\/monitors\/([^/]+)$/);
+  if (monitorsIdMatch) {
+    const id = monitorsIdMatch[1]!;
 
     if (req.method === "GET") {
       const mon = monitorReg.get(id);

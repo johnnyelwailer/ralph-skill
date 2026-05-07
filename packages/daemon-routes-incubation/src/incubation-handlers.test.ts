@@ -1096,3 +1096,220 @@ describe("ResearchMonitor next_run_at", () => {
     expect(resp.status).toBe(404);
   });
 });
+
+// ---------------------------------------------------------------------------
+// ResearchRun — pause / resume / events
+// ---------------------------------------------------------------------------
+
+describe("ResearchRun pause / resume / events", () => {
+  async function createRun(itemId: string) {
+    const resp = await makeRequest(handler, deps, "POST", `/v1/incubation/items/${itemId}/research-runs`, {
+      mode: "source_synthesis",
+      question: "Test run for pause/resume",
+    });
+    return resp.json() as Promise<Record<string, unknown>>;
+  }
+
+  test("POST /v1/incubation/research-runs/:id/pause transitions status to paused", async () => {
+    const item = await createItem(handler, deps);
+    const run = await createRun(item.id);
+
+    const resp = await makeRequest(handler, deps, "POST", `/v1/incubation/research-runs/${run.id}/pause`);
+    expect(resp.status).toBe(200);
+    const body = await resp.json() as Record<string, unknown>;
+    expect(body.status).toBe("paused");
+  });
+
+  test("POST /v1/incubation/research-runs/:id/pause returns 404 for unknown id", async () => {
+    const resp = await makeRequest(handler, deps, "POST", "/v1/incubation/research-runs/unknown-id/pause");
+    expect(resp.status).toBe(404);
+  });
+
+  test("POST /v1/incubation/research-runs/:id/resume transitions status from paused to running", async () => {
+    const item = await createItem(handler, deps);
+    const run = await createRun(item.id);
+
+    await makeRequest(handler, deps, "POST", `/v1/incubation/research-runs/${run.id}/pause`);
+    const resp = await makeRequest(handler, deps, "POST", `/v1/incubation/research-runs/${run.id}/resume`);
+    expect(resp.status).toBe(200);
+    const body = await resp.json() as Record<string, unknown>;
+    expect(body.status).toBe("running");
+  });
+
+  test("POST /v1/incubation/research-runs/:id/resume returns 404 for unknown id", async () => {
+    const resp = await makeRequest(handler, deps, "POST", "/v1/incubation/research-runs/unknown-id/resume");
+    expect(resp.status).toBe(404);
+  });
+
+  test("GET /v1/incubation/research-runs/:id/events returns empty events array when no log file", async () => {
+    const item = await createItem(handler, deps);
+    const run = await createRun(item.id);
+
+    const resp = await makeRequest(handler, deps, "GET", `/v1/incubation/research-runs/${run.id}/events`);
+    expect(resp.status).toBe(200);
+    const body = await resp.json() as Record<string, unknown>;
+    expect(body.run_id).toBe(run.id);
+    expect(body.events).toEqual([]);
+  });
+
+  test("GET /v1/incubation/research-runs/:id/events returns 404 for unknown run", async () => {
+    const resp = await makeRequest(handler, deps, "GET", "/v1/incubation/research-runs/unknown-id/events");
+    expect(resp.status).toBe(404);
+  });
+
+  test("POST /v1/incubation/research-runs/:id/pause returns 405 for GET", async () => {
+    const item = await createItem(handler, deps);
+    const run = await createRun(item.id);
+    const resp = await makeRequest(handler, deps, "GET", `/v1/incubation/research-runs/${run.id}/pause`);
+    expect(resp.status).toBe(405);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// ResearchMonitor — pause / resume / monitors alias
+// ---------------------------------------------------------------------------
+
+describe("ResearchMonitor pause / resume / monitors alias", () => {
+  function makeMonitorBody() {
+    return {
+      cadence: "daily",
+      question: "Track provider changes",
+      source_plan: { allowed_kinds: ["official_docs"], require_citations: false },
+      synthesis_policy: { mode: "digest", alert_conditions: ["pricing change"] },
+    };
+  }
+
+  async function createMonitor(itemId: string) {
+    const resp = await makeRequest(
+      handler,
+      deps,
+      "POST",
+      `/v1/incubation/items/${itemId}/research-monitors`,
+      makeMonitorBody(),
+    );
+    return resp.json() as Promise<Record<string, unknown>>;
+  }
+
+  test("POST /v1/incubation/research-monitors/:id/pause transitions status to paused", async () => {
+    const item = await createItem(handler, deps);
+    const mon = await createMonitor(item.id);
+
+    const resp = await makeRequest(handler, deps, "POST", `/v1/incubation/research-monitors/${mon.id}/pause`);
+    expect(resp.status).toBe(200);
+    const body = await resp.json() as Record<string, unknown>;
+    expect(body.status).toBe("paused");
+  });
+
+  test("POST /v1/incubation/research-monitors/:id/pause returns 404 for unknown id", async () => {
+    const resp = await makeRequest(handler, deps, "POST", "/v1/incubation/research-monitors/unknown-id/pause");
+    expect(resp.status).toBe(404);
+  });
+
+  test("POST /v1/incubation/research-monitors/:id/resume transitions status from paused to active", async () => {
+    const item = await createItem(handler, deps);
+    const mon = await createMonitor(item.id);
+
+    await makeRequest(handler, deps, "POST", `/v1/incubation/research-monitors/${mon.id}/pause`);
+    const resp = await makeRequest(handler, deps, "POST", `/v1/incubation/research-monitors/${mon.id}/resume`);
+    expect(resp.status).toBe(200);
+    const body = await resp.json() as Record<string, unknown>;
+    expect(body.status).toBe("active");
+  });
+
+  test("POST /v1/incubation/research-monitors/:id/resume returns 404 for unknown id", async () => {
+    const resp = await makeRequest(handler, deps, "POST", "/v1/incubation/research-monitors/unknown-id/resume");
+    expect(resp.status).toBe(404);
+  });
+
+  // /v1/incubation/monitors/:id — spec alias for research-monitors
+  test("GET /v1/incubation/monitors/:id returns the monitor", async () => {
+    const item = await createItem(handler, deps);
+    const mon = await createMonitor(item.id);
+
+    const resp = await makeRequest(handler, deps, "GET", `/v1/incubation/monitors/${mon.id}`);
+    expect(resp.status).toBe(200);
+    const body = await resp.json() as Record<string, unknown>;
+    expect(body.id).toBe(mon.id);
+    expect(body.question).toBe("Track provider changes");
+  });
+
+  test("GET /v1/incubation/monitors/:id returns 404 for unknown id", async () => {
+    const resp = await makeRequest(handler, deps, "GET", "/v1/incubation/monitors/unknown-id");
+    expect(resp.status).toBe(404);
+  });
+
+  test("PATCH /v1/incubation/monitors/:id updates status", async () => {
+    const item = await createItem(handler, deps);
+    const mon = await createMonitor(item.id);
+
+    const resp = await makeRequest(handler, deps, "PATCH", `/v1/incubation/monitors/${mon.id}`, {
+      status: "paused",
+    });
+    expect(resp.status).toBe(200);
+    const body = await resp.json() as Record<string, unknown>;
+    expect(body.status).toBe("paused");
+  });
+
+  test("PATCH /v1/incubation/monitors/:id returns 404 for unknown id", async () => {
+    const resp = await makeRequest(handler, deps, "PATCH", "/v1/incubation/monitors/unknown-id", {
+      status: "paused",
+    });
+    expect(resp.status).toBe(404);
+  });
+
+  test("POST /v1/incubation/research-monitors/:id/pause returns 405 for GET", async () => {
+    const item = await createItem(handler, deps);
+    const mon = await createMonitor(item.id);
+    const resp = await makeRequest(handler, deps, "GET", `/v1/incubation/research-monitors/${mon.id}/pause`);
+    expect(resp.status).toBe(405);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// isValidOutreachState validator
+// ---------------------------------------------------------------------------
+
+describe("isValidOutreachState validator", () => {
+  test("PATCH outreach plan with valid state transition succeeds", async () => {
+    const item = await createItem(handler, deps);
+    const createResp = await makeRequest(
+      handler,
+      deps,
+      "POST",
+      `/v1/incubation/items/${item.id}/outreach-plans`,
+      {
+        title: "Test outreach",
+        target_audience: "developers",
+        kind: "survey_plan",
+      },
+    );
+    expect(createResp.status).toBe(201);
+    const plan = await createResp.json() as Record<string, unknown>;
+
+    const patch1 = await makeRequest(handler, deps, "PATCH", `/v1/incubation/outreach/${plan.id}`, {
+      state: "ready_for_approval",
+    });
+    expect(patch1.status).toBe(200);
+  });
+
+  test("PATCH outreach plan with invalid state returns 400", async () => {
+    const item = await createItem(handler, deps);
+    const createResp = await makeRequest(
+      handler,
+      deps,
+      "POST",
+      `/v1/incubation/items/${item.id}/outreach-plans`,
+      {
+        title: "Test outreach 2",
+        target_audience: "developers",
+        kind: "survey_plan",
+      },
+    );
+    const plan = await createResp.json() as Record<string, unknown>;
+
+    const patch2 = await makeRequest(handler, deps, "PATCH", `/v1/incubation/outreach/${plan.id}`, {
+      state: "nonexistent_state",
+    });
+    expect(patch2.status).toBe(400);
+  });
+});
