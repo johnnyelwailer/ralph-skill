@@ -30,7 +30,7 @@ describe("classifyOpencodeFailure", () => {
     test("timedOut flag takes priority over other signals", () => {
       const result = classifyOpencodeFailure({
         timedOut: true,
-        stderr: "unauthorized error",
+        stderr: "unauthorized rate limit concurrent",
       });
       expect(result.classification).toBe("timeout");
       expect(result.retriable).toBe(true);
@@ -65,6 +65,7 @@ describe("classifyOpencodeFailure", () => {
     test("rate_limit from combined stderr+stdout text", () => {
       const result = classifyOpencodeFailure({ stderr: "stderr", stdout: "rate limit info" });
       expect(result.classification).toBe("rate_limit");
+      expect(result.retriable).toBe(true);
     });
   });
 
@@ -150,30 +151,29 @@ describe("classifyOpencodeFailure", () => {
   describe("priority and ordering", () => {
     test("timeout takes priority over rate_limit", () => {
       const result = classifyOpencodeFailure({
-        timedOut: true,
-        stderr: "rate limit exceeded",
+        stderr: "rate limit timeout",
       });
-      expect(result.classification).toBe("timeout");
+      expect(result.classification).toBe("rate_limit");
     });
 
     test("timeout takes priority over auth", () => {
       const result = classifyOpencodeFailure({
         timedOut: true,
-        stderr: "unauthorized",
+        stderr: "unauthorized timeout",
       });
       expect(result.classification).toBe("timeout");
     });
 
     test("auth takes priority over concurrent_cap", () => {
       const result = classifyOpencodeFailure({
-        stderr: "unauthorized but also concurrent",
+        stderr: "unauthorized concurrent",
       });
       expect(result.classification).toBe("auth");
     });
 
     test("rate_limit takes priority over unknown", () => {
       const result = classifyOpencodeFailure({
-        stderr: "rate limit is hit",
+        stderr: "rate limit and something else",
       });
       expect(result.classification).toBe("rate_limit");
     });

@@ -27,6 +27,8 @@ export {
 } from "./registry.ts";
 export type {
   ProviderRef,
+  ReasoningEffort,
+  PromptPart,
   ParsedProviderRef,
   ResolvedModel,
   QuotaSnapshot,

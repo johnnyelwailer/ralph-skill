@@ -1,0 +1,3 @@
+pipeline:
+  - agent: plan
+  - agent: review

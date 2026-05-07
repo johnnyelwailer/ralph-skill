@@ -321,9 +321,7 @@ describe("compilePipeline", () => {
     ]);
   });
 
-  test("finalizer phases compile provider and reasoning are ignored (not in loop-plan)", () => {
-    // Finalizer phases support the same fields as pipeline phases for parsing,
-    // but compilePipeline only extracts the agent name for the PROMPT convention.
+  test("finalizer phases preserve reasoning in loop-plan while ignoring provider/timeouts", () => {
     const config: PipelineConfig = {
       pipeline: [{ agent: "build" }],
       finalizer: [
@@ -331,7 +329,7 @@ describe("compilePipeline", () => {
       ],
     };
     const plan = compilePipeline(config);
-    expect(plan.finalizer).toEqual([{ kind: "agent", ref: "PROMPT_proof.md" }]);
+    expect(plan.finalizer).toEqual([{ kind: "agent", ref: "PROMPT_proof.md", reasoning: "high" }]);
   });
 
   test("passes triggers through to LoopPlan", () => {
@@ -350,7 +348,7 @@ describe("compilePipeline", () => {
     expect(plan.triggers).toEqual({});
   });
 
-  test("ignored fields (provider, model, reasoning, timeout) do not appear in cycle", () => {
+  test("cycle preserves reasoning while omitting provider, model, and timeout", () => {
     const config: PipelineConfig = {
       pipeline: [
         {
@@ -363,8 +361,7 @@ describe("compilePipeline", () => {
       ],
     };
     const plan = compilePipeline(config);
-    // Cycle should only contain the step descriptor
-    expect(plan.cycle).toEqual([{ kind: "agent", ref: "PROMPT_review.md" }]);
+    expect(plan.cycle).toEqual([{ kind: "agent", ref: "PROMPT_review.md", reasoning: "high" }]);
     expect(plan.transitions).toEqual({});
   });
 

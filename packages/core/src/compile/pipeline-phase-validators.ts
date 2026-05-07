@@ -1,6 +1,6 @@
 import type { AgentPhase, ProviderRef, TransitionKeyword } from "./types.ts";
 
-const REASONING_VALUES = new Set(["none", "low", "medium", "high", "xhigh"]);
+const REASONING_VALUES = new Set(["none", "minimal", "low", "medium", "high", "xhigh"]);
 const MAX_CHAIN_LENGTH = 10;
 
 export function validateReasoning(

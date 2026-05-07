@@ -12,6 +12,8 @@ export type SessionsDeps = {
   readonly events?: EventWriter;
   /** Optional idempotency store for deduplicating session creation requests. */
   readonly idempotencyStore?: IdempotencyStore;
+  /** Optional daemon-owned runner used to execute sessions asynchronously. */
+  readonly runSession?: (sessionId: string) => Promise<void>;
 };
 
 export async function handleSessions(
@@ -204,6 +206,10 @@ async function createSession(req: Request, deps: SessionsDeps): Promise<Response
   };
 
   writeFileSync(join(sessionDir, "session.json"), JSON.stringify(session), "utf-8");
+
+  void deps.runSession?.(id).catch(() => {
+    // Best-effort background execution. The runner is responsible for persisting failure state.
+  });
 
   return jsonResponse(201, { _v: 1, ...session });
 }
@@ -504,6 +510,9 @@ async function pauseSession(id: string, deps: SessionsDeps): Promise<Response> {
 
   const updated: SessionSummary = { ...session, status: nextStatus };
   saveSessionSummary(sessionDir, updated);
+  void deps.runSession?.(id).catch(() => {
+    // Best-effort background execution. The runner is responsible for persisting failure state.
+  });
   return jsonResponse(200, { _v: 1, id, status: nextStatus });
 }
 

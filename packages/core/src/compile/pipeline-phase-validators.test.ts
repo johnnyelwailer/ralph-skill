@@ -13,6 +13,7 @@ import {
 describe("validateReasoning", () => {
   const cases: Array<[unknown, boolean]> = [
     ["none", true],
+    ["minimal", true],
     ["low", true],
     ["medium", true],
     ["high", true],
@@ -44,7 +45,7 @@ describe("validateReasoning", () => {
   test("pushes path-qualified error message", () => {
     const errors: string[] = [];
     validateReasoning("bogus", "/v1/pipeline/0/reasoning", errors);
-    expect(errors[0]).toBe("/v1/pipeline/0/reasoning: must be one of none, low, medium, high, xhigh");
+    expect(errors[0]).toBe("/v1/pipeline/0/reasoning: must be one of none, minimal, low, medium, high, xhigh");
   });
 });
 

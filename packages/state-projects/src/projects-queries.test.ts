@@ -243,7 +243,7 @@ describe("getProjectByPath", () => {
     writeFileSync(target, "");
     symlinkSync(target, link);
     const result = canonicalizeProjectPath(link);
-    expect(result).toBe(target);
+    expect(result).toBe(realpathSync(target));
   });
 
   test("strips trailing slashes when realpathSync throws on broken symlink", () => {

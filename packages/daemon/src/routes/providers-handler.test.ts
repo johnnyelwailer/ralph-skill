@@ -9,6 +9,7 @@ import {
   type ProviderAdapter,
 } from "@aloop/provider";
 import { createOpencodeAdapter } from "@aloop/provider-opencode";
+import { createOpencodeCliAdapter } from "@aloop/provider-opencode-cli";
 
 const PATH_OVERRIDES = "/v1/providers/overrides";
 const PATH_RESOLVE_CHAIN = "/v1/providers/resolve-chain";
@@ -131,6 +132,11 @@ function makeProvidersDeps(options: {
       runTurn: async () => ({ ok: true, text: "ok", usage: { tokensIn: 1, tokensOut: 1 } }),
     }),
   );
+  providerRegistry.register(
+    createOpencodeCliAdapter({
+      runTurn: async () => ({ ok: true, text: "ok", usage: { tokensIn: 1, tokensOut: 1 } }),
+    }),
+  );
   if (options.withQuotaProbe) {
     providerRegistry.register(
       makeProviderAdapterWithProbe(
@@ -173,7 +179,7 @@ describe("handleProviders", () => {
         items: Array<{ id: string; capabilities: { quotaProbe: boolean }; health: { status: string } }>;
       }>(result!);
       expect(body._v).toBe(1);
-      expect(body.items.map((item) => item.id)).toEqual(["opencode", "claude"]);
+      expect(body.items.map((item) => item.id)).toEqual(["opencode", "opencode-cli", "claude"]);
       const claude = body.items.find((item) => item.id === "claude");
       expect(claude?.health.status).toBe("unknown");
       expect(claude?.capabilities.quotaProbe).toBe(true);
@@ -291,7 +297,7 @@ describe("handleProviders", () => {
       expect(result!.status).toBe(200);
       const body = await resJson<{ resolved_chain: string[]; excluded_overrides: string[] }>(result!);
       expect(body.resolved_chain).toEqual(["opencode"]);
-      expect(body.excluded_overrides).toEqual(["claude"]);
+      expect(body.excluded_overrides).toEqual(["opencode-cli", "claude"]);
     });
 
     test("filters providers that are unavailable by health", async () => {
@@ -306,7 +312,7 @@ describe("handleProviders", () => {
       const result = await handleProviders(req, deps, PATH_RESOLVE_CHAIN);
       expect(result!.status).toBe(200);
       const body = await resJson<{ resolved_chain: string[]; excluded_health: string[] }>(result!);
-      expect(body.resolved_chain).toEqual(["claude"]);
+      expect(body.resolved_chain).toEqual(["opencode-cli", "claude"]);
       expect(body.excluded_health).toEqual(["opencode"]);
     });
 

@@ -14,6 +14,8 @@ export type TransitionKeyword =
   | { type: "retry" }
   | { type: "goto"; target: string };
 
+export type ReasoningEffort = "none" | "minimal" | "low" | "medium" | "high" | "xhigh";
+
 /** pipeline.yml phase — agent variant */
 export type AgentPhase = {
   readonly agent: string;
@@ -21,7 +23,7 @@ export type AgentPhase = {
   readonly onFailure?: TransitionKeyword;
   readonly provider?: ProviderRef;
   readonly model?: string;
-  readonly reasoning?: "none" | "low" | "medium" | "high" | "xhigh";
+  readonly reasoning?: ReasoningEffort;
   readonly timeout?: string;
   /** One or more context ids to inject before this phase runs. */
   readonly context?: readonly ContextId[];
@@ -60,7 +62,7 @@ export type PipelineConfig = {
 
 /** A single entry in the compiled loop-plan cycle. */
 export type StepDescriptor =
-  | { readonly kind: "agent"; readonly ref: string }
+  | { readonly kind: "agent"; readonly ref: string; readonly reasoning?: ReasoningEffort }
   | { readonly kind: "exec"; readonly ref: string };
 
 /** loop-plan.json — the compiled artifact consumed by the runtime. */

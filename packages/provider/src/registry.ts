@@ -33,6 +33,12 @@ export class ProviderRegistry {
     return [...this.adapters.values()];
   }
 
+  async disposeAll(): Promise<void> {
+    for (const adapter of this.adapters.values()) {
+      await adapter.dispose?.();
+    }
+  }
+
   resolve(ref: ProviderRef): ResolvedProvider {
     const parsed = parseProviderRef(ref);
     return {

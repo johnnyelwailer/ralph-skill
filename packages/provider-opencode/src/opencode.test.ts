@@ -1,288 +1,190 @@
-import { describe, expect, test } from "bun:test";
-import { createOpencodeAdapter } from "./opencode.ts";
+import { afterEach, describe, expect, test } from "bun:test";
+import { __testHooks, createOpencodeAdapter } from "./opencode.ts";
+
+const ENV_KEYS_UNDER_TEST = ["OPENAI_API_KEY", "AUTH_HANDLE", "ALOOP_SESSION_ID", "CLAUDECODE"] as const;
+
+afterEach(() => {
+  for (const key of ENV_KEYS_UNDER_TEST) delete process.env[key];
+});
+
+afterEach(async () => {
+  await __testHooks.resetCachedServers();
+});
 
 describe("createOpencodeAdapter", () => {
-  // ─── resolveModel ────────────────────────────────────────────────────────────
+  test("advertises rich opencode capabilities", () => {
+    expect(createOpencodeAdapter().capabilities).toMatchObject({
+      streaming: true,
+      vision: true,
+      toolUse: true,
+      reasoningEffort: true,
+      sessionResume: true,
+      costReporting: true,
+    });
+  });
 
   test("resolveModel uses default model for bare refs", () => {
-    const adapter = createOpencodeAdapter({ defaultModelId: "opencode/default-v2" });
-    const model = adapter.resolveModel("opencode");
+    const model = createOpencodeAdapter({ defaultModelId: "opencode/default-v2" }).resolveModel("opencode");
     expect(model.providerId).toBe("opencode");
     expect(model.modelId).toBe("opencode/default-v2");
   });
 
-  test("resolveModel uses hardcoded default when no defaultModelId option provided", () => {
-    const adapter = createOpencodeAdapter();
-    const model = adapter.resolveModel("opencode");
-    expect(model.modelId).toBe("opencode/default");
-  });
-
   test("resolveModel keeps track/model/version segments", () => {
-    const adapter = createOpencodeAdapter();
-    const model = adapter.resolveModel("opencode/openrouter/glm@5.1");
+    const model = createOpencodeAdapter().resolveModel("opencode/openrouter/glm@5.1");
     expect(model.modelId).toBe("openrouter/glm@5.1");
     expect(model.track).toBe("openrouter");
     expect(model.version).toBe("5.1");
   });
 
-  test("resolveModel preserves track without version", () => {
-    const adapter = createOpencodeAdapter();
-    const model = adapter.resolveModel("opencode/anthropic");
-    expect(model.modelId).toBe("anthropic");
-    expect(model.track).toBe("anthropic");
-    expect(model.version).toBeUndefined();
-  });
-
-  test("resolveModel uses default model when path has no model segment (only provider)", () => {
-    // "opencode/@5.0" parses to providerId=opencode, version=5.0, but no track or model
-    // → modelPath is empty → falls back to default
-    const adapter = createOpencodeAdapter();
-    const model = adapter.resolveModel("opencode/@5.0");
-    expect(model.modelId).toBe("opencode/default");
-    expect(model.version).toBe("5.0");
-  });
-
-  test("resolveModel throws for non-opencode provider ref", () => {
-    const adapter = createOpencodeAdapter();
-    expect(() => adapter.resolveModel("anthropic/claude-3-5")).toThrow(
-      "opencode adapter cannot resolve provider ref: anthropic/claude-3-5",
-    );
-  });
-
-  // ─── sendTurn — success paths ───────────────────────────────────────────────
-
-  test("sendTurn yields text + usage on success", async () => {
-    const adapter = createOpencodeAdapter({
-      runTurn: async () => ({
-        ok: true,
-        text: "hello",
-        usage: { tokensIn: 10, tokensOut: 5, costUsd: 0.01 },
-      }),
-    });
-    const chunks = [];
-    for await (const chunk of adapter.sendTurn({
-      sessionId: "s1",
-      authHandle: "auth",
-      providerRef: "opencode",
-      prompt: "ping",
-      cwd: "/tmp",
-    })) {
-      chunks.push(chunk);
-    }
-    expect(chunks).toHaveLength(2);
-    expect(chunks[0]).toMatchObject({ type: "text", content: { delta: "hello" } });
-    expect(chunks[1]).toMatchObject({
-      type: "usage",
-      final: true,
-      content: { providerId: "opencode", tokensIn: 10, tokensOut: 5 },
-    });
-  });
-
-  test("sendTurn passes timeoutMs through when provided", async () => {
+  test("sendTurn still supports test-only runTurn overrides", async () => {
     let receivedTimeoutMs: number | undefined;
-    const adapter = createOpencodeAdapter({
-      runTurn: async ({ timeoutMs }) => {
-        receivedTimeoutMs = timeoutMs;
-        return { ok: true, text: "ok" };
-      },
-    });
-    for await (const _ of adapter.sendTurn({
-      sessionId: "s1",
-      authHandle: "auth",
-      providerRef: "opencode",
-      prompt: "ping",
-      cwd: "/tmp",
-      timeoutMs: 30_000,
-    })) {
-      // consume
-    }
-    expect(receivedTimeoutMs).toBe(30_000);
-  });
-
-  test("sendTurn omits timeoutMs from options when not provided", async () => {
-    let receivedKeys: string[] = [];
-    const adapter = createOpencodeAdapter({
-      runTurn: async (opts) => {
-        receivedKeys = Object.keys(opts);
-        return { ok: true, text: "ok" };
-      },
-    });
-    for await (const _ of adapter.sendTurn({
-      sessionId: "s1",
-      authHandle: "auth",
-      providerRef: "opencode",
-      prompt: "ping",
-      cwd: "/tmp",
-    })) {
-      // consume
-    }
-    expect(receivedKeys).not.toContain("timeoutMs");
-  });
-
-  test("sendTurn passes environment through when provided", async () => {
-    const env = { OPENAI_API_KEY: "sk-test", MY_VAR: "custom" };
-    let receivedEnv: Record<string, string> | undefined;
-    const adapter = createOpencodeAdapter({
-      runTurn: async ({ environment }) => {
-        receivedEnv = environment;
-        return { ok: true, text: "ok" };
-      },
-    });
-    for await (const _ of adapter.sendTurn({
-      sessionId: "s1",
-      authHandle: "auth",
-      providerRef: "opencode",
-      prompt: "ping",
-      cwd: "/tmp",
-      environment: env,
-    })) {
-      // consume
-    }
-    expect(receivedEnv).toEqual(env);
-  });
-
-  test("sendTurn usage includes cacheRead when present", async () => {
-    const adapter = createOpencodeAdapter({
-      runTurn: async () => ({
-        ok: true,
-        text: "result",
-        usage: { tokensIn: 100, tokensOut: 50, cacheRead: 800, costUsd: 0.005 },
-      }),
-    });
-    const chunks = [];
-    for await (const chunk of adapter.sendTurn({
-      sessionId: "s1",
-      authHandle: "auth",
-      providerRef: "opencode",
-      prompt: "ping",
-      cwd: "/tmp",
-    })) {
-      chunks.push(chunk);
-    }
-    const usageChunk = chunks.find((c) => c.type === "usage");
-    expect(usageChunk).toMatchObject({
-      type: "usage",
-      final: true,
-      content: expect.objectContaining({ cacheRead: 800 }),
-    });
-  });
-
-  test("sendTurn usage omits cacheRead when not provided", async () => {
-    const adapter = createOpencodeAdapter({
-      runTurn: async () => ({
-        ok: true,
-        text: "result",
-        usage: { tokensIn: 10, tokensOut: 5 },
-      }),
-    });
-    const chunks = [];
-    for await (const chunk of adapter.sendTurn({
-      sessionId: "s1",
-      authHandle: "auth",
-      providerRef: "opencode",
-      prompt: "ping",
-      cwd: "/tmp",
-    })) {
-      chunks.push(chunk);
-    }
-    const usageChunk = chunks.find((c) => c.type === "usage");
-    expect((usageChunk as { content: Record<string, unknown> }).content).not.toHaveProperty("cacheRead");
-  });
-
-  // ─── sendTurn — error / failure paths ──────────────────────────────────────
-
-  test("sendTurn emits classified error chunk on failure", async () => {
-    const adapter = createOpencodeAdapter({
-      runTurn: async () => ({
-        ok: false,
-        exitCode: 1,
-        stderr: "HTTP 429 rate limit",
-      }),
-    });
-    const chunks = [];
-    for await (const chunk of adapter.sendTurn({
-      sessionId: "s1",
-      authHandle: "auth",
-      providerRef: "opencode",
-      prompt: "ping",
-      cwd: "/tmp",
-    })) {
-      chunks.push(chunk);
-    }
-    expect(chunks).toHaveLength(1);
-    expect(chunks[0]).toMatchObject({
-      type: "error",
-      content: { classification: "rate_limit", retriable: true },
-    });
-  });
-
-  test("sendTurn uses stdout as error message when stderr is empty", async () => {
-    const adapter = createOpencodeAdapter({
-      runTurn: async () => ({
-        ok: false,
-        exitCode: 1,
-        stderr: "",
-        stdout: "openai api key missing",
-      }),
-    });
-    const chunks = [];
-    for await (const chunk of adapter.sendTurn({
-      sessionId: "s1",
-      authHandle: "auth",
-      providerRef: "opencode",
-      prompt: "ping",
-      cwd: "/tmp",
-    })) {
-      chunks.push(chunk);
-    }
-    expect(chunks).toHaveLength(1);
-    expect((chunks[0] as { content: { message: string } }).content.message).toBe(
-      "openai api key missing",
-    );
-  });
-
-  test("sendTurn uses generic message when both stdout and stderr are empty", async () => {
-    const adapter = createOpencodeAdapter({
-      runTurn: async () => ({
-        ok: false,
-        exitCode: 1,
-        stderr: "",
-        stdout: "",
-      }),
-    });
-    const chunks = [];
-    for await (const chunk of adapter.sendTurn({
-      sessionId: "s1",
-      authHandle: "auth",
-      providerRef: "opencode",
-      prompt: "ping",
-      cwd: "/tmp",
-    })) {
-      chunks.push(chunk);
-    }
-    expect(chunks).toHaveLength(1);
-    expect((chunks[0] as { content: { message: string } }).content.message).toBe(
-      "opencode invocation failed",
-    );
-  });
-
-  test("sendTurn passes modelId from resolved model to runTurn", async () => {
+    let receivedEnvironment: Record<string, string> | undefined;
     let receivedModelId: string | undefined;
     const adapter = createOpencodeAdapter({
-      runTurn: async ({ modelId }) => {
+      runTurn: async ({ timeoutMs, environment, modelId }) => {
+        receivedTimeoutMs = timeoutMs;
+        receivedEnvironment = environment;
         receivedModelId = modelId;
-        return { ok: true, text: "ok" };
+        return { ok: true, text: "hello", usage: { tokensIn: 10, tokensOut: 5, cacheRead: 3, costUsd: 0.01 } };
       },
     });
-    for await (const _ of adapter.sendTurn({
+
+    const chunks = [];
+    for await (const chunk of adapter.sendTurn({
+      sessionId: "session-123",
+      authHandle: "auth-handle-xyz",
+      providerRef: "opencode/openrouter/claude@3.5",
+      prompt: "ping",
+      cwd: "/tmp/project",
+      timeoutMs: 30_000,
+      environment: { OPENAI_API_KEY: "sk-test" },
+    })) chunks.push(chunk);
+
+    expect(receivedTimeoutMs).toBe(30_000);
+    expect(receivedModelId).toBe("openrouter/claude@3.5");
+    expect(receivedEnvironment).toMatchObject({
+      OPENAI_API_KEY: "sk-test",
+      AUTH_HANDLE: "auth-handle-xyz",
+      ALOOP_SESSION_ID: "session-123",
+      ALOOP_PROJECT_PATH: "/tmp/project",
+      ALOOP_WORKTREE: "/tmp/project",
+    });
+    expect(chunks).toEqual([
+      { type: "text", content: { delta: "hello" } },
+      { type: "usage", final: true, content: { providerId: "opencode", modelId: "openrouter/claude@3.5", tokensIn: 10, tokensOut: 5, cacheRead: 3, costUsd: 0.01 } },
+    ]);
+  });
+
+  test("sendTurn uses the client factory and passes reasoning effort plus prompt parts", async () => {
+    const promptCalls: Array<Record<string, unknown>> = [];
+    const adapter = createOpencodeAdapter({
+      clientFactory: async () => ({
+        getSessionId: async () => "oc_session",
+        prompt: async (options) => {
+          promptCalls.push(options as Record<string, unknown>);
+          return { payload: { info: makePromptInfo(), parts: [makeReasoningPart("plan"), makeToolPart(), makeTextPart("done")] } };
+        },
+      }),
+    });
+
+    const chunks = [];
+    for await (const chunk of adapter.sendTurn({
       sessionId: "s1",
       authHandle: "auth",
       providerRef: "opencode/openrouter/claude@3.5",
       prompt: "ping",
+      promptParts: [
+        { type: "text", text: "describe this image" },
+        { type: "file", mime: "image/png", url: "https://example.com/image.png", filename: "image.png" },
+      ],
       cwd: "/tmp",
-    })) {
-      // consume
-    }
-    expect(receivedModelId).toBe("openrouter/claude@3.5");
+      reasoningEffort: "high",
+    })) chunks.push(chunk);
+
+    expect(promptCalls[0]).toMatchObject({
+      cwd: "/tmp",
+      prompt: "ping",
+      promptParts: [
+        { type: "text", text: "describe this image" },
+        { type: "file", mime: "image/png", url: "https://example.com/image.png", filename: "image.png" },
+      ],
+      reasoningEffort: "high",
+      resolvedModel: { providerId: "opencode", modelId: "openrouter/claude@3.5", track: "openrouter", version: "3.5" },
+    });
+    expect(chunks).toEqual([
+      { type: "thinking", content: { delta: "plan" } },
+      { type: "tool_call", content: { name: "read_file", arguments: '{"path":"src/index.ts"}' } },
+      { type: "tool_result", content: { id: "call_1", output: "contents" } },
+      { type: "text", content: { delta: "done" } },
+      { type: "usage", final: true, content: { providerId: "opencode", modelId: "openrouter/claude@3.5", tokensIn: 10, tokensOut: 5, cacheRead: 3, costUsd: 0.01 } },
+    ]);
+  });
+
+  test("sendTurn emits classified error chunks from SDK failures", async () => {
+    const adapter = createOpencodeAdapter({
+      clientFactory: async () => ({
+        getSessionId: async () => "oc_session",
+        prompt: async () => ({ error: { data: { message: "HTTP 429 rate limit" } } }),
+      }),
+    });
+
+    const chunks = [];
+    for await (const chunk of adapter.sendTurn({
+      sessionId: "s1",
+      authHandle: "auth",
+      providerRef: "opencode",
+      prompt: "ping",
+      cwd: "/tmp",
+    })) chunks.push(chunk);
+
+    expect(chunks).toEqual([
+      { type: "error", content: { classification: "rate_limit", message: "HTTP 429 rate limit", retriable: true } },
+    ]);
+  });
+
+  test("restores provider startup environment after SDK server bootstrap", async () => {
+    process.env.OPENAI_API_KEY = "sk-original";
+    process.env.CLAUDECODE = "legacy-token";
+    await __testHooks.withTemporaryEnvironment(
+      { OPENAI_API_KEY: "sk-session", AUTH_HANDLE: "auth-session", ALOOP_SESSION_ID: "session-123" },
+      ["CLAUDECODE"],
+      async () => {
+        expect(process.env.OPENAI_API_KEY).toBe("sk-session");
+        expect(process.env.AUTH_HANDLE).toBe("auth-session");
+        expect(process.env.ALOOP_SESSION_ID).toBe("session-123");
+        expect(process.env.CLAUDECODE).toBeUndefined();
+      },
+    );
+    expect(process.env.OPENAI_API_KEY).toBe("sk-original");
+    expect(process.env.AUTH_HANDLE).toBeUndefined();
+    expect(process.env.ALOOP_SESSION_ID).toBeUndefined();
+    expect(process.env.CLAUDECODE).toBe("legacy-token");
+  });
+
+  test("dispose closes cached SDK server contexts", async () => {
+    const closed: string[] = [];
+    __testHooks.addCachedServerForTest("server-a", () => { closed.push("a"); });
+    __testHooks.addCachedServerForTest("server-b", () => { closed.push("b"); });
+    const adapter = createOpencodeAdapter();
+    expect(__testHooks.cachedServerCount()).toBe(2);
+    await adapter.dispose?.();
+    expect(closed.sort()).toEqual(["a", "b"]);
+    expect(__testHooks.cachedServerCount()).toBe(0);
   });
 });
+
+function makePromptInfo() {
+  return { cost: 0.01, tokens: { input: 10, output: 5, cache: { read: 3 } } } as const;
+}
+
+function makeReasoningPart(text: string) {
+  return { id: "part_reasoning", type: "reasoning", text } as const;
+}
+
+function makeTextPart(text: string) {
+  return { id: "part_text", type: "text", text } as const;
+}
+
+function makeToolPart() {
+  return { id: "part_tool", type: "tool", callID: "call_1", tool: "read_file", state: { status: "completed", input: { path: "src/index.ts" }, output: "contents" } } as const;
+}

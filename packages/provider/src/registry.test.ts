@@ -66,6 +66,17 @@ describe("ProviderRegistry", () => {
     expect(list1.length).toBe(2);
     expect(list2.length).toBe(2);
   });
+
+  test("disposeAll calls adapter disposal hooks", async () => {
+    const calls: string[] = [];
+    const registry = new ProviderRegistry();
+    registry.register({ id: "p1", dispose: () => { calls.push("p1"); } } as any);
+    registry.register({ id: "p2", dispose: async () => { calls.push("p2"); } } as any);
+
+    await registry.disposeAll();
+
+    expect(calls).toEqual(["p1", "p2"]);
+  });
 });
 
 describe("resolve", () => {

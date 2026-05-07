@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { startDaemon, type RunningDaemon } from "./start.ts";
 import { resolveDaemonPaths } from "@aloop/daemon-config";
+import { __testHooks as opencodeTestHooks } from "@aloop/provider-opencode";
 import { VERSION } from "../version.ts";
 
 describe("daemon integration", () => {
@@ -125,6 +126,63 @@ describe("startDaemon error handling", () => {
 
     await expect(startDaemon({ port: 0, paths })).rejects.toThrow(/overrides.yml invalid/);
   });
+
+  test("wires sdk and cli opencode overrides independently", async () => {
+    const daemon = await startDaemon({
+      port: 0,
+      paths: resolveDaemonPaths({ ALOOP_HOME: home }),
+      opencodeSdkRunTurn: async () => ({
+        ok: true,
+        text: "sdk-result",
+        usage: { tokensIn: 1, tokensOut: 1 },
+      }),
+      opencodeCliRunTurn: async () => ({
+        ok: true,
+        text: "cli-result",
+        usage: { tokensIn: 2, tokensOut: 2 },
+      }),
+    });
+
+    try {
+      const sdkAdapter = daemon.providerRegistry.require("opencode");
+      const cliAdapter = daemon.providerRegistry.require("opencode-cli");
+
+      const sdkChunks = [];
+      for await (const chunk of sdkAdapter.sendTurn({
+        sessionId: "sdk-session",
+        authHandle: "auth",
+        providerRef: "opencode",
+        prompt: "ping",
+        cwd: home,
+      })) {
+        sdkChunks.push(chunk);
+      }
+
+      const cliChunks = [];
+      for await (const chunk of cliAdapter.sendTurn({
+        sessionId: "cli-session",
+        authHandle: "auth",
+        providerRef: "opencode-cli",
+        prompt: "ping",
+        cwd: home,
+      })) {
+        cliChunks.push(chunk);
+      }
+
+      expect(sdkChunks[0]).toMatchObject({ type: "text", content: { delta: "sdk-result" } });
+      expect(cliChunks[0]).toMatchObject({ type: "text", content: { delta: "cli-result" } });
+      expect(sdkChunks[1]).toMatchObject({
+        type: "usage",
+        content: { providerId: "opencode", tokensIn: 1, tokensOut: 1 },
+      });
+      expect(cliChunks[1]).toMatchObject({
+        type: "usage",
+        content: { providerId: "opencode-cli", tokensIn: 2, tokensOut: 2 },
+      });
+    } finally {
+      await daemon.stop();
+    }
+  });
 });
 
 describe("RunningDaemon.stop()", () => {
@@ -199,5 +257,21 @@ describe("RunningDaemon.stop()", () => {
 
     // Appending after stop should fail since the store is closed
     await expect(events.append("test.topic", {})).rejects.toThrow();
+  });
+
+  test("after stop(), cached opencode SDK servers are disposed", async () => {
+    const closed: string[] = [];
+    opencodeTestHooks.addCachedServerForTest("daemon-sdk-cache", () => { closed.push("closed"); });
+
+    const daemon = await startDaemon({
+      port: 0,
+      paths: resolveDaemonPaths({ ALOOP_HOME: home }),
+    });
+    expect(opencodeTestHooks.cachedServerCount()).toBe(1);
+
+    await daemon.stop();
+
+    expect(closed).toEqual(["closed"]);
+    expect(opencodeTestHooks.cachedServerCount()).toBe(0);
   });
 });

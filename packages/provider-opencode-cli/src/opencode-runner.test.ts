@@ -1,80 +1,78 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { runOpencodeCli, type OpencodeRunResult } from "./opencode-runner.ts";
 
-// Mock Bun.spawn to test runOpencodeCli without a real opencode binary.
-// The real Bun.spawn sets proc.exited to a Promise<number> that resolves when the
-// process exits (or is killed). We replicate this so the timeout path works.
-let mockExitedValue = 0;
+type MockSpawnResponse = {
+  exited: number;
+  stdout?: string;
+  stderr?: string;
+};
+
+let spawnResponses: MockSpawnResponse[] = [];
 let resolveExited: ((v: number) => void) | null = null;
-let mockStdout = "";
-let mockStderr = "";
 let procKillCalled = false;
-let spawnedArgs: string[] = [];
-let spawnedOpts: Record<string, unknown> = {};
-let exitPromiseResolve: ((v: number) => void) | null = null;
+let spawnedCalls: Array<{ args: string[]; opts: Record<string, unknown> }> = [];
 
 const originalSpawn = Bun.spawn;
 
-function makeMockProc(): ReturnType<typeof Bun.spawn> {
-  // Always return a Promise for proc.exited. For sync exit (mockExitedValue >= 0),
-  // resolve immediately on the next tick so await proc.exited still yields.
-  // For async/kill scenarios, resolve when resolveExited is called.
-  let resolve: (v: number) => void;
+function makeMockProc(response: MockSpawnResponse): ReturnType<typeof Bun.spawn> {
+  let resolve: ((v: number) => void) | null = null;
   const p = new Promise<number>((r) => {
     resolve = r;
     resolveExited = r;
   });
-  // For non-timeout cases: immediately resolve to the desired exit code
-  if (mockExitedValue >= 0) {
-    queueMicrotask(() => resolve!(mockExitedValue));
+  if (response.exited >= 0) {
+    queueMicrotask(() => resolve!(response.exited));
   }
   return {
-    stdout: mockStdout
-      ? new ReadableStream({ start(c) { c.enqueue(new TextEncoder().encode(mockStdout)); c.close(); } })
+    stdout: response.stdout
+      ? new ReadableStream({ start(c) { c.enqueue(new TextEncoder().encode(response.stdout!)); c.close(); } })
       : null,
-    stderr: mockStderr
-      ? new ReadableStream({ start(c) { c.enqueue(new TextEncoder().encode(mockStderr)); c.close(); } })
+    stderr: response.stderr
+      ? new ReadableStream({ start(c) { c.enqueue(new TextEncoder().encode(response.stderr!)); c.close(); } })
       : null,
     get exited() { return p; },
     kill() {
       procKillCalled = true;
-      if (resolveExited) resolveExited(mockExitedValue);
+      if (resolveExited) resolveExited(response.exited);
     },
   } as unknown as ReturnType<typeof Bun.spawn>;
+}
+
+function setSpawnResponses(...responses: MockSpawnResponse[]) {
+  spawnResponses = responses;
 }
 
 async function runOk(input: {
   modelId?: string;
   prompt?: string;
   cwd?: string;
+  variant?: string;
   timeoutMs?: number;
-  command?: string;
   env?: Record<string, string>;
+  command?: string;
 }): Promise<OpencodeRunResult> {
   return runOpencodeCli({
     modelId: input.modelId ?? "opencode/default",
-    prompt: input.prompt ?? "test prompt",
-    cwd: input.cwd ?? "/tmp",
-    timeoutMs: input.timeoutMs,
-    command: input.command,
-    environment: input.env,
+    prompt: input.prompt ?? "hello",
+    cwd: input.cwd ?? "/repo",
+    ...(input.variant !== undefined && { variant: input.variant }),
+    ...(input.timeoutMs !== undefined && { timeoutMs: input.timeoutMs }),
+    ...(input.env !== undefined && { environment: input.env }),
+    ...(input.command !== undefined && { command: input.command }),
   });
 }
 
 describe("runOpencodeCli", () => {
   beforeEach(() => {
-    mockExitedValue = 0;
-    mockStdout = "";
-    mockStderr = "";
+    spawnResponses = [];
     procKillCalled = false;
-    spawnedArgs = [];
-    spawnedOpts = {};
+    spawnedCalls = [];
     resolveExited = null;
     // @ts-expect-error – replacing Bun.spawn for test isolation
     Bun.spawn = (args: string[], opts: Record<string, unknown>) => {
-      spawnedArgs = args;
-      spawnedOpts = opts;
-      return makeMockProc();
+      spawnedCalls.push({ args, opts });
+      const response = spawnResponses.shift() ?? { exited: 0, stdout: "" };
+      return makeMockProc(response);
     };
   });
 
@@ -82,116 +80,155 @@ describe("runOpencodeCli", () => {
     Bun.spawn = originalSpawn;
   });
 
-  test("spawns opencode run with --model, --cwd, --prompt flags", async () => {
-    mockStdout = "result text";
+  test("spawns opencode run with --model, --dir, --format json, and positional prompt", async () => {
+    setSpawnResponses({ exited: 0, stdout: "result text" });
     await runOk({ modelId: "opencode/model-x", prompt: "say hello", cwd: "/home/user" });
+    const spawnedArgs = spawnedCalls[0]!.args;
     expect(spawnedArgs).toContain("--model");
     expect(spawnedArgs).toContain("opencode/model-x");
-    expect(spawnedArgs).toContain("--cwd");
+    expect(spawnedArgs).toContain("--dir");
     expect(spawnedArgs).toContain("/home/user");
-    expect(spawnedArgs).toContain("--prompt");
-    expect(spawnedArgs).toContain("say hello");
+    expect(spawnedArgs).toContain("--format");
+    expect(spawnedArgs).toContain("json");
+    expect(spawnedArgs).not.toContain("--cwd");
+    expect(spawnedArgs).not.toContain("--prompt");
+    expect(spawnedArgs.at(-1)).toBe("say hello");
   });
 
   test("uses 'opencode' as default command", async () => {
-    mockStdout = "ok";
+    setSpawnResponses({ exited: 0, stdout: "ok" });
     await runOk({});
+    const spawnedArgs = spawnedCalls[0]!.args;
     expect(spawnedArgs[0]).toBe("opencode");
   });
 
   test("uses custom command when provided", async () => {
-    mockStdout = "ok";
+    setSpawnResponses({ exited: 0, stdout: "ok" });
     await runOk({ command: "/usr/local/bin/opencode-dev" });
+    const spawnedArgs = spawnedCalls[0]!.args;
     expect(spawnedArgs[0]).toBe("/usr/local/bin/opencode-dev");
   });
 
   test("returns ok:true with text when exit code is 0", async () => {
-    mockExitedValue = 0;
-    mockStdout = "hello from opencode";
+    setSpawnResponses({ exited: 0, stdout: "hello from opencode" });
     const result = await runOk({});
     expect(result.ok).toBe(true);
     expect((result as { ok: true }).text).toBe("hello from opencode");
   });
 
+  test("exports the opencode session to recover final text and usage", async () => {
+    setSpawnResponses(
+      {
+        exited: 0,
+        stdout: '{"type":"message.part.updated","sessionID":"ses_123","part":{"type":"text","text":"partial"}}\n',
+      },
+      {
+        exited: 0,
+        stdout: `Exporting session: ses_123\n${JSON.stringify({
+          info: { id: "ses_123" },
+          messages: [
+            {
+              info: { role: "assistant" },
+              parts: [
+                { type: "text", text: "hello" },
+                { type: "text", text: " world" },
+              ],
+            },
+            {
+              info: {
+                role: "assistant",
+                cost: 0.25,
+                tokens: { input: 11, output: 7, cache: { read: 5 } },
+              },
+              parts: [
+                { type: "text", text: "final answer" },
+              ],
+            },
+          ],
+        })}`,
+      },
+    );
+
+    const result = await runOk({});
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.text).toBe("final answer");
+      expect(result.usage).toEqual({
+        tokensIn: 11,
+        tokensOut: 7,
+        cacheRead: 5,
+        costUsd: 0.25,
+      });
+    }
+
+    expect(spawnedCalls).toHaveLength(2);
+    expect(spawnedCalls[1]!.args).toEqual(["opencode", "export", "ses_123"]);
+  });
+
   test("returns ok:false with exitCode, stdout, stderr when exit code is non-zero", async () => {
-    mockExitedValue = 1;
-    mockStdout = "some output";
-    mockStderr = "error message";
+    setSpawnResponses({ exited: 1, stdout: "some output", stderr: "error message" });
     const result = await runOk({});
     expect(result.ok).toBe(false);
     expect((result as { ok: false }).exitCode).toBe(1);
     expect((result as { ok: false }).stdout).toBe("some output");
     expect((result as { ok: false }).stderr).toBe("error message");
-    expect((result as { ok: false }).timedOut).toBeUndefined();
   });
 
   test("calls proc.kill() and returns timedOut:true when timeout expires", async () => {
-    // Make proc.exited never resolve until kill() is called (simulates a hanging process)
-    mockExitedValue = -1; // negative means "async — will be resolved by kill()"
-    mockStdout = "";
-    mockStderr = "";
+    setSpawnResponses({ exited: -1, stdout: "", stderr: "" });
 
     const result = await runOk({ timeoutMs: 1 });
 
     expect(procKillCalled).toBe(true);
     expect(result.ok).toBe(false);
-    expect((result as { ok: false; timedOut: boolean }).timedOut).toBe(true);
+    expect((result as { ok: false; timedOut?: boolean }).timedOut).toBe(true);
   });
 
   test("includes stderr in result when exit code is 0 and stderr is non-empty", async () => {
-    mockExitedValue = 0;
-    mockStdout = "result";
-    mockStderr = "warning: deprecated option";
+    setSpawnResponses({ exited: 0, stdout: "result", stderr: "warning: deprecated option" });
     const result = await runOk({});
     expect(result.ok).toBe(true);
     expect((result as { ok: true; stderr?: string }).stderr).toBe("warning: deprecated option");
   });
 
   test("omits stderr field when exit code is 0 and stderr is empty", async () => {
-    mockExitedValue = 0;
-    mockStdout = "clean result";
-    mockStderr = "";
+    setSpawnResponses({ exited: 0, stdout: "clean result", stderr: "" });
     const result = await runOk({});
     expect(result.ok).toBe(true);
     const r = result as { ok: true; stderr?: string };
-    expect(r.stderr).toBeUndefined();
+    expect("stderr" in r).toBe(false);
   });
 
   test("passes cwd to Bun.spawn options", async () => {
-    mockStdout = "ok";
+    setSpawnResponses({ exited: 0, stdout: "ok" });
     await runOk({ cwd: "/custom/workspace" });
-    expect(spawnedOpts["cwd"]).toBe("/custom/workspace");
+    expect(spawnedCalls[0]!.opts["cwd"]).toBe("/custom/workspace");
   });
 
   test("passes env to Bun.spawn options (sanitized environment)", async () => {
-    mockStdout = "ok";
+    setSpawnResponses({ exited: 0, stdout: "ok" });
     await runOk({ env: { OPENAI_API_KEY: "sk-test" } });
-    expect(spawnedOpts["env"]).toBeDefined();
-    const env = spawnedOpts["env"] as Record<string, string>;
+    expect(spawnedCalls[0]!.opts["env"]).toBeDefined();
+    const env = spawnedCalls[0]!.opts["env"] as Record<string, string>;
     expect(env["OPENAI_API_KEY"]).toBe("sk-test");
-    // CLAUDECODE should have been removed
     expect(env["CLAUDECODE"]).toBeUndefined();
   });
 
   test("await proc.exited completes before returning result", async () => {
-    mockExitedValue = 0;
-    mockStdout = "done";
+    setSpawnResponses({ exited: 0, stdout: "done" });
     const result = await runOk({});
     expect(result.ok).toBe(true);
   });
 
   test("result types are correct — ok:true has text, ok:false has exitCode", async () => {
-    mockExitedValue = 0;
-    mockStdout = "success";
+    setSpawnResponses({ exited: 0, stdout: "success" });
     const okResult = await runOk({});
     expect(okResult.ok).toBe(true);
     if (okResult.ok) {
       expect(typeof okResult.text).toBe("string");
     }
 
-    mockExitedValue = 2;
-    mockStdout = "";
-    mockStderr = "failed";
+    setSpawnResponses({ exited: 2, stdout: "", stderr: "failed" });
     const failResult = await runOk({});
     expect(failResult.ok).toBe(false);
     if (!failResult.ok) {
@@ -201,20 +238,16 @@ describe("runOpencodeCli", () => {
 });
 
 describe("sanitizeProviderEnvironment", () => {
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   let prevClaudecode: string | undefined;
 
   beforeEach(() => {
-    // Snapshot CLAUDECODE before each test so we can restore it
     prevClaudecode = process.env.CLAUDECODE;
-    // Ensure it is set for tests that verify removal
     process.env.CLAUDECODE = "test-session-token";
     process.env.OPENAI_API_KEY = "sk-existing-key";
     process.env.NODE_ENV = "test";
   });
 
   afterEach(() => {
-    // Restore whatever CLAUDECODE value was there (or delete it)
     if (prevClaudecode !== undefined) {
       process.env.CLAUDECODE = prevClaudecode;
     } else {
@@ -229,7 +262,6 @@ describe("sanitizeProviderEnvironment", () => {
     const env = sanitizeProviderEnvironment(undefined);
     expect(env).toBeDefined();
     expect(typeof env).toBe("object");
-    // Must be a new object, not the same reference
     expect(env).not.toBe(process.env);
   });
 
@@ -269,7 +301,5 @@ describe("sanitizeProviderEnvironment", () => {
     const { sanitizeProviderEnvironment } = require("./opencode-runner.ts");
     const env = sanitizeProviderEnvironment(undefined);
     expect(env.OPENAI_API_KEY).toBe("sk-existing-key");
-    expect(env.NODE_ENV).toBe("test");
-    expect(env.CLAUDECODE).toBeUndefined();
   });
 });

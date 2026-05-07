@@ -1,4 +1,5 @@
 export type ProviderRef = string;
+export type ReasoningEffort = "none" | "minimal" | "low" | "medium" | "high" | "xhigh";
 
 /**
  * Opaque auth handle passed to provider adapters.
@@ -40,12 +41,23 @@ export type Capabilities = {
   readonly maxContextTokens: number | null;
 };
 
+export type PromptPart =
+  | { readonly type: "text"; readonly text: string }
+  | {
+      readonly type: "file";
+      readonly mime: string;
+      readonly url: string;
+      readonly filename?: string;
+    };
+
 export type TurnInput = {
   readonly sessionId: string;
   readonly authHandle: string;
   readonly providerRef: ProviderRef;
   readonly prompt: string;
+  readonly promptParts?: readonly PromptPart[];
   readonly cwd: string;
+  readonly reasoningEffort?: ReasoningEffort;
   readonly timeoutMs?: number;
   readonly environment?: Readonly<Record<string, string>>;
 };
@@ -97,4 +109,5 @@ export interface ProviderAdapter {
   resolveModel(ref: ProviderRef): ResolvedModel;
   probeQuota?(auth: AuthHandle): Promise<QuotaSnapshot>;
   sendTurn(input: TurnInput): AsyncGenerator<AgentChunk>;
+  dispose?(): Promise<void> | void;
 }

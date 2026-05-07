@@ -1,11 +1,9 @@
-import { readdirSync, readFileSync, existsSync } from "node:fs";
-import { join } from "node:path";
 import type { ConfigStore } from "@aloop/daemon-config";
 import { parseDaemonConfig } from "@aloop/daemon-config";
-import { buildHealth, type HealthCounters } from "./health.ts";
+import { buildHealth } from "./health.ts";
+import { buildCounters } from "./daemon-counters.ts";
 import type { SchedulerService } from "@aloop/scheduler";
 import type { ProjectRegistry } from "@aloop/state-sqlite";
-import type { SessionStatus } from "@aloop/core";
 
 export type DaemonDeps = {
   readonly startedAt: number;
@@ -29,7 +27,7 @@ export async function handleDaemon(
   pathname: string,
 ): Promise<Response | undefined> {
   if (req.method === "GET" && pathname === "/v1/daemon/health") {
-    const counters = buildCounters(deps);
+    const counters = buildCounters(deps.sessionsDir(), deps.scheduler);
     return json(200, buildHealth(deps.startedAt, Date.now(), counters));
   }
   if (req.method === "GET" && pathname === "/v1/daemon/config") {
@@ -83,56 +81,6 @@ export async function handleDaemon(
   }
 
   return undefined;
-}
-
-/**
- * Build counters for GET /v1/daemon/health.
- * Counts sessions from the sessions directory (synchronous, scan-based) and
- * reads in-flight permits from the scheduler registry.
- */
-function buildCounters(deps: DaemonDeps): HealthCounters {
-  const sessionsDir = deps.sessionsDir();
-  const sessionsByStatus: Record<string, number> = {};
-  let sessionsTotal = 0;
-
-  if (existsSync(sessionsDir)) {
-    let topLevel: string[];
-    try {
-      topLevel = readdirSync(sessionsDir);
-    } catch {
-      topLevel = [];
-    }
-
-    for (const projectId of topLevel) {
-      const projectSessionsDir = join(sessionsDir, projectId);
-      let sessionIds: string[];
-      try {
-        sessionIds = readdirSync(projectSessionsDir);
-      } catch {
-        continue;
-      }
-
-      for (const sessionId of sessionIds) {
-        const sessionPath = join(projectSessionsDir, sessionId, "session.json");
-        let status: SessionStatus | undefined;
-        try {
-          const raw = readFileSync(sessionPath, "utf-8");
-          const parsed = JSON.parse(raw) as { status?: SessionStatus };
-          status = parsed?.status;
-        } catch {
-          continue;
-        }
-
-        sessionsTotal++;
-        const s = status ?? "unknown";
-        sessionsByStatus[s] = (sessionsByStatus[s] ?? 0) + 1;
-      }
-    }
-  }
-
-  const permitsInFlight = deps.scheduler.listPermits().length;
-
-  return { sessionsTotal, sessionsByStatus, permitsInFlight };
 }
 
 function json(status: number, body: unknown): Response {

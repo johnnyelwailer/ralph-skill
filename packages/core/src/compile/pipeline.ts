@@ -95,7 +95,11 @@ export function compilePipeline(config: PipelineConfig): LoopPlan {
     if ("exec" in phase) {
       finalizer.push({ kind: "exec", ref: `EXEC_${phase.exec}.json` });
     } else {
-      finalizer.push({ kind: "agent", ref: `PROMPT_${phase.agent}.md` });
+      finalizer.push({
+        kind: "agent",
+        ref: `PROMPT_${phase.agent}.md`,
+        ...(phase.reasoning !== undefined && { reasoning: phase.reasoning }),
+      });
     }
   }
 
@@ -127,7 +131,11 @@ function appendPhase(
   const copies = phase.repeat ?? 1;
   for (let i = 0; i < copies; i++) {
     const cyclePosition = cycle.length;
-    cycle.push({ kind: "agent", ref: `PROMPT_${phase.agent}.md` });
+    cycle.push({
+      kind: "agent",
+      ref: `PROMPT_${phase.agent}.md`,
+      ...(phase.reasoning !== undefined && { reasoning: phase.reasoning }),
+    });
     if (phase.onFailure) {
       transitions[String(cyclePosition)] = phase.onFailure;
     }

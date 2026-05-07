@@ -1,49 +1,35 @@
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
-import { makeIdGenerator } from "@aloop/core";
-import {
-  createEventWriter,
-  createIdempotencyStore,
-  EventCountsProjector,
-  JsonlEventStore,
-  openDatabase,
-  PermitProjector,
-  PermitRegistry,
-  ProjectRegistry,
-  type Database,
-  type EventWriter,
-  ArtifactRegistry,
-  WorkspaceRegistry,
-  SchedulerMetricsProjector,
-  WorkspaceProjector,
-} from "@aloop/state-sqlite";
+import { JsonlEventStore } from "@aloop/state-sqlite";
 import { resolveDaemonPaths } from "@aloop/daemon-config";
 import { startHttp, startSocket, type RunningHttp, type RunningSocket } from "@aloop/daemon-http";
-import { createOpencodeAdapter } from "@aloop/provider-opencode";
-import { acquireLock, releaseLock } from "./lock.ts";
 import { SchedulerService, startSchedulerWatchdog, type RunningWatchdog } from "@aloop/scheduler";
 import { makeSchedulerConfig } from "./scheduler-config.ts";
 import { createProviderQuotaProbe } from "./provider-probes.ts";
 import { makeRouterDeps } from "./router-deps.ts";
 import { loadInitialConfig } from "./start-config.ts";
+import { acquireLock, releaseLock } from "./lock.ts";
+import { createDaemonInfra, buildCooldownMultipliers } from "./start-infra.ts";
 import {
   detectStuckSessions,
   refreshProviderHealth,
   recoverCrashedSessions,
-  tickIncubationMonitors,
-  watchSessionBurnRates,
 } from "@aloop/scheduler";
 import type { ConfigStore, DaemonConfig, DaemonPaths, OverridesConfig } from "@aloop/daemon-config";
-import { InMemoryProviderHealthStore, ProviderRegistry } from "@aloop/provider";
+import type { InMemoryProviderHealthStore, ProviderRegistry } from "@aloop/provider";
+import type { OpencodeRunTurn as OpencodeSdkRunTurn } from "@aloop/provider-opencode";
+import type { OpencodeRunTurn as OpencodeCliRunTurn } from "@aloop/provider-opencode-cli";
+import type { Database, EventWriter, IdempotencyStore } from "@aloop/state-sqlite";
+import type { ProjectRegistry } from "@aloop/state-sqlite";
 
 export type StartDaemonOptions = {
-  /** Override the HTTP port from daemon.yml. Pass 0 for an ephemeral port. */
   port?: number;
-  /** Override the HTTP bind address from daemon.yml. */
   hostname?: string;
   paths?: DaemonPaths;
-  /** Override database path. Defaults to <stateDir>/db.sqlite; pass ":memory:" for tests. */
   dbPath?: string;
+  opencodeSdkRunTurn?: OpencodeSdkRunTurn;
+  opencodeCliRunTurn?: OpencodeCliRunTurn;
+  opencodeRunTurn?: OpencodeSdkRunTurn;
 };
 
 export type RunningDaemon = {
@@ -57,7 +43,7 @@ export type RunningDaemon = {
   scheduler: SchedulerService;
   providerRegistry: ProviderRegistry;
   providerHealth: InMemoryProviderHealthStore;
-  idempotencyStore: ReturnType<typeof createIdempotencyStore>;
+  idempotencyStore: ReturnType<typeof import("@aloop/state-sqlite").createIdempotencyStore>;
   startedAt: number;
   stop(): Promise<void>;
 };
@@ -71,48 +57,33 @@ export async function startDaemon(opts: StartDaemonOptions = {}): Promise<Runnin
   const hostname = opts.hostname ?? config.daemon().http.bind;
   const port = opts.port ?? config.daemon().http.port;
   const lock = acquireLock(paths.pidFile);
-  if (!lock.ok) {
-    throw new Error(
-      `aloopd is already running (pid ${lock.pid}). pid file: ${paths.pidFile}`,
-    );
-  }
+  if (!lock.ok) throw new Error(`aloopd is already running (pid ${lock.pid}). pid file: ${paths.pidFile}`);
+
   const startedAt = Date.now();
   let http: RunningHttp | undefined;
   let socket: RunningSocket | undefined;
-  let eventStore: JsonlEventStore | undefined;
   let watchdog: RunningWatchdog | undefined;
-  const { db } = openDatabase(dbPath);
-  const registry = new ProjectRegistry(db);
-  const workspaceRegistry = new WorkspaceRegistry(db);
-  const permits = new PermitRegistry(db);
-  const artifactRegistry = new ArtifactRegistry(db);
-  eventStore = new JsonlEventStore(paths.logFile);
-  const events = createEventWriter({
-    db,
-    store: eventStore,
-    projectors: [new EventCountsProjector(), new PermitProjector(), new SchedulerMetricsProjector(), new WorkspaceProjector()],
-    nextId: makeIdGenerator(),
+
+  const infra = createDaemonInfra({
+    dbPath,
+    logFile: paths.logFile,
+    opencodeSdkRunTurn: opts.opencodeSdkRunTurn ?? opts.opencodeRunTurn,
+    opencodeCliRunTurn: opts.opencodeCliRunTurn,
   });
-  const providerRegistry = new ProviderRegistry();
-  providerRegistry.register(createOpencodeAdapter());
-  const providerHealth = new InMemoryProviderHealthStore(providerRegistry.list().map((adapter) => adapter.id));
-  const scheduler = new SchedulerService(permits, makeSchedulerConfig(config, events), events, { providerQuota: createProviderQuotaProbe(providerHealth) });
-  const idempotencyStore = createIdempotencyStore(db);
+  const { db, registry, workspaceRegistry, artifactRegistry, eventStore, events, providerRegistry, providerHealth, idempotencyStore } = infra;
+
+  const scheduler = new SchedulerService(infra.permits, makeSchedulerConfig(config, events), events, {
+    providerQuota: createProviderQuotaProbe(providerHealth),
+  });
   const routerDeps = makeRouterDeps({
-    registry,
-    workspaceRegistry,
-    scheduler,
-    startedAt,
-    config,
-    events,
-    providerRegistry,
-    providerHealth,
-    artifactRegistry,
-    idempotencyStore,
-    cooldownMultipliers: buildCooldownMultipliers(config),
+    registry, workspaceRegistry, scheduler, startedAt, config, events,
+    providerRegistry, providerHealth, artifactRegistry, idempotencyStore,
+    cooldownMultipliers: buildCooldownMultipliers(config), db,
   });
+
   const sessionsDir = join(paths.stateDir, "sessions");
   await recoverCrashedSessions(sessionsDir, events);
+
   try {
     http = startHttp({ hostname, port, deps: routerDeps });
     socket = startSocket({ path: paths.socketFile, deps: routerDeps });
@@ -129,6 +100,7 @@ export async function startDaemon(opts: StartDaemonOptions = {}): Promise<Runnin
       events,
     });
   } catch (err) {
+    await providerRegistry.disposeAll().catch(() => {});
     await http?.stop().catch(() => {});
     await socket?.stop().catch(() => {});
     await eventStore?.close().catch(() => {});
@@ -137,21 +109,13 @@ export async function startDaemon(opts: StartDaemonOptions = {}): Promise<Runnin
     releaseLock(paths.pidFile);
     throw err;
   }
+
   return {
-    paths,
-    http,
-    socket,
-    db,
-    registry,
-    config,
-    events,
-    scheduler,
-    providerRegistry,
-    providerHealth,
-    idempotencyStore,
-    startedAt,
+    paths, http, socket, db, registry, config, events, scheduler,
+    providerRegistry, providerHealth, idempotencyStore, startedAt,
     async stop() {
       watchdog?.stop();
+      await providerRegistry.disposeAll().catch(() => {});
       await http!.stop();
       await socket!.stop();
       await eventStore!.close();
@@ -162,18 +126,3 @@ export async function startDaemon(opts: StartDaemonOptions = {}): Promise<Runnin
 }
 
 export type { DaemonConfig, OverridesConfig };
-
-/**
- * Build a ReadonlyMap of providerId → cooldownMultiplier from daemon config.
- * Reads `provider_tuning.<id>.cooldown_multiplier` entries; absent providers
- * default to 1.0 (no multiplier). Values are clamped to [0.5, 4.0] per spec.
- */
-function buildCooldownMultipliers(config: ConfigStore): ReadonlyMap<string, number> {
-  const tuning = config.daemon().providerTuning ?? {};
-  const entries: [string, number][] = Object.entries(tuning).map(([providerId, tune]) => {
-    const raw = (tune as Record<string, unknown>).cooldown_multiplier;
-    const clamped = typeof raw === "number" ? Math.min(4.0, Math.max(0.5, raw)) : 1.0;
-    return [providerId, clamped];
-  });
-  return new Map(entries);
-}

@@ -1,85 +1,90 @@
-import type { ProviderAdapter, ProviderRef, ResolvedModel } from "@aloop/provider";
-import { parseProviderRef } from "@aloop/provider";
-import { classifyOpencodeFailure } from "./opencode-classify.ts";
-import { runOpencodeCli, type OpencodeRunTurn } from "./opencode-runner.ts";
+import type { AgentChunk, ProviderAdapter } from "@aloop/provider";
+import { OPENCODE_CAPABILITIES } from "./opencode-capabilities.ts";
+import { buildRuntimeEnvironment, withTemporaryEnvironment } from "./opencode-env.ts";
+import { createErrorChunk, isAbortError } from "./opencode-errors.ts";
+import { resolvePromptParts } from "./opencode-input-parts.ts";
+import { resolveOpencodeModel } from "./opencode-model.ts";
+import { buildUsageChunk, translateParts } from "./opencode-parts.ts";
+import { __sdkTestHooks, getDefaultSessionHandle } from "./opencode-sdk.ts";
+import type { CreateOpencodeAdapterOptions, OpencodeRunTurn } from "./opencode-types.ts";
 
-export type CreateOpencodeAdapterOptions = {
-  readonly defaultModelId?: string;
-  readonly runTurn?: OpencodeRunTurn;
-};
+export type { CreateOpencodeAdapterOptions, OpencodeRunInput, OpencodeRunResult, OpencodeRunTurn } from "./opencode-types.ts";
 
-const DEFAULT_MODEL_ID = "opencode/default";
+export const __testHooks = { withTemporaryEnvironment, ...__sdkTestHooks };
 
-export function createOpencodeAdapter(
-  options: CreateOpencodeAdapterOptions = {},
-): ProviderAdapter {
-  const runTurn = options.runTurn ?? runOpencodeCli;
-
+export function createOpencodeAdapter(options: CreateOpencodeAdapterOptions = {}): ProviderAdapter {
+  const clientFactory = options.clientFactory ?? getDefaultSessionHandle;
   return {
     id: "opencode",
-    capabilities: {
-      streaming: false,
-      vision: false,
-      toolUse: true,
-      reasoningEffort: true,
-      quotaProbe: false,
-      sessionResume: false,
-      costReporting: true,
-      maxContextTokens: null,
+    capabilities: OPENCODE_CAPABILITIES,
+    resolveModel(ref) {
+      return resolveOpencodeModel(ref, options.defaultModelId);
     },
-    resolveModel(ref: ProviderRef): ResolvedModel {
-      const parsed = parseProviderRef(ref);
-      if (parsed.providerId !== "opencode") {
-        throw new Error(`opencode adapter cannot resolve provider ref: ${ref}`);
-      }
-      const modelPath = [parsed.track, parsed.model].filter(Boolean).join("/");
-      const versionSuffix = parsed.version ? `@${parsed.version}` : "";
-      const modelId = modelPath.length > 0
-        ? `${modelPath}${versionSuffix}`
-        : options.defaultModelId ?? DEFAULT_MODEL_ID;
-      return {
-        providerId: "opencode",
-        modelId,
-        ...(parsed.track && { track: parsed.track }),
-        ...(parsed.version && { version: parsed.version }),
-      };
+    async dispose() {
+      await __sdkTestHooks.resetCachedServers();
     },
     async *sendTurn(input) {
       const resolved = this.resolveModel(input.providerRef);
-      const result = await runTurn({
-        modelId: resolved.modelId,
-        prompt: input.prompt,
-        cwd: input.cwd,
-        ...(input.timeoutMs !== undefined && { timeoutMs: input.timeoutMs }),
-        ...(input.environment !== undefined && { environment: input.environment }),
-      });
-
-      if (!result.ok) {
-        const failure = classifyOpencodeFailure(result);
-        yield {
-          type: "error",
-          content: {
-            classification: failure.classification,
-            message: result.stderr || result.stdout || "opencode invocation failed",
-            retriable: failure.retriable,
-          },
-        };
-        return;
+      if (options.runTurn) return yield* sendTurnViaRunner(options.runTurn, input, resolved);
+      const signal = input.timeoutMs !== undefined ? AbortSignal.timeout(input.timeoutMs) : undefined;
+      let handle;
+      try {
+        handle = await clientFactory({
+          sessionId: input.sessionId,
+          authHandle: input.authHandle,
+          cwd: input.cwd,
+          ...(input.timeoutMs !== undefined && { timeoutMs: input.timeoutMs }),
+          ...(input.environment && { environment: input.environment }),
+        });
+      } catch (error) {
+        return yield createErrorChunk(error, isAbortError(error));
       }
+      let result;
+      try {
+        result = await handle.prompt({
+          cwd: input.cwd,
+          prompt: input.prompt,
+          promptParts: resolvePromptParts(input),
+          resolvedModel: resolved,
+          ...(input.reasoningEffort !== undefined && { reasoningEffort: input.reasoningEffort }),
+          ...(signal && { signal }),
+        });
+      } catch (error) {
+        return yield createErrorChunk(error, isAbortError(error));
+      }
+      if (result.error) return yield createErrorChunk(result.error, false);
+      if (!result.payload) return yield createErrorChunk(new Error("opencode server returned no data"), false);
+      if (result.payload.info.error) return yield createErrorChunk(result.payload.info.error, false);
+      for (const chunk of translateParts(result.payload.parts)) yield chunk;
+      yield buildUsageChunk("opencode", resolved.modelId, result.payload.info);
+    },
+  };
+}
 
-      yield { type: "text", content: { delta: result.text } };
-      yield {
-        type: "usage",
-        content: {
-          ...(result.usage?.tokensIn !== undefined && { tokensIn: result.usage.tokensIn }),
-          ...(result.usage?.tokensOut !== undefined && { tokensOut: result.usage.tokensOut }),
-          ...(result.usage?.cacheRead !== undefined && { cacheRead: result.usage.cacheRead }),
-          ...(result.usage?.costUsd !== undefined && { costUsd: result.usage.costUsd }),
-          modelId: resolved.modelId,
-          providerId: "opencode",
-        },
-        final: true,
-      };
+async function* sendTurnViaRunner(
+  runTurn: OpencodeRunTurn,
+  input: Parameters<ProviderAdapter["sendTurn"]>[0],
+  resolved: ReturnType<ProviderAdapter["resolveModel"]>,
+): AsyncGenerator<AgentChunk> {
+  const result = await runTurn({
+    modelId: resolved.modelId,
+    prompt: input.prompt,
+    cwd: input.cwd,
+    ...(input.timeoutMs !== undefined && { timeoutMs: input.timeoutMs }),
+    environment: buildRuntimeEnvironment(input),
+  });
+  if (!result.ok) return yield createErrorChunk(result, Boolean(result.timedOut));
+  yield { type: "text", content: { delta: result.text } };
+  yield {
+    type: "usage",
+    final: true,
+    content: {
+      providerId: "opencode",
+      modelId: resolved.modelId,
+      ...(result.usage?.tokensIn !== undefined && { tokensIn: result.usage.tokensIn }),
+      ...(result.usage?.tokensOut !== undefined && { tokensOut: result.usage.tokensOut }),
+      ...(result.usage?.cacheRead !== undefined && { cacheRead: result.usage.cacheRead }),
+      ...(result.usage?.costUsd !== undefined && { costUsd: result.usage.costUsd }),
     },
   };
 }

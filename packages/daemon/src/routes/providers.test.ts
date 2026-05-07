@@ -98,7 +98,7 @@ describe("/v1/providers/overrides", () => {
     expect(res.status).toBe(200);
     const body = (await res.json()) as { _v: number; resolved_chain: string[] };
     expect(body._v).toBe(1);
-    expect(body.resolved_chain).toEqual(["opencode"]);
+    expect(body.resolved_chain).toEqual(["opencode", "opencode-cli"]);
   });
 
   test("POST /v1/providers/resolve-chain reflects live overrides", async () => {
@@ -114,7 +114,7 @@ describe("/v1/providers/overrides", () => {
     });
     expect(res.status).toBe(200);
     const body = (await res.json()) as { resolved_chain: string[]; excluded_overrides: string[] };
-    expect(body.resolved_chain).toEqual([]);
+    expect(body.resolved_chain).toEqual(["opencode-cli"]);
     expect(body.excluded_overrides).toEqual(["opencode"]);
   });
 });
