@@ -116,16 +116,6 @@ describe("opencode-env", () => {
   });
 
   describe("withTemporaryEnvironment", () => {
-    const prevEnv = process.env;
-
-    beforeEach(() => {
-      process.env = { ...prevEnv };
-    });
-
-    afterEach(() => {
-      process.env = prevEnv;
-    });
-
     test("sets values during fn execution", async () => {
       await withTemporaryEnvironment({ FOO: "bar" }, [], async () => {
         expect(process.env.FOO).toBe("bar");
@@ -152,11 +142,22 @@ describe("opencode-env", () => {
       process.env.RESTORE_ME = "was-here";
       try {
         await withTemporaryEnvironment({}, [], async () => {
-          process.env.RESTORE_ME = "mutated";
           throw new Error("oops");
         });
       } catch (_) { /* expected */ }
       expect(process.env.RESTORE_ME).toBe("was-here");
+    });
+
+    test("restores original pre-call values after fn throws", async () => {
+      process.env.EXISTING = "original";
+      try {
+        await withTemporaryEnvironment({ EXISTING: "temp" }, [], async () => {
+          process.env.EXISTING = "mutated";
+          throw new Error("oops");
+        });
+      } catch (_) { /* expected */ }
+      // Restores to the pre-call value ("original"), not the intermediate value set by withTemporaryEnvironment ("temp")
+      expect(process.env.EXISTING).toBe("original");
     });
   });
 });

@@ -8,7 +8,7 @@ export function translateParts(parts: readonly unknown[]): AgentChunk[] {
     if (record?.type === "reasoning" && typeof record.text === "string") chunks.push({ type: "thinking", content: { delta: record.text } });
     if (record?.type === "text" && typeof record.text === "string") chunks.push({ type: "text", content: { delta: record.text } });
     if (record?.type !== "tool") continue;
-    if (typeof record.tool === "string") {
+    if (typeof record.tool === "string" && typeof record.callID === "string") {
       chunks.push({ type: "tool_call", content: { name: record.tool, arguments: JSON.stringify(asRecord(record.state)?.input ?? {}) } });
     }
     const state = asRecord(record.state);

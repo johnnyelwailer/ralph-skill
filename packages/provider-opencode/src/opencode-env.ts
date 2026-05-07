@@ -19,11 +19,11 @@ export function buildRuntimeEnvironment(input: {
   environment?: Readonly<Record<string, string>>;
 }): Record<string, string> {
   return sanitizeProviderEnvironment({
-    ...input.environment,
     AUTH_HANDLE: input.authHandle,
     ALOOP_SESSION_ID: input.sessionId,
     ALOOP_PROJECT_PATH: input.cwd,
     ALOOP_WORKTREE: input.cwd,
+    ...input.environment,
   });
 }
 
