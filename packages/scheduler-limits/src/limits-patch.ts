@@ -1,4 +1,4 @@
-type SchedulerLimitsPatch = {
+export type SchedulerLimitsPatch = {
   concurrencyCap?: unknown;
   permitTtlDefaultSeconds?: unknown;
   permitTtlMaxSeconds?: unknown;
@@ -7,6 +7,7 @@ type SchedulerLimitsPatch = {
   loadMax?: unknown;
   maxTokensSinceCommit?: unknown;
   minCommitsPerHour?: unknown;
+  watchdogStuckThresholdSeconds?: unknown;
 };
 
 export function normalizeLimitsPatch(
@@ -31,6 +32,12 @@ export function normalizeLimitsPatch(
     "systemLimits",
     "burn_rate",
     "burnRate",
+    "max_tokens_since_commit",
+    "maxTokensSinceCommit",
+    "min_commits_per_hour",
+    "minCommitsPerHour",
+    "watchdog_stuck_threshold_seconds",
+    "watchdogStuckThresholdSeconds",
   ]);
 
   for (const key of Object.keys(rawPatch)) {
@@ -72,6 +79,11 @@ export function normalizeLimitsPatch(
   const burnRate = pick(rawPatch, "burn_rate", "burnRate");
   patch.maxTokensSinceCommit = pick(rawPatch, "max_tokens_since_commit", "maxTokensSinceCommit");
   patch.minCommitsPerHour = pick(rawPatch, "min_commits_per_hour", "minCommitsPerHour");
+  patch.watchdogStuckThresholdSeconds = pick(
+    rawPatch,
+    "watchdog_stuck_threshold_seconds",
+    "watchdogStuckThresholdSeconds",
+  );
   if (isMap(burnRate)) {
     const allowedBurn = new Set([
       "max_tokens_since_commit",

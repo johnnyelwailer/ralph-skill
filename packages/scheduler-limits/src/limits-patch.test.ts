@@ -50,16 +50,18 @@ describe("normalizeLimitsPatch", () => {
     expect(patch.cpuMaxPct).toBe(60); // top-level wins
   });
 
-  test("top-level min_commits_per_hour is NOT allowed; must use nested burn_rate", () => {
+  test("accepts top-level min_commits_per_hour as alternative to nested burn_rate", () => {
     const errors: string[] = [];
-    normalizeLimitsPatch({ min_commits_per_hour: 5 }, errors);
-    expect(errors).toContain("unknown scheduler limits field: min_commits_per_hour");
+    const patch = normalizeLimitsPatch({ min_commits_per_hour: 5 }, errors);
+    expect(errors).toEqual([]);
+    expect(patch.minCommitsPerHour).toBe(5);
   });
 
-  test("top-level max_tokens_since_commit is NOT allowed; must use nested burn_rate", () => {
+  test("accepts top-level max_tokens_since_commit as alternative to nested burn_rate", () => {
     const errors: string[] = [];
-    normalizeLimitsPatch({ max_tokens_since_commit: 500_000 }, errors);
-    expect(errors).toContain("unknown scheduler limits field: max_tokens_since_commit");
+    const patch = normalizeLimitsPatch({ max_tokens_since_commit: 500_000 }, errors);
+    expect(errors).toEqual([]);
+    expect(patch.maxTokensSinceCommit).toBe(500_000);
   });
 
   test("rejects unknown top-level fields", () => {
