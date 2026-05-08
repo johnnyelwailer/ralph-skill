@@ -97,3 +97,10 @@ export {
   ComposerTurnRegistry,
   type CreateComposerTurnInput,
 } from "./state/composer.ts";
+export {
+  SessionNotFoundError,
+  SessionRegistry,
+  type Session,
+  type SessionFilter,
+  type CreateSessionInput,
+} from "./state/sessions.ts";

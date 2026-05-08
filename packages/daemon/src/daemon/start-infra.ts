@@ -12,6 +12,7 @@ import {
   WorkspaceRegistry,
   SchedulerMetricsProjector,
   WorkspaceProjector,
+  SessionRegistry,
   type Database,
   type EventWriter,
 } from "@aloop/state-sqlite";
@@ -24,6 +25,7 @@ export type DaemonInfra = {
   readonly db: Database;
   readonly registry: ProjectRegistry;
   readonly workspaceRegistry: WorkspaceRegistry;
+  readonly sessionRegistry: SessionRegistry;
   readonly permits: PermitRegistry;
   readonly artifactRegistry: ArtifactRegistry;
   readonly eventStore: JsonlEventStore;
@@ -42,6 +44,7 @@ export function createDaemonInfra(options: {
   const { db } = openDatabase(options.dbPath);
   const registry = new ProjectRegistry(db);
   const workspaceRegistry = new WorkspaceRegistry(db);
+  const sessionRegistry = new SessionRegistry(db);
   const permits = new PermitRegistry(db);
   const artifactRegistry = new ArtifactRegistry(db);
   const eventStore = new JsonlEventStore(options.logFile);
@@ -56,7 +59,7 @@ export function createDaemonInfra(options: {
   providerRegistry.register(createOpencodeCliAdapter({ ...(options.opencodeCliRunTurn ? { runTurn: options.opencodeCliRunTurn } : {}) }));
   const providerHealth = new InMemoryProviderHealthStore(providerRegistry.list().map((adapter) => adapter.id));
   const idempotencyStore = createIdempotencyStore(db);
-  return { db, registry, workspaceRegistry, permits, artifactRegistry, eventStore, events, providerRegistry, providerHealth, idempotencyStore };
+  return { db, registry, workspaceRegistry, sessionRegistry, permits, artifactRegistry, eventStore, events, providerRegistry, providerHealth, idempotencyStore };
 }
 
 export function buildCooldownMultipliers(config: ConfigStore): ReadonlyMap<string, number> {

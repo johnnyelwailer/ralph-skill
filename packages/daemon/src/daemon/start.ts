@@ -70,7 +70,7 @@ export async function startDaemon(opts: StartDaemonOptions = {}): Promise<Runnin
     opencodeSdkRunTurn: opts.opencodeSdkRunTurn ?? opts.opencodeRunTurn,
     opencodeCliRunTurn: opts.opencodeCliRunTurn,
   });
-  const { db, registry, workspaceRegistry, artifactRegistry, eventStore, events, providerRegistry, providerHealth, idempotencyStore } = infra;
+  const { db, registry, workspaceRegistry, sessionRegistry, artifactRegistry, eventStore, events, providerRegistry, providerHealth, idempotencyStore } = infra;
 
   const scheduler = new SchedulerService(infra.permits, makeSchedulerConfig(config, events), events, {
     providerQuota: createProviderQuotaProbe(providerHealth),
