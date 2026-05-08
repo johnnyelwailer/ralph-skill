@@ -399,4 +399,51 @@ describe("updateSchedulerLimits", () => {
       expect(v.max).toBe(8);
     }
   });
+
+  // ─── loadMax bounds enforcement ─────────────────────────────────────────────
+
+  test("rejects loadMax out-of-range values via tune_out_of_bounds", async () => {
+    // loadMax is a Level-2 tunable knob and must be bounds-checked like all other knobs.
+    // A value of 999 is outside any reasonable load average range.
+    const result = await updateSchedulerLimits(h.config, h.events, { loadMax: 999 });
+    expect(result.ok).toBe(false);
+    if (!result.ok && "code" in result) {
+      expect(result.code).toBe("tune_out_of_bounds");
+    }
+  });
+
+  test("rejects loadMax at negative value via tune_out_of_bounds", async () => {
+    const result = await updateSchedulerLimits(h.config, h.events, { loadMax: -0.1 });
+    expect(result.ok).toBe(false);
+    if (!result.ok && "code" in result) {
+      expect(result.code).toBe("tune_out_of_bounds");
+    }
+  });
+
+  test("accepts loadMax at the default daemon value (4.0)", async () => {
+    // daemon.md §system_limits defines load_max: 4.0 as default.
+    // This verifies the knob accepts a value within its operational range.
+    const result = await updateSchedulerLimits(h.config, h.events, { loadMax: 4.0 });
+    expect(result.ok).toBe(true);
+  });
+
+  test("accepts loadMax at zero (no load threshold)", async () => {
+    const result = await updateSchedulerLimits(h.config, h.events, { loadMax: 0 });
+    expect(result.ok).toBe(true);
+  });
+
+  test("loadMax violations include field name and requested value", async () => {
+    const result = await updateSchedulerLimits(h.config, h.events, { loadMax: 999 });
+    expect(result.ok).toBe(false);
+    if (!result.ok && "code" in result) {
+      const v = result.violations.find((violation) => violation.field === "loadMax");
+      expect(v).toBeDefined();
+      if (v) {
+        expect(v.field).toBe("loadMax");
+        expect(v.requested).toBe(999);
+        expect(typeof v.min).toBe("number");
+        expect(typeof v.max).toBe("number");
+      }
+    }
+  });
 });

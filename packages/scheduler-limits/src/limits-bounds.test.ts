@@ -42,9 +42,18 @@ describe("SCHEDULER_KNOB_BOUNDS", () => {
     expect(SCHEDULER_KNOB_BOUNDS.watchdogStuckThresholdSeconds.max).toBe(3600);
   });
 
-  test("all bounds objects are readonly", () => {
-    // @ts-expect-error — readonly fields should not be reassignable
-    SCHEDULER_KNOB_BOUNDS.concurrencyCap.min = 999;
+  test("all bounds objects are deeply frozen (cannot be reassigned at runtime)", () => {
+    // TypeScript's readonly is compile-time only — Bun executes the JS assignment.
+    // We use Object.isFrozen to prove deep-frozen status rather than attempting
+    // a runtime assignment (which may silently succeed in some JS environments).
+    expect(Object.isFrozen(SCHEDULER_KNOB_BOUNDS)).toBe(true);
+    expect(Object.isFrozen(SCHEDULER_KNOB_BOUNDS.concurrencyCap)).toBe(true);
+    expect(Object.isFrozen(SCHEDULER_KNOB_BOUNDS.maxTokensSinceCommit)).toBe(true);
+    expect(Object.isFrozen(SCHEDULER_KNOB_BOUNDS.minCommitsPerHour)).toBe(true);
+    expect(Object.isFrozen(SCHEDULER_KNOB_BOUNDS.cpuMaxPct)).toBe(true);
+    expect(Object.isFrozen(SCHEDULER_KNOB_BOUNDS.memMaxPct)).toBe(true);
+    expect(Object.isFrozen(SCHEDULER_KNOB_BOUNDS.permitTtlDefaultSeconds)).toBe(true);
+    expect(Object.isFrozen(SCHEDULER_KNOB_BOUNDS.watchdogStuckThresholdSeconds)).toBe(true);
   });
 });
 
