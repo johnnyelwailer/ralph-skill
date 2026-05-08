@@ -27,7 +27,7 @@ CREATE TABLE IF NOT EXISTS research_runs (
   mode                TEXT NOT NULL
                        CHECK (mode IN ('source_synthesis', 'monitor_tick', 'outreach_analysis', 'experiment_loop')),
   status              TEXT NOT NULL DEFAULT 'pending'
-                       CHECK (status IN ('pending', 'running', 'completed', 'failed', 'cancelled')),
+                       CHECK (status IN ('pending', 'running', 'paused', 'completed', 'failed', 'cancelled')),
   plan                TEXT NOT NULL DEFAULT '[]',   -- JSON: ResearchSourcePlan[]
   results             TEXT,                         -- JSON: unknown
   started_at          TEXT,

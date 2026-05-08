@@ -71,6 +71,7 @@ export interface IncubationProposal {
   kind: ProposalKind;
   title: string;
   description: string;
+  promotion_target?: PromotionTarget;
   promotion_ref?: PromotionRef;
   created_at: string;
   updated_at: string;
@@ -190,6 +191,7 @@ function rowToProposal(row: IncubationProposalRow): IncubationProposal {
     kind: row.kind as ProposalKind,
     title: row.title,
     description: row.description,
+    promotion_target: row.promotion_target as PromotionTarget | undefined,
     promotion_ref: row.promotion_ref ? (JSON.parse(row.promotion_ref) as PromotionRef) : undefined,
     created_at: row.created_at,
     updated_at: row.updated_at,
@@ -365,6 +367,13 @@ export class IncubationStore {
     return this.getRun(id)!;
   }
 
+  deleteRun(id: string): void {
+    const changes = this.db
+      .query<{ changes: number }, [string]>(`DELETE FROM research_runs WHERE id = ?`)
+      .run(id);
+    if (changes.changes === 0) throw new ResearchRunNotFoundError(id);
+  }
+
   // ── Proposal CRUD ─────────────────────────────────────────────────────────
 
   createProposal(input: {
@@ -414,5 +423,36 @@ export class IncubationStore {
       )
       .all(incubation_item_id)
       .map(rowToProposal);
+  }
+
+  updateProposal(id: string, patch: {
+    title?: string;
+    description?: string;
+    promotion_target?: PromotionTarget | null;
+    promotion_ref?: PromotionRef | null;
+    now?: string;
+  }): IncubationProposal {
+    const now = patch.now ?? new Date().toISOString();
+    const fields: string[] = ["updated_at = ?"];
+    const params: (string | null)[] = [now];
+
+    if (patch.title !== undefined) { fields.push("title = ?"); params.push(patch.title); }
+    if (patch.description !== undefined) { fields.push("description = ?"); params.push(patch.description); }
+    if (patch.promotion_target !== undefined) {
+      fields.push("promotion_target = ?");
+      params.push(patch.promotion_target);
+    }
+    if (patch.promotion_ref !== undefined) {
+      fields.push("promotion_ref = ?");
+      params.push(patch.promotion_ref ? JSON.stringify(patch.promotion_ref) : null);
+    }
+
+    params.push(id);
+    const changes = this.db
+      .query<{ changes: number }, [string]>(`UPDATE incubation_proposals SET ${fields.join(", ")} WHERE id = ?`)
+      .run(...params as [string]);
+
+    if (changes.changes === 0) throw new ProposalNotFoundError(id);
+    return this.getProposal(id)!;
   }
 }

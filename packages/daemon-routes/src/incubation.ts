@@ -1,4 +1,4 @@
-import type { IncubationStore } from "@aloop/state-sqlite";
+import type { IncubationStore, PromotionTarget, PromotionRef } from "@aloop/state-sqlite";
 import {
   badRequest,
   errorResponse,
@@ -50,7 +50,7 @@ function proposalResponse(p: NonNullable<Parameters<typeof IncubationStore.proto
     kind: p.kind,
     title: p.title,
     description: p.description,
-    promotion_target: p.promotion_ref?.target ?? null,
+    promotion_target: p.promotion_target ?? null,
     promotion_ref: p.promotion_ref ?? null,
     created_at: p.created_at,
     updated_at: p.updated_at,
@@ -233,6 +233,74 @@ export function listResearchRuns(
   });
 }
 
+export function getResearchRun(
+  id: string,
+  deps: IncubationDeps,
+): Response {
+  const run = deps.store.getRun(id);
+  if (!run) return errorResponse(404, "research_run_not_found", `research run not found: ${id}`, { id });
+  return jsonResponse(200, runResponse(run)!);
+}
+
+export async function pauseResearchRun(
+  id: string,
+  deps: IncubationDeps,
+): Promise<Response> {
+  const run = deps.store.getRun(id);
+  if (!run) return errorResponse(404, "research_run_not_found", `research run not found: ${id}`, { id });
+
+  if (run.status !== "running") {
+    return badRequest("can only pause a running research run", { current_status: run.status });
+  }
+
+  try {
+    const updated = deps.store.updateRun(id, { status: "paused" });
+    return jsonResponse(200, runResponse(updated)!);
+  } catch (err) {
+    if (err && typeof err === "object" && "code" in err && (err as { code: string }).code === "research_run_not_found") {
+      return errorResponse(404, "research_run_not_found", (err as Error).message, { id });
+    }
+    throw err;
+  }
+}
+
+export async function resumeResearchRun(
+  id: string,
+  deps: IncubationDeps,
+): Promise<Response> {
+  const run = deps.store.getRun(id);
+  if (!run) return errorResponse(404, "research_run_not_found", `research run not found: ${id}`, { id });
+
+  if (run.status !== "paused") {
+    return badRequest("can only resume a paused research run", { current_status: run.status });
+  }
+
+  try {
+    const updated = deps.store.updateRun(id, { status: "running" });
+    return jsonResponse(200, runResponse(updated)!);
+  } catch (err) {
+    if (err && typeof err === "object" && "code" in err && (err as { code: string }).code === "research_run_not_found") {
+      return errorResponse(404, "research_run_not_found", (err as Error).message, { id });
+    }
+    throw err;
+  }
+}
+
+export function deleteResearchRun(
+  id: string,
+  deps: IncubationDeps,
+): Response {
+  try {
+    deps.store.deleteRun(id);
+    return new Response(null, { status: 204 });
+  } catch (err) {
+    if (err && typeof err === "object" && "code" in err && (err as { code: string }).code === "research_run_not_found") {
+      return errorResponse(404, "research_run_not_found", (err as Error).message, { id });
+    }
+    throw err;
+  }
+}
+
 export async function patchResearchRun(
   id: string,
   req: Request,
@@ -283,12 +351,16 @@ export async function createProposal(
   if (!title) return badRequest("title is required");
 
   const description = typeof body.data.description === "string" ? body.data.description : "";
-  const promotion_target = body.data.promotion_target as string | undefined;
+  const promotion_ref = body.data.promotion_ref as { target: string; ref: string } | undefined;
+
+  // promotion_target can be set directly or inferred from promotion_ref.target
+  let promotion_target = body.data.promotion_target as string | undefined;
+  if (!promotion_target && promotion_ref?.target) {
+    promotion_target = promotion_ref.target;
+  }
   if (promotion_target && !["backlog", "sprint", "spec", "architecture", "workflow"].includes(promotion_target)) {
     return badRequest("invalid promotion_target", { promotion_target });
   }
-
-  const promotion_ref = body.data.promotion_ref as { target: string; ref: string } | undefined;
 
   // Verify item exists
   const item = deps.store.getItem(itemId);
@@ -316,6 +388,58 @@ export function getProposal(
   const proposal = deps.store.getProposal(id);
   if (!proposal) return errorResponse(404, "proposal_not_found", `proposal not found: ${id}`, { id });
   return jsonResponse(200, proposalResponse(proposal)!);
+}
+
+export async function patchProposal(
+  id: string,
+  req: Request,
+  deps: IncubationDeps,
+): Promise<Response> {
+  const body = await parseJsonBody(req);
+  if ("error" in body) return body.error;
+
+  const patch: Parameters<typeof deps.store.updateProposal>[1] = {};
+
+  if (typeof body.data.title === "string") patch.title = body.data.title;
+  if (typeof body.data.description === "string") patch.description = body.data.description;
+
+  if (body.data.promotion_target !== undefined) {
+    if (body.data.promotion_target === null) {
+      patch.promotion_target = null;
+    } else if (typeof body.data.promotion_target === "string") {
+      const validTargets = ["backlog", "sprint", "spec", "architecture", "workflow"];
+      if (!validTargets.includes(body.data.promotion_target)) {
+        return badRequest("invalid promotion_target", { promotion_target: body.data.promotion_target });
+      }
+      patch.promotion_target = body.data.promotion_target as PromotionTarget;
+    }
+  }
+
+  if (body.data.promotion_ref !== undefined) {
+    if (body.data.promotion_ref === null) {
+      patch.promotion_ref = null;
+    } else if (typeof body.data.promotion_ref === "object") {
+      const refTarget = body.data.promotion_ref.target;
+      if (typeof refTarget === "string" && !["backlog", "sprint", "spec", "architecture", "workflow"].includes(refTarget)) {
+        return badRequest("invalid promotion_ref.target", { "promotion_ref.target": refTarget });
+      }
+      patch.promotion_ref = body.data.promotion_ref as PromotionRef;
+    }
+  }
+
+  if (Object.keys(patch).length === 0) {
+    return badRequest("no updatable fields provided");
+  }
+
+  try {
+    const proposal = deps.store.updateProposal(id, patch);
+    return jsonResponse(200, proposalResponse(proposal)!);
+  } catch (err) {
+    if (err && typeof err === "object" && "code" in err && (err as { code: string }).code === "proposal_not_found") {
+      return errorResponse(404, "proposal_not_found", (err as Error).message, { id });
+    }
+    throw err;
+  }
 }
 
 export function listProposalsForItem(
@@ -381,15 +505,37 @@ export async function handleIncubation(
   }
 
   const runsPrefix = "/v1/incubation/research-runs/";
-  if (pathname.startsWith(runsPrefix) && req.method === "PATCH") {
-    const id = pathname.slice(runsPrefix.length);
-    return patchResearchRun(id, req, deps);
+  if (pathname.startsWith(runsPrefix)) {
+    const rest = pathname.slice(runsPrefix.length);
+    const segments = rest.split("/");
+    const id = segments[0]!;
+
+    if (segments.length === 1) {
+      // /v1/incubation/research-runs/:id
+      if (req.method === "GET") return getResearchRun(id, deps);
+      if (req.method === "PATCH") return patchResearchRun(id, req, deps);
+      if (req.method === "DELETE") return deleteResearchRun(id, deps);
+    }
+
+    if (segments.length === 2) {
+      // /v1/incubation/research-runs/:id/pause
+      if (segments[1] === "pause" && req.method === "POST") return pauseResearchRun(id, deps);
+      // /v1/incubation/research-runs/:id/resume
+      if (segments[1] === "resume" && req.method === "POST") return resumeResearchRun(id, deps);
+    }
   }
 
   const proposalsPrefix = "/v1/incubation/proposals/";
-  if (pathname.startsWith(proposalsPrefix) && req.method === "GET") {
-    const id = pathname.slice(proposalsPrefix.length);
-    return getProposal(id, deps);
+  if (pathname.startsWith(proposalsPrefix)) {
+    const rest = pathname.slice(proposalsPrefix.length);
+    const segments = rest.split("/");
+    const id = segments[0]!;
+
+    if (segments.length === 1) {
+      // /v1/incubation/proposals/:id
+      if (req.method === "GET") return getProposal(id, deps);
+      if (req.method === "PATCH") return patchProposal(id, req, deps);
+    }
   }
 
   return undefined;

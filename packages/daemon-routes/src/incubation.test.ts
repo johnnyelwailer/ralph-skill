@@ -19,9 +19,14 @@ import {
   deleteIncubationItem,
   createResearchRun,
   listResearchRuns,
+  getResearchRun,
+  pauseResearchRun,
+  resumeResearchRun,
+  deleteResearchRun,
   patchResearchRun,
   createProposal,
   getProposal,
+  patchProposal,
   listProposalsForItem,
 } from "./incubation.ts";
 
@@ -777,5 +782,330 @@ describe("listProposalsForItem", () => {
     const req = new Request("http://localhost/v1/incubation/items/nonexistent/proposals");
     const res = listProposalsForItem("nonexistent", deps);
     expect(res.status).toBe(404);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────
+// getResearchRun
+// ─────────────────────────────────────────────────────────────────
+
+describe("getResearchRun", () => {
+  let deps: IncubationDeps;
+  let itemId: string;
+  let runId: string;
+
+  beforeEach(async () => {
+    deps = makeDeps();
+    const req1 = new Request("http://localhost/v1/incubation/items", {
+      method: "POST",
+      body: JSON.stringify({ scope: "global", title: "Get Run Test", description: "desc" }),
+    });
+    const res1 = await createIncubationItem(req1, deps);
+    const body1 = await res1.json();
+    itemId = body1.id;
+
+    const req2 = new Request(`http://localhost/v1/incubation/items/${itemId}/runs`, {
+      method: "POST",
+      body: JSON.stringify({ mode: "source_synthesis", plan: [{ kind: "documentation", description: "x", location: "https://x.com" }] }),
+    });
+    const res2 = await createResearchRun(itemId, req2, deps);
+    const body2 = await res2.json();
+    runId = body2.id;
+  });
+
+  test("returns 200 with run when found", async () => {
+    const res = getResearchRun(runId, deps);
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.id).toBe(runId);
+    expect(body.mode).toBe("source_synthesis");
+  });
+
+  test("returns 404 when run does not exist", async () => {
+    const res = getResearchRun("00000000-0000-0000-0000-000000000000", deps);
+    expect(res.status).toBe(404);
+    const body = await res.json();
+    expect(body.error.code).toBe("research_run_not_found");
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────
+// pauseResearchRun
+// ─────────────────────────────────────────────────────────────────
+
+describe("pauseResearchRun", () => {
+  let deps: IncubationDeps;
+  let itemId: string;
+  let runId: string;
+
+  beforeEach(async () => {
+    deps = makeDeps();
+    const req1 = new Request("http://localhost/v1/incubation/items", {
+      method: "POST",
+      body: JSON.stringify({ scope: "global", title: "Pause Run Test", description: "desc" }),
+    });
+    const res1 = await createIncubationItem(req1, deps);
+    const body1 = await res1.json();
+    itemId = body1.id;
+
+    const req2 = new Request(`http://localhost/v1/incubation/items/${itemId}/runs`, {
+      method: "POST",
+      body: JSON.stringify({ mode: "experiment_loop", plan: [{ kind: "documentation", description: "x", location: "https://x.com" }] }),
+    });
+    const res2 = await createResearchRun(itemId, req2, deps);
+    const body2 = await res2.json();
+    runId = body2.id;
+  });
+
+  test("returns 200 when paused from running", async () => {
+    // Transition run from pending -> running first
+    const patchReq = new Request(`http://localhost/v1/incubation/runs/${runId}`, {
+      method: "PATCH",
+      body: JSON.stringify({ status: "running" }),
+    });
+    await patchResearchRun(runId, patchReq, deps);
+
+    const res = await pauseResearchRun(runId, deps);
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.status).toBe("paused");
+  });
+
+  test("returns 400 when run is not in running status", async () => {
+    await pauseResearchRun(runId, deps);
+
+    const res = await pauseResearchRun(runId, deps);
+    expect(res.status).toBe(400);
+  });
+
+  test("returns 404 when run does not exist", async () => {
+    const res = await pauseResearchRun("00000000-0000-0000-0000-000000000000", deps);
+    expect(res.status).toBe(404);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────
+// resumeResearchRun
+// ─────────────────────────────────────────────────────────────────
+
+describe("resumeResearchRun", () => {
+  let deps: IncubationDeps;
+  let itemId: string;
+  let runId: string;
+
+  beforeEach(async () => {
+    deps = makeDeps();
+    const req1 = new Request("http://localhost/v1/incubation/items", {
+      method: "POST",
+      body: JSON.stringify({ scope: "global", title: "Resume Run Test", description: "desc" }),
+    });
+    const res1 = await createIncubationItem(req1, deps);
+    const body1 = await res1.json();
+    itemId = body1.id;
+
+    const req2 = new Request(`http://localhost/v1/incubation/items/${itemId}/runs`, {
+      method: "POST",
+      body: JSON.stringify({ mode: "experiment_loop", plan: [{ kind: "documentation", description: "x", location: "https://x.com" }] }),
+    });
+    const res2 = await createResearchRun(itemId, req2, deps);
+    const body2 = await res2.json();
+    runId = body2.id;
+  });
+
+  test("returns 200 when resumed from paused", async () => {
+    // Transition run from pending -> running -> paused first
+    const patchReq = new Request(`http://localhost/v1/incubation/runs/${runId}`, {
+      method: "PATCH",
+      body: JSON.stringify({ status: "running" }),
+    });
+    await patchResearchRun(runId, patchReq, deps);
+    await pauseResearchRun(runId, deps);
+
+    const res = await resumeResearchRun(runId, deps);
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.status).toBe("running");
+  });
+
+  test("returns 400 when run is not paused", async () => {
+    const res = await resumeResearchRun(runId, deps);
+    expect(res.status).toBe(400);
+  });
+
+  test("returns 404 when run does not exist", async () => {
+    const res = await resumeResearchRun("00000000-0000-0000-0000-000000000000", deps);
+    expect(res.status).toBe(404);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────
+// deleteResearchRun
+// ─────────────────────────────────────────────────────────────────
+
+describe("deleteResearchRun", () => {
+  let deps: IncubationDeps;
+  let itemId: string;
+  let runId: string;
+
+  beforeEach(async () => {
+    deps = makeDeps();
+    const req1 = new Request("http://localhost/v1/incubation/items", {
+      method: "POST",
+      body: JSON.stringify({ scope: "global", title: "Delete Run Test", description: "desc" }),
+    });
+    const res1 = await createIncubationItem(req1, deps);
+    const body1 = await res1.json();
+    itemId = body1.id;
+
+    const req2 = new Request(`http://localhost/v1/incubation/items/${itemId}/runs`, {
+      method: "POST",
+      body: JSON.stringify({ mode: "source_synthesis", plan: [{ kind: "documentation", description: "x", location: "https://x.com" }] }),
+    });
+    const res2 = await createResearchRun(itemId, req2, deps);
+    const body2 = await res2.json();
+    runId = body2.id;
+  });
+
+  test("returns 204 when run is deleted", async () => {
+    const res = await deleteResearchRun(runId, deps);
+    expect(res.status).toBe(204);
+  });
+
+  test("returns 404 when run does not exist", async () => {
+    const res = await deleteResearchRun("00000000-0000-0000-0000-000000000000", deps);
+    expect(res.status).toBe(404);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────
+// patchProposal
+// ─────────────────────────────────────────────────────────────────
+
+describe("patchProposal", () => {
+  let deps: IncubationDeps;
+  let itemId: string;
+  let proposalId: string;
+
+  beforeEach(async () => {
+    deps = makeDeps();
+    const req1 = new Request("http://localhost/v1/incubation/items", {
+      method: "POST",
+      body: JSON.stringify({ scope: "global", title: "Patch Proposal Test", description: "desc" }),
+    });
+    const res1 = await createIncubationItem(req1, deps);
+    const body1 = await res1.json();
+    itemId = body1.id;
+
+    const req2 = new Request(`http://localhost/v1/incubation/items/${itemId}/proposals`, {
+      method: "POST",
+      body: JSON.stringify({ kind: "epic", title: "Original Title", description: "Original description" }),
+    });
+    const res2 = await createProposal(itemId, req2, deps);
+    const body2 = await res2.json();
+    proposalId = body2.id;
+  });
+
+  test("returns 200 with patched proposal when title is updated", async () => {
+    const req = new Request(`http://localhost/v1/incubation/proposals/${proposalId}`, {
+      method: "PATCH",
+      body: JSON.stringify({ title: "Updated Title" }),
+    });
+    const res = await patchProposal(proposalId, req, deps);
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.title).toBe("Updated Title");
+    expect(body.description).toBe("Original description");
+  });
+
+  test("returns 200 with patched proposal when description is updated", async () => {
+    const req = new Request(`http://localhost/v1/incubation/proposals/${proposalId}`, {
+      method: "PATCH",
+      body: JSON.stringify({ description: "Updated description" }),
+    });
+    const res = await patchProposal(proposalId, req, deps);
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.description).toBe("Updated description");
+  });
+
+  test("returns 200 with patched proposal when promotion_target is updated", async () => {
+    const req = new Request(`http://localhost/v1/incubation/proposals/${proposalId}`, {
+      method: "PATCH",
+      body: JSON.stringify({ promotion_target: "sprint" }),
+    });
+    const res = await patchProposal(proposalId, req, deps);
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.promotion_target).toBe("sprint");
+  });
+
+  test("returns 200 with patched proposal when promotion_ref is updated", async () => {
+    const req = new Request(`http://localhost/v1/incubation/proposals/${proposalId}`, {
+      method: "PATCH",
+      body: JSON.stringify({ promotion_ref: { target: "architecture", ref: "arch-123" } }),
+    });
+    const res = await patchProposal(proposalId, req, deps);
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.promotion_ref?.target).toBe("architecture");
+    expect(body.promotion_ref?.ref).toBe("arch-123");
+  });
+
+  test("returns 200 with patched proposal when all fields are updated", async () => {
+    const req = new Request(`http://localhost/v1/incubation/proposals/${proposalId}`, {
+      method: "PATCH",
+      body: JSON.stringify({
+        title: "Full Patch",
+        description: "Full description patch",
+        promotion_target: "spec",
+        promotion_ref: { target: "workflow", ref: "wf-456" },
+      }),
+    });
+    const res = await patchProposal(proposalId, req, deps);
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.title).toBe("Full Patch");
+    expect(body.description).toBe("Full description patch");
+    expect(body.promotion_target).toBe("spec");
+    expect(body.promotion_ref?.target).toBe("workflow");
+    expect(body.promotion_ref?.ref).toBe("wf-456");
+  });
+
+  test("returns 404 when proposal does not exist", async () => {
+    const req = new Request("http://localhost/v1/incubation/proposals/00000000-0000-0000-0000-000000000000", {
+      method: "PATCH",
+      body: JSON.stringify({ title: "New Title" }),
+    });
+    const res = await patchProposal("00000000-0000-0000-0000-000000000000", req, deps);
+    expect(res.status).toBe(404);
+    const body = await res.json();
+    expect(body.error.code).toBe("proposal_not_found");
+  });
+
+  test("returns 400 for invalid promotion_target value", async () => {
+    const req = new Request(`http://localhost/v1/incubation/proposals/${proposalId}`, {
+      method: "PATCH",
+      body: JSON.stringify({ promotion_target: "not_a_target" }),
+    });
+    const res = await patchProposal(proposalId, req, deps);
+    expect(res.status).toBe(400);
+  });
+
+  test("returns 400 for invalid promotion_ref target", async () => {
+    const req = new Request(`http://localhost/v1/incubation/proposals/${proposalId}`, {
+      method: "PATCH",
+      body: JSON.stringify({ promotion_ref: { target: "not_a_target", ref: "ref-123" } }),
+    });
+    const res = await patchProposal(proposalId, req, deps);
+    expect(res.status).toBe(400);
+  });
+
+  test("returns 400 for invalid JSON body", async () => {
+    const req = new Request(`http://localhost/v1/incubation/proposals/${proposalId}`, {
+      method: "PATCH",
+      body: "not json",
+    });
+    const res = await patchProposal(proposalId, req, deps);
+    expect(res.status).toBe(400);
   });
 });
