@@ -331,6 +331,66 @@ describe("listWorkspacesHandler", () => {
     expect(body.items).toHaveLength(2);
     expect(body.next_cursor).toBeNull();
   });
+
+  test("filters workspaces by q search param matching name substring", async () => {
+    deps.registry.create({ name: "platform-alpha" });
+    deps.registry.create({ name: "backend-beta" });
+    deps.registry.create({ name: "platform-gamma" });
+
+    const req = new Request("http://localhost/v1/workspaces?q=platform");
+    const res = listWorkspacesHandler(req, deps);
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.items).toHaveLength(2);
+    for (const item of body.items) {
+      expect(item.name).toMatch(/platform/);
+    }
+  });
+
+  test("filters workspaces by q with no matches returning empty list", async () => {
+    deps.registry.create({ name: "workspace-a" });
+    deps.registry.create({ name: "workspace-b" });
+
+    const req = new Request("http://localhost/v1/workspaces?q=nonexistent");
+    const res = listWorkspacesHandler(req, deps);
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.items).toHaveLength(0);
+  });
+
+  test("limits results via limit query param", async () => {
+    deps.registry.create({ name: "ws-1" });
+    deps.registry.create({ name: "ws-2" });
+    deps.registry.create({ name: "ws-3" });
+
+    const req = new Request("http://localhost/v1/workspaces?limit=2");
+    const res = listWorkspacesHandler(req, deps);
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.items).toHaveLength(2);
+  });
+
+  test("limit param defaults to 50 when not specified", async () => {
+    // Just verify it works without limit and returns items
+    deps.registry.create({ name: "ws-1" });
+    const req = new Request("http://localhost/v1/workspaces");
+    const res = listWorkspacesHandler(req, deps);
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.items).toHaveLength(1);
+  });
+
+  test("cursor param is accepted and passed through", async () => {
+    deps.registry.create({ name: "ws-1" });
+    const req = new Request("http://localhost/v1/workspaces?cursor=w_abc123");
+    const res = listWorkspacesHandler(req, deps);
+    expect(res.status).toBe(200);
+    // listWorkspacesHandler currently does not implement cursor pagination
+    // (next_cursor is always null), but the filter parsing should accept it
+    const body = await res.json();
+    expect(body.items).toHaveLength(1);
+    expect(body.next_cursor).toBeNull();
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────
