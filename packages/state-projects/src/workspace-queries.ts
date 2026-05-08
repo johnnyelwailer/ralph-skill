@@ -1,12 +1,14 @@
 import type { Database } from "bun:sqlite";
-import type {
-  CreateWorkspaceInput,
-  Workspace,
-  WorkspaceFilter,
-  WorkspaceProject,
-  WorkspaceProjectCounts,
-  WorkspaceProjectRole,
-  WorkspaceWithCounts,
+import {
+  DuplicateWorkspaceProjectError,
+  ProjectNotFoundWorkspaceError,
+  type CreateWorkspaceInput,
+  type Workspace,
+  type WorkspaceFilter,
+  type WorkspaceProject,
+  type WorkspaceProjectCounts,
+  type WorkspaceProjectRole,
+  type WorkspaceWithCounts,
 } from "./workspace-types.ts";
 
 type WorkspaceRow = {
@@ -239,6 +241,28 @@ export function addProjectToWorkspace(
   role: WorkspaceProjectRole = "supporting",
   now: string = new Date().toISOString(),
 ): WorkspaceProject {
+  // Check project exists
+  const project = db.query<{ id: string }, [string]>(`SELECT id FROM projects WHERE id = ?`).get(projectId);
+  if (!project) {
+    throw new ProjectNotFoundWorkspaceError(workspaceId, projectId);
+  }
+
+  // Check workspace exists
+  const workspace = db.query<{ id: string }, [string]>(`SELECT id FROM workspaces WHERE id = ?`).get(workspaceId);
+  if (!workspace) {
+    throw new ProjectNotFoundWorkspaceError(workspaceId, projectId);
+  }
+
+  // Check duplicate
+  const existing = db
+    .query<{ workspace_id: string; project_id: string }, [string, string]>(
+      `SELECT workspace_id, project_id FROM workspace_projects WHERE workspace_id = ? AND project_id = ?`,
+    )
+    .get(workspaceId, projectId);
+  if (existing) {
+    throw new DuplicateWorkspaceProjectError(workspaceId, projectId);
+  }
+
   db.run(
     `INSERT INTO workspace_projects (workspace_id, project_id, role, added_at)
      VALUES (?, ?, ?, ?)`,
@@ -256,4 +280,39 @@ export function removeProjectFromWorkspace(
     `DELETE FROM workspace_projects WHERE workspace_id = ? AND project_id = ?`,
     [workspaceId, projectId],
   );
+}
+
+export function getProjectCounts(
+  db: Database,
+  workspaceId: string,
+): WorkspaceProjectCounts & { defaultProjectId: string | null } {
+  const row = db
+    .query<{
+      default_project_id: string | null;
+      total: number;
+      primary_count: number;
+      supporting_count: number;
+      dependency_count: number;
+      experiment_count: number;
+    }, [string]>(
+      `SELECT
+        MIN(CASE WHEN role = 'primary' THEN project_id END) AS default_project_id,
+        COUNT(*) AS total,
+        COALESCE(SUM(role = 'primary'),    0) AS primary_count,
+        COALESCE(SUM(role = 'supporting'), 0) AS supporting_count,
+        COALESCE(SUM(role = 'dependency'), 0) AS dependency_count,
+        COALESCE(SUM(role = 'experiment'), 0) AS experiment_count
+       FROM workspace_projects
+       WHERE workspace_id = ?`,
+    )
+    .get(workspaceId);
+
+  return {
+    defaultProjectId: row?.default_project_id ?? null,
+    total: row?.total ?? 0,
+    primary: row?.primary_count ?? 0,
+    supporting: row?.supporting_count ?? 0,
+    dependency: row?.dependency_count ?? 0,
+    experiment: row?.experiment_count ?? 0,
+  };
 }

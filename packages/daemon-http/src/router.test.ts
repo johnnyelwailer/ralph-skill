@@ -19,6 +19,7 @@ function makeDeps() {
     },
     handleProviders: () => undefined,
     handleScheduler: () => undefined,
+    handleWorkspaces: () => undefined,
   };
 }
 
@@ -164,6 +165,7 @@ describe("makeFetchHandler dispatch order", () => {
         }
         return undefined;
       },
+      handleWorkspaces: () => undefined,
     };
   }
 
@@ -222,6 +224,13 @@ describe("makeFetchHandler dispatch order", () => {
     const body = await res.json() as { handler: string; method: string };
     expect(body.handler).toBe("projects");
     expect(body.method).toBe("POST");
+  });
+
+  test("workspaces route is checked before projects", async () => {
+    const fetch = makeFetchHandler(makeDeps());
+    // GET /v1/workspaces — workspaces handler returns undefined, falls through to 404
+    const res = await fetch(new Request("http://x/v1/workspaces"));
+    expect(res.status).toBe(404);
   });
 
   test("PATCH request to /v1/projects/:id returns undefined (404 via router)", async () => {

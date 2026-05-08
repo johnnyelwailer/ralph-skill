@@ -10,6 +10,7 @@ import {
   PermitProjector,
   PermitRegistry,
   ProjectRegistry,
+  WorkspaceRegistry,
   type Database,
   type EventWriter,
   type IncubationStore as IncubationStoreType,
@@ -42,6 +43,7 @@ export type RunningDaemon = {
   socket: RunningSocket;
   db: Database;
   registry: ProjectRegistry;
+  workspaceRegistry: WorkspaceRegistry;
   incubation: IncubationStore;
   config: ConfigStore;
   events: EventWriter;
@@ -73,6 +75,7 @@ export async function startDaemon(opts: StartDaemonOptions = {}): Promise<Runnin
   let watchdog: RunningWatchdog | undefined;
   const { db } = openDatabase(dbPath);
   const registry = new ProjectRegistry(db);
+  const workspaceRegistry = new WorkspaceRegistry(db);
   const permits = new PermitRegistry(db);
   const incubation = new IncubationStore(db);
   eventStore = new JsonlEventStore(paths.logFile);
@@ -88,6 +91,7 @@ export async function startDaemon(opts: StartDaemonOptions = {}): Promise<Runnin
   const scheduler = new SchedulerService(permits, makeSchedulerConfig(config, events), events, { providerQuota: createProviderQuotaProbe(providerHealth) });
   const routerDeps = makeRouterDeps({
     registry,
+    workspaceRegistry,
     scheduler,
     startedAt,
     config,
@@ -118,6 +122,7 @@ export async function startDaemon(opts: StartDaemonOptions = {}): Promise<Runnin
     socket,
     db,
     registry,
+    workspaceRegistry,
     incubation,
     config,
     events,

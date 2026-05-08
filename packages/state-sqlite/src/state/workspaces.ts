@@ -4,19 +4,11 @@ import type {
   Workspace,
   WorkspaceFilter,
   WorkspaceProject,
+  WorkspaceProjectCounts,
   WorkspaceProjectRole,
   WorkspaceWithCounts,
 } from "@aloop/state-projects";
-import {
-  addProjectToWorkspace,
-  createWorkspace,
-  deleteWorkspace,
-  getWorkspaceById,
-  listWorkspaceProjects,
-  listWorkspaces,
-  removeProjectFromWorkspace,
-  updateWorkspace,
-} from "@aloop/state-projects";
+import { WorkspaceRegistry } from "@aloop/state-projects";
 
 export type {
   CreateWorkspaceInput,
@@ -28,4 +20,4 @@ export type {
   WorkspaceWithCounts,
 } from "@aloop/state-projects";
 
-export { WorkspaceRegistry } from "@aloop/state-projects";
+export { WorkspaceRegistry };

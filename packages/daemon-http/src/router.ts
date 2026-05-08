@@ -15,6 +15,10 @@ export type RouterDeps = {
     req: Request,
     pathname: string,
   ) => Response | Promise<Response | undefined> | undefined;
+  readonly handleWorkspaces: (
+    req: Request,
+    pathname: string,
+  ) => Response | Promise<Response | undefined> | undefined;
 };
 
 /**
@@ -42,6 +46,9 @@ export function makeFetchHandler(
         },
       });
     }
+
+    const workspacesResponse = await deps.handleWorkspaces(req, pathname);
+    if (workspacesResponse) return workspacesResponse;
 
     const projectsResponse = await deps.handleProjects(req, pathname);
     if (projectsResponse) return projectsResponse;

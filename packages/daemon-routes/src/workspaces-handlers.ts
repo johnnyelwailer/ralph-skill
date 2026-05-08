@@ -1,21 +1,8 @@
-import type { Database } from "bun:sqlite";
 import {
   DuplicateWorkspaceProjectError,
   ProjectNotFoundWorkspaceError,
   type CreateWorkspaceInput,
-  type Workspace,
-  type WorkspaceProject,
   type WorkspaceProjectRole,
-  type WorkspaceWithCounts,
-} from "@aloop/state-projects";
-import {
-  addProjectToWorkspace,
-  createWorkspace,
-  deleteWorkspace,
-  getWorkspaceById,
-  listWorkspaceProjects,
-  removeProjectFromWorkspace,
-  updateWorkspace,
 } from "@aloop/state-projects";
 import {
   badRequest,
@@ -60,7 +47,7 @@ export async function createWorkspaceHandler(
     ...(metadata !== undefined && { metadata }),
   };
 
-  const created = createWorkspace(deps.registry, input);
+  const created = deps.registry.create(input);
   return jsonResponse(201, workspaceResponse({ ...created, projectCounts: { total: 0, primary: 0, supporting: 0, dependency: 0, experiment: 0 }, defaultProjectId: null }));
 }
 
@@ -70,7 +57,7 @@ export async function patchWorkspaceHandler(
   req: Request,
   deps: Deps,
 ): Promise<Response> {
-  const existing = getWorkspaceById(deps.registry, id);
+  const existing = deps.registry.get(id);
   if (!existing) {
     return errorResponse(404, "workspace_not_found", `workspace not found: ${id}`, { id });
   }
@@ -78,6 +65,7 @@ export async function patchWorkspaceHandler(
   const body = await parseJsonBody(req);
   if ("error" in body) return body.error;
 
+  // Empty string name is invalid — reject it explicitly like createWorkspaceHandler does
   const name =
     typeof body.data.name === "string" && body.data.name.length > 0
       ? body.data.name
@@ -93,11 +81,19 @@ export async function patchWorkspaceHandler(
       ? (body.data.metadata as Record<string, unknown>)
       : undefined;
 
+  // Reject empty string name explicitly (like createWorkspaceHandler)
+  if (body.data.name !== undefined && typeof body.data.name !== "string") {
+    return badRequest("name must be a string");
+  }
+  if (body.data.name !== undefined && body.data.name.length === 0) {
+    return badRequest("name is required");
+  }
+
   if (name === undefined && description === undefined && defaultBudgetUsdPerDay === undefined && metadata === undefined) {
     return badRequest("no updatable fields provided");
   }
 
-  const updated = updateWorkspace(deps.registry, id, {
+  const updated = deps.registry.update(id, {
     ...(name !== undefined && { name }),
     ...(description !== undefined && { description }),
     ...(defaultBudgetUsdPerDay !== undefined && { defaultBudgetUsdPerDay }),
@@ -113,11 +109,11 @@ export function deleteWorkspaceHandler(
   id: string,
   deps: Deps,
 ): Response {
-  const existing = getWorkspaceById(deps.registry, id);
+  const existing = deps.registry.get(id);
   if (!existing) {
     return errorResponse(404, "workspace_not_found", `workspace not found: ${id}`, { id });
   }
-  deleteWorkspace(deps.registry, id);
+  deps.registry.delete(id);
   return new Response(null, { status: 204 });
 }
 
@@ -126,12 +122,12 @@ export function listWorkspaceProjectsHandler(
   id: string,
   deps: Deps,
 ): Response {
-  const existing = getWorkspaceById(deps.registry, id);
+  const existing = deps.registry.get(id);
   if (!existing) {
     return errorResponse(404, "workspace_not_found", `workspace not found: ${id}`, { id });
   }
 
-  const projects = listWorkspaceProjects(deps.registry, id);
+  const projects = deps.registry.listProjects(id);
   return jsonResponse(200, {
     _v: 1,
     items: projects.map((p) => ({
@@ -149,7 +145,7 @@ export async function addProjectToWorkspaceHandler(
   req: Request,
   deps: Deps,
 ): Promise<Response> {
-  const existing = getWorkspaceById(deps.registry, id);
+  const existing = deps.registry.get(id);
   if (!existing) {
     return errorResponse(404, "workspace_not_found", `workspace not found: ${id}`, { id });
   }
@@ -170,7 +166,7 @@ export async function addProjectToWorkspaceHandler(
   const role = (roleRaw as WorkspaceProjectRole) ?? "supporting";
 
   try {
-    addProjectToWorkspace(deps.registry, id, projectId, role);
+    deps.registry.addProject(id, projectId, role);
   } catch (err) {
     if (err instanceof DuplicateWorkspaceProjectError) {
       return errorResponse(409, "duplicate_workspace_project", err.message, {
@@ -184,7 +180,7 @@ export async function addProjectToWorkspaceHandler(
     throw err;
   }
 
-  const projects = listWorkspaceProjects(deps.registry, id);
+  const projects = deps.registry.listProjects(id);
   const added = projects.find((p) => p.projectId === projectId)!;
   return jsonResponse(201, {
     _v: 1,
@@ -201,12 +197,12 @@ export function removeProjectFromWorkspaceHandler(
   projectId: string,
   deps: Deps,
 ): Response {
-  const workspace = getWorkspaceById(deps.registry, id);
+  const workspace = deps.registry.get(id);
   if (!workspace) {
     return errorResponse(404, "workspace_not_found", `workspace not found: ${id}`, { id });
   }
 
-  const projects = listWorkspaceProjects(deps.registry, id);
+  const projects = deps.registry.listProjects(id);
   const found = projects.find((p) => p.projectId === projectId);
   if (!found) {
     return errorResponse(404, "workspace_project_not_found",
@@ -214,6 +210,34 @@ export function removeProjectFromWorkspaceHandler(
       { workspace_id: id, project_id: projectId });
   }
 
-  removeProjectFromWorkspace(deps.registry, id, projectId);
+  deps.registry.removeProject(id, projectId);
   return new Response(null, { status: 204 });
+}
+
+/** GET /v1/workspaces */
+export function listWorkspacesHandler(
+  req: Request,
+  deps: Deps,
+): Response {
+  const url = new URL(req.url);
+  const filter = parseWorkspaceFilter(url);
+  const workspaces = deps.registry.list(filter);
+  return jsonResponse(200, {
+    _v: 1,
+    items: workspaces.map((w) => workspaceResponse(w)),
+    next_cursor: null,
+  });
+}
+
+/** GET /v1/workspaces/:id */
+export function getWorkspaceHandler(
+  id: string,
+  deps: Deps,
+): Response {
+  const workspace = deps.registry.get(id);
+  if (!workspace) {
+    return errorResponse(404, "workspace_not_found", `workspace not found: ${id}`, { id });
+  }
+  const counts = deps.registry.getProjectCounts(id);
+  return jsonResponse(200, workspaceResponse({ ...workspace, defaultProjectId: counts.defaultProjectId, projectCounts: counts }));
 }

@@ -22,13 +22,20 @@ export {
   type WorkspaceProjectRole,
   type WorkspaceWithCounts,
   DuplicateWorkspaceProjectError,
+  WorkspaceNotFoundError,
+  WorkspaceProjectNotFoundError,
+  ProjectNotFoundWorkspaceError,
 } from "./workspace-types.ts";
 export {
+  addProjectToWorkspace,
   createWorkspace,
   deleteWorkspace,
+  getProjectCounts,
   getWorkspaceById,
   listWorkspaceProjects,
   listWorkspaces,
   removeProjectFromWorkspace,
   updateWorkspace,
 } from "./workspace-queries.ts";
+
+export { WorkspaceRegistry } from "./workspace-registry.ts";

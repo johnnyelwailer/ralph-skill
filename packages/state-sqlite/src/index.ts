@@ -55,3 +55,6 @@ export {
   type IncubationProposal,
   type IncubationItem,
 } from "./state/incubation-store.ts";
+export {
+  WorkspaceRegistry,
+} from "./state/workspaces.ts";
