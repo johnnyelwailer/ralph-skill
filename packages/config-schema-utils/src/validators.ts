@@ -78,6 +78,20 @@ export function posNumField(
   return v;
 }
 
+export function nonNegNumField(
+  v: unknown,
+  path: string,
+  def: number,
+  errors: string[],
+): number {
+  if (v === undefined) return def;
+  if (typeof v !== "number" || !Number.isFinite(v) || v < 0) {
+    errors.push(`${path}: must be a non-negative number`);
+    return def;
+  }
+  return v;
+}
+
 export function pctField(
   v: unknown,
   path: string,

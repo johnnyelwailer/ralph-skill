@@ -22,6 +22,7 @@ export type SchedulerKnobBounds = {
   readonly memMaxPct: Bounds;
   readonly permitTtlDefaultSeconds: Bounds;
   readonly watchdogStuckThresholdSeconds: Bounds;
+  readonly loadMax: Bounds;
 };
 
 /**
@@ -38,7 +39,21 @@ export const SCHEDULER_KNOB_BOUNDS: SchedulerKnobBounds = {
   memMaxPct: { min: 50, max: 95 },
   permitTtlDefaultSeconds: { min: 120, max: 3600 },
   watchdogStuckThresholdSeconds: { min: 120, max: 3600 },
+  loadMax: { min: 0, max: 100 },
 } as const;
+
+// Deep-freeze the outer object and every nested bounds object.
+// Object.isFrozen is verified at runtime in limits-bounds.test.ts §deep-frozen test.
+// Runtime freezing is the DGM-resistance mechanism: agents cannot mutate bounds between calls.
+Object.freeze(SCHEDULER_KNOB_BOUNDS);
+Object.freeze(SCHEDULER_KNOB_BOUNDS.concurrencyCap);
+Object.freeze(SCHEDULER_KNOB_BOUNDS.maxTokensSinceCommit);
+Object.freeze(SCHEDULER_KNOB_BOUNDS.minCommitsPerHour);
+Object.freeze(SCHEDULER_KNOB_BOUNDS.cpuMaxPct);
+Object.freeze(SCHEDULER_KNOB_BOUNDS.memMaxPct);
+Object.freeze(SCHEDULER_KNOB_BOUNDS.permitTtlDefaultSeconds);
+Object.freeze(SCHEDULER_KNOB_BOUNDS.watchdogStuckThresholdSeconds);
+Object.freeze(SCHEDULER_KNOB_BOUNDS.loadMax);
 
 export type BoundViolation = {
   readonly field: string;

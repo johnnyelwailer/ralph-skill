@@ -129,6 +129,10 @@ function checkPatchBounds(patch: SchedulerLimitsPatch): BoundViolation[] {
     );
     if (v) violations.push(v);
   }
+  if (patch.loadMax !== undefined && typeof patch.loadMax === "number") {
+    const v = checkBound("loadMax", patch.loadMax, SCHEDULER_KNOB_BOUNDS.loadMax);
+    if (v) violations.push(v);
+  }
   return violations;
 }
 
