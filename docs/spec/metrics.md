@@ -181,18 +181,18 @@ Recommended `spec_quality_tier` projection:
 
 | Metric | Type | Source | Consumer |
 |---|---|---|---|
-| `incubation_capture_count` | Counter | `incubation.item.changed state=captured` | Dashboard |
-| `incubation_research_completion_rate` | Ratio | `incubation.research.update` | Dashboard, diagnose |
-| `incubation_promotion_rate` | Ratio | `incubation.proposal.changed state=applied`, `incubation.item.changed state=captured` | Dashboard |
-| `incubation_time_to_promotion_p50/p95` | Histogram | `incubation.item.changed`, `incubation.proposal.changed state=applied` | Dashboard |
-| `incubation_source_count_by_kind` | Counter | `incubation.source.recorded` | Dashboard |
-| `incubation_experiment_attempt_count` | Counter | `incubation.experiment.recorded` | Dashboard, budget review |
-| `incubation_experiment_keeper_rate` | Ratio | `incubation.experiment.recorded keep=true/false` | Dashboard, plateau detection |
-| `incubation_experiment_metric_delta` | Gauge | `incubation.experiment.recorded` | Dashboard, plateau detection |
-| `incubation_monitor_alert_rate` | Rate | `incubation.monitor.update alert=true` | Dashboard |
-| `incubation_monitor_cost_per_period` | Gauge | `usage.cost_usd`, grouped by `monitor_id` and period | Dashboard, budget review |
-| `incubation_outreach_approval_count` | Counter | `incubation.outreach.changed state=approved` | Dashboard, audit |
-| `incubation_outreach_response_count` | Counter | `incubation.outreach.changed response_recorded` | Dashboard |
+| `incubation_capture_count` | Counter | `artifact.changed metadata.profile=incubation state=captured` | Dashboard |
+| `incubation_research_completion_rate` | Ratio | `research.update` | Dashboard, diagnose |
+| `incubation_promotion_rate` | Ratio | `proposal.changed state=applied`, `artifact.changed metadata.profile=incubation state=captured` | Dashboard |
+| `incubation_time_to_promotion_p50/p95` | Histogram | `artifact.changed metadata.profile=incubation`, `proposal.changed state=applied` | Dashboard |
+| `incubation_source_count_by_kind` | Counter | `source.recorded` | Dashboard |
+| `incubation_experiment_attempt_count` | Counter | `experiment.recorded` | Dashboard, budget review |
+| `incubation_experiment_keeper_rate` | Ratio | `experiment.recorded keep=true/false` | Dashboard, plateau detection |
+| `incubation_experiment_metric_delta` | Gauge | `experiment.recorded` | Dashboard, plateau detection |
+| `incubation_trigger_alert_rate` | Rate | `trigger.monitor.update alert=true` | Dashboard |
+| `incubation_trigger_cost_per_period` | Gauge | `usage.cost_usd`, grouped by `trigger_id` and period | Dashboard, budget review |
+| `incubation_outreach_approval_count` | Counter | `outreach.changed state=approved` | Dashboard, audit |
+| `incubation_outreach_response_count` | Counter | `outreach.changed response_recorded` | Dashboard |
 
 Incubation metrics are ordinary event projections. Source connectors, monitors, outreach records, and experiment attempts emit events; the existing projector computes metrics. Agents do not report scores that gate their own research or attempts.
 

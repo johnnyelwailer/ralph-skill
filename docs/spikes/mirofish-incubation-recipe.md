@@ -14,8 +14,8 @@ Yes, but only as an opt-in incubation recipe or external runtime extension. It s
 The useful product boundary is:
 
 ```text
-incubation item
-  -> source synthesis / monitor tick gathers evidence
+artifact-backed incubation entry
+  -> source synthesis / trigger tick gathers evidence
   -> optional scenario simulation recipe explores concrete hypotheses
   -> simulation report and limitations are stored as artifacts
   -> synthesis proposal recommends setup, spec change, epic, monitor, decision record, or discard
@@ -55,7 +55,7 @@ Simulation output is scenario evidence, not truth. The final synthesis must pres
 type ScenarioSimulationRecipe = {
   _v: 1;
   id: "mirofish_scenario_simulation";
-  incubation_item_id: string;
+  artifact_id: string;
   question: string;
   seed_material_refs: string[];
   scenario_variables: Array<{
@@ -84,7 +84,7 @@ type ScenarioSimulationRecipe = {
 };
 ```
 
-The concrete TypeScript shape can be deferred until incubation recipe manifests exist. The important boundary is that the daemon owns the item, run, artifacts, source records, budget, and proposal state.
+The concrete TypeScript shape can be deferred until incubation recipe manifests exist. The important boundary is that the daemon owns the artifact profile, session, source records, budget, and proposal artifacts through the shared primitives.
 
 ## Runtime Boundary
 

@@ -6,7 +6,7 @@ export type TriggersDeps = {
   readonly store: TriggerStore;
 };
 
-const VALID_SCOPE_KINDS = ["project", "workspace", "incubation_monitor", "global"] as const;
+const VALID_SCOPE_KINDS = ["project", "workspace", "artifact", "global"] as const;
 const VALID_SOURCE_KINDS = ["time", "event"] as const;
 const VALID_ACTION_KINDS = ["tick_monitor", "create_research_run", "queue_orchestrator_trigger", "emit_alert", "refresh_projection", "create_proposal"] as const;
 

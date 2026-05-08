@@ -30,10 +30,10 @@ This means "setup" should not be treated as a thin preflight script in the imple
 
 Incubation is also cross-cutting, but it must stay thinner than setup in v1.
 
-- **M2** provides the event/state substrate for durable incubation items, research runs, proposal history, and backing-store interfaces that can map to Postgres/object storage.
+- **M2** provides the event/state substrate for durable artifacts, comments, sessions, proposal artifacts, and backing-store interfaces that can map to Postgres/object storage.
 - **M4/M5** provide scheduler-permitted provider execution and worker/lease discipline for non-mutating research runs.
-- **M7/M8** should expose the `/v1/composer` and `/v1/incubation` APIs plus artifact/comment plumbing needed for conversational kickoff, capture, and research evidence.
-- **M9** consumes promoted Epics/Stories/steering through the normal orchestrator path; it must not read raw incubation items as backlog.
+- **M7/M8** should expose `/v1/composer` plus the artifact/comment/trigger/session plumbing needed for conversational kickoff, capture, and research evidence. Incubation is a view over those primitives, not a separate `/v1/incubation` API.
+- **M9** consumes promoted Epics/Stories/steering through the normal orchestrator path; it must not read unpromoted incubation-view artifacts as backlog.
 - **M11** provides the always-ready composer, inbox, research queue, proposal review, mobile capture path, and promotion controls in the dashboard/workstation.
 
 The v1 bar is not a full personal knowledge-management system. It is composer-led durable capture, bounded research, source provenance, lightweight monitors, reviewable synthesis, and explicit promotion into the existing aloop subsystems.
@@ -269,7 +269,7 @@ Provider-specific deployment recipes are templates. Core code must not learn clo
 
 **Deliverable:**
 - Existing React/Vite dashboard rewired to consume v1 API only.
-- Always-ready scoped multimodal composer that can capture typed or spoken intent, links, screenshots, voice notes, documents, and logs; delegate to scoped specialist subagents; create incubation items; start lightweight research; explain status; and observe launched daemon jobs without owning hidden state.
+- Always-ready scoped multimodal composer that can capture typed or spoken intent, links, screenshots, voice notes, documents, and logs; delegate to scoped specialist subagents; create artifact-backed incubation entries; start lightweight research; explain status; and observe launched daemon jobs without owning hidden state.
 - Panels: session list (grouped by project), session detail with live event tail, provider health, scheduler permits, cost + keeper-rate, metric comparison by `variant_id`.
 - Basic setup-run shell: active setup runs, current stage/progress, current question set, background research status, and chapter/document summaries via the same setup API used by the CLI.
 - Steering box, stop button, override editor.

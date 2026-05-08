@@ -520,10 +520,10 @@ describe("GET /v1/artifacts/:id/content with real file", () => {
   });
 });
 
-// ─── GET /v1/artifacts filter params: composer_turn_id, control_subagent_run_id,
-//     incubation_item_id, research_run_id ───────────────────────────────────
+// ─── GET /v1/artifacts filter params: composer_turn_id,
+//     control_subagent_run_id, research_run_id ──────────────────────────────
 
-describe("GET /v1/artifacts filter parameters (incubation/research fields)", () => {
+describe("GET /v1/artifacts filter parameters (composer/research fields)", () => {
   test("filters by composer_turn_id", async () => {
     const deps = makeDeps();
     deps.registry.create({ project_id: "p_ct", kind: "image", filename: "a.png", media_type: "image/png", bytes: 10, composer_turn_id: "ct_abc" });
@@ -551,19 +551,6 @@ describe("GET /v1/artifacts filter parameters (incubation/research fields)", () 
     expect(body.items[0]!.control_subagent_run_id).toBe("csr_1");
   });
 
-  test("filters by incubation_item_id", async () => {
-    const deps = makeDeps();
-    deps.registry.create({ project_id: "p_ii", kind: "image", filename: "a.png", media_type: "image/png", bytes: 10, incubation_item_id: "ii_incub_1" });
-    deps.registry.create({ project_id: "p_ii", kind: "image", filename: "b.png", media_type: "image/png", bytes: 10, incubation_item_id: "ii_incub_2" });
-
-    const req = makeRequest("GET", "/v1/artifacts?incubation_item_id=ii_incub_1");
-    const res = await handleArtifacts(req, deps, "/v1/artifacts");
-    expect(res!.status).toBe(200);
-    const body = await resJson<{ items: Array<{ incubation_item_id: string | null }> }>(res!);
-    expect(body.items).toHaveLength(1);
-    expect(body.items[0]!.incubation_item_id).toBe("ii_incub_1");
-  });
-
   test("filters by research_run_id", async () => {
     const deps = makeDeps();
     deps.registry.create({ project_id: "p_rr", kind: "image", filename: "a.png", media_type: "image/png", bytes: 10, research_run_id: "rr_research_1" });
@@ -577,7 +564,7 @@ describe("GET /v1/artifacts filter parameters (incubation/research fields)", () 
     expect(body.items[0]!.research_run_id).toBe("rr_research_1");
   });
 
-  test("combines incubation/research filters with other filters", async () => {
+  test("combines composer/research filters with other filters", async () => {
     const deps = makeDeps();
     deps.registry.create({ project_id: "p_combo", kind: "image", filename: "match.png", media_type: "image/png", bytes: 10, session_id: "sess_A", phase: "execute", composer_turn_id: "ct_match" });
     deps.registry.create({ project_id: "p_combo", kind: "image", filename: "wrong_sess.png", media_type: "image/png", bytes: 10, session_id: "sess_B", phase: "execute", composer_turn_id: "ct_match" });
@@ -593,10 +580,10 @@ describe("GET /v1/artifacts filter parameters (incubation/research fields)", () 
   });
 });
 
-// ─── POST /v1/artifacts (uploadArtifact): incubation/research optional fields ──
+// ─── POST /v1/artifacts (uploadArtifact): composer/research optional fields ──
 
-describe("POST /v1/artifacts (uploadArtifact) incubation/research fields", () => {
-  test("accepts all incubation and research optional fields", async () => {
+describe("POST /v1/artifacts (uploadArtifact) composer/research fields", () => {
+  test("accepts all composer and research optional fields", async () => {
     const deps = makeDeps();
     const file = new File(["data"], "research.pdf", { type: "application/pdf" });
     const formData = new FormData();
@@ -605,7 +592,6 @@ describe("POST /v1/artifacts (uploadArtifact) incubation/research fields", () =>
     formData.set("file", file);
     formData.set("composer_turn_id", "ct_upload");
     formData.set("control_subagent_run_id", "csr_upload");
-    formData.set("incubation_item_id", "ii_upload");
     formData.set("research_run_id", "rr_upload");
 
     const req = new Request("http://localhost/v1/artifacts", {
@@ -617,18 +603,17 @@ describe("POST /v1/artifacts (uploadArtifact) incubation/research fields", () =>
     const body = await resJson<Record<string, unknown>>(res!);
     expect(body.composer_turn_id).toBe("ct_upload");
     expect(body.control_subagent_run_id).toBe("csr_upload");
-    expect(body.incubation_item_id).toBe("ii_upload");
     expect(body.research_run_id).toBe("rr_upload");
   });
 
-  test("accepts a single incubation/research field independently", async () => {
+  test("accepts a single composer/research field independently", async () => {
     const deps = makeDeps();
     const file = new File(["data"], "wip.txt", { type: "text/plain" });
     const formData = new FormData();
     formData.set("project_id", "p_single_field");
     formData.set("kind", "diff");
     formData.set("file", file);
-    formData.set("incubation_item_id", "ii_only");
+    formData.set("research_run_id", "rr_only");
 
     const req = new Request("http://localhost/v1/artifacts", {
       method: "POST",
@@ -637,9 +622,8 @@ describe("POST /v1/artifacts (uploadArtifact) incubation/research fields", () =>
     const res = await handleArtifacts(req, deps, "/v1/artifacts");
     expect(res!.status).toBe(201);
     const body = await resJson<Record<string, unknown>>(res!);
-    expect(body.incubation_item_id).toBe("ii_only");
+    expect(body.research_run_id).toBe("rr_only");
     expect(body.composer_turn_id).toBeNull();
     expect(body.control_subagent_run_id).toBeNull();
-    expect(body.research_run_id).toBeNull();
   });
 });

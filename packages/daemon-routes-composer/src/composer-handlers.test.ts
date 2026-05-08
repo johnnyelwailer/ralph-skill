@@ -236,7 +236,7 @@ describe("POST /v1/composer/turns", () => {
     const kinds = [
       "global",
       "project",
-      "incubation_item",
+      "artifact",
       "setup_run",
       "work_item",
       "session",

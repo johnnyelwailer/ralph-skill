@@ -9,7 +9,6 @@ export type ArtifactFilter = {
   readonly type?: ArtifactKind;
   readonly composer_turn_id?: string;
   readonly control_subagent_run_id?: string;
-  readonly incubation_item_id?: string;
   readonly research_run_id?: string;
 };
 
@@ -30,7 +29,6 @@ export type Artifact = {
   readonly created_at: string;
   readonly composer_turn_id: string | null;
   readonly control_subagent_run_id: string | null;
-  readonly incubation_item_id: string | null;
   readonly research_run_id: string | null;
 };
 
@@ -49,7 +47,6 @@ export type CreateArtifactInput = {
   readonly now?: string;
   readonly composer_turn_id?: string | null;
   readonly control_subagent_run_id?: string | null;
-  readonly incubation_item_id?: string | null;
   readonly research_run_id?: string | null;
 };
 

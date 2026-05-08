@@ -61,36 +61,6 @@ export {
   runProjector,
   type Projector,
 } from "./state/projector.ts";
-import type { IncubationItemState } from "@aloop/core";
-
-export type IncubationItemFilter = {
-  readonly state?: IncubationItemState;
-  readonly project_id?: string;
-  readonly scope_kind?: "global" | "project" | "candidate_project";
-  /** Full-text search across title and body. */
-  readonly q?: string;
-};
-
-export {
-  IncubationItemNotFoundError,
-  IncubationItemRegistry,
-  IncubationProposalNotFoundError,
-  IncubationProposalRegistry,
-  OutreachPlanNotFoundError,
-  OutreachPlanRegistry,
-  ResearchMonitorNotFoundError,
-  ResearchMonitorRegistry,
-  ResearchRunNotFoundError,
-  ResearchRunRegistry,
-  type CreateIncubationCommentInput,
-  type CreateIncubationItemInput,
-  type CreateIncubationProposalInput,
-  type CreateOutreachPlanInput,
-  type CreateResearchMonitorInput,
-  type CreateResearchRunInput,
-  IncubationCommentNotFoundError,
-  IncubationCommentRegistry,
-} from "./state/incubation.ts";
 export { createIdempotencyStore, type IdempotencyStore } from "./state/idempotency.ts";
 export {
   ComposerTurnNotFoundError,

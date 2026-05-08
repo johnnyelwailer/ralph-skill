@@ -322,9 +322,9 @@ describe("handleEvents", () => {
       mkdirSync(sessionDir, { recursive: true });
 
       writeFileSync(join(sessionDir, "log.jsonl"), [
-        makeEvent("incubation.research.update", { session_id: "s_rrid", research_run_id: "rr_alpha" }, "1748537600000.000001"),
-        makeEvent("incubation.research.update", { session_id: "s_rrid", research_run_id: "rr_beta" }, "1748537600000.000002"),
-        makeEvent("incubation.research.update", { session_id: "s_rrid", research_run_id: "rr_alpha" }, "1748537600000.000003"),
+        makeEvent("research.update", { session_id: "s_rrid", research_run_id: "rr_alpha" }, "1748537600000.000001"),
+        makeEvent("research.update", { session_id: "s_rrid", research_run_id: "rr_beta" }, "1748537600000.000002"),
+        makeEvent("research.update", { session_id: "s_rrid", research_run_id: "rr_alpha" }, "1748537600000.000003"),
       ].join("\n") + "\n");
 
       const req = new Request("http://localhost/v1/events?session_id=s_rrid&research_run_id=rr_alpha", { method: "GET" });
@@ -345,8 +345,8 @@ describe("handleEvents", () => {
       mkdirSync(sessionDir, { recursive: true });
 
       writeFileSync(join(sessionDir, "log.jsonl"), [
-        makeEvent("incubation.research.update", { session_id: "s_norrid", research_run_id: "rr_alpha" }, "1748537600000.000001"),
-        makeEvent("incubation.research.update", { session_id: "s_norrid", research_run_id: "rr_beta" }, "1748537600000.000002"),
+        makeEvent("research.update", { session_id: "s_norrid", research_run_id: "rr_alpha" }, "1748537600000.000001"),
+        makeEvent("research.update", { session_id: "s_norrid", research_run_id: "rr_beta" }, "1748537600000.000002"),
       ].join("\n") + "\n");
 
       const req = new Request("http://localhost/v1/events?session_id=s_norrid", { method: "GET" });

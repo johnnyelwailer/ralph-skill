@@ -176,7 +176,7 @@ POST   /v1/projects/:id/purge  // hard-delete sessions, logs, worktrees
 
 The composer is the universal agentic intent interface for the app. It is used by dashboard, mobile web, CLI, and future capture surfaces to turn natural-language intent into scoped delegation plans, normal daemon-owned objects, and policy-checked daemon mutations.
 
-The composer is not a privileged backend. It should not directly hold every specialized tool. A composer turn may delegate to scoped subagents that create or update incubation items, comments, research runs, monitors, outreach plans, projects, setup runs, tracker proposals, steering instructions, sessions, provider overrides, scheduler limits, daemon config, or project config only through the same daemon mutation path those objects use elsewhere.
+The composer is not a privileged backend. It should not directly hold every specialized tool. A composer turn may delegate to scoped subagents that create or update artifacts, comments, research sessions, trigger-backed monitors, outreach/proposal artifacts, projects, setup runs, tracker proposals, steering instructions, sessions, provider overrides, scheduler limits, daemon config, or project config only through the same daemon mutation path those objects use elsewhere.
 
 The composer is multimodal and voice-first where useful. Clients submit media as artifact references or upload them first through `/v1/artifacts`; the daemon normalizes them into artifacts, derived text, transcripts, OCR, source records, and provenance before provider reasoning.
 
@@ -187,7 +187,7 @@ GET  /v1/composer/turns?scope_kind=<kind>&scope_id=<id>&limit=<n>&cursor=<cursor
 POST /v1/composer/turns
 {
   "scope": {
-    "kind": "global" | "project" | "incubation_item" | "setup_run" | "work_item" | "session" | "spec_section",
+    "kind": "global" | "project" | "artifact" | "setup_run" | "work_item" | "session" | "spec_section",
     "id": "optional-object-id"
   },
   "message": "Research whether mobile capture should become part of aloop.",
@@ -208,7 +208,7 @@ POST /v1/composer/turns
   ],
   "context_refs": [
     { "kind": "project", "project_id": "p_..." },
-    { "kind": "incubation_item", "item_id": "i_..." }
+    { "kind": "artifact", "artifact_id": "a_..." }
   ],
   "intent_hint": "capture|research|monitor|project|setup|plan|configure|steer|explain|summarize|apply",
   "allowed_action_classes": [
@@ -265,8 +265,8 @@ The response includes:
     }
   ],
   "launched_refs": [
-    { "kind": "incubation_item", "id": "i_..." },
-    { "kind": "research_run", "id": "rr_..." }
+    { "kind": "artifact", "id": "a_..." },
+    { "kind": "session", "id": "s_research_..." }
   ],
   "proposed_actions": [
     {
@@ -353,212 +353,40 @@ Transcript metadata should include language, confidence, timing offsets when ava
 
 ## Incubation
 
-Incubation is the API surface for capture, research, synthesis, and explicit promotion before work becomes setup, spec, tracker, or session state. See `incubation.md` for lifecycle and object shapes.
+Incubation has no dedicated v1 endpoint. It is a client/product mode over shared primitives; see `incubation.md`.
 
-### Items
+Clients build incubation inboxes, boards, research queues, monitor views, outreach review, and promotion review by composing:
 
-```
-GET  /v1/incubation/items?scope=global|project|candidate_project&project_id=<id>&state=<csv>&q=<text>&limit=<n>&cursor=<cursor>
-POST /v1/incubation/items
+- `/v1/artifacts` for captured ideas, media, source records, research outputs, outreach drafts, proposal previews, and decision records
+- shared object comments for clarification and review discussion
+- `/v1/composer/turns` for conversational capture, clarification, and delegated research planning
+- `/v1/sessions` for provider-backed research workflows and bounded experiment loops
+- `/v1/triggers` for recurring monitors and event-triggered checks
+- `/v1/events` for replayable history, scheduler decisions, source acquisition events, and promotion audit
+- setup/spec/tracker/session endpoints for explicit promotion
+
+Incubation-specific state is metadata on those objects, for example an artifact metadata block:
+
+```json
 {
-  "scope": { "kind": "global" },
-  "title": "Investigate mobile capture for aloop",
-  "body": "Raw note, link, transcript, or pasted observation.",
-  "labels": ["product"],
-  "priority": "normal",
-  "artifact_ids": [],
-  "source": { "client": "mobile-web", "url": "https://example.com" }
-}
-GET    /v1/incubation/items/:id
-PATCH  /v1/incubation/items/:id
-DELETE /v1/incubation/items/:id        // archive by default; hard delete is a future policy-gated operation
-```
-
-`PATCH` may edit title/body/labels/priority/state, but may not set `promoted` directly. Promotion happens through proposals.
-
-### Comments
-
-```
-GET  /v1/incubation/items/:id/comments
-POST /v1/incubation/items/:id/comments
-{ "body": "Clarification or feedback", "artifact_refs": [] }
-```
-
-Comments are durable object-level discussion. They are not a chat transcript hidden inside a client.
-
-### Research runs
-
-```
-GET  /v1/incubation/items/:id/research-runs
-POST /v1/incubation/items/:id/research-runs
-{
-  "mode": "source_synthesis",
-  "question": "What architecture changes would mobile capture require?",
-  "provider_chain": ["opencode", "codex", "claude"],
-  "source_plan": {
-    "allowed_kinds": ["official_docs", "forum", "video", "social"],
-    "queries": ["mobile capture developer workflow research"],
-    "urls": [],
-    "max_sources": 25,
-    "require_citations": true,
-    "privacy_classification": "public"
-  },
-  "context_refs": [
-    { "kind": "project", "project_id": "p_..." },
-    { "kind": "artifact", "artifact_id": "a_..." }
-  ],
-  "max_cost_usd": 5.00
-}
-GET    /v1/incubation/research-runs/:id
-POST   /v1/incubation/research-runs/:id/pause
-POST   /v1/incubation/research-runs/:id/resume
-DELETE /v1/incubation/research-runs/:id
-GET    /v1/incubation/research-runs/:id/events
-```
-
-Research runs acquire scheduler permits before provider turns. They are non-mutating by default and return findings, artifacts, open questions, and candidate proposals.
-
-`mode` is one of `source_synthesis`, `monitor_tick`, `outreach_analysis`, or `experiment_loop`. `source_synthesis` requires a `source_plan`; `experiment_loop` requires an `experiment_plan`; monitor-created runs set `monitor_id`.
-
-### Experiment loops
-
-```
-POST /v1/incubation/items/:id/research-runs
-{
-  "mode": "experiment_loop",
-  "question": "Find a faster parser configuration for this benchmark.",
-  "provider_chain": ["codex", "opencode"],
-  "experiment_plan": {
-    "mutable_surface": { "kind": "config", "refs": ["bench/parser/config.yml"] },
-    "immutable_oracle": {
-      "kind": "benchmark",
-      "ref": "bench/parser/run.sh",
-      "metric": "p95_latency_ms",
-      "direction": "minimize"
+  "incubation": {
+    "lifecycle": "captured",
+    "scope": { "kind": "project", "project_id": "p_..." },
+    "title": "Investigate mobile capture for aloop",
+    "labels": ["product"],
+    "priority": "normal",
+    "source": {
+      "client": "mobile-web",
+      "captured_at": "2026-05-08T10:00:00.000Z",
+      "url": "https://example.com"
     },
-    "attempt_budget": {
-      "max_attempts": 50,
-      "max_duration_seconds_per_attempt": 300,
-      "max_cost_usd": 20.00
-    },
-    "decision_rule": {
-      "keep_if": "p95_latency_ms improves by >= 3% without correctness failures",
-      "revert_or_discard_if": "benchmark fails or improvement is below threshold"
-    },
-    "stop_conditions": ["no improvement after 10 attempts", "budget exhausted"]
+    "related_artifact_ids": [],
+    "promoted_refs": []
   }
 }
-GET /v1/incubation/research-runs/:id/experiments
 ```
 
-Experiment loops are AutoResearch-style bounded loops. The daemon records each attempt, metric result, environment labels, cost, and keep/reject decision. Winners are artifacts/proposals until explicitly promoted.
-
-Attempts execute through the same sandbox/exec machinery used by deterministic workflow steps. Attempt history is an event projection, not a second experiment database.
-
-### Source records
-
-```
-GET /v1/incubation/research-runs/:id/sources
-GET /v1/incubation/sources/:source_id
-```
-
-Source records capture provenance for every external input used by a research run: source kind, URL or stable locator, title/author when known, retrieval timestamp, citation metadata, transcript/artifact references, confidence notes, and policy limitations.
-
-Source records are daemon artifacts plus StateStore projections over EventStore history. The API exposes the normalized records; source connectors themselves are runtime extensions, not a separate API/runtime family.
-
-### Monitors
-
-```
-GET  /v1/incubation/items/:id/monitors
-POST /v1/incubation/items/:id/monitors
-{
-  "question": "Track how browser automation agents evolve over the next quarter.",
-  "cadence": "weekly",
-  "event_triggers": [
-    {
-      "topic": "provider.model_catalog.changed",
-      "filters": { "provider_id": "opencode", "tracked_only": true },
-      "debounce_seconds": 86400
-    }
-  ],
-  "mode": "monitor_tick",
-  "source_plan": {
-    "allowed_kinds": ["official_docs", "repository", "forum", "social", "video"],
-    "queries": ["browser automation agent release notes", "computer use agent benchmarks"],
-    "max_sources": 50,
-    "require_citations": true,
-    "privacy_classification": "public"
-  },
-  "synthesis_policy": {
-    "mode": "alert_on_change",
-    "alert_conditions": ["major product launch", "pricing change", "new benchmark result"]
-  },
-  "max_cost_usd_per_run": 3.00
-}
-GET    /v1/incubation/monitors/:id
-PATCH  /v1/incubation/monitors/:id
-POST   /v1/incubation/monitors/:id/pause
-POST   /v1/incubation/monitors/:id/resume
-DELETE /v1/incubation/monitors/:id
-GET    /v1/incubation/monitors/:id/runs
-```
-
-Each monitor tick creates a normal research run with `monitor_id` set. Monitors do not mutate project, tracker, spec, or session state directly.
-
-Monitor scheduling is backed by the daemon trigger engine. Monitor ticks do not bypass scheduler permits, provider policy, or source-connector policy.
-
-### Outreach
-
-```
-GET  /v1/incubation/items/:id/outreach
-POST /v1/incubation/items/:id/outreach
-{
-  "kind": "survey_plan",
-  "title": "Survey solo builders about autonomous coding dashboards",
-  "target_audience": "solo developers and small-team technical founders",
-  "draft": "...",
-  "consent_text": "...",
-  "personal_data_classification": "sensitive",
-  "send_mode": "manual_export"
-}
-GET   /v1/incubation/outreach/:id
-PATCH /v1/incubation/outreach/:id
-POST  /v1/incubation/outreach/:id/approve
-POST  /v1/incubation/outreach/:id/record-response
-```
-
-Agents may draft outreach and analyze recorded responses. Outbound contact is denied unless the outreach object has explicit human approval and the configured adapter/policy permits sending. `manual_export` creates an artifact for the human to use elsewhere; it does not send.
-
-Outreach adapters, when added, use the same daemon adapter/audit pattern as tracker adapters. The API never exposes a raw email/social/survey-send side channel to agents or clients.
-
-### Proposals and promotion
-
-```
-GET  /v1/incubation/items/:id/proposals
-POST /v1/incubation/items/:id/proposals
-{
-  "kind": "epic",
-  "title": "Mobile capture and incubation inbox",
-  "body": "...",
-  "rationale": "...",
-  "evidence_refs": ["a_..."],
-  "target": { "kind": "project", "project_id": "p_..." }
-}
-GET   /v1/incubation/proposals/:id
-PATCH /v1/incubation/proposals/:id
-POST  /v1/incubation/proposals/:id/apply
-```
-
-`apply` performs the target-specific mutation and returns the created target reference. Examples:
-
-- `setup_run` -> `POST /v1/setup/runs`
-- `spec_change` -> creates a reviewable spec/document proposal
-- `epic` / `story` -> tracker adapter `createWorkItem`
-- `steering` -> `POST /v1/sessions/:id/steer`
-- `decision_record` -> durable non-implementation note
-- `discard` -> closes the item with rationale
-
-The daemon records back-links both ways: the promoted target references the incubation item, and the item records `promoted_refs`.
+Incubation capture, research runs, monitors, outreach plans, comments, proposals, and promotion use subtype/configuration data on artifacts, comments, composer turns, sessions, triggers, and target-system mutations. Per CONSTITUTION §V.24, any missing capability belongs in a generic primitive enhancement rather than an incubation-specific route family.
 
 ## Sessions
 
@@ -668,7 +496,7 @@ Response: `text/event-stream`.
 - `topics`: csv of topic patterns, `*` is glob. Default subscribes to all.
 - `project_id`: filter to a project's events.
 - `session_id`: filter to a single session.
-- `research_run_id`: filter to a single incubation research run.
+- `research_run_id`: filter to a research run. Prefer `session_id` for new provider-backed research; this field is a compatibility filter for older research-run-scoped events.
 - `composer_turn_id`: filter to a single composer turn.
 - `control_subagent_run_id`: filter to a single scoped control subagent run.
 - `parent`: filter to a session's children (for orchestrators).
@@ -709,15 +537,15 @@ Every event has a monotonic `id` (ms timestamp + sequence). Events are durable (
 | `composer.turn.changed` | composer turn queued, running, waiting for approval, completed, failed, or cancelled | composer turn summary |
 | `composer.subagent.changed` | scoped control subagent queued, running, completed, failed, or cancelled | control subagent run summary |
 | `composer.action.previewed` | composer produced a structured mutation preview requiring approval | preview summary |
-| `incubation.item.changed` | capture/edit/state change on an incubation item | incubation item summary |
-| `incubation.comment.created` | comment added to an incubation item | comment summary |
-| `incubation.research.update` | research run status, findings, or cost changed | research run summary |
-| `incubation.source.recorded` | external source captured for a research run | source record summary |
+| `artifact.changed` | artifact capture/edit/state/metadata change, including incubation lifecycle metadata | artifact summary |
+| `comment.created` | comment added to a daemon-owned object | comment summary |
+| `research.update` | research session status, findings, or cost changed | research summary |
+| `source.recorded` | external source captured for a research run | source record summary |
 | `model_intelligence.candidate_recorded` | model-landscape research identified a candidate provider/model route | candidate record summary |
-| `incubation.experiment.recorded` | experiment-loop attempt finished | experiment attempt summary |
-| `incubation.monitor.update` | monitor created, ticked, paused, alerted, or cancelled | monitor summary |
-| `incubation.outreach.changed` | outreach plan, approval, or response state changed | outreach summary |
-| `incubation.proposal.changed` | proposal created, edited, applied, or rejected | proposal summary |
+| `experiment.recorded` | experiment-loop attempt finished | experiment attempt summary |
+| `trigger.monitor.update` | monitor trigger created, ticked, paused, alerted, or cancelled | monitor summary |
+| `outreach.changed` | outreach artifact, approval, or response state changed | outreach summary |
+| `proposal.changed` | proposal artifact created, edited, applied, or rejected | proposal summary |
 | `agent.chunk` | streaming content from a provider turn | see below |
 | `daemon.log` | daemon stdout relayed over SSE | `{level, message, fields}` |
 
@@ -738,14 +566,14 @@ Returns `application/x-ndjson`, streaming. Useful for exports, offline analysis,
 
 ## Artifacts
 
-Artifacts are daemon-managed files associated with sessions, composer turns, control subagent runs, setup runs, incubation items, research runs, work items, or change sets. Proof outputs are the primary source, but clients may also upload images, audio, video, documents, or other files that should be referenced in discussion or composer turns.
+Artifacts are daemon-managed files associated with sessions, composer turns, control subagent runs, setup runs, research runs, work items, change sets, or artifact-to-artifact relationships. Proof outputs are the primary source, but clients may also upload images, audio, video, documents, or other files that should be referenced in discussion or composer turns.
 
 This is the minimal runtime primitive that enables multimodal feedback without requiring clients or agents to speak tracker-native upload APIs.
 
 ### List / inspect / content
 
 ```
-GET /v1/artifacts?project_id=<id>&session_id=<id>&composer_turn_id=<id>&control_subagent_run_id=<id>&setup_run_id=<id>&incubation_item_id=<id>&research_run_id=<id>&work_item_key=<key>&phase=proof&type=screenshot
+GET /v1/artifacts?project_id=<id>&session_id=<id>&composer_turn_id=<id>&control_subagent_run_id=<id>&setup_run_id=<id>&research_run_id=<id>&work_item_key=<key>&phase=proof&type=screenshot
 GET /v1/artifacts/:id
 GET /v1/artifacts/:id/content
 ```
@@ -765,7 +593,6 @@ Illustrative metadata shape:
   "composer_turn_id": null,
   "control_subagent_run_id": null,
   "setup_run_id": null,
-  "incubation_item_id": null,
   "research_run_id": null,
   "kind": "screenshot",
   "phase": "proof",
@@ -789,7 +616,6 @@ fields:
   composer_turn_id=<id>?   // optional
   control_subagent_run_id=<id>? // optional
   setup_run_id=<id>?       // optional
-  incubation_item_id=<id>? // optional
   research_run_id=<id>?    // optional
   work_item_key=<key>?     // optional
   kind=image|screenshot|audio|speech|video|document|transcript|mockup|diff|log|code|other
@@ -948,7 +774,7 @@ POST /v1/scheduler/permits
 }
 ```
 
-Exactly one of `session_id`, `research_run_id`, `composer_turn_id`, or `control_subagent_run_id` is required. Sessions are the normal owner for implementation and orchestration turns; research runs are the owner for incubation research turns; composer turns are the owner for provider-backed intent-resolution turns; control subagent runs are the owner for scoped delegated control turns.
+Exactly one of `session_id`, `research_run_id`, `composer_turn_id`, or `control_subagent_run_id` is required. Sessions are the normal owner for implementation, orchestration, and provider-backed research turns; `research_run_id` remains as a compatibility owner for older research-run projections; composer turns are the owner for provider-backed intent-resolution turns; control subagent runs are the owner for scoped delegated control turns.
 
 Returns:
 
@@ -1001,7 +827,7 @@ Triggers are daemon-owned time/event rules. They create or refresh daemon work; 
 GET  /v1/triggers
 POST /v1/triggers
 {
-  "scope": { "kind": "project|workspace|incubation_monitor|global", "id": "p_..." },
+  "scope": { "kind": "project|workspace|artifact|global", "id": "p_..." },
   "source": {
     "kind": "time|event",
     "schedule": "P14D",

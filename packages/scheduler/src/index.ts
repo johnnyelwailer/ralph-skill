@@ -8,7 +8,6 @@ export {
   detectStuckSessions,
   recoverCrashedSessions,
   refreshProviderHealth,
-  tickIncubationMonitors,
   watchSessionBurnRates,
   readLastLineOfLog,
   parseEventTimestamp,

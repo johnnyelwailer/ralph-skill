@@ -18,7 +18,6 @@ CREATE TABLE IF NOT EXISTS artifacts (
   created_at   TEXT NOT NULL,
   composer_turn_id        TEXT,
   control_subagent_run_id TEXT,
-  incubation_item_id      TEXT,
   research_run_id          TEXT
 );
 

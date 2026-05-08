@@ -10,7 +10,7 @@
 export type ComposerTurnScopeKind =
   | "global"
   | "project"
-  | "incubation_item"
+  | "artifact"
   | "setup_run"
   | "work_item"
   | "session"
@@ -58,7 +58,7 @@ export type ComposerMediaInput = {
 
 export type ComposerContextRef =
   | { readonly kind: "project"; readonly project_id: string }
-  | { readonly kind: "incubation_item"; readonly item_id: string }
+  | { readonly kind: "artifact"; readonly artifact_id: string }
   | { readonly kind: "session"; readonly session_id: string }
   | { readonly kind: "work_item"; readonly work_item_key: string };
 
@@ -143,7 +143,7 @@ export type ComposerDelegatedRefStatus =
 // ---------------------------------------------------------------------------
 
 export type ComposerLaunchedRef =
-  | { readonly kind: "incubation_item"; readonly id: string }
+  | { readonly kind: "artifact"; readonly id: string }
   | { readonly kind: "research_run"; readonly id: string }
   | { readonly kind: "research_monitor"; readonly id: string }
   | { readonly kind: "setup_run"; readonly id: string }

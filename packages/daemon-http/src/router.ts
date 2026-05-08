@@ -55,11 +55,6 @@ export type RouterDeps = {
     req: Request,
     pathname: string,
   ) => Response | Promise<Response | undefined> | undefined;
-  /** Incubation: /v1/incubation/* */
-  readonly handleIncubation: (
-    req: Request,
-    pathname: string,
-  ) => Response | Promise<Response | undefined> | undefined;
   /** Composer: /v1/composer/* */
   readonly handleComposer: (
     req: Request,
@@ -128,9 +123,6 @@ export function makeFetchHandler(
 
     const triggersResponse = await deps.handleTriggers(req, pathname);
     if (triggersResponse) return triggersResponse;
-
-    const incubationResponse = await deps.handleIncubation(req, pathname);
-    if (incubationResponse) return incubationResponse;
 
     const composerResponse = await deps.handleComposer(req, pathname);
     if (composerResponse) return composerResponse;

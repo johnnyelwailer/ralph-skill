@@ -2,7 +2,7 @@ import { createReadStream } from "node:fs";
 import { createInterface } from "node:readline";
 import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import type { Database, EventWriter } from "@aloop/state-sqlite";
+import type { EventWriter } from "@aloop/state-sqlite";
 import type { InMemoryProviderHealthStore, ProviderRegistry } from "@aloop/provider";
 import type { BurnRateSample } from "@aloop/scheduler-gates";
 
@@ -183,75 +183,6 @@ export async function refreshProviderHealth(
 }
 
 /**
- * Advance the `next_run_at` of a monitor based on its cadence.
- */
-function advanceMonitorNextRun(
-  cadence: { cron?: string } | string,
-  currentNextRun: string,
-): string {
-  const msPerUnit: Record<string, number> = {
-    hourly: 3_600_000,
-    daily: 86_400_000,
-    weekly: 604_800_000,
-    monthly: 2_629_746_000,
-  };
-  const current = new Date(currentNextRun).getTime();
-  if (typeof cadence === "string" && msPerUnit[cadence]) {
-    return new Date(current + msPerUnit[cadence]!).toISOString();
-  }
-  // For cron cadence, advance by the smallest unit (hourly) as a safe approximation;
-  // full cron resolution is not available without a cron library.
-  return new Date(current + msPerUnit["hourly"]!).toISOString();
-}
-
-/**
- * Scan active research monitors and fire any whose `next_run_at` has passed.
- * Creates a research run for each due monitor and emits `incubation.monitor.update`.
- */
-export async function tickIncubationMonitors(
-  db: Database,
-  events: EventWriter,
-  now: () => string = () => new Date().toISOString(),
-): Promise<number> {
-  const monitorReg = new ResearchMonitorRegistry(db);
-  const runReg = new ResearchRunRegistry(db);
-
-  const monitors = monitorReg.listActive();
-  const currentTime = now();
-  let fired = 0;
-
-  for (const monitor of monitors) {
-    if (monitor.next_run_at > currentTime) continue;
-
-    // Create a research run for this monitor tick
-    const runInput: CreateResearchRunInput = {
-      item_id: monitor.item_id,
-      mode: "source_synthesis",
-      question: monitor.question,
-      source_plan: monitor.source_plan,
-      monitor_id: monitor.id,
-    };
-    const run = runReg.create(runInput);
-
-    // Advance next_run_at
-    const nextRun = advanceMonitorNextRun(monitor.cadence, monitor.next_run_at);
-    monitorReg.updateNextRun(monitor.id, nextRun);
-
-    await events.append("incubation.monitor.update", {
-      monitor_id: monitor.id,
-      research_run_id: run.id,
-      item_id: monitor.item_id,
-      next_run_at: nextRun,
-      fired_at: now(),
-    });
-
-    fired++;
-  }
-
-  return fired;
-}
-
-/**
  * Scan active (running) sessions and proactively emit `scheduler.burn_rate_exceeded`
  * for any whose burn-rate probe indicates the threshold is already breached.
  */
@@ -314,15 +245,6 @@ export type WatchdogJobs = {
     providerRegistry: ProviderRegistry,
     providerHealth: InMemoryProviderHealthStore,
     events: EventWriter,
-  ): Promise<number>;
-  /**
-   * Scan active research monitors and fire any whose `next_run_at` has passed.
-   * Creates a research run for each due monitor and emits `incubation.monitor.update`.
-   */
-  tickIncubationMonitors(
-    db: Database,
-    events: EventWriter,
-    now?: () => string,
   ): Promise<number>;
   /**
    * Scan active sessions and proactively emit `scheduler.burn_rate_exceeded` for any

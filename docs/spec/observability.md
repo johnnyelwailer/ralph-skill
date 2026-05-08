@@ -29,7 +29,7 @@
 
 3. **Sessions are replayable.** A daemon crash, upgrade, or graceful stop leaves the session resumable. State reconstructs from JSONL and the scheduler's durable permit table. No in-process state is load-bearing across restarts.
 
-4. **Metrics that gate permits are daemon-computed.** Agents produce events; projectors compute metrics from events. No agent emits a metric value that gates its own permits — the DGM-resistance rule (CONSTITUTION.md §IX.36).
+4. **Metrics that gate permits are daemon-computed.** Agents produce events; projectors compute metrics from events. No agent emits a metric value that gates its own permits — the DGM-resistance rule (CONSTITUTION.md §IX.37).
 
 5. **Silent fallbacks are forbidden.** If a metric value is missing and has no documented default, the endpoint fails loud. Hidden defaults are bugs.
 
@@ -290,7 +290,7 @@ The rebuild procedure:
 
 ## Metrics from projections
 
-Metrics are computed at read time from SQLite projections. No agent emits a metric value that gates its own permits — this is enforced structurally (CONSTITUTION.md §IX.36).
+Metrics are computed at read time from SQLite projections. No agent emits a metric value that gates its own permits — this is enforced structurally (CONSTITUTION.md §IX.37).
 
 **Scheduler metrics (from `scheduler_metrics` projection):**
 

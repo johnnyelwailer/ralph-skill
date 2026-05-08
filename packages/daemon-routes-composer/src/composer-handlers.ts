@@ -93,7 +93,7 @@ function turnListResponse(
 // ---------------------------------------------------------------------------
 
 const VALID_SCOPE_KINDS = new Set<string>([
-  "global", "project", "incubation_item", "setup_run",
+  "global", "project", "artifact", "setup_run",
   "work_item", "session", "spec_section",
 ]);
 
@@ -122,7 +122,7 @@ const VALID_TRANSCRIPTION_MODES = new Set<string>([
 ]);
 
 const VALID_CONTEXT_REF_KINDS = new Set<string>([
-  "project", "incubation_item", "session", "work_item",
+  "project", "artifact", "session", "work_item",
 ]);
 
 function validateScopeKind(kind: unknown): ComposerTurnScopeKind | null {
@@ -176,9 +176,9 @@ function validateContextRef(ref: unknown): ComposerContextRef | null {
     if (typeof r.project_id !== "string") return null;
     return { kind: "project", project_id: r.project_id };
   }
-  if (kind === "incubation_item") {
-    if (typeof r.item_id !== "string") return null;
-    return { kind: "incubation_item", item_id: r.item_id };
+  if (kind === "artifact") {
+    if (typeof r.artifact_id !== "string") return null;
+    return { kind: "artifact", artifact_id: r.artifact_id };
   }
   if (kind === "session") {
     if (typeof r.session_id !== "string") return null;

@@ -281,7 +281,7 @@ Internal to the daemon, not external cron. These are built-in trigger/reconcile 
 | **Permit expiry sweep** | Release expired permits | Reclaim capacity, emit event |
 | **Orphan worker** | Child process has no corresponding session | Kill process, log |
 | **Burn-rate watch** | Per-session token/commit ratio | Deny future permits for that session, emit `scheduler.burn_rate_exceeded` |
-| **Incubation monitor tick** | Monitor time trigger or matching event trigger fires and budget/policy permits | Create a normal research run with `monitor_id`, emit `incubation.monitor.update` |
+| **Research monitor trigger** | Trigger schedule or matching event trigger fires and budget/policy permits | Create a normal research session with `trigger_id`, emit `trigger.monitor.update` |
 | **Crash recovery** | At startup only: scan sessions marked `running` | Move to `interrupted`, offer resume via API |
 
 All watchdog findings publish events on the global bus. Self-healing behavior is an **orchestrator workflow** subscribing to those events — not daemon-side logic.

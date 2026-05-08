@@ -80,9 +80,6 @@ function listArtifacts(req: Request, deps: ArtifactsDeps): Response {
   const controlSubagentRunId = url.searchParams.get("control_subagent_run_id");
   if (controlSubagentRunId) (filter as Record<string, string>).control_subagent_run_id = controlSubagentRunId;
 
-  const incubationItemId = url.searchParams.get("incubation_item_id");
-  if (incubationItemId) (filter as Record<string, string>).incubation_item_id = incubationItemId;
-
   const researchRunId = url.searchParams.get("research_run_id");
   if (researchRunId) (filter as Record<string, string>).research_run_id = researchRunId;
 
@@ -183,9 +180,6 @@ async function uploadArtifact(req: Request, deps: ArtifactsDeps): Promise<Respon
   const controlSubagentRunId = formData.get("control_subagent_run_id");
   const controlSubagentRunIdValue = typeof controlSubagentRunId === "string" ? controlSubagentRunId : null;
 
-  const incubationItemId = formData.get("incubation_item_id");
-  const incubationItemIdValue = typeof incubationItemId === "string" ? incubationItemId : null;
-
   const researchRunId = formData.get("research_run_id");
   const researchRunIdValue = typeof researchRunId === "string" ? researchRunId : null;
 
@@ -202,7 +196,6 @@ async function uploadArtifact(req: Request, deps: ArtifactsDeps): Promise<Respon
     bytes,
     composer_turn_id: composerTurnIdValue?.trim() ?? null,
     control_subagent_run_id: controlSubagentRunIdValue?.trim() ?? null,
-    incubation_item_id: incubationItemIdValue?.trim() ?? null,
     research_run_id: researchRunIdValue?.trim() ?? null,
   });
 

@@ -21,14 +21,6 @@ export type StartSchedulerWatchdogInput = {
     events: EventWriter,
   ): Promise<number>;
   /**
-   * Tick active research monitors and create research runs for any that are due.
-   */
-  tickIncubationMonitors?(
-    db: unknown,
-    events: EventWriter,
-    now?: () => string,
-  ): Promise<number>;
-  /**
    * Proactively scan active sessions for burn-rate threshold violations.
    */
   watchSessionBurnRates?(
@@ -44,8 +36,6 @@ export type StartSchedulerWatchdogInput = {
   providerHealth?: InMemoryProviderHealthStore;
   events?: EventWriter;
   quotaPollIntervalSeconds?: number;
-  /** Injected at startup so tickIncubationMonitors can access the DB. */
-  db?: unknown;
   burnRateProbe?: (sessionId: string) => BurnRateSample | Promise<BurnRateSample | null> | null;
   maxTokensSinceCommit?: number;
   minCommitsPerHour?: number;
@@ -90,9 +80,6 @@ export function startSchedulerWatchdog(input: StartSchedulerWatchdogInput): Runn
               input.events,
             );
           }
-        }
-        if (input.tickIncubationMonitors && input.db && input.events) {
-          await input.tickIncubationMonitors(input.db, input.events);
         }
         if (
           input.watchSessionBurnRates &&

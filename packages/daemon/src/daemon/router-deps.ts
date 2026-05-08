@@ -22,7 +22,6 @@ import { handleTurns as handleTurnsRoute, type TurnsDeps } from "@aloop/daemon-r
 import type { ArtifactRegistry, EventWriter, IdempotencyStore, ProjectRegistry, WorkspaceRegistry } from "@aloop/state-sqlite";
 import type { SchedulerService } from "@aloop/scheduler";
 import { handleDaemon as handleDaemonRoute } from "../routes/daemon.ts";
-import { handleIncubation as handleIncubationRoute, type IncubationDeps } from "@aloop/daemon-routes-incubation";
 import { handleComposer as handleComposerRoute, type ComposerDeps } from "@aloop/daemon-routes-composer";
 import { createMetricsDeps, createMetricsAggregatesDeps, createSessionSetup } from "./router-deps-helpers.ts";
 
@@ -123,11 +122,6 @@ export function makeRouterDeps(input: MakeRouterDepsInput): RouterDeps {
     handleTriggers: (req, pathname) =>
       handleTriggersRoute(req, {
         store: new TriggerStore({ triggersDir: join(input.config.paths().stateDir, "triggers") }),
-      }, pathname),
-    handleIncubation: (req, pathname) =>
-      handleIncubationRoute(req, {
-        db: input.db,
-        sessionsDir: () => join(input.config.paths().stateDir, "sessions"),
       }, pathname),
     handleComposer: (req, pathname) =>
       handleComposerRoute(req, { db: input.db }, pathname),
