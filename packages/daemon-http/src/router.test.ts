@@ -21,6 +21,7 @@ function makeDeps() {
     handleScheduler: () => undefined,
     handleWorkspaces: () => undefined,
     handleIncubation: () => undefined,
+    handleSessions: () => undefined,
   };
 }
 
@@ -168,6 +169,7 @@ describe("makeFetchHandler dispatch order", () => {
       },
       handleWorkspaces: () => undefined,
       handleIncubation: () => undefined,
+      handleSessions: () => undefined,
     };
   }
 

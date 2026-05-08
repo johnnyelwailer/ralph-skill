@@ -23,6 +23,10 @@ export type RouterDeps = {
     req: Request,
     pathname: string,
   ) => Response | Promise<Response | undefined> | undefined;
+  readonly handleSessions: (
+    req: Request,
+    pathname: string,
+  ) => Response | Promise<Response | undefined> | undefined;
 };
 
 /**
@@ -65,6 +69,9 @@ export function makeFetchHandler(
 
     const incubationResponse = await deps.handleIncubation(req, pathname);
     if (incubationResponse) return incubationResponse;
+
+    const sessionsResponse = await deps.handleSessions(req, pathname);
+    if (sessionsResponse) return sessionsResponse;
 
     return new Response(
       JSON.stringify({

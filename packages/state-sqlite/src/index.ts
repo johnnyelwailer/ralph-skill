@@ -57,4 +57,17 @@ export {
 } from "./state/incubation-store.ts";
 export {
   WorkspaceRegistry,
-} from "./state/workspaces.ts";
+} from "./state/workspaces";
+export {
+  SessionRegistry,
+  type SessionQueueItem,
+} from "./state/sessions-registry";
+export type {
+  Session,
+  SessionKind,
+  SessionStatus,
+  SessionFilter,
+  CreateSessionInput,
+  SessionNotFoundError,
+  AffectsCompletedWork,
+} from "./state/sessions-store";
