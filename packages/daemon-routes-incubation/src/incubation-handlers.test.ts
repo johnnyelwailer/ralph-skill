@@ -653,6 +653,153 @@ describe("IncubationProposal", () => {
 });
 
 // ---------------------------------------------------------------------------
+// POST /v1/incubation/proposals/:id/apply
+// Spec: docs/spec/api.md §Proposals and promotion (line 549).
+// ---------------------------------------------------------------------------
+
+describe("IncubationProposal apply", () => {
+  // Helper: create a proposal in "ready" state with the given target.
+  async function createReadyProposal(target: Record<string, unknown>): Promise<Record<string, unknown>> {
+    const item = await createItem(handler, deps);
+    const createResp = await makeRequest(handler, deps, "POST", `/v1/incubation/items/${item.id}/proposals`, {
+      kind: "spec_change",
+      title: "Apply test proposal",
+      rationale: "Testing apply endpoint",
+      target,
+    });
+    const proposal = await createResp.json() as Record<string, unknown>;
+
+    // Move to ready state.
+    const patchResp = await makeRequest(handler, deps, "PATCH", `/v1/incubation/proposals/${proposal.id}`, {
+      state: "ready",
+    });
+    expect(patchResp.status).toBe(200);
+    return proposal;
+  }
+
+  test("POST /v1/incubation/proposals/:id/apply returns 404 for unknown id", async () => {
+    const resp = await makeRequest(handler, deps, "POST", "/v1/incubation/proposals/does-not-exist/apply");
+    expect(resp.status).toBe(404);
+  });
+
+  test("POST /v1/incubation/proposals/:id/apply returns 400 if proposal is not in ready state", async () => {
+    const item = await createItem(handler, deps);
+    const createResp = await makeRequest(handler, deps, "POST", `/v1/incubation/items/${item.id}/proposals`, {
+      kind: "decision_record",
+      title: "Draft proposal",
+      target: { type: "decision_record" },
+    });
+    const proposal = await createResp.json() as Record<string, unknown>;
+    expect(proposal.state).toBe("draft");
+
+    const resp = await makeRequest(handler, deps, "POST", `/v1/incubation/proposals/${proposal.id}/apply`);
+    expect(resp.status).toBe(400);
+    const body = await resp.json() as Record<string, unknown>;
+    expect((body.error as Record<string, unknown>).code).toBe("bad_request");
+    expect(((body.error as Record<string, unknown>).details as Record<string, unknown>).current_state).toBe("draft");
+  });
+
+  test("POST /v1/incubation/proposals/:id/apply returns 400 if proposal has no target", async () => {
+    const item = await createItem(handler, deps);
+    const createResp = await makeRequest(handler, deps, "POST", `/v1/incubation/items/${item.id}/proposals`, {
+      kind: "decision_record",
+      title: "No-target proposal",
+    });
+    const proposal = await createResp.json() as Record<string, unknown>;
+
+    // Move to ready state.
+    await makeRequest(handler, deps, "PATCH", `/v1/incubation/proposals/${proposal.id}`, { state: "ready" });
+
+    const resp = await makeRequest(handler, deps, "POST", `/v1/incubation/proposals/${proposal.id}/apply`);
+    expect(resp.status).toBe(400);
+  });
+
+  test("POST /v1/incubation/proposals/:id/apply returns 400 for unimplemented target types", async () => {
+    for (const targetType of ["spec_change", "epic", "story", "steering"]) {
+      const target =
+        targetType === "spec_change"
+          ? { type: "spec_change", file_path: "docs/spec/test.md" }
+          : targetType === "epic"
+            ? { type: "epic", title: "Epic title" }
+            : targetType === "story"
+              ? { type: "story", title: "Story title" }
+              : { type: "steering", session_id: "sess_123" };
+
+      const proposal = await createReadyProposal(target);
+      const resp = await makeRequest(handler, deps, "POST", `/v1/incubation/proposals/${proposal.id}/apply`);
+      expect(resp.status).toBe(400, `expected 400 for target type ${targetType}`);
+      const body = await resp.json() as Record<string, unknown>;
+      expect((body.error as Record<string, unknown>).message).toMatch(new RegExp(`${targetType}.*not implemented`));
+    }
+  });
+
+  test("POST /v1/incubation/proposals/:id/apply returns 200 for decision_record target", async () => {
+    const proposal = await createReadyProposal({ type: "decision_record" });
+
+    const resp = await makeRequest(handler, deps, "POST", `/v1/incubation/proposals/${proposal.id}/apply`);
+    expect(resp.status).toBe(200);
+    const body = await resp.json() as Record<string, unknown>;
+    expect((body.proposal as Record<string, unknown>).state).toBe("applied");
+    expect(body.target_ref).toEqual({ type: "decision_record" });
+  });
+
+  test("POST /v1/incubation/proposals/:id/apply returns 200 for discard target", async () => {
+    const proposal = await createReadyProposal({ type: "discard", rationale: "Out of scope" });
+
+    const resp = await makeRequest(handler, deps, "POST", `/v1/incubation/proposals/${proposal.id}/apply`);
+    expect(resp.status).toBe(200);
+    const body = await resp.json() as Record<string, unknown>;
+    expect((body.proposal as Record<string, unknown>).state).toBe("applied");
+    expect(body.target_ref).toEqual({ type: "discard" });
+  });
+
+  test("POST /v1/incubation/proposals/:id/apply returns 503 for setup_run when setupStore not available", async () => {
+    const proposal = await createReadyProposal({
+      type: "setup_run",
+      project_abs_path: "/tmp/test-project",
+    });
+
+    const resp = await makeRequest(handler, deps, "POST", `/v1/incubation/proposals/${proposal.id}/apply`);
+    expect(resp.status).toBe(503);
+    const body = await resp.json() as Record<string, unknown>;
+    expect((body.error as Record<string, unknown>).code).toBe("setup_not_available");
+  });
+
+  test("POST /v1/incubation/proposals/:id/apply returns 200 for setup_run with mock setupStore", async () => {
+    const mockRunId = "run_test_abc123";
+    const mockDeps: IncubationDeps = {
+      ...deps,
+      setupStore: {
+        create(input: { absPath: string; mode?: string; nonInteractive?: boolean; flags?: Record<string, boolean> }) {
+          return { id: mockRunId, ...input };
+        },
+      },
+    };
+
+    const proposal = await createReadyProposal({
+      type: "setup_run",
+      project_abs_path: "/tmp/test-project",
+      mode: "interactive",
+    });
+
+    const resp = await makeRequest(handler, mockDeps, "POST", `/v1/incubation/proposals/${proposal.id}/apply`);
+    expect(resp.status).toBe(200);
+    const body = await resp.json() as Record<string, unknown>;
+    expect((body.proposal as Record<string, unknown>).state).toBe("applied");
+    expect(body.target_ref).toEqual({ type: "setup_run", id: mockRunId });
+  });
+
+  test("POST /v1/incubation/proposals/:id/apply returns 405 for non-POST methods", async () => {
+    const proposal = await createReadyProposal({ type: "decision_record" });
+
+    for (const method of ["GET", "PUT", "PATCH", "DELETE"]) {
+      const resp = await makeRequest(handler, deps, method as any, `/v1/incubation/proposals/${proposal.id}/apply`);
+      expect(resp.status).toBe(405, `expected 405 for ${method}`);
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
 // MethodNotAllowed / NotFound routing
 // ---------------------------------------------------------------------------
 

@@ -55,6 +55,14 @@ import type { Database } from "bun:sqlite";
 export type IncubationDeps = {
   readonly db: Database;
   readonly sessionsDir: string | (() => string);
+  readonly setupStore?: {
+    readonly create(input: {
+      readonly absPath: string;
+      readonly mode?: string;
+      readonly nonInteractive?: boolean;
+      readonly flags?: Readonly<Record<string, string>>;
+    }): unknown;
+  };
 };
 
 function itemResponse(item: IncubationItem): Record<string, unknown> {
@@ -741,6 +749,106 @@ export async function handleIncubation(
         if (err instanceof IncubationProposalNotFoundError) return notFoundResponse(pathname);
         return errorResponse(500, "internal_error", (err as Error).message);
       }
+    }
+
+    return methodNotAllowed();
+  }
+
+  // -------------------------------------------------------------------------
+  // /v1/incubation/proposals/:id/apply
+  // POST /v1/incubation/proposals/:id/apply — apply a promotion target.
+  // Spec: docs/spec/api.md §Proposals and promotion (line 549).
+  // Transitions proposal state to "applied", then executes the target-specific
+  // side effect and returns the created target reference.
+  // -------------------------------------------------------------------------
+  const proposalApplyMatch = pathBase.match(/^\/v1\/incubation\/proposals\/([^/]+)\/apply$/);
+  if (proposalApplyMatch) {
+    const id = proposalApplyMatch[1]!;
+
+    if (req.method === "POST") {
+      let proposal: IncubationProposal;
+      try {
+        proposal = proposalReg.get(id);
+        if (!proposal) return notFoundResponse(pathname);
+      } catch (err) {
+        if (err instanceof IncubationProposalNotFoundError) return notFoundResponse(pathname);
+        return errorResponse(500, "internal_error", (err as Error).message);
+      }
+
+      // Proposal must be in "ready" state to be applied.
+      if (proposal.state !== "ready") {
+        return badRequest(`proposal must be in ready state to apply, current state: ${proposal.state}`, {
+          current_state: proposal.state,
+        });
+      }
+
+      const target = proposal.target;
+      if (!target) {
+        return badRequest("proposal has no target — cannot apply a proposal without a promotion target");
+      }
+
+      // Execute target-specific side effects and build the target_ref.
+      let target_ref: Record<string, unknown> | null = null;
+
+      if (target.type === "setup_run") {
+        // POST /v1/setup/runs
+        if (!deps.setupStore) {
+          return errorResponse(503, "setup_not_available", "setup subsystem is not available");
+        }
+        const run = deps.setupStore.create({
+          absPath: target.project_abs_path ?? "",
+          mode: target.mode,
+          nonInteractive: target.non_interactive,
+          flags: target.flags,
+        });
+        target_ref = { type: "setup_run", id: (run as { id: string }).id };
+      } else if (target.type === "spec_change") {
+        // Creates a reviewable spec/document proposal.
+        // TODO: spec-change promotion requires a spec-document subsystem.
+        // 2026-05-08: docs/spec/api.md commit specifies this as the apply target,
+        // but no spec-document subsystem exists in packages/ yet.
+        return badRequest("spec_change promotion is not implemented yet");
+      } else if (target.type === "epic" || target.type === "story") {
+        // TODO: tracker adapter createWorkItem — requires TrackerAdapter in deps.
+        // 2026-05-08: docs/spec/api.md commit specifies tracker adapter createWorkItem,
+        // but the daemon does not yet expose a tracker adapter to incubation handlers.
+        return badRequest(`${target.type} promotion is not implemented yet`);
+      } else if (target.type === "steering") {
+        // TODO: POST /v1/sessions/:id/steer
+        // 2026-05-08: docs/spec/api.md commit specifies steering handoff,
+        // but the steering endpoint is not wired into the daemon router.
+        return badRequest("steering promotion is not implemented yet");
+      } else if (target.type === "decision_record") {
+        // Decision record: durable non-implementation note — no side effect needed.
+        target_ref = { type: "decision_record" };
+      } else if (target.type === "discard") {
+        // Discard: close the item with rationale.
+        // The proposal itself is marked applied; the item transitions to discarded
+        // separately via PATCH /v1/incubation/items/:id.
+        target_ref = { type: "discard" };
+      } else {
+        // Exhaustiveness check — if a new PromotionTarget variant is added to
+        // the spec but not handled here, TypeScript will warn at compile time.
+        const _exhaustive: never = target;
+        return badRequest("unknown promotion target type");
+      }
+
+      // Mark the proposal as applied.
+      const applied = proposalReg.promote(id);
+
+      // Mark the parent item as promoted, recording the target_ref.
+      try {
+        itemReg.promote(proposal.item_id, [target]);
+      } catch {
+        // If the item is already promoted or discarded, that's acceptable —
+        // the proposal is still applied.
+      }
+
+      return jsonResponse(200, {
+        _v: 1,
+        proposal: proposalResponse(applied),
+        target_ref,
+      });
     }
 
     return methodNotAllowed();
