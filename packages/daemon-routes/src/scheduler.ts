@@ -1,4 +1,12 @@
 import type { SchedulerService } from "@aloop/scheduler";
+import {
+  badRequest,
+  errorResponse,
+  jsonResponse,
+  methodNotAllowed,
+  notFoundResponse,
+  parseJsonBody,
+} from "./http-helpers.ts";
 
 export type SchedulerDeps = {
   readonly scheduler: SchedulerService;
@@ -122,50 +130,4 @@ function asNonNegativeFloat(value: unknown): number | "invalid" | undefined {
   if (value === undefined) return undefined;
   if (typeof value !== "number" || Number.isNaN(value) || !Number.isFinite(value) || value < 0) return "invalid";
   return value;
-}
-
-function jsonResponse(status: number, body: unknown): Response {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { "content-type": "application/json" },
-  });
-}
-
-function errorResponse(
-  status: number,
-  code: string,
-  message: string,
-  details: Record<string, unknown> = {},
-): Response {
-  return jsonResponse(status, {
-    error: { _v: 1, code, message, details },
-  });
-}
-
-function badRequest(message: string, details: Record<string, unknown> = {}): Response {
-  return errorResponse(400, "bad_request", message, details);
-}
-
-function notFoundResponse(path: string): Response {
-  return errorResponse(404, "not_found", `No route: ${path}`, { path });
-}
-
-function methodNotAllowed(): Response {
-  return errorResponse(405, "method_not_allowed", "method not allowed for this resource");
-}
-
-async function parseJsonBody(
-  req: Request,
-): Promise<{ data: Record<string, unknown> } | { error: Response }> {
-  try {
-    const text = await req.text();
-    if (text.length === 0) return { data: {} };
-    const parsed = JSON.parse(text) as unknown;
-    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
-      return { error: badRequest("request body must be a JSON object") };
-    }
-    return { data: parsed as Record<string, unknown> };
-  } catch {
-    return { error: badRequest("invalid JSON body") };
-  }
 }
