@@ -60,7 +60,7 @@ It therefore needs multiple levels of abstraction in one shell, not a single log
 
 1. **API-first, always.** The workstation consumes the same daemon API as every other client.
 2. **One shell for all phases.** Incubation, setup, planning, runtime, review, and learning are not separate products.
-3. **Hierarchy is first-class.** Users reason in trees: inbox item → research run / proposal → project → setup run / orchestrator → epic → story → session → turn → artifact.
+3. **Hierarchy is first-class.** Users reason in trees: incubation-profile artifact → research session / proposal → project → setup run / orchestrator → epic → story → session → turn → artifact.
 4. **Realtime is core, not garnish.** Streaming state, event tails, chunk streams, and live metrics are default behavior.
 5. **Control at multiple altitudes.** The user must be able to act on the whole project, one orchestrator, one work item, one session, or one queued instruction.
 6. **Discussion before mutation when useful.** Editing spec chapters, tracker items, or synthesized changes should support comment/reason/preview loops before commit.
@@ -181,7 +181,7 @@ The workstation should also provide:
 - pinned items / favorites
 - recent sessions and artifacts
 - deep links to exact project, session, turn, story, or artifact views
-- deep links to exact incubation item, research run, proposal, or promotion target
+- deep links to exact incubation-profile artifact, research session, proposal, trigger, or promotion target
 
 ## Primary surfaces
 
@@ -310,7 +310,7 @@ The workstation must support both **fine-grained** and **high-level** control.
 Actions scoped to the whole project or orchestrator:
 
 - capture a new idea or research request
-- start, pause, resume, or cancel an incubation research run
+- start, pause, resume, or cancel an incubation-scoped research session
 - apply or reject an incubation proposal
 - start / resume setup
 - start / stop / pause an orchestrator
@@ -323,7 +323,7 @@ Actions scoped to the whole project or orchestrator:
 
 Actions scoped to work items:
 
-- classify or relate incubation items
+- classify or relate incubation-profile artifacts
 - promote an incubation proposal to setup, spec, tracker, steering, decision record, or discard
 - create epic/story
 - edit title, body, scope, acceptance criteria, labels, assignees, priority
@@ -356,7 +356,7 @@ Not every edit needs ceremony. Direct editing remains valid. But synthesis-heavy
 
 The composer is the intelligent interface for everything aloop can do. It is a real agentic control surface: it can understand ambiguous user intent, prepare the right task, delegate to specialized subagents, coordinate long-running work, and observe status through the same event streams as the rest of the app.
 
-The composer is not a separate backend, not a hidden memory store, and not a god-mode API caller. A composer turn is a provider-backed control turn whose outputs are structured delegation plans, proposed mutations, proposals, comments, research runs, setup runs, session steering, configuration patches, project registrations, or status summaries.
+The composer is not a separate backend, not a hidden memory store, and not a god-mode API caller. A composer turn is a provider-backed control turn whose outputs are structured delegation plans, proposed mutations, proposals, comments, research sessions, setup runs, session steering, configuration patches, project registrations, or status summaries.
 
 The default user model should be:
 
@@ -368,7 +368,7 @@ The default user model should be:
 - long-running work continues as normal daemon jobs
 - the composer can later summarize, pause, resume, cancel, or redirect those jobs
 
-This makes incubation kickoff natural: a raw idea can begin as one sentence in the composer and become an `IncubationItem`, a `ResearchRun`, a monitor, an outreach draft, or a promotion proposal without forcing the user through a form first.
+This makes incubation kickoff natural: a raw idea can begin as one sentence in the composer and become an incubation-profile artifact, a research session, a trigger-backed monitor profile, an outreach draft artifact, or a promotion proposal without forcing the user through a form first.
 
 The dedicated workstations remain necessary. The composer is the fastest way to express intent; the incubation/setup/runtime/tracker surfaces are the durable places to inspect, compare, approve, and manage the resulting objects.
 
@@ -397,9 +397,9 @@ The workstation should borrow the strongest parts of modern high-performance cha
 
 The composer can initiate or assist with:
 
-- capturing a new incubation item from raw text, a link, an image, a screenshot, an audio/voice note, a video, a document, a voice transcript, or a pasted thread
+- capturing a new incubation-profile artifact from raw text, a link, an image, a screenshot, an audio/voice note, a video, a document, a voice transcript, or a pasted thread
 - preparing a research task by refining the question, source plan, budget, provider chain, and expected output
-- starting, pausing, resuming, cancelling, or summarizing long-running research runs and monitors
+- starting, pausing, resuming, cancelling, or summarizing long-running research sessions and trigger-backed monitors
 - drafting outreach/survey plans while leaving send/approval gates to the daemon policy
 - registering an existing repository or starting setup for a greenfield project
 - starting setup runs from a candidate project or matured incubation proposal
@@ -412,7 +412,7 @@ The composer can initiate or assist with:
 - discussing a spec section or proposed synthesis
 - asking the system to explain a decision
 - iterating on comments before applying them to tracker/spec state
-- targeted agent assistance while staying anchored to a selected incubation item, project, story, or session
+- targeted agent assistance while staying anchored to a selected incubation-profile artifact, project, story, or session
 
 The long-term target is simple: if an operation is possible anywhere in the app, the user should be able to ask the composer for it. The composer may still route the user to a structured workstation when visual inspection is better than conversation, but the intent and coordination path starts from the composer.
 
@@ -444,7 +444,7 @@ Representative subagents:
 |---|---|---|
 | `project-setup` | one candidate project or repo path | project registration, setup-run tools, discovery artifacts |
 | `workspace-organizer` | one workspace or candidate group of repos | workspace read/write proposal tools, project membership tools |
-| `incubation-research` | one incubation item or research question | source acquisition, artifact reading, research-run tools |
+| `incubation-research` | one incubation-profile artifact or research question | source acquisition, artifact reading, research-session tools |
 | `config-editor` | one daemon/project config document or provider override scope | config read/diff/validate/propose tools |
 | `scheduler-operator` | scheduler limits, permits, provider health | scheduler read/explain/propose tools |
 | `tracker-planner` | one project tracker scope | issue/work-item read/write proposal tools |
@@ -543,10 +543,10 @@ When the composer kicks off long-running work, it creates normal daemon jobs rat
 
 | User asks composer to... | Daemon object created or updated |
 |---|---|
-| "Capture this idea" | `IncubationItem` |
-| "Research this" | `ResearchRun` |
-| "Track this for a month" | `ResearchMonitor` plus periodic `ResearchRun`s |
-| "Draft a survey" | `OutreachPlan` and artifacts |
+| "Capture this idea" | artifact with incubation metadata |
+| "Research this" | research session plus output artifacts |
+| "Track this for a month" | trigger-backed monitor profile plus periodic research sessions |
+| "Draft a survey" | outreach/proposal artifacts |
 | "Figure out if this repo is ready" | `SetupRun` |
 | "Implement this story" | `Session` or tracker/orchestrator action after promotion |
 | "Set up a new project" | `project-setup` subagent creates `Project` plus `SetupRun` |
@@ -562,7 +562,7 @@ The composer experience should feel operationally sharp:
 
 - **optimistic send behavior**: the user's message appears immediately
 - **incremental streaming**: chunks append smoothly rather than re-rendering the full transcript on every delta
-- **context pinning**: the active incubation item/project/story/session/spec section is visible and editable as chat scope
+- **context pinning**: the active incubation-profile artifact/project/story/session/spec section is visible and editable as chat scope
 - **interruptibility**: stop generation, retry, branch, or continue from a prior message
 - **history durability**: every useful exchange can be replayed or linked back to the underlying object it affected
 - **artifact-aware**: attach logs, proofs, diffs, comments, or exact run outputs into the conversation without copy-paste gymnastics
@@ -577,7 +577,7 @@ The composer should behave more like a professional tool than a generic textarea
 - autosize within tight bounds
 - keyboard send by default, newline via modifier
 - slash-style quick actions for common intents (`/capture`, `/research`, `/monitor`, `/setup`, `/steer`, `/explain`, `/comment`, `/apply`, `/stop`)
-- visible scope chips for the current target (`incubation item`, `project`, `epic`, `story`, `session`, `spec section`)
+- visible scope chips for the current target (`incubation artifact`, `project`, `epic`, `story`, `session`, `spec section`)
 - drop targets, paste handling, capture buttons, microphone capture, camera/share-sheet capture on mobile, and picker affordances for artifacts and context objects
 - preserved draft state per target where practical
 
@@ -616,8 +616,8 @@ It should combine:
 
 Live views include:
 
-- incubation item/proposal changes
-- research run progress and findings
+- incubation artifact/proposal changes
+- research session progress and findings
 - session state changes
 - event tails
 - provider health transitions
@@ -669,15 +669,15 @@ The incubation workstation needs:
 
 - fast capture from desktop and phone
 - inbox filters by state, project scope, label, priority, and age
-- item detail with source provenance, comments, artifacts, and related items
-- research run creation, progress, event replay, findings, cost, and artifacts
+- artifact detail with source provenance, comments, artifacts, and related entries
+- research session creation, progress, event replay, findings, cost, and artifacts
 - source records, transcripts, citations, and acquisition limitations
 - experiment protocol review, attempt ledger, metric chart, plateau detection, and winner proposal
 - monitor creation, cadence/budget controls, alert review, and delta history
 - outreach/survey planning with explicit approval and consent/privacy checks
 - synthesis/proposal review with rationale and evidence
 - explicit promotion controls for setup, spec proposal, Epic, Story, steering, decision record, or discard
-- backlinks from promoted targets to the originating incubation item
+- backlinks from promoted targets to the originating incubation-profile artifact
 
 Mobile should optimize for the narrow high-value loop:
 
@@ -783,7 +783,7 @@ Required surfaces:
 - scheduler permits and denial reasons
 - burn-rate and keeper-rate
 - per-story, per-epic, per-session, and daily cost views
-- per-research-run cost and incubation time-to-promotion views
+- per-research-session cost and incubation time-to-promotion views
 - comparison over time where metrics support it
 - recent failure classification
 - outcome analytics: approval rate, changes-requested rate, rejection rate, merge rate, review rounds, and PR lifecycle latency
@@ -854,8 +854,8 @@ This document does not define payloads. It does define capability classes the AP
 
 Beyond the already-documented session, setup, provider, scheduler, and metrics endpoints, the workstation will require first-class API support for:
 
-- incubation item capture, detail, mutation, comments, research, proposals, and promotion
-- source records, monitor CRUD, monitor run history, and outreach approval/response records
+- incubation artifact capture, detail, metadata mutation, comments, research, proposals, and promotion
+- source records, trigger-backed monitor profiles and history, and outreach approval/response records
 - experiment-loop attempt history and protocol records
 - work-item list/detail/mutation
 - work-item comments and discussion
@@ -878,7 +878,7 @@ The workstation should be specified in two layers: **v1 operable shell** and **r
 
 Must include:
 
-- incubation inbox with capture, item detail, comments, research status, and proposal application
+- incubation inbox with capture, artifact detail, comments, research status, and proposal application
 - monitor list/detail and source provenance display
 - project/session navigation
 - session list and detail with live event tail

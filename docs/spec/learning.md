@@ -249,12 +249,12 @@ See `docs/research/model-optimization-2026.md` for the current external research
 
 External reports are intentionally below local evidence. A leaderboard can identify that `claude/opus@4.7`, `codex/gpt-5.5-high`, `gemini/pro@3.1`, `opencode/openrouter/kimi@2.6`, an open-weight coder route, or another current model deserves evaluation. It cannot prove that model is best value for this project, this workflow phase, this repo, and this toolchain.
 
-### Research run shape
+### Research Shape
 
 Model landscape research reuses incubation research primitives; it is not a new daemon subsystem.
 
-- One-shot scans use `ResearchRun.mode = "source_synthesis"`.
-- Recurring model watch uses `ResearchMonitor` with `mode = "monitor_tick"`, backed by daemon triggers.
+- One-shot scans use a provider-backed `Session` with a `source_synthesis` research workflow.
+- Recurring model watch uses a `Trigger` plus research protocol artifact with monitor metadata; each tick creates a research session or alert artifact.
 - The source plan may include benchmark aggregators, official release notes/model cards, public papers, provider pricing pages, reproducible coding-agent comparisons, and selected user-report sources.
 - The output is a synthesis artifact plus `ModelCandidateRecord`-style metadata: model ref, provider route, availability class (closed hosted, open-weight hosted, open-weight local/self-hosted), capabilities, context window, price snapshot, latency/throughput snapshot, hardware/quantization route where relevant, public benchmark notes, user-report notes, source IDs, freshness, confidence, and recommended local evaluation.
 
@@ -288,7 +288,7 @@ Patch/version upgrades are intentionally lighter than new route swaps. If the pr
 The optimizer may propose exploration, not silently exploit.
 
 1. New external candidate appears, or an existing model materially improves.
-2. Research run records candidate evidence and confidence.
+2. Research session records candidate evidence and confidence.
 3. Orchestrator proposes a canary or budgeted benchmark when the model maps to a real task family.
 4. Daemon-computed local metrics accumulate by `variant_id`, `provider_ref`, `model_id`, workflow phase, and task family.
 5. Only after enough local evidence does the optimizer propose a lock-in CR.
@@ -347,7 +347,7 @@ Once v1 has produced enough Story-outcome data per variant (rule of thumb: 50+ S
 | Candidate | What it adds | Risk profile |
 |---|---|---|
 | **Thompson sampling over discrete variants** | First real autonomous tuner. Picks among project-config variants based on accumulated outcomes; proposes lock-in CRs at high-confidence. | Low — sampling is well-understood; CR review keeps humans in loop |
-| **External-model intelligence monitor** | Recurring research run over benchmark sources, model releases, pricing, and reproducible user reports. Proposes local canaries/benchmark groups for promising candidates. | Low-medium — external data is noisy; local evidence remains authoritative |
+| **External-model intelligence monitor** | Recurring research session over benchmark sources, model releases, pricing, and reproducible user reports. Proposes local canaries/benchmark groups for promising candidates. | Low-medium — external data is noisy; local evidence remains authoritative |
 | **OPRO-style prompt optimizer for project-layer prompts** | Iterates project's own prompts (in `.aloop/prompts/`) against measured outcomes. Proposes new drafts via CR. | Medium — prompt drift is real; canary + CR mitigate |
 | **Statsig methodology layer** | Sample sizing, peeking corrections, sequential testing baked into the optimizer's reasoning prompts. | Low — methodology, not infrastructure |
 

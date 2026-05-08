@@ -172,7 +172,7 @@ Recommended `spec_quality_tier` projection:
 |---|---|---|---|
 | `cost_per_story` | Gauge | `usage` chunks, grouped by session's `issue` | Dashboard, orchestrator |
 | `cost_per_epic` | Gauge | roll-up across Stories under an Epic | Dashboard |
-| `cost_per_research_run` | Gauge | `usage` chunks, grouped by `research_run_id` | Dashboard, incubation proposal review |
+| `cost_per_research_session` | Gauge | `usage` chunks, grouped by `session_id` where `session.kind` or workflow marks research | Dashboard, incubation proposal review |
 | `cost_per_merged_pr` | Gauge | cost summed from dispatch → merge | Burn-rate gate |
 | `daily_cost_total` | Counter (reset daily) | `usage.cost_usd` | Budget gate |
 | `daily_cost_vs_cap` | Ratio | daily_cost_total / daily_cap from project config | Budget gate (starts denying at 80%) |
@@ -232,7 +232,7 @@ Model outcome metrics require turn metadata to record both the requested provide
 
 Three-layer storage, aligned with the daemon's split of authoritative log vs queryable state (see `daemon.md`):
 
-1. **Events** — per-session, setup-run, and incubation-item JSONL (`log.jsonl`). The authoritative raw stream. Replayable.
+1. **Events** — per-session, setup-run, and artifact/session/trigger JSONL (`log.jsonl`). The authoritative raw stream. Replayable.
 2. **Projections** — SQLite tables under `db.sqlite`:
    - `session_metrics(session_id, metric_name, value, updated_at)` — current values
    - `scheduler_metrics`, `provider_metrics`, `system_metrics`, `orchestrator_metrics` — per-topic projection tables

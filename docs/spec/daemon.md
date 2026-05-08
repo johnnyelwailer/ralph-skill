@@ -28,7 +28,7 @@
 
 `aloopd` is the durable control plane that owns:
 
-- **Incubation items, research runs, and promotion proposals**
+- **Artifact-backed incubation entries, research sessions, and promotion proposals**
 - **Composer turns** that translate user intent into daemon-owned objects and long-running jobs
 - **Active sessions** and their state machines
 - **Active setup runs** and their state machines
@@ -71,10 +71,6 @@ Fully local deployments may use the file layout below as the concrete backing fo
     db.sqlite                   queryable daemon-native state and projections:
                                 workspaces, projects, incubation, setup, sessions,
                                 permits, provider health, metrics, tracker projections
-    incubation/
-      <id>/
-        log.jsonl               authoritative event history for one incubation item
-        artifacts/              attachments, research outputs, transcripts, synthesis evidence
     composer/
       turns/<id>/
         log.jsonl               authoritative history for one composer control turn
@@ -100,20 +96,20 @@ Tracker adapters are not the daemon's database. They are external/offline projec
 
 ## Incubation
 
-Incubation is daemon-owned state for captures, research, synthesis, and explicit promotion before setup, tracker, or implementation work begins.
+Incubation is a daemon-owned view over captures, research, synthesis, and explicit promotion before setup, tracker, or implementation work begins.
 
 Practical consequences:
 
-- An incubation item may be global, project-scoped, or tied to a candidate project path/repo.
-- Background research may run for minutes or days while the item remains open.
-- Monitors may schedule recurring research runs on a bounded cadence with explicit budget and alert policy.
-- Monitor cadence is backed by the daemon trigger engine, so monitors can fire from time intervals, relevant source events, or explicit manual refresh requests.
+- An incubation-profile artifact may be global, project-scoped, or tied to a candidate project path/repo.
+- Background research may run for minutes or days while the artifact remains open.
+- Trigger-backed monitor profiles may schedule recurring research sessions on a bounded cadence with explicit budget and alert policy.
+- Monitor cadence is backed by the daemon trigger engine, so monitor profiles can fire from time intervals, relevant source events, or explicit manual refresh requests.
 - Research uses provider adapters and scheduler permits, but it is non-mutating by default.
 - Source acquisition uses runtime extension manifests and daemon policy, not arbitrary agent network access.
 - Experiment-loop attempts use the existing sandbox adapter and deterministic exec-step/event pipeline, not a separate runner.
 - Outreach uses the same policy-controlled adapter pattern as tracker/provider integrations; draft/analyze is allowed before any outbound adapter exists.
 - Promotion creates normal target objects through their existing APIs: setup runs, spec proposals, tracker work items, session steering, or decision records.
-- Mobile web, dashboard, CLI, and bots all attach to the same item through the HTTP API.
+- Mobile web, dashboard, CLI, and bots all attach to the same artifact, comments, sessions, triggers, and events through the HTTP API.
 
 The detailed contract lives in `incubation.md`; this document's invariant is that intake and research are durable daemon state, not client-owned conversation state.
 
@@ -126,7 +122,7 @@ Practical consequences:
 - A composer turn can clarify user intent, summarize current state, prepare a proposed action, or delegate specialized work to scoped control subagents.
 - Composer input is multimodal; images, audio, video, documents, URLs, logs, and diffs are normalized into artifacts, transcripts, OCR, source records, or typed text records before provider reasoning.
 - Voice input is first-class. The daemon chooses native speech handling when the selected provider supports it, otherwise routes through a configured fallback transcriber and records transcript provenance.
-- If it starts long-running work or changes control-plane state, that effect is a normal daemon object or mutation: `Project`, `ResearchRun`, `ResearchMonitor`, `SetupRun`, `Session`, tracker mutation, provider override, scheduler limit change, config patch, proposal, comment, or artifact.
+- If it starts long-running work or changes control-plane state, that effect is a normal daemon object or mutation: `Project`, `SetupRun`, `Session`, `Trigger`, tracker mutation, provider override, scheduler limit change, config patch, proposal, comment, or artifact.
 - Specialized control subagents run with isolated role/scope/capability grants. They can inspect and propose within their scope; the daemon performs final mutations after policy and approval checks.
 - The composer observes child work through SQLite projections and SSE events; it does not own a hidden child-agent graph.
 - Provider-backed composer turns acquire scheduler permits using `composer_turn_id`.
@@ -236,7 +232,7 @@ The scheduler is the **only gate** between a provider turn being "wanted" and a 
 6. **Project gate** (optional) — per-project concurrency cap and daily cost cap if configured.
 
 **Permit lifecycle:**
-- `POST /v1/scheduler/permits` — acquire. Body: `{ session_id? | research_run_id?, provider_candidate, estimated_cost }`. Returns granted permit with `ttl` or denial with reason.
+- `POST /v1/scheduler/permits` — acquire. Body: `{ session_id?, composer_turn_id?, control_subagent_run_id?, provider_candidate, estimated_cost }`. Returns granted permit with `ttl` or denial with reason.
 - Permit is written to `StateStore` before the turn starts. Survives control-plane restart (the turn is marked interrupted on restart if the permit is found in-flight).
 - Turn completion → `DELETE /v1/scheduler/permits/:id` releases.
 - TTL expiry without release → scheduler reclaims, emits `scheduler.permit.expired`.
@@ -253,14 +249,14 @@ Supported trigger sources:
 
 | Source | Examples | Target action |
 |---|---|---|
-| `time` | every two weeks, every Monday, cron expression, one-shot reminder | create a research run, run reconcile, refresh proposal |
-| `event` | `provider.model_catalog.changed`, `model_intelligence.candidate_recorded`, `metrics.change`, `provider.health`, tracker human comment | create a research run, queue diagnose, refresh candidate proposal |
+| `time` | every two weeks, every Monday, cron expression, one-shot reminder | create a research session, run reconcile, refresh proposal |
+| `event` | `provider.model_catalog.changed`, `model_intelligence.candidate_recorded`, `metrics.change`, `provider.health`, tracker human comment | create a research session, queue diagnose, refresh candidate proposal |
 | `manual` | dashboard/CLI/composer "run now" | fire the same target immediately with audit trail |
 
 Trigger actions are typed, not arbitrary code:
 
-- `create_research_run`
-- `tick_monitor`
+- `create_session` with a research workflow/profile
+- `fire_monitor_profile`
 - `queue_orchestrator_trigger`
 - `refresh_projection`
 - `create_proposal`

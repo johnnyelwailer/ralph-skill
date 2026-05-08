@@ -38,7 +38,7 @@ A good day on aloop:
 
 - You capture a half-formed product idea from your phone. Aloop attaches the link and screenshot, runs a bounded research task, and later shows a synthesis with two promotion options: create a spec-change proposal for an existing project or start setup for a new one.
 - You open the dashboard. Three child sessions are running in parallel across three different providers, each on its own Story, each in its own worktree. Two just merged. One is in review. The orchestrator session is scanning for what to dispatch next.
-- You type into the composer: "Track this market for a month and tell me if it becomes worth building." The composer creates an incubation item and monitor, then the workstation shows each research tick, source record, cost, and alert.
+- You type into the composer: "Track this market for a month and tell me if it becomes worth building." The composer creates an incubation-profile artifact and a trigger-backed monitor profile, then the workstation shows each research session, source record, cost, and alert.
 - Live cost and burn-rate panels show you're at 40% of today's budget. One provider is in a 20-minute cooldown; the scheduler rerouted work to the others. No alerts.
 - You drop a steering instruction into the active Story: "Prefer the patch approach over the rewrite approach for this module." The next turn picks it up.
 - When you come back an hour later, five more Stories are merged. The orchestrator filed one follow-up Epic for scope the decomposer underestimated. Nothing is stuck. Nothing is on fire.
@@ -61,7 +61,7 @@ A bad day on aloop (and how it handles it):
 - Orchestrator session with Epic → Story decomposition, parallel dispatch, quality gates, merge-to-trunk, intelligent diagnose.
 - Rehabilitated React dashboard consuming only the v1 API.
 - Setup interview + runtime producing CONSTITUTION.md + a validated project in one flow, with orchestration blocked until every ambiguity is resolved.
-- Incubation inbox with capture, multi-source research runs, monitors, synthesis proposals, and explicit promotion into setup/spec/tracker/session targets.
+- Incubation inbox with artifact-backed capture, multi-source research sessions, trigger-backed monitors, synthesis proposals, and explicit promotion into setup/spec/tracker/session targets.
 - Full TDD coverage of primitives, workflows, and engine.
 - Constitution invariants green across all LOC budgets.
 

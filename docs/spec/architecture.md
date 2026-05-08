@@ -43,7 +43,7 @@ T3 Code is a useful smaller-scope implementation reference for the same shape: s
 │  aloopd  (daemon, Bun TypeScript)                             │
 │                                                               │
 │    HTTP server · SSE hub · event bus                          │
-│    Composer turns · incubation inbox · research runs          │
+│    Composer turns · incubation inbox · research sessions      │
 │    promotion proposals                                       │
 │    Setup runs · session runner · workflow state machine       │
 │    Compile step                                               │
@@ -87,12 +87,12 @@ This is the load-bearing decision:
 
 `aloopd` is the single process that owns:
 
-- **Incubation** — captured ideas, research runs, synthesis proposals, and explicit promotion into setup/spec/tracker/session targets (see `incubation.md`).
+- **Incubation** — captured ideas, research sessions, synthesis proposals, and explicit promotion into setup/spec/tracker/session targets (see `incubation.md`).
 - **Composer turns** — provider-backed, multimodal control turns that translate text, speech, media, links, and selected app context into scoped subagent delegations, daemon-owned objects, normal API mutation proposals, long-running jobs, configuration changes, or status summaries. The composer is an agentic client interface, not a second runtime.
 - **Setup runs** — long-lived onboarding state before a project becomes `ready` (see `setup.md`).
 - **Sessions** — standalone, orchestrator, child. State machine, lifecycle, parent-child relationships (see `daemon.md` §Session kinds).
 - **Scheduler** — the only gate between "a turn is wanted" and "a turn is started." Composes gates for concurrency, system resources, per-provider quota, burn rate, and live overrides.
-- **Trigger engine** — durable time-based and event-based triggers that create daemon work such as research runs, monitor ticks, reconcile jobs, or proposal refreshes. It decides *when to enqueue work*; the scheduler still decides whether provider-backed work may run.
+- **Trigger engine** — durable time-based and event-based triggers that create daemon work such as research sessions, monitor ticks, reconcile jobs, or proposal refreshes. It decides *when to enqueue work*; the scheduler still decides whether provider-backed work may run.
 - **Event bus** — aggregates events from all sessions into per-session JSONL and the global SSE stream. Every state change publishes.
 - **Compile step** — translates `pipeline.yml` into `loop-plan.json`. See `pipeline.md` §Compile step for the canonical description (single YAML reader in the system).
 - **Prompt context assembly** — resolves prompt `context` declarations through registered context plugins, injects bounded source-cited context blocks, and records what was injected. See `context.md`.
@@ -127,7 +127,7 @@ All other clients (CLI, dashboard, global composer, mobile web, bots) translate 
 - Subscribe to SSE streams for live updates (`GET /v1/events`, `GET /v1/sessions/:id/events`, `GET /v1/sessions/:id/turns/:turn_id/chunks`).
 - Never persist their own state for things the daemon owns. Client-local state is limited to UI prefs, auth tokens, etc.
 - Treat incubation captures, research results, syntheses, comments, and promotion decisions as daemon-owned state, not local drafts once submitted.
-- Treat composer turns as a natural-language and multimodal interface to the same primitives. If a composer launches work or changes control-plane state, it may delegate to a scoped control subagent; the effect is still a `Project`, `ResearchRun`, `ResearchMonitor`, `SetupRun`, `Session`, tracker mutation, provider override, scheduler/config patch, proposal, comment, or artifact with normal events and projections.
+- Treat composer turns as a natural-language and multimodal interface to the same primitives. If a composer launches work or changes control-plane state, it may delegate to a scoped control subagent; the effect is still a `Project`, `SetupRun`, `Session`, `Trigger`, tracker mutation, provider override, scheduler/config patch, proposal, comment, or artifact with normal events and projections.
 
 This keeps the system honest: if the CLI can do X, the dashboard can do X, because X is an API endpoint. If the dashboard needs Y that no one else has, the API is missing an endpoint — fix the API, not the dashboard.
 

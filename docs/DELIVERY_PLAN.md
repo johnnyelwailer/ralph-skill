@@ -31,7 +31,7 @@ This means "setup" should not be treated as a thin preflight script in the imple
 Incubation is also cross-cutting, but it must stay thinner than setup in v1.
 
 - **M2** provides the event/state substrate for durable artifacts, comments, sessions, proposal artifacts, and backing-store interfaces that can map to Postgres/object storage.
-- **M4/M5** provide scheduler-permitted provider execution and worker/lease discipline for non-mutating research runs.
+- **M4/M5** provide scheduler-permitted provider execution and worker/lease discipline for non-mutating research sessions.
 - **M7/M8** should expose `/v1/composer` plus the artifact/comment/trigger/session plumbing needed for conversational kickoff, capture, and research evidence. Incubation is a view over those primitives, not a separate `/v1/incubation` API.
 - **M9** consumes promoted Epics/Stories/steering through the normal orchestrator path; it must not read unpromoted incubation-view artifacts as backlog.
 - **M11** provides the always-ready composer, inbox, research queue, proposal review, mobile capture path, and promotion controls in the dashboard/workstation.
@@ -63,7 +63,7 @@ The fully local shape is a deployment profile of the same primitives: one `aloop
 Sandboxing is the broader execution concept; the project devcontainer is only the first shipped backend.
 
 - v1 may use host execution plus the project devcontainer as the practical local sandbox path.
-- The worker abstraction should be introduced early enough that sessions, setup runs, research runs, and monitors all execute through the same lease/event/artifact path.
+- The worker abstraction should be introduced early enough that sessions, setup runs, research sessions, and trigger-backed monitor work all execute through the same lease/event/artifact path.
 - A later execution milestone should adopt `sandbox-core` as the abstraction layer for sandbox lifecycle, exec, streaming, and file transfer.
 - That change is intended to make each loop/session/research job run in its own offloaded sandbox without changing the daemon API or orchestration model.
 - For an Azure-hosted deployment, Aspire is a candidate provisioning/local-dev composition option around the hosted control plane and shared Azure infrastructure. It should not replace `SandboxAdapter`; the adapter still owns per-loop sandbox leasing and may create or reuse multiple sandbox pools/container profiles at runtime, likely against Azure Container Apps dynamic sessions or another sandbox backend.

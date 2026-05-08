@@ -291,7 +291,7 @@ Composer turns acquire scheduler permits before provider calls. A turn that laun
 
 Risky or durable mutations should return `waiting_for_approval` with a structured preview instead of applying immediately. Examples: project registration or purge, promotion, tracker mutation, setup-state mutation, provider override, scheduler limit change, daemon config change, project config change, outreach send, session start, or repository-affecting steering. Read-only explanations and low-risk capture/comment creation may complete without preview depending on policy.
 
-The launched object, not the composer transcript, is the source of truth. For example, "track this market weekly" creates a `ResearchMonitor`; the composer turn only records how it was requested and which objects it launched.
+The launched object, not the composer transcript, is the source of truth. For example, "track this market weekly" creates a trigger-backed monitor profile and any resulting research sessions; the composer turn only records how it was requested and which objects it launched.
 
 ### Delegated control planning
 
@@ -386,7 +386,7 @@ Incubation-specific state is metadata on those objects, for example an artifact 
 }
 ```
 
-Incubation capture, research runs, monitors, outreach plans, comments, proposals, and promotion use subtype/configuration data on artifacts, comments, composer turns, sessions, triggers, and target-system mutations. Per CONSTITUTION §V.24, any missing capability belongs in a generic primitive enhancement rather than an incubation-specific route family.
+Incubation capture, research sessions, monitor profiles, outreach plans, comments, proposals, and promotion use subtype/configuration data on artifacts, comments, composer turns, sessions, triggers, and target-system mutations. Per CONSTITUTION §V.24, any missing capability belongs in a generic primitive enhancement rather than an incubation-specific route family.
 
 ## Sessions
 
@@ -488,7 +488,7 @@ The global event bus. All state changes, log lines, and streaming content publis
 ### Subscribe
 
 ```
-GET /v1/events?topics=session.*,provider.*&project_id=<id>&session_id=<id>&research_run_id=<id>&composer_turn_id=<id>&control_subagent_run_id=<id>&parent=<orch_id>&since=<event_id>
+GET /v1/events?topics=session.*,provider.*&project_id=<id>&session_id=<id>&composer_turn_id=<id>&control_subagent_run_id=<id>&parent=<orch_id>&since=<event_id>
 ```
 
 Response: `text/event-stream`.
@@ -496,7 +496,7 @@ Response: `text/event-stream`.
 - `topics`: csv of topic patterns, `*` is glob. Default subscribes to all.
 - `project_id`: filter to a project's events.
 - `session_id`: filter to a single session.
-- `research_run_id`: filter to a research run. Prefer `session_id` for new provider-backed research; this field is a compatibility filter for older research-run-scoped events.
+- `research_run_id`: legacy compatibility filter for older research-run-scoped events. New provider-backed research uses `session_id`.
 - `composer_turn_id`: filter to a single composer turn.
 - `control_subagent_run_id`: filter to a single scoped control subagent run.
 - `parent`: filter to a session's children (for orchestrators).
@@ -526,10 +526,10 @@ Every event has a monotonic `id` (ms timestamp + sequence). Events are durable (
 | `provider.quota` | quota probe result | `{provider_id, remaining, reset_at}` |
 | `provider.override.changed` | overrides PUT | new overrides doc |
 | `scheduler.limits.changed` | scheduler limits PUT | `{limits}` |
-| `scheduler.permit.grant` | permit issued | `{permit_id, session_id?, research_run_id?, composer_turn_id?, control_subagent_run_id?, provider_id, ttl}` |
-| `scheduler.permit.deny` | permit refused | `{session_id?, research_run_id?, composer_turn_id?, control_subagent_run_id?, reason, gate, details}` |
-| `scheduler.permit.release` | permit released | `{permit_id, session_id?, research_run_id?, composer_turn_id?, control_subagent_run_id?}` |
-| `scheduler.permit.expired` | TTL reclaim | `{permit_id, session_id?, research_run_id?, composer_turn_id?, control_subagent_run_id?}` |
+| `scheduler.permit.grant` | permit issued | `{permit_id, session_id?, composer_turn_id?, control_subagent_run_id?, provider_id, ttl}` |
+| `scheduler.permit.deny` | permit refused | `{session_id?, composer_turn_id?, control_subagent_run_id?, reason, gate, details}` |
+| `scheduler.permit.release` | permit released | `{permit_id, session_id?, composer_turn_id?, control_subagent_run_id?}` |
+| `scheduler.permit.expired` | TTL reclaim | `{permit_id, session_id?, composer_turn_id?, control_subagent_run_id?}` |
 | `scheduler.burn_rate_exceeded` | burn gate tripped for a session | `{session_id, observed, threshold}` |
 | `trigger.fired` | durable time/event trigger created target work or alert | `{trigger_id, source, target_kind, target_id?}` |
 | `trigger.skipped` | trigger matched but policy/budget/idempotency prevented target creation | `{trigger_id, reason, details}` |
@@ -540,7 +540,7 @@ Every event has a monotonic `id` (ms timestamp + sequence). Events are durable (
 | `artifact.changed` | artifact capture/edit/state/metadata change, including incubation lifecycle metadata | artifact summary |
 | `comment.created` | comment added to a daemon-owned object | comment summary |
 | `research.update` | research session status, findings, or cost changed | research summary |
-| `source.recorded` | external source captured for a research run | source record summary |
+| `source.recorded` | external source captured for a research session | source record summary |
 | `model_intelligence.candidate_recorded` | model-landscape research identified a candidate provider/model route | candidate record summary |
 | `experiment.recorded` | experiment-loop attempt finished | experiment attempt summary |
 | `trigger.monitor.update` | monitor trigger created, ticked, paused, alerted, or cancelled | monitor summary |
@@ -566,14 +566,14 @@ Returns `application/x-ndjson`, streaming. Useful for exports, offline analysis,
 
 ## Artifacts
 
-Artifacts are daemon-managed files associated with sessions, composer turns, control subagent runs, setup runs, research runs, work items, change sets, or artifact-to-artifact relationships. Proof outputs are the primary source, but clients may also upload images, audio, video, documents, or other files that should be referenced in discussion or composer turns.
+Artifacts are daemon-managed files associated with sessions, composer turns, control subagent runs, setup runs, work items, change sets, or artifact-to-artifact relationships. Proof outputs are the primary source, but clients may also upload images, audio, video, documents, or other files that should be referenced in discussion or composer turns.
 
 This is the minimal runtime primitive that enables multimodal feedback without requiring clients or agents to speak tracker-native upload APIs.
 
 ### List / inspect / content
 
 ```
-GET /v1/artifacts?project_id=<id>&session_id=<id>&composer_turn_id=<id>&control_subagent_run_id=<id>&setup_run_id=<id>&research_run_id=<id>&work_item_key=<key>&phase=proof&type=screenshot
+GET /v1/artifacts?project_id=<id>&session_id=<id>&composer_turn_id=<id>&control_subagent_run_id=<id>&setup_run_id=<id>&work_item_key=<key>&phase=proof&type=screenshot
 GET /v1/artifacts/:id
 GET /v1/artifacts/:id/content
 ```
@@ -593,7 +593,6 @@ Illustrative metadata shape:
   "composer_turn_id": null,
   "control_subagent_run_id": null,
   "setup_run_id": null,
-  "research_run_id": null,
   "kind": "screenshot",
   "phase": "proof",
   "label": "dashboard-main",
@@ -616,7 +615,6 @@ fields:
   composer_turn_id=<id>?   // optional
   control_subagent_run_id=<id>? // optional
   setup_run_id=<id>?       // optional
-  research_run_id=<id>?    // optional
   work_item_key=<key>?     // optional
   kind=image|screenshot|audio|speech|video|document|transcript|mockup|diff|log|code|other
   label=<short label>?     // optional
@@ -663,7 +661,7 @@ Composer turns use:
 GET /v1/composer/turns/:turn_id/chunks
 ```
 
-Research runs and future provider-backed daemon jobs may expose owner-specific chunk endpoints as needed. The chunk payload always identifies the owner; clients must not assume every chunk belongs to an implementation session.
+Research sessions and future provider-backed daemon jobs may expose owner-specific chunk endpoints as needed. The chunk payload always identifies the owner; clients must not assume every chunk belongs to an implementation session.
 
 ### Chunk payload
 
@@ -766,7 +764,6 @@ Resets to empty (equivalent to `PUT` with all-null).
 POST /v1/scheduler/permits
 {
   "session_id": "s_abc",
-  "research_run_id": null,
   "composer_turn_id": null,
   "control_subagent_run_id": null,
   "provider_candidate": "opencode",
@@ -774,14 +771,14 @@ POST /v1/scheduler/permits
 }
 ```
 
-Exactly one of `session_id`, `research_run_id`, `composer_turn_id`, or `control_subagent_run_id` is required. Sessions are the normal owner for implementation, orchestration, and provider-backed research turns; `research_run_id` remains as a compatibility owner for older research-run projections; composer turns are the owner for provider-backed intent-resolution turns; control subagent runs are the owner for scoped delegated control turns.
+Exactly one of `session_id`, `composer_turn_id`, or `control_subagent_run_id` is required. Sessions are the normal owner for implementation, orchestration, and provider-backed research turns; composer turns are the owner for provider-backed intent-resolution turns; control subagent runs are the owner for scoped delegated control turns.
 
 Returns:
 
 ```json
 {
   "granted": true,
-  "permit": { "id": "perm_xyz", "session_id": "s_abc", "research_run_id": null, "composer_turn_id": null, "control_subagent_run_id": null, "provider_id": "opencode", "ttl_seconds": 600 }
+  "permit": { "id": "perm_xyz", "session_id": "s_abc", "composer_turn_id": null, "control_subagent_run_id": null, "provider_id": "opencode", "ttl_seconds": 600 }
 }
 ```
 
@@ -835,8 +832,8 @@ POST /v1/triggers
     "filters": {}
   },
   "action": {
-    "kind": "tick_monitor|create_research_run|queue_orchestrator_trigger|emit_alert",
-    "target": { "monitor_id": "mon_..." }
+    "kind": "fire_monitor_profile|create_session|queue_orchestrator_trigger|emit_alert",
+    "target": { "artifact_id": "a_monitor_profile_..." }
   },
   "budget_policy": { "max_cost_usd_per_fire": 3.00 },
   "debounce_seconds": 86400,

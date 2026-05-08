@@ -52,7 +52,7 @@ Aloop has three distinct state classes:
 
 | State class | Source of truth | Examples |
 |---|---|---|
-| **Daemon-native state** | `StateStore` projection plus append-only event logs | workspaces, projects, incubation items, research runs, composer turns, control subagent runs, setup runs, sessions, permits, provider health, metrics, artifacts |
+| **Daemon-native state** | `StateStore` projection plus append-only event logs | workspaces, projects, incubation-profile artifacts, research sessions, composer turns, control subagent runs, setup runs, sessions, permits, provider health, metrics, artifacts |
 | **Work-tracker state** | tracker adapter plus daemon projection/cache | Epics, Stories, change sets, comments, tracker-native status/labels |
 | **Session-local execution state** | session event log and daemon task store | per-turn tasks, agent todo lists, proofs, usage, build/review loop state |
 
@@ -90,7 +90,7 @@ Aloop models work at three levels. Only the first two are tracked externally; th
 Why this split:
 
 - Epic and Story are human-reviewable, long-lived, permission-scoped — they belong in the tracker humans already use.
-- Incubation items are immature, evidence-gathering, or decision-seeking — they belong in daemon-owned incubation until promoted.
+- Incubation-profile artifacts are immature, evidence-gathering, or decision-seeking — they belong in daemon-owned incubation views until promoted.
 - Tasks are generated and mutated dozens of times per Story. Syncing them to the tracker would produce noise (issue spam, webhook storms) and slow the loop. Keep them session-local by default.
 - The daemon already has to track tasks for routing and completion detection — integrating that with the tracker is an optional convenience, not a requirement.
 

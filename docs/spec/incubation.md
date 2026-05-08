@@ -107,7 +107,7 @@ Incubation reuses aloop's daemon discipline:
 - composer kickoff is just a client path into those objects
 - background research uses provider adapters and scheduler permits
 - permits are owned by the research session, composer turn, or control subagent run
-- every research run emits durable events and artifacts
+- every research session emits durable events and artifacts
 - source acquisition uses the runtime extension manifest model from `pipeline.md`
 - experiment attempts run through the existing sandbox adapter and deterministic exec-step path
 - outreach integrations are ordinary daemon adapters with policy tables
