@@ -32,18 +32,10 @@ There is no dedicated `/v1/incubation` API in v1. Clients implement an incubatio
 
 ## Lifecycle
 
-Incubation state is view data, not a separate table. Store it as metadata on the primary artifact or proposal:
+Incubation state is view data, not a separate table. Store lifecycle as metadata on the primary artifact or proposal. The lifecycle vocabulary is:
 
-```ts
-type IncubationLifecycle =
-  | "captured"
-  | "clarifying"
-  | "researching"
-  | "synthesized"
-  | "ready_for_promotion"
-  | "promoted"
-  | "discarded"
-  | "archived";
+```text
+captured | clarifying | researching | synthesized | ready_for_promotion | promoted | discarded | archived
 ```
 
 The state machine is advisory for humans and clients:
@@ -63,51 +55,33 @@ captured | clarifying | researching | synthesized
 
 Promotion is still gated by the target subsystem. A Story promotion requires tracker/orchestrator readiness. A setup promotion requires setup readiness. A steering promotion requires the session steering policy. Incubation metadata cannot bypass those gates.
 
-## Object Model
+## Metadata Profile
 
-The root object for capture is a normal artifact. It carries incubation-specific interpretation only as metadata:
+The root object for capture is a normal artifact. Incubation does not define a standalone object model; it defines conventional metadata keys that clients and projectors may use to build incubation views.
 
-```ts
-type IncubationArtifactMetadata = {
-  incubation: {
-    lifecycle: IncubationLifecycle;
-    scope:
-      | { kind: "global" }
-      | { kind: "workspace"; workspace_id: string }
-      | { kind: "project"; project_id: string }
-      | { kind: "candidate_project"; abs_path?: string; repo_url?: string };
-    title?: string;
-    labels?: string[];
-    priority?: "low" | "normal" | "high";
-    source?: {
-      client: string;
-      captured_at: string;
-      author?: string;
-      url?: string;
-    };
-    related_artifact_ids?: string[];
-    promoted_refs?: PromotionRef[];
-  };
-};
+```json
+{
+  "incubation": {
+    "lifecycle": "captured",
+    "scope": { "kind": "project", "project_id": "p_..." },
+    "title": "Investigate mobile capture for aloop",
+    "labels": ["product"],
+    "priority": "normal",
+    "source": {
+      "client": "mobile-web",
+      "captured_at": "2026-05-08T10:00:00.000Z",
+      "author": "optional-human-or-client-id",
+      "url": "https://example.com"
+    },
+    "related_artifact_ids": ["a_..."],
+    "promoted_refs": []
+  }
+}
 ```
 
-`PromotionRef` is a backlink to a real target:
+`scope.kind` is one of `global`, `workspace`, `project`, or `candidate_project`. The corresponding scope identifiers are ordinary references such as `workspace_id`, `project_id`, `abs_path`, or `repo_url`.
 
-```ts
-type PromotionRef = {
-  target_kind:
-    | "setup_run"
-    | "spec_change"
-    | "epic"
-    | "story"
-    | "steering"
-    | "decision_record"
-    | "discard";
-  target_id: string;
-  promoted_at: string;
-  evidence_artifact_ids: string[];
-};
-```
+`promoted_refs` are backlinks to real targets. A target may be a setup run, spec change, Epic, Story, steering instruction, decision record, or discard decision. Each ref records the target id, promotion time, and evidence artifact ids.
 
 Research protocols, source plans, outreach plans, monitor policies, and proposal previews are also ordinary artifacts. They should use typed metadata and stable artifact kinds/phases rather than new daemon tables.
 
