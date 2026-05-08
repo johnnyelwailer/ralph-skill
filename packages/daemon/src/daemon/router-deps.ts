@@ -5,9 +5,10 @@ import { handleProviders as handleProvidersRoute } from "@aloop/daemon-routes-pr
 import {
   handleProjects as handleProjectsRoute,
   handleScheduler as handleSchedulerRoute,
+  handleIncubation as handleIncubationRoute,
 } from "@aloop/daemon-routes";
 import type { SchedulerService } from "@aloop/scheduler";
-import type { EventWriter, ProjectRegistry } from "@aloop/state-sqlite";
+import type { EventWriter, IncubationStore, ProjectRegistry } from "@aloop/state-sqlite";
 import { handleDaemon as handleDaemonRoute } from "../routes/daemon.ts";
 
 export type MakeRouterDepsInput = {
@@ -18,6 +19,7 @@ export type MakeRouterDepsInput = {
   readonly events: EventWriter;
   readonly providerRegistry: ProviderRegistry;
   readonly providerHealth: InMemoryProviderHealthStore;
+  readonly incubation: IncubationStore;
 };
 
 export function makeRouterDeps(input: MakeRouterDepsInput): RouterDeps {
@@ -48,6 +50,14 @@ export function makeRouterDeps(input: MakeRouterDepsInput): RouterDeps {
         req,
         {
           scheduler: input.scheduler,
+        },
+        pathname,
+      ),
+    handleIncubation: (req, pathname) =>
+      handleIncubationRoute(
+        req,
+        {
+          store: input.incubation,
         },
         pathname,
       ),

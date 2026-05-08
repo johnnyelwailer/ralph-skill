@@ -38,3 +38,20 @@ export {
   runProjector,
   type Projector,
 } from "./state/projector.ts";
+export {
+  IncubationStore,
+  IncubationItemNotFoundError,
+  ResearchRunNotFoundError,
+  ProposalNotFoundError,
+  type IncubationScope,
+  type IncubationItemStatus,
+  type ResearchSourceKind,
+  type ResearchSourcePlan,
+  type ResearchRunMode,
+  type ResearchRun,
+  type ProposalKind,
+  type PromotionTarget,
+  type PromotionRef,
+  type IncubationProposal,
+  type IncubationItem,
+} from "./state/incubation-store.ts";
