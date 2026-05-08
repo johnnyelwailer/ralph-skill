@@ -583,6 +583,11 @@ export class ResearchRunRegistry {
     return this.getRequired(id);
   }
 
+  delete(id: string): void {
+    const changes = this.db.run("DELETE FROM research_runs WHERE id = ?", [id]);
+    if (changes.changes === 0) throw new ResearchRunNotFoundError(id);
+  }
+
   private getRequired(id: string): ResearchRun {
     const run = this.get(id);
     if (!run) throw new ResearchRunNotFoundError(id);
@@ -695,6 +700,11 @@ export class ResearchMonitorRegistry {
     return this.getRequired(id);
   }
 
+  delete(id: string): void {
+    const changes = this.db.run("DELETE FROM research_monitors WHERE id = ?", [id]);
+    if (changes.changes === 0) throw new ResearchMonitorNotFoundError(id);
+  }
+
   private getRequired(id: string): ResearchMonitor {
     const mon = this.get(id);
     if (!mon) throw new ResearchMonitorNotFoundError(id);
@@ -777,6 +787,11 @@ export class OutreachPlanRegistry {
     return this.getRequired(id);
   }
 
+  delete(id: string): void {
+    const changes = this.db.run("DELETE FROM outreach_plans WHERE id = ?", [id]);
+    if (changes.changes === 0) throw new OutreachPlanNotFoundError(id);
+  }
+
   private getRequired(id: string): OutreachPlan {
     const plan = this.get(id);
     if (!plan) throw new OutreachPlanNotFoundError(id);
@@ -857,6 +872,11 @@ export class IncubationProposalRegistry {
     );
     if (changes.changes === 0) throw new IncubationProposalNotFoundError(id);
     return this.getRequired(id);
+  }
+
+  /** Transitions a proposal to the applied state. */
+  promote(id: string): IncubationProposal {
+    return this.updateState(id, "applied");
   }
 
   private getRequired(id: string): IncubationProposal {
