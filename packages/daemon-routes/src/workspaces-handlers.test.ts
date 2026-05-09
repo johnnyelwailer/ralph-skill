@@ -580,6 +580,18 @@ describe("addProjectToWorkspaceHandler", () => {
     expect(body.error.code).toBe("project_not_found");
   });
 
+  test("returns 404 when workspace does not exist", async () => {
+    // The workspace never existed — registry has no such ID
+    const req = new Request("http://localhost/v1/workspaces/ws-doesnt-exist/projects", {
+      method: "POST",
+      body: JSON.stringify({ project_id: projectId }),
+    });
+    const res = await addProjectToWorkspaceHandler("ws-doesnt-exist", req, deps);
+    expect(res.status).toBe(404);
+    const body = await res.json();
+    expect(body.error.code).toBe("workspace_not_found");
+  });
+
   test("returns 409 when project is already in workspace", async () => {
     // Add it once
     const req1 = new Request(`http://localhost/v1/workspaces/${workspaceId}/projects`, {
