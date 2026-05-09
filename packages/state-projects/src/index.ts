@@ -5,6 +5,7 @@ export {
   type Project,
   type ProjectFilter,
   type ProjectStatus,
+  type ProjectWorkspaceRole,
 } from "./project-types.ts";
 export {
   canonicalizeProjectPath,

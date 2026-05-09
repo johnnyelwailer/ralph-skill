@@ -3,6 +3,7 @@ import {
   ProjectNotFoundError,
   type Project,
   type ProjectStatus,
+  type ProjectWorkspaceRole,
 } from "@aloop/state-sqlite";
 import {
   badRequest,
@@ -11,6 +12,13 @@ import {
   parseJsonBody,
 } from "./http-helpers.ts";
 import { type Deps, projectResponse, VALID_STATUSES } from "./projects-common.ts";
+
+const VALID_WORKSPACE_ROLES: readonly ProjectWorkspaceRole[] = [
+  "primary",
+  "supporting",
+  "dependency",
+  "experiment",
+];
 
 export async function createProject(req: Request, deps: Deps): Promise<Response> {
   const body = await parseJsonBody(req);
@@ -21,8 +29,38 @@ export async function createProject(req: Request, deps: Deps): Promise<Response>
 
   const name = typeof body.data.name === "string" ? body.data.name : undefined;
 
+  // Parse optional workspace_ids
+  let workspaceMemberships: { workspaceId: string; role: ProjectWorkspaceRole }[] | undefined;
+  if (body.data.workspace_ids !== undefined) {
+    if (!Array.isArray(body.data.workspace_ids)) {
+      return badRequest("workspace_ids must be an array");
+    }
+    workspaceMemberships = [];
+    for (const item of body.data.workspace_ids) {
+      if (typeof item !== "object" || item === null) {
+        return badRequest("each workspace_ids entry must be an object");
+      }
+      const obj = item as Record<string, unknown>;
+      const workspaceId =
+        typeof obj.workspace_id === "string" && obj.workspace_id.length > 0
+          ? obj.workspace_id
+          : undefined;
+      if (!workspaceId) return badRequest("workspace_id is required in each workspace_ids entry");
+      const roleRaw = obj.role;
+      const role: ProjectWorkspaceRole =
+        typeof roleRaw === "string" && VALID_WORKSPACE_ROLES.includes(roleRaw as ProjectWorkspaceRole)
+          ? (roleRaw as ProjectWorkspaceRole)
+          : "supporting";
+      workspaceMemberships.push({ workspaceId, role });
+    }
+  }
+
   try {
-    const created = deps.registry.create({ absPath, ...(name !== undefined && { name }) });
+    const created = deps.registry.create({
+      absPath,
+      ...(name !== undefined && { name }),
+      ...(workspaceMemberships !== undefined && { workspaceMemberships }),
+    });
     return jsonResponse(201, projectResponse(created));
   } catch (err) {
     if (err instanceof ProjectAlreadyRegisteredError) {

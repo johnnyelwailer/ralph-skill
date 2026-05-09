@@ -15,6 +15,7 @@ export function projectResponse(p: Project): Record<string, unknown> {
     abs_path: p.absPath,
     name: p.name,
     status: p.status,
+    workspace_ids: p.workspaceMemberships.map((m) => m.workspaceId),
     added_at: p.addedAt,
     last_active_at: p.lastActiveAt,
     updated_at: p.updatedAt,

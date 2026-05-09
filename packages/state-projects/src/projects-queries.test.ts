@@ -22,6 +22,14 @@ CREATE TABLE IF NOT EXISTS projects (
 );
 CREATE INDEX IF NOT EXISTS idx_projects_status   ON projects(status);
 CREATE INDEX IF NOT EXISTS idx_projects_abs_path ON projects(abs_path);
+CREATE TABLE IF NOT EXISTS project_workspaces (
+  project_id    TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  workspace_id  TEXT NOT NULL,
+  role          TEXT NOT NULL DEFAULT 'supporting'
+                  CHECK (role IN ('primary', 'supporting', 'dependency', 'experiment')),
+  added_at      TEXT NOT NULL,
+  PRIMARY KEY (project_id, workspace_id)
+);
 `;
 
 function seedProject(
@@ -37,6 +45,20 @@ function seedProject(
     `INSERT INTO projects (id, abs_path, name, status, added_at, last_active_at, updated_at)
      VALUES (?, ?, ?, ?, ?, ?, ?)`,
     [id, absPath, name, status, addedAt, lastActiveAt, addedAt],
+  );
+}
+
+function seedWorkspaceMembership(
+  db: Database,
+  projectId: string,
+  workspaceId: string,
+  role: string = "supporting",
+  addedAt: string = "2024-01-01T00:00:00Z",
+) {
+  db.run(
+    `INSERT INTO project_workspaces (project_id, workspace_id, role, added_at)
+     VALUES (?, ?, ?, ?)`,
+    [projectId, workspaceId, role, addedAt],
   );
 }
 
@@ -176,6 +198,38 @@ describe("listProjectsFromDb", () => {
     );
     const project = getProjectById(db, "p6")!;
     expect(project.lastActiveAt).toBeNull();
+  });
+
+  test("returns projects with workspaceMemberships populated", () => {
+    seedWorkspaceMembership(db, "p1", "w1", "primary");
+    seedWorkspaceMembership(db, "p1", "w2", "supporting");
+    seedWorkspaceMembership(db, "p2", "w1", "dependency");
+    const projects = listProjectsFromDb(db);
+    const p1 = projects.find((p) => p.id === "p1")!;
+    expect(p1.workspaceMemberships).toHaveLength(2);
+    expect(p1.workspaceMemberships.map((m) => m.workspaceId).sort()).toEqual(["w1", "w2"]);
+    expect(p1.workspaceMemberships.find((m) => m.workspaceId === "w1")!.role).toBe("primary");
+    const p3 = projects.find((p) => p.id === "p3")!;
+    expect(p3.workspaceMemberships).toHaveLength(0);
+  });
+
+  test("filters by workspaceId", () => {
+    seedWorkspaceMembership(db, "p1", "w1", "primary");
+    seedWorkspaceMembership(db, "p2", "w1", "supporting");
+    seedWorkspaceMembership(db, "p3", "w2", "dependency");
+    const results = listProjectsFromDb(db, { workspaceId: "w1" });
+    expect(results).toHaveLength(2);
+    expect(results.map((p) => p.id).sort()).toEqual(["p1", "p2"]);
+  });
+
+  test("filters by workspaceId combined with status", () => {
+    seedWorkspaceMembership(db, "p1", "w1", "primary"); // ready
+    seedWorkspaceMembership(db, "p2", "w1", "supporting"); // archived
+    seedWorkspaceMembership(db, "p3", "w1", "dependency"); // setup_pending
+    // Both p1 (ready) and p3 (setup_pending) match workspaceId=w1
+    const results = listProjectsFromDb(db, { workspaceId: "w1", status: "ready" });
+    expect(results).toHaveLength(1);
+    expect(results[0]!.id).toBe("p1");
   });
 });
 

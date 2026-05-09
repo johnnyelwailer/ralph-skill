@@ -18,6 +18,7 @@ export function listProjects(req: Request, deps: Deps): Response {
   const url = new URL(req.url);
   const statusParam = url.searchParams.get("status");
   const path = url.searchParams.get("path");
+  const workspaceId = url.searchParams.get("workspace_id");
 
   if (statusParam !== null && !VALID_STATUSES.includes(statusParam as ProjectStatus)) {
     return badRequest(`invalid status: ${statusParam}`, { statusParam });
@@ -26,6 +27,7 @@ export function listProjects(req: Request, deps: Deps): Response {
   const items = deps.registry.list({
     ...(statusParam !== null && { status: statusParam as ProjectStatus }),
     ...(path !== null && { absPath: path }),
+    ...(workspaceId !== null && { workspaceId }),
   });
 
   return jsonResponse(200, {
