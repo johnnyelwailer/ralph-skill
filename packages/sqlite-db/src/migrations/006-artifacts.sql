@@ -17,8 +17,7 @@ CREATE TABLE IF NOT EXISTS artifacts (
   bytes        INTEGER NOT NULL DEFAULT 0,
   created_at   TEXT NOT NULL,
   composer_turn_id        TEXT,
-  control_subagent_run_id TEXT,
-  research_run_id          TEXT
+  control_subagent_run_id TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_artifacts_project  ON artifacts(project_id);

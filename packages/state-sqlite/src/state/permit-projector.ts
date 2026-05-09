@@ -5,8 +5,11 @@ import { projectGrantedPermit, projectPermitRemoval } from "./permits.ts";
 
 type PermitGrantEvent = {
   permit_id: string;
-  session_id: string;
+  session_id?: string;
+  composer_turn_id?: string;
+  control_subagent_run_id?: string;
   provider_id: string;
+  project_id?: string;
   ttl_seconds: number;
   granted_at: string;
   expires_at: string;
@@ -24,17 +27,20 @@ export class PermitProjector implements Projector {
   apply(db: Database, event: EventEnvelope): void {
     if (event.topic === "scheduler.permit.grant") {
       const data = event.data as PermitGrantEvent;
-      const metadata = event.metadata as Record<string, unknown> | undefined;
-      projectGrantedPermit(db, {
+      const metadata = (event as { metadata?: Record<string, unknown> }).metadata;
+      const permit = {
         permitId: data.permit_id,
-        sessionId: data.session_id,
-        projectId: (metadata?.project_id as string | undefined) ?? null,
+        sessionId: data.session_id ?? null,
+        composerTurnId: data.composer_turn_id ?? null,
+        controlSubagentRunId: data.control_subagent_run_id ?? null,
+        projectId: data.project_id ?? (metadata?.project_id as string | undefined) ?? null,
         providerId: data.provider_id,
         ttlSeconds: data.ttl_seconds,
         grantedAt: data.granted_at,
         expiresAt: data.expires_at,
-        estimatedCostUsdCents: data.estimated_cost_usd_cents,
-      });
+        ...(data.estimated_cost_usd_cents !== undefined ? { estimatedCostUsdCents: data.estimated_cost_usd_cents } : {}),
+      };
+      projectGrantedPermit(db, permit);
       return;
     }
 

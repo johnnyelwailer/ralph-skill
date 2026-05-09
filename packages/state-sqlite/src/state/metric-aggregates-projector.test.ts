@@ -67,40 +67,7 @@ describe("MetricAggregatesProjector", () => {
       db.close();
     });
 
-    test("resolves scope from research_run_id", () => {
-      const db = new Database(":memory:");
-      db.exec(`
-        CREATE TABLE IF NOT EXISTS metric_aggregates (
-          id              TEXT PRIMARY KEY,
-          scope           TEXT NOT NULL,
-          window_start    TEXT NOT NULL,
-          window_end      TEXT NOT NULL,
-          window_label    TEXT NOT NULL,
-          group_by        TEXT NOT NULL,
-          labels          TEXT NOT NULL,
-          sample_size     INTEGER NOT NULL DEFAULT 0,
-          directional     INTEGER NOT NULL DEFAULT 1,
-          metrics         TEXT NOT NULL,
-          updated_at      TEXT NOT NULL,
-          UNIQUE(scope, window_label, group_by, labels, id)
-        );
-      `);
-
-      const projector = new MetricAggregatesProjector();
-      projector.apply(db, makeEnvelope("scheduler.permit.grant", {
-        permit_id: "p_002",
-        provider_id: "opencode",
-        research_run_id: "rr_abc",
-      }));
-
-      const row = db.query(
-        `SELECT scope FROM metric_aggregates WHERE window_label = 'all'`,
-      ).get() as { scope: string } | undefined;
-      expect(row!.scope).toBe("research_run:rr_abc");
-      db.close();
-    });
-
-    test("resolves scope from session_id when no research_run_id", () => {
+    test("resolves scope from session_id", () => {
       const db = new Database(":memory:");
       db.exec(`
         CREATE TABLE IF NOT EXISTS metric_aggregates (

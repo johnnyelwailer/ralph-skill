@@ -7,12 +7,12 @@
 export type TriggerSourceKind = "time" | "event";
 
 /** Trigger action kinds */
-export type TriggerActionKind = "tick_monitor" | "create_research_run" | "queue_orchestrator_trigger" | "emit_alert" | "refresh_projection" | "create_proposal";
+export type TriggerActionKind = "fire_monitor_profile" | "create_session" | "queue_orchestrator_trigger" | "emit_alert" | "refresh_projection" | "create_proposal";
 
 /** Scope kinds a trigger can be attached to */
 export type TriggerScopeKind = "project" | "workspace" | "artifact" | "global";
 
-/** Scope of a trigger — which project/workspace/monitor/global it belongs to */
+/** Scope of a trigger — which project/workspace/artifact/global it belongs to */
 export type TriggerScope = {
   readonly kind: TriggerScopeKind;
   readonly id: string | null; // null for global
@@ -42,8 +42,7 @@ export type TriggerSource = {
 export type TriggerAction = {
   readonly kind: TriggerActionKind;
   readonly target: {
-    readonly monitor_id?: string;
-    readonly research_run_id?: string;
+    readonly artifact_id?: string;
     readonly session_id?: string;
     readonly message?: string;
     // other target fields can be added as needed per kind

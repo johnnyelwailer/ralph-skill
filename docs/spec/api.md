@@ -496,7 +496,6 @@ Response: `text/event-stream`.
 - `topics`: csv of topic patterns, `*` is glob. Default subscribes to all.
 - `project_id`: filter to a project's events.
 - `session_id`: filter to a single session.
-- `research_run_id`: legacy compatibility filter for older research-run-scoped events. New provider-backed research uses `session_id`.
 - `composer_turn_id`: filter to a single composer turn.
 - `control_subagent_run_id`: filter to a single scoped control subagent run.
 - `parent`: filter to a session's children (for orchestrators).

@@ -127,17 +127,17 @@ Patch/version upgrades can be lighter-weight than new route exploration, but sti
 
 ### 7. Reuse research concepts already in the spec
 
-The model watch process is an incubation monitor:
+The model watch process is an incubation monitor profile over artifacts, triggers, and research sessions:
 
 ```ts
-type ModelIntelligenceRun = ResearchRun & {
+type ModelIntelligenceProfile = {
   mode: "source_synthesis" | "monitor_tick";
   question: "What provider/model changes should aloop evaluate for this workspace?";
   source_plan: ResearchSourcePlan;
 };
 ```
 
-The output is a synthesis artifact plus candidate records. Promotion targets are ordinary spec/config CRs, benchmark groups, or canary variants. No new "model scout daemon" is needed before the research/run substrate exists.
+The output is a synthesis artifact plus candidate records. Promotion targets are ordinary spec/config CRs, benchmark groups, or canary variants. No new "model scout daemon" is needed before the reusable session/artifact/trigger substrate exists.
 
 ## Sources
 

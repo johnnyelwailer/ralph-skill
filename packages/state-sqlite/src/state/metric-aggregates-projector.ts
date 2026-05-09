@@ -46,7 +46,6 @@ export class MetricAggregatesProjector implements Projector {
       permit_id: string;
       provider_id: string;
       session_id?: string;
-      research_run_id?: string;
       composer_turn_id?: string;
       control_subagent_run_id?: string;
       project_id?: string;
@@ -72,7 +71,6 @@ export class MetricAggregatesProjector implements Projector {
       details?: Record<string, unknown>;
       retry_after_seconds?: number;
       session_id?: string;
-      research_run_id?: string;
       composer_turn_id?: string;
       control_subagent_run_id?: string;
       project_id?: string;
@@ -109,14 +107,13 @@ export class MetricAggregatesProjector implements Projector {
   /**
    * Resolve the scope for a permit event.
    *
-   * Priority: research_run > composer_turn > session > project > global
+   * Priority: composer_turn > control_subagent > session > project > global
    * This mirrors how permit owners are keyed in the scheduler decision logic.
    */
   private resolveScope(
     data: Record<string, unknown>,
     metadata: Record<string, unknown> | undefined,
   ): string {
-    if (data.research_run_id) return `research_run:${data.research_run_id}`;
     if (data.composer_turn_id) return `composer:${data.composer_turn_id}`;
     if (data.control_subagent_run_id) return `control:${data.control_subagent_run_id}`;
     if (data.session_id) return `session:${data.session_id}`;

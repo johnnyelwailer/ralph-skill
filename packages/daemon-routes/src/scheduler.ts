@@ -45,16 +45,29 @@ export async function handleScheduler(
     if ("error" in parsed) return parsed.error;
 
     const sessionId = asNonEmptyString(parsed.data.session_id);
+    const composerTurnId = asNonEmptyString(parsed.data.composer_turn_id);
+    const controlSubagentRunId = asNonEmptyString(parsed.data.control_subagent_run_id);
+    const projectId = asNonEmptyString(parsed.data.project_id) ?? null;
     const providerCandidate = asNonEmptyString(parsed.data.provider_candidate);
     const ttlSeconds = asPositiveInt(parsed.data.ttl_seconds);
-    if (!sessionId) return badRequest("session_id is required");
+    const estimatedCostUsd = asNonNegativeNumber(parsed.data.estimated_cost_usd);
+    const owners = [
+      sessionId ? { sessionId } : undefined,
+      composerTurnId ? { composerTurnId } : undefined,
+      controlSubagentRunId ? { controlSubagentRunId } : undefined,
+    ].filter((owner): owner is { sessionId: string } | { composerTurnId: string } | { controlSubagentRunId: string } => owner !== undefined);
+    if (owners.length === 0) return badRequest("one owner field is required");
+    if (owners.length > 1) return badRequest("only one owner field may be provided");
     if (!providerCandidate) return badRequest("provider_candidate is required");
     if (ttlSeconds === "invalid") return badRequest("ttl_seconds must be a positive integer");
+    if (estimatedCostUsd === "invalid") return badRequest("estimated_cost_usd must be a non-negative number");
 
     const decision = await deps.scheduler.acquirePermit({
-      sessionId,
+      ...owners[0]!,
+      projectId,
       providerCandidate,
       ...(typeof ttlSeconds === "number" ? { ttlSeconds } : {}),
+      ...(typeof estimatedCostUsd === "number" ? { estimatedCostUsd } : {}),
     });
     if (!decision.granted) return jsonResponse(200, { _v: 1, ...decision });
     return jsonResponse(200, { _v: 1, granted: true, permit: decision.permit });
@@ -77,6 +90,12 @@ function asNonEmptyString(value: unknown): string | undefined {
 function asPositiveInt(value: unknown): number | "invalid" | undefined {
   if (value === undefined) return undefined;
   if (typeof value !== "number" || !Number.isInteger(value) || value < 1) return "invalid";
+  return value;
+}
+
+function asNonNegativeNumber(value: unknown): number | "invalid" | undefined {
+  if (value === undefined) return undefined;
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0) return "invalid";
   return value;
 }
 

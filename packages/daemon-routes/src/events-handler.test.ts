@@ -313,52 +313,6 @@ describe("handleEvents", () => {
     });
   });
 
-  describe("research_run_id filter", () => {
-    test("filters events by research_run_id in event data", async () => {
-      const base = mkdtempSync(join(tmpdir(), "aloop-events-rrid-"));
-      const deps = makeDeps(base);
-      mkdirSync(deps.sessionsDir(), { recursive: true });
-      const sessionDir = join(deps.sessionsDir(), "s_rrid");
-      mkdirSync(sessionDir, { recursive: true });
-
-      writeFileSync(join(sessionDir, "log.jsonl"), [
-        makeEvent("research.update", { session_id: "s_rrid", research_run_id: "rr_alpha" }, "1748537600000.000001"),
-        makeEvent("research.update", { session_id: "s_rrid", research_run_id: "rr_beta" }, "1748537600000.000002"),
-        makeEvent("research.update", { session_id: "s_rrid", research_run_id: "rr_alpha" }, "1748537600000.000003"),
-      ].join("\n") + "\n");
-
-      const req = new Request("http://localhost/v1/events?session_id=s_rrid&research_run_id=rr_alpha", { method: "GET" });
-      const res = await handleEvents(req, deps, "/v1/events");
-      const text = await res!.text();
-      expect(text).toContain("1748537600000.000001");
-      expect(text).toContain("1748537600000.000003");
-      expect(text).not.toContain("1748537600000.000002");
-
-      rmSync(base, { recursive: true, force: true });
-    });
-
-    test("returns all events when research_run_id param is absent", async () => {
-      const base = mkdtempSync(join(tmpdir(), "aloop-events-no-rrid-"));
-      const deps = makeDeps(base);
-      mkdirSync(deps.sessionsDir(), { recursive: true });
-      const sessionDir = join(deps.sessionsDir(), "s_norrid");
-      mkdirSync(sessionDir, { recursive: true });
-
-      writeFileSync(join(sessionDir, "log.jsonl"), [
-        makeEvent("research.update", { session_id: "s_norrid", research_run_id: "rr_alpha" }, "1748537600000.000001"),
-        makeEvent("research.update", { session_id: "s_norrid", research_run_id: "rr_beta" }, "1748537600000.000002"),
-      ].join("\n") + "\n");
-
-      const req = new Request("http://localhost/v1/events?session_id=s_norrid", { method: "GET" });
-      const res = await handleEvents(req, deps, "/v1/events");
-      const text = await res!.text();
-      expect(text).toContain("1748537600000.000001");
-      expect(text).toContain("1748537600000.000002");
-
-      rmSync(base, { recursive: true, force: true });
-    });
-  });
-
   describe("composer_turn_id filter", () => {
     test("filters events by composer_turn_id in event data", async () => {
       const base = mkdtempSync(join(tmpdir(), "aloop-events-ctid-"));

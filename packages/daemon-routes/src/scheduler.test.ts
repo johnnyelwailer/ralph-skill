@@ -291,7 +291,7 @@ describe("POST /v1/scheduler/permits", () => {
   });
 
   test("returns 400 when session_id is missing and no other owner is provided", async () => {
-    // The API now requires exactly one of the four owner fields.
+    // The API requires exactly one generic owner field.
     const deps = makeDeps();
     const req = new Request("http://x/v1/scheduler/permits", {
       method: "POST",
@@ -309,28 +309,13 @@ describe("POST /v1/scheduler/permits", () => {
     const req = new Request("http://x/v1/scheduler/permits", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ session_id: "s1", research_run_id: "rr_01", provider_candidate: "prov1" }),
+      body: JSON.stringify({ session_id: "s1", composer_turn_id: "ct_01", provider_candidate: "prov1" }),
     });
     const res = await handleScheduler(req, deps, "/v1/scheduler/permits");
     expect(res!.status).toBe(400);
     const body = await resJson<{ error: { code: string; message: string } }>(res!);
     expect(body.error.code).toBe("bad_request");
     expect(body.error.message).toContain("only one");
-  });
-
-  test("accepts research_run_id as the owner field", async () => {
-    const deps = makeDeps();
-    deps.scheduler.acquirePermit = (input: { researchRunId: string; providerCandidate: string }) => {
-      expect(input.researchRunId).toBe("rr_01");
-      return Promise.resolve({ granted: true, permit: { id: "p", sessionId: "", providerId: "prov", ttlSeconds: 300, grantedAt: "", expiresAt: "" } });
-    };
-    const req = new Request("http://x/v1/scheduler/permits", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ research_run_id: "rr_01", provider_candidate: "prov1" }),
-    });
-    const res = await handleScheduler(req, deps, "/v1/scheduler/permits");
-    expect(res!.status).toBe(200);
   });
 
   test("accepts composer_turn_id as the owner field", async () => {

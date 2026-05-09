@@ -207,7 +207,7 @@ The incubation surface is the front door for work before it is ready for setup, 
 
 - quick capture inbox
 - item detail with provenance, comments, labels, related items, and artifacts
-- research queue and research-run inspector
+- research queue and research-session inspector
 - source plan editor for docs, web, video, forums, social, repositories, issue trackers, market data, and user-provided artifacts
 - cited source browser with transcripts, screenshots, retrieval timestamps, and limitations
 - experiment-loop workbench for AutoResearch-style protocols, immutable oracle, mutable surface, attempt ledger, and best/rejected candidates

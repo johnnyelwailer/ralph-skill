@@ -47,6 +47,8 @@ describe("PermitRegistry", () => {
     expect(found).toEqual({
       id: "perm_x",
       sessionId: "s_1",
+      composerTurnId: null,
+      controlSubagentRunId: null,
       projectId: null,
       providerId: "opencode",
       ttlSeconds: 600,
@@ -222,7 +224,10 @@ describe("projection functions", () => {
     const row = db
       .query<{
         id: string;
-        session_id: string;
+        session_id: string | null;
+        composer_turn_id: string | null;
+        control_subagent_run_id: string | null;
+        project_id: string | null;
         provider_id: string;
         ttl_seconds: number;
         granted_at: string;
@@ -233,6 +238,8 @@ describe("projection functions", () => {
     expect(row).toEqual({
       id: "new_permit",
       session_id: "s_1",
+      composer_turn_id: null,
+      control_subagent_run_id: null,
       project_id: null,
       provider_id: "opencode",
       ttl_seconds: 600,

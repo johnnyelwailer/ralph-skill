@@ -4,16 +4,15 @@ import { makeIdGenerator } from "@aloop/core";
 import {
   createEventWriter,
   EventCountsProjector,
-  IncubationStore,
   JsonlEventStore,
   openDatabase,
   PermitProjector,
   PermitRegistry,
   ProjectRegistry,
+  SessionRegistry,
   WorkspaceRegistry,
   type Database,
   type EventWriter,
-  type IncubationStore as IncubationStoreType,
 } from "@aloop/state-sqlite";
 import { resolveDaemonPaths } from "@aloop/daemon-config";
 import { startHttp, startSocket, type RunningHttp, type RunningSocket } from "@aloop/daemon-http";
@@ -44,7 +43,7 @@ export type RunningDaemon = {
   db: Database;
   registry: ProjectRegistry;
   workspaceRegistry: WorkspaceRegistry;
-  incubation: IncubationStore;
+  sessionRegistry: SessionRegistry;
   config: ConfigStore;
   events: EventWriter;
   scheduler: SchedulerService;
@@ -76,8 +75,8 @@ export async function startDaemon(opts: StartDaemonOptions = {}): Promise<Runnin
   const { db } = openDatabase(dbPath);
   const registry = new ProjectRegistry(db);
   const workspaceRegistry = new WorkspaceRegistry(db);
+  const sessionRegistry = new SessionRegistry(db);
   const permits = new PermitRegistry(db);
-  const incubation = new IncubationStore(db);
   eventStore = new JsonlEventStore(paths.logFile);
   const events = createEventWriter({
     db,
@@ -92,13 +91,13 @@ export async function startDaemon(opts: StartDaemonOptions = {}): Promise<Runnin
   const routerDeps = makeRouterDeps({
     registry,
     workspaceRegistry,
+    sessionRegistry,
     scheduler,
     startedAt,
     config,
     events,
     providerRegistry,
     providerHealth,
-    incubation,
   });
   try {
     http = startHttp({ hostname, port, deps: routerDeps });
@@ -123,7 +122,7 @@ export async function startDaemon(opts: StartDaemonOptions = {}): Promise<Runnin
     db,
     registry,
     workspaceRegistry,
-    incubation,
+    sessionRegistry,
     config,
     events,
     scheduler,

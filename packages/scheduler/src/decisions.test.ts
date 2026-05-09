@@ -127,16 +127,6 @@ describe("AcquirePermitInput", () => {
     expect(withTtl.ttlSeconds).toBe(300);
   });
 
-  test("research_run_id is a valid owner variant", () => {
-    const input: AcquirePermitInput = {
-      researchRunId: "rr_01",
-      projectId: null,
-      providerCandidate: "opencode",
-    };
-    expect(input.researchRunId).toBe("rr_01");
-    expect((input as { sessionId?: string }).sessionId).toBeUndefined();
-  });
-
   test("composer_turn_id is a valid owner variant", () => {
     const input: AcquirePermitInput = {
       composerTurnId: "ct_01",
@@ -155,10 +145,10 @@ describe("AcquirePermitInput", () => {
     expect(input.controlSubagentRunId).toBe("csar_01");
   });
 
-  test("TypeScript: providing both sessionId and researchRunId is a type error", () => {
+  test("TypeScript: providing more than one owner field is a type error", () => {
     // This test documents the constraint — the intersection enforces exactly-one-owner.
     // The following would not compile:
-    // const bad: AcquirePermitInput = { sessionId: "s", researchRunId: "r", projectId: null, providerCandidate: "x" };
+    // const bad: AcquirePermitInput = { sessionId: "s", composerTurnId: "ct", projectId: null, providerCandidate: "x" };
     const valid: AcquirePermitInput = {
       sessionId: "s_only",
       projectId: null,
@@ -176,11 +166,6 @@ describe("PermitOwner", () => {
     expect(owner.sessionId).toBe("sess_1");
   });
 
-  test("researchRunId variant", () => {
-    const owner: PermitOwner = { researchRunId: "rr_1" };
-    expect(owner.researchRunId).toBe("rr_1");
-  });
-
   test("composerTurnId variant", () => {
     const owner: PermitOwner = { composerTurnId: "ct_1" };
     expect(owner.composerTurnId).toBe("ct_1");
@@ -193,10 +178,10 @@ describe("PermitOwner", () => {
 
   test("TypeScript: only one field may be set per union branch", () => {
     // The following would not compile (cross-variant pollution):
-    // const bad: PermitOwner = { sessionId: "s", researchRunId: "r" };
+    // const bad: PermitOwner = { sessionId: "s", composerTurnId: "ct" };
     const session: PermitOwner = { sessionId: "s_only" };
     expect(session.sessionId).toBe("s_only");
-    expect((session as { researchRunId?: string }).researchRunId).toBeUndefined();
+    expect((session as { composerTurnId?: string }).composerTurnId).toBeUndefined();
   });
 });
 

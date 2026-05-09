@@ -31,9 +31,8 @@ export type PermitDenyEvent = {
 
 /** Serialise a PermitOwner to snake_case event fields. */
 function ownerToFields(owner: PermitOwner): Record<string, string> {
-  if ("sessionId" in owner) return { session_id: owner.sessionId };
-  if ("researchRunId" in owner) return { research_run_id: owner.researchRunId };
-  if ("composerTurnId" in owner) return { composer_turn_id: owner.composerTurnId };
+  if (owner.sessionId !== undefined) return { session_id: owner.sessionId };
+  if (owner.composerTurnId !== undefined) return { composer_turn_id: owner.composerTurnId };
   return { control_subagent_run_id: (owner as { controlSubagentRunId: string }).controlSubagentRunId };
 }
 

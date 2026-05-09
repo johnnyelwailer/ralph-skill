@@ -3,6 +3,7 @@ import type {
   AcquirePermitInput,
   LimitsUpdateResult,
   PermitDecision,
+  PermitOwner,
   SchedulerConfigView,
 } from "./decisions.ts";
 import type { SchedulerProbes } from "@aloop/scheduler-gates";
@@ -46,7 +47,7 @@ export class SchedulerService {
     if (!permit) return false;
     await appendPermitRelease(this.events, {
       permitId: permit.id,
-      owner: { sessionId: permit.sessionId },
+      owner: ownerFromPermit(permit),
     });
     return true;
   }
@@ -56,10 +57,17 @@ export class SchedulerService {
     for (const permit of expired) {
       await appendPermitExpired(this.events, {
         permitId: permit.id,
-        owner: { sessionId: permit.sessionId },
+        owner: ownerFromPermit(permit),
       });
     }
     return expired.length;
   }
 
+}
+
+function ownerFromPermit(permit: Permit): PermitOwner {
+  if (permit.sessionId) return { sessionId: permit.sessionId };
+  if (permit.composerTurnId) return { composerTurnId: permit.composerTurnId };
+  if (permit.controlSubagentRunId) return { controlSubagentRunId: permit.controlSubagentRunId };
+  throw new Error(`permit has no owner: ${permit.id}`);
 }

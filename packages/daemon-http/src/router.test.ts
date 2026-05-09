@@ -20,7 +20,6 @@ function makeDeps() {
     handleProviders: () => undefined,
     handleScheduler: () => undefined,
     handleWorkspaces: () => undefined,
-    handleIncubation: () => undefined,
     handleSessions: () => undefined,
   };
 }
@@ -168,7 +167,6 @@ describe("makeFetchHandler dispatch order", () => {
         return undefined;
       },
       handleWorkspaces: () => undefined,
-      handleIncubation: () => undefined,
       handleSessions: () => undefined,
     };
   }
@@ -209,6 +207,15 @@ describe("makeFetchHandler dispatch order", () => {
     expect(body.error.code).toBe("not_found");
     expect(body.error.message).toContain("/v1/does-not-exist");
     expect(body.error._v).toBe(1);
+  });
+
+  test("/v1/incubation has no dedicated route", async () => {
+    const fetch = makeFetchHandler(makeDeps());
+    const res = await fetch(new Request("http://x/v1/incubation/items", { method: "GET" }));
+    expect(res.status).toBe(404);
+    const body = await res.json() as { error: { code: string; message: string } };
+    expect(body.error.code).toBe("not_found");
+    expect(body.error.message).toContain("/v1/incubation/items");
   });
 
   test("POST request to /v1/projects is dispatched to projects handler", async () => {

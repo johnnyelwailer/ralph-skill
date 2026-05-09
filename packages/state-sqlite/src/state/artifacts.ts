@@ -23,8 +23,8 @@ export class ArtifactRegistry {
     const now = input.now ?? new Date().toISOString();
 
     this.db.run(
-      `INSERT INTO artifacts (id, project_id, session_id, setup_run_id, work_item_key, kind, phase, label, filename, media_type, bytes, created_at, composer_turn_id, control_subagent_run_id, research_run_id)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO artifacts (id, project_id, session_id, setup_run_id, work_item_key, kind, phase, label, filename, media_type, bytes, created_at, composer_turn_id, control_subagent_run_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         id,
         input.project_id,
@@ -40,7 +40,6 @@ export class ArtifactRegistry {
         now,
         input.composer_turn_id ?? null,
         input.control_subagent_run_id ?? null,
-        input.research_run_id ?? null,
       ],
     );
 
@@ -64,9 +63,8 @@ export class ArtifactRegistry {
         created_at: string;
         composer_turn_id: string | null;
         control_subagent_run_id: string | null;
-        research_run_id: string | null;
       }, [string]>(
-        `SELECT id, project_id, session_id, setup_run_id, work_item_key, kind, phase, label, filename, media_type, bytes, created_at, composer_turn_id, control_subagent_run_id, research_run_id
+        `SELECT id, project_id, session_id, setup_run_id, work_item_key, kind, phase, label, filename, media_type, bytes, created_at, composer_turn_id, control_subagent_run_id
          FROM artifacts WHERE id = ?`,
       )
       .get(id);
@@ -91,7 +89,6 @@ export class ArtifactRegistry {
       created_at: string;
       composer_turn_id: string | null;
       control_subagent_run_id: string | null;
-      research_run_id: string | null;
     };
 
     // Build a WHERE clause from the filter, supporting multiple filter dimensions.
@@ -105,10 +102,6 @@ export class ArtifactRegistry {
     if (filter.control_subagent_run_id !== undefined) {
       conditions.push("control_subagent_run_id = ?");
       args.push(filter.control_subagent_run_id);
-    }
-    if (filter.research_run_id !== undefined) {
-      conditions.push("research_run_id = ?");
-      args.push(filter.research_run_id);
     }
     if (filter.project_id !== undefined) {
       conditions.push("project_id = ?");
@@ -136,7 +129,7 @@ export class ArtifactRegistry {
     }
 
     const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
-    const query = `SELECT id, project_id, session_id, setup_run_id, work_item_key, kind, phase, label, filename, media_type, bytes, created_at, composer_turn_id, control_subagent_run_id, research_run_id
+    const query = `SELECT id, project_id, session_id, setup_run_id, work_item_key, kind, phase, label, filename, media_type, bytes, created_at, composer_turn_id, control_subagent_run_id
  FROM artifacts ${where} ORDER BY created_at DESC`;
 
     return this.db
@@ -172,7 +165,6 @@ function toArtifact(row: {
   created_at: string;
   composer_turn_id: string | null;
   control_subagent_run_id: string | null;
-  research_run_id: string | null;
 }): Artifact {
   return {
     _v: 1,
@@ -191,6 +183,5 @@ function toArtifact(row: {
     created_at: row.created_at,
     composer_turn_id: row.composer_turn_id,
     control_subagent_run_id: row.control_subagent_run_id,
-    research_run_id: row.research_run_id,
   };
 }

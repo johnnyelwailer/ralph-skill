@@ -80,9 +80,6 @@ function listArtifacts(req: Request, deps: ArtifactsDeps): Response {
   const controlSubagentRunId = url.searchParams.get("control_subagent_run_id");
   if (controlSubagentRunId) (filter as Record<string, string>).control_subagent_run_id = controlSubagentRunId;
 
-  const researchRunId = url.searchParams.get("research_run_id");
-  if (researchRunId) (filter as Record<string, string>).research_run_id = researchRunId;
-
   const artifacts = deps.registry.list(filter);
   return jsonResponse(200, { _v: 1, items: artifacts, next_cursor: null });
 }
@@ -180,9 +177,6 @@ async function uploadArtifact(req: Request, deps: ArtifactsDeps): Promise<Respon
   const controlSubagentRunId = formData.get("control_subagent_run_id");
   const controlSubagentRunIdValue = typeof controlSubagentRunId === "string" ? controlSubagentRunId : null;
 
-  const researchRunId = formData.get("research_run_id");
-  const researchRunIdValue = typeof researchRunId === "string" ? researchRunId : null;
-
   const artifact = deps.registry.create({
     project_id: projectId.trim(),
     session_id: sessionIdValue?.trim() ?? null,
@@ -196,7 +190,6 @@ async function uploadArtifact(req: Request, deps: ArtifactsDeps): Promise<Respon
     bytes,
     composer_turn_id: composerTurnIdValue?.trim() ?? null,
     control_subagent_run_id: controlSubagentRunIdValue?.trim() ?? null,
-    research_run_id: researchRunIdValue?.trim() ?? null,
   });
 
   const arrayBuffer = await file.arrayBuffer();

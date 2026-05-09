@@ -71,7 +71,7 @@ Important pattern:
 - user can refine mid-run
 - final output is a report, not a mutation
 
-For aloop, this validates `ResearchRun` as a durable object with events, source records, and interruption/refinement.
+For aloop, this validates durable research sessions backed by events, source-record artifacts, and interruption/refinement.
 
 ### Gemini Deep Research
 
@@ -144,13 +144,13 @@ Important pattern:
 - question development is a separate phase from initial planning
 - exploration and reporting have different failure modes
 
-For aloop, `ResearchRun` should expose phase/progress, not just status.
+For aloop, research sessions should expose phase/progress through generic session and event metadata, not just status.
 
 ## Implications For Aloop
 
-### 1. Add `ResearchRun.mode`
+### 1. Add a Research Session Metadata Profile
 
-The current incubation model should distinguish:
+The current incubation profile should distinguish these through artifact/session metadata rather than a dedicated run object:
 
 | Mode | Pattern | Output |
 |---|---|---|
@@ -161,7 +161,7 @@ The current incubation model should distinguish:
 
 ### 2. Add research protocols
 
-Every non-trivial research run should have a protocol:
+Every non-trivial research session should have a protocol:
 
 - question
 - source plan or experiment plan
@@ -188,7 +188,7 @@ Source-grounded research produces **claims with provenance**.
 
 Experiment loops produce **candidates measured by an oracle**.
 
-They can inform each other, but they need separate schemas. Mixing them into one generic `ResearchRun` would hide the most important correctness constraints.
+They can inform each other, but they need separate metadata profiles. Mixing them into one bespoke research object would hide the most important correctness constraints.
 
 ### 4. Make monitors bounded
 
@@ -222,14 +222,14 @@ Rule:
 
 ### 7. Preserve human-owned direction
 
-AutoResearch's `program.md` is human-authored direction. In aloop, the equivalent is the incubation item/protocol/proposal. Agents can recommend revisions, but changing the research direction should be explicit and reviewable.
+AutoResearch's `program.md` is human-authored direction. In aloop, the equivalent is the incubation artifact/protocol/proposal. Agents can recommend revisions, but changing the research direction should be explicit and reviewable.
 
 ## Spec Changes Suggested
 
-- `ResearchRun.mode`
-- `ResearchProtocol` or protocol fields on runs/monitors
+- research session metadata profiles
+- `ResearchProtocol` or protocol fields on artifacts/triggers
 - `ExperimentPlan` for AutoResearch-style loops
-- phase/progress fields for research runs
+- phase/progress fields for research sessions
 - source connector coverage/limitation records
 - monitor plateau/no-change metrics
 - UI surfaces for protocol, source coverage, experiment ledger, and best/worst attempts

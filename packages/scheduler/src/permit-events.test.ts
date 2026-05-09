@@ -93,27 +93,6 @@ describe("appendPermitGrant", () => {
     expect(result).toBeUndefined();
   });
 
-  test("serialises research_run_id owner to event", async () => {
-    const { events, append } = mockEventWriter();
-    await appendPermitGrant({ append }, {
-      permitId: "perm_r",
-      owner: { researchRunId: "rr_test_01" },
-      providerId: "opencode",
-      ttlSeconds: 300,
-      grantedAt: "t1",
-      expiresAt: "t2",
-    });
-    expect(events[0]!.data).toEqual({
-      permit_id: "perm_r",
-      research_run_id: "rr_test_01",
-      provider_id: "opencode",
-      ttl_seconds: 300,
-      granted_at: "t1",
-      expires_at: "t2",
-    });
-    expect(events[0]!.data).not.toHaveProperty("session_id");
-  });
-
   test("serialises composer_turn_id owner to event", async () => {
     const { events, append } = mockEventWriter();
     await appendPermitGrant({ append }, {
@@ -182,18 +161,6 @@ describe("appendPermitRelease", () => {
     expect(result).toBeUndefined();
   });
 
-  test("serialises research_run_id owner to event", async () => {
-    const { events, append } = mockEventWriter();
-    await appendPermitRelease({ append }, {
-      permitId: "perm_r",
-      owner: { researchRunId: "rr_02" },
-    });
-    expect(events[0]!.data).toEqual({
-      permit_id: "perm_r",
-      research_run_id: "rr_02",
-    });
-    expect(events[0]!.data).not.toHaveProperty("session_id");
-  });
 });
 
 // ─── appendPermitExpired ──────────────────────────────────────────────────────
@@ -365,24 +332,6 @@ describe("appendPermitDeny", () => {
     expect(result.granted).toBe(false);
     const denied = result as { granted: false; retryAfterSeconds: number };
     expect(denied.retryAfterSeconds).toBe(30);
-  });
-
-  test("serialises research_run_id owner in deny event", async () => {
-    const { events, append } = mockEventWriter();
-    const result = await appendPermitDeny({ append }, {
-      owner: { researchRunId: "rr_deny_01" },
-      reason: "concurrency_cap",
-      gate: "concurrency",
-      details: {},
-    });
-    expect(events[0]!.data).toEqual({
-      research_run_id: "rr_deny_01",
-      reason: "concurrency_cap",
-      gate: "concurrency",
-      details: {},
-    });
-    expect(events[0]!.data).not.toHaveProperty("session_id");
-    expect(result.granted).toBe(false);
   });
 
   test("serialises composer_turn_id owner in deny event", async () => {

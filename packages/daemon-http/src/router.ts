@@ -19,10 +19,6 @@ export type RouterDeps = {
     req: Request,
     pathname: string,
   ) => Response | Promise<Response | undefined> | undefined;
-  readonly handleIncubation: (
-    req: Request,
-    pathname: string,
-  ) => Response | Promise<Response | undefined> | undefined;
   readonly handleSessions: (
     req: Request,
     pathname: string,
@@ -66,9 +62,6 @@ export function makeFetchHandler(
 
     const schedulerResponse = await deps.handleScheduler(req, pathname);
     if (schedulerResponse) return schedulerResponse;
-
-    const incubationResponse = await deps.handleIncubation(req, pathname);
-    if (incubationResponse) return incubationResponse;
 
     const sessionsResponse = await deps.handleSessions(req, pathname);
     if (sessionsResponse) return sessionsResponse;

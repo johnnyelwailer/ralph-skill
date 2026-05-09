@@ -521,9 +521,9 @@ describe("GET /v1/artifacts/:id/content with real file", () => {
 });
 
 // ─── GET /v1/artifacts filter params: composer_turn_id,
-//     control_subagent_run_id, research_run_id ──────────────────────────────
+//     control_subagent_run_id ───────────────────────────────────────────────
 
-describe("GET /v1/artifacts filter parameters (composer/research fields)", () => {
+describe("GET /v1/artifacts filter parameters (composer/control fields)", () => {
   test("filters by composer_turn_id", async () => {
     const deps = makeDeps();
     deps.registry.create({ project_id: "p_ct", kind: "image", filename: "a.png", media_type: "image/png", bytes: 10, composer_turn_id: "ct_abc" });
@@ -551,20 +551,7 @@ describe("GET /v1/artifacts filter parameters (composer/research fields)", () =>
     expect(body.items[0]!.control_subagent_run_id).toBe("csr_1");
   });
 
-  test("filters by research_run_id", async () => {
-    const deps = makeDeps();
-    deps.registry.create({ project_id: "p_rr", kind: "image", filename: "a.png", media_type: "image/png", bytes: 10, research_run_id: "rr_research_1" });
-    deps.registry.create({ project_id: "p_rr", kind: "image", filename: "b.png", media_type: "image/png", bytes: 10, research_run_id: "rr_research_2" });
-
-    const req = makeRequest("GET", "/v1/artifacts?research_run_id=rr_research_1");
-    const res = await handleArtifacts(req, deps, "/v1/artifacts");
-    expect(res!.status).toBe(200);
-    const body = await resJson<{ items: Array<{ research_run_id: string | null }> }>(res!);
-    expect(body.items).toHaveLength(1);
-    expect(body.items[0]!.research_run_id).toBe("rr_research_1");
-  });
-
-  test("combines composer/research filters with other filters", async () => {
+  test("combines composer/control filters with other filters", async () => {
     const deps = makeDeps();
     deps.registry.create({ project_id: "p_combo", kind: "image", filename: "match.png", media_type: "image/png", bytes: 10, session_id: "sess_A", phase: "execute", composer_turn_id: "ct_match" });
     deps.registry.create({ project_id: "p_combo", kind: "image", filename: "wrong_sess.png", media_type: "image/png", bytes: 10, session_id: "sess_B", phase: "execute", composer_turn_id: "ct_match" });
@@ -580,10 +567,10 @@ describe("GET /v1/artifacts filter parameters (composer/research fields)", () =>
   });
 });
 
-// ─── POST /v1/artifacts (uploadArtifact): composer/research optional fields ──
+// ─── POST /v1/artifacts (uploadArtifact): composer/control optional fields ──
 
-describe("POST /v1/artifacts (uploadArtifact) composer/research fields", () => {
-  test("accepts all composer and research optional fields", async () => {
+describe("POST /v1/artifacts (uploadArtifact) composer/control fields", () => {
+  test("accepts all composer and control optional fields", async () => {
     const deps = makeDeps();
     const file = new File(["data"], "research.pdf", { type: "application/pdf" });
     const formData = new FormData();
@@ -592,7 +579,6 @@ describe("POST /v1/artifacts (uploadArtifact) composer/research fields", () => {
     formData.set("file", file);
     formData.set("composer_turn_id", "ct_upload");
     formData.set("control_subagent_run_id", "csr_upload");
-    formData.set("research_run_id", "rr_upload");
 
     const req = new Request("http://localhost/v1/artifacts", {
       method: "POST",
@@ -603,17 +589,16 @@ describe("POST /v1/artifacts (uploadArtifact) composer/research fields", () => {
     const body = await resJson<Record<string, unknown>>(res!);
     expect(body.composer_turn_id).toBe("ct_upload");
     expect(body.control_subagent_run_id).toBe("csr_upload");
-    expect(body.research_run_id).toBe("rr_upload");
   });
 
-  test("accepts a single composer/research field independently", async () => {
+  test("accepts a single composer/control field independently", async () => {
     const deps = makeDeps();
     const file = new File(["data"], "wip.txt", { type: "text/plain" });
     const formData = new FormData();
     formData.set("project_id", "p_single_field");
     formData.set("kind", "diff");
     formData.set("file", file);
-    formData.set("research_run_id", "rr_only");
+    formData.set("composer_turn_id", "ct_only");
 
     const req = new Request("http://localhost/v1/artifacts", {
       method: "POST",
@@ -622,8 +607,7 @@ describe("POST /v1/artifacts (uploadArtifact) composer/research fields", () => {
     const res = await handleArtifacts(req, deps, "/v1/artifacts");
     expect(res!.status).toBe(201);
     const body = await resJson<Record<string, unknown>>(res!);
-    expect(body.research_run_id).toBe("rr_only");
-    expect(body.composer_turn_id).toBeNull();
+    expect(body.composer_turn_id).toBe("ct_only");
     expect(body.control_subagent_run_id).toBeNull();
   });
 });

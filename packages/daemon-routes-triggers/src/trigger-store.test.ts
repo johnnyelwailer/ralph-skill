@@ -148,13 +148,13 @@ describe("TriggerStore", () => {
       const patched = store.patch(created.id, {
         scope: { kind: "project", id: "p_retargeted" },
         source: { kind: "event", topic: "session.completed" },
-        action: { kind: "create_research_run", target: {} },
+        action: { kind: "create_session", target: {} },
       });
       expect(patched.scope.kind).toBe("project");
       expect(patched.scope.id).toBe("p_retargeted");
       expect(patched.source.kind).toBe("event");
       expect(patched.source.topic).toBe("session.completed");
-      expect(patched.action.kind).toBe("create_research_run");
+      expect(patched.action.kind).toBe("create_session");
     });
 
     test("throws TriggerNotFoundError for unknown id", () => {

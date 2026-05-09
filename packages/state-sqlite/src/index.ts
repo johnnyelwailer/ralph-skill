@@ -39,28 +39,16 @@ export {
   type Projector,
 } from "./state/projector.ts";
 export {
-  IncubationStore,
-  IncubationItemNotFoundError,
-  ResearchRunNotFoundError,
-  ProposalNotFoundError,
-  CommentNotFoundError,
-  type IncubationScope,
-  type IncubationItemStatus,
-  type ResearchSourceKind,
-  type ResearchSourcePlan,
-  type ResearchRunMode,
-  type ResearchRun,
-  type ProposalKind,
-  type ProposalState,
-  type PromotionTarget,
-  type PromotionRef,
-  type IncubationProposal,
-  type IncubationItem,
-  type IncubationComment,
-} from "./state/incubation-store.ts";
-export {
   WorkspaceRegistry,
 } from "./state/workspaces";
+export {
+  ArtifactRegistry,
+  ArtifactNotFoundError,
+  type Artifact,
+  type ArtifactFilter,
+  type ArtifactKind,
+  type CreateArtifactInput,
+} from "./state/artifacts.ts";
 export {
   SessionRegistry,
   type SessionQueueItem,

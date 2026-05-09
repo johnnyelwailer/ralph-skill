@@ -163,14 +163,14 @@ Bad promotion outcomes:
 
 ## Open Questions
 
-- Should incubation recipes be represented as first-class daemon objects or as a constrained subtype of `ResearchRun`?
-- Should scenario simulation be a new `ResearchRunMode` or remain an extension-specific recipe under `source_synthesis`?
+- Should incubation recipes be represented as reusable metadata profiles over artifacts/sessions/triggers?
+- Should scenario simulation be a new generic session profile mode or remain an extension-specific recipe under `source_synthesis`?
 - What is the smallest artifact schema that lets the dashboard compare simulation outputs across recipes?
 - Is a local Docker-only recipe enough for v1, or should hosted managed-job execution be required before this is useful?
 - What license and security review is required before documenting a third-party recipe as officially supported?
 
 ## Decision
 
-Keep this out of core for now. Revisit after incubation research runs, source records, artifacts, proposals, and runtime extension manifests are implemented.
+Keep this out of core for now. Revisit after research session profiles, source records, artifacts, proposals, and runtime extension manifests are implemented.
 
 The likely first implementation should be a documentation-backed optional recipe that proves the boundary, not a dependency or shipped integration.

@@ -2,7 +2,9 @@ import type { Database } from "bun:sqlite";
 
 export type Permit = {
   readonly id: string;
-  readonly sessionId: string;
+  readonly sessionId: string | null;
+  readonly composerTurnId: string | null;
+  readonly controlSubagentRunId: string | null;
   readonly projectId: string | null;
   readonly providerId: string;
   readonly ttlSeconds: number;
@@ -12,7 +14,9 @@ export type Permit = {
 
 type PermitRow = {
   id: string;
-  session_id: string;
+  session_id: string | null;
+  composer_turn_id: string | null;
+  control_subagent_run_id: string | null;
   project_id: string | null;
   provider_id: string;
   ttl_seconds: number;
@@ -24,6 +28,8 @@ function rowToPermit(row: PermitRow): Permit {
   return {
     id: row.id,
     sessionId: row.session_id,
+    composerTurnId: row.composer_turn_id,
+    controlSubagentRunId: row.control_subagent_run_id,
     projectId: row.project_id,
     providerId: row.provider_id,
     ttlSeconds: row.ttl_seconds,
@@ -71,8 +77,10 @@ export class PermitRegistry {
 
 export type GrantedPermitProjection = {
   readonly permitId: string;
-  readonly sessionId: string;
-  readonly projectId: string | null;
+  readonly sessionId?: string | null;
+  readonly composerTurnId?: string | null;
+  readonly controlSubagentRunId?: string | null;
+  readonly projectId?: string | null;
   readonly providerId: string;
   readonly ttlSeconds: number;
   readonly grantedAt: string;
@@ -86,10 +94,12 @@ export type GrantedPermitProjection = {
 
 export function projectGrantedPermit(db: Database, permit: GrantedPermitProjection): void {
   db.run(
-    `INSERT INTO permits (id, session_id, project_id, provider_id, ttl_seconds, granted_at, expires_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?)
+    `INSERT INTO permits (id, session_id, composer_turn_id, control_subagent_run_id, project_id, provider_id, ttl_seconds, granted_at, expires_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(id) DO UPDATE SET
        session_id = excluded.session_id,
+       composer_turn_id = excluded.composer_turn_id,
+       control_subagent_run_id = excluded.control_subagent_run_id,
        project_id = excluded.project_id,
        provider_id = excluded.provider_id,
        ttl_seconds = excluded.ttl_seconds,
@@ -97,8 +107,10 @@ export function projectGrantedPermit(db: Database, permit: GrantedPermitProjecti
        expires_at = excluded.expires_at`,
     [
       permit.permitId,
-      permit.sessionId,
-      permit.projectId,
+      permit.sessionId ?? null,
+      permit.composerTurnId ?? null,
+      permit.controlSubagentRunId ?? null,
+      permit.projectId ?? null,
       permit.providerId,
       permit.ttlSeconds,
       permit.grantedAt,

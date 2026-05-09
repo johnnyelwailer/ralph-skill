@@ -144,8 +144,6 @@ export type ComposerDelegatedRefStatus =
 
 export type ComposerLaunchedRef =
   | { readonly kind: "artifact"; readonly id: string }
-  | { readonly kind: "research_run"; readonly id: string }
-  | { readonly kind: "research_monitor"; readonly id: string }
   | { readonly kind: "setup_run"; readonly id: string }
   | { readonly kind: "session"; readonly id: string };
 

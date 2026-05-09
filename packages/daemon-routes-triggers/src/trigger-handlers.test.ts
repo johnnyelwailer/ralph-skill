@@ -100,7 +100,7 @@ describe("POST /v1/triggers", () => {
     const req = createTriggerReq(deps, {
       scope: { kind: "project", id: "p_abc123" },
       source: { kind: "event", topic: "session.update" },
-      action: { kind: "create_research_run", target: {} },
+      action: { kind: "create_session", target: {} },
       budget_policy: { max_cost_usd_per_fire: 2.5 },
       debounce_seconds: 3600,
       enabled: false,
@@ -236,7 +236,7 @@ describe("GET /v1/triggers", () => {
 
   test("returns all triggers", async () => {
     await handleTriggers(req(deps, { scope: { kind: "global" }, source: { kind: "time" }, action: { kind: "emit_alert", target: {} } }), deps, "/v1/triggers");
-    await handleTriggers(req(deps, { scope: { kind: "project", id: "p_x" }, source: { kind: "event" }, action: { kind: "tick_monitor", target: { monitor_id: "m_1" } } }), deps, "/v1/triggers");
+    await handleTriggers(req(deps, { scope: { kind: "project", id: "p_x" }, source: { kind: "event" }, action: { kind: "fire_monitor_profile", target: { artifact_id: "a_1" } } }), deps, "/v1/triggers");
 
     const listRequest = listReq(deps);
     const res = await handleTriggers(listRequest, deps, "/v1/triggers");
@@ -246,7 +246,7 @@ describe("GET /v1/triggers", () => {
 
   test("filters by scope_kind", async () => {
     await handleTriggers(req(deps, { scope: { kind: "global" }, source: { kind: "time" }, action: { kind: "emit_alert", target: {} } }), deps, "/v1/triggers");
-    await handleTriggers(req(deps, { scope: { kind: "project", id: "p_x" }, source: { kind: "event" }, action: { kind: "tick_monitor", target: { monitor_id: "m_1" } } }), deps, "/v1/triggers");
+    await handleTriggers(req(deps, { scope: { kind: "project", id: "p_x" }, source: { kind: "event" }, action: { kind: "fire_monitor_profile", target: { artifact_id: "a_1" } } }), deps, "/v1/triggers");
 
     const listRequest = listReq(deps, "scope_kind=project");
     const res = await handleTriggers(listRequest, deps, "/v1/triggers");
