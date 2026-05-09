@@ -7,7 +7,7 @@
   "scripts": {
     "test": "bun test",
     "typecheck": "bun --filter '*' typecheck",
-    "build": "node ./node_modules/typescript/bin/tsc -p tsconfig.build.json --noEmit --noCheck",
+    "build": "tsc -p tsconfig.build.json --noEmit --noCheck",
     "check:constitution": "bun run tools/check-constitution-loc.mjs"
   },
   "devDependencies": {
