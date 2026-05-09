@@ -7,6 +7,7 @@ import {
   refreshProviderHealth,
   readLastLineOfLog,
   parseEventTimestamp,
+  watchSessionBurnRates,
 } from "./watchdog-jobs.ts";
 
 function makeFakeEventWriter() {
@@ -429,5 +430,215 @@ describe("refreshProviderHealth", () => {
     expect(called).not.toContain("p2");
     expect(called).toContain("p3");
     expect(writer.events).toHaveLength(2);
+  });
+});
+
+// ─── watchSessionBurnRates ─────────────────────────────────────────────────────
+
+describe("watchSessionBurnRates", () => {
+  const tmpDir = join(process.env.TMPDIR ?? "/tmp", `watchdog-burnrate-test-${Date.now()}`);
+  beforeEach(() => mkdirSync(tmpDir, { recursive: true }));
+  afterEach(() => rmSync(tmpDir, { recursive: true, force: true }));
+
+  test("returns 0 when sessionsDir does not exist", async () => {
+    const writer = makeFakeEventWriter();
+    const probe = () => null;
+    const result = await watchSessionBurnRates(
+      join(tmpDir, "nonexistent"),
+      writer,
+      probe as any,
+      1_000_000,
+      1,
+    );
+    expect(result).toBe(0);
+    expect(writer.events).toHaveLength(0);
+  });
+
+  test("skips non-running sessions", async () => {
+    const sessionDir = join(tmpDir, "s_completed");
+    mkdirSync(sessionDir, { recursive: true });
+    writeFileSync(join(sessionDir, "session.json"), JSON.stringify({
+      id: "s_completed",
+      project_id: "p1",
+      kind: "standalone",
+      status: "completed",
+      workflow: null,
+      created_at: new Date().toISOString(),
+    }), "utf-8");
+
+    const writer = makeFakeEventWriter();
+    const probe = () => null;
+    const result = await watchSessionBurnRates(tmpDir, writer, probe as any, 1_000_000, 1);
+    expect(result).toBe(0);
+    expect(writer.events).toHaveLength(0);
+  });
+
+  test("skips sessions when burnRateProbe returns null", async () => {
+    const sessionDir = join(tmpDir, "s_null_probe");
+    mkdirSync(sessionDir, { recursive: true });
+    writeFileSync(join(sessionDir, "session.json"), JSON.stringify({
+      id: "s_null_probe",
+      project_id: "p1",
+      kind: "standalone",
+      status: "running",
+      workflow: null,
+      created_at: new Date().toISOString(),
+    }), "utf-8");
+
+    const writer = makeFakeEventWriter();
+    const probe = () => null;
+    const result = await watchSessionBurnRates(tmpDir, writer, probe as any, 1_000_000, 1);
+    expect(result).toBe(0);
+    expect(writer.events).toHaveLength(0);
+  });
+
+  test("skips sessions when burnRateProbe throws", async () => {
+    const sessionDir = join(tmpDir, "s_throwing");
+    mkdirSync(sessionDir, { recursive: true });
+    writeFileSync(join(sessionDir, "session.json"), JSON.stringify({
+      id: "s_throwing",
+      project_id: "p1",
+      kind: "standalone",
+      status: "running",
+      workflow: null,
+      created_at: new Date().toISOString(),
+    }), "utf-8");
+
+    const writer = makeFakeEventWriter();
+    const probe = () => { throw new Error("probe unavailable"); };
+    const result = await watchSessionBurnRates(tmpDir, writer, probe as any, 1_000_000, 1);
+    expect(result).toBe(0);
+    expect(writer.events).toHaveLength(0);
+  });
+
+  test("emits scheduler.burn_rate_exceeded when tokensSinceLastCommit exceeds threshold", async () => {
+    const sessionDir = join(tmpDir, "s_token_exceeded");
+    mkdirSync(sessionDir, { recursive: true });
+    writeFileSync(join(sessionDir, "session.json"), JSON.stringify({
+      id: "s_token_exceeded",
+      project_id: "p1",
+      kind: "standalone",
+      status: "running",
+      workflow: null,
+      created_at: new Date().toISOString(),
+    }), "utf-8");
+
+    const writer = makeFakeEventWriter();
+    const probe = () => ({ tokensSinceLastCommit: 2_000_000, commitsPerHour: 5 });
+    const result = await watchSessionBurnRates(tmpDir, writer, probe as any, 1_000_000, 1);
+
+    expect(result).toBe(1);
+    expect(writer.events).toHaveLength(1);
+    expect(writer.events[0]!.topic).toBe("scheduler.burn_rate_exceeded");
+    expect(writer.events[0]!.data).toMatchObject({
+      session_id: "s_token_exceeded",
+      metric: "tokens_since_last_commit",
+      observed: 2_000_000,
+      threshold: 1_000_000,
+    });
+  });
+
+  test("emits scheduler.burn_rate_exceeded when commitsPerHour is below threshold", async () => {
+    const sessionDir = join(tmpDir, "s_commit_exceeded");
+    mkdirSync(sessionDir, { recursive: true });
+    writeFileSync(join(sessionDir, "session.json"), JSON.stringify({
+      id: "s_commit_exceeded",
+      project_id: "p1",
+      kind: "standalone",
+      status: "running",
+      workflow: null,
+      created_at: new Date().toISOString(),
+    }), "utf-8");
+
+    const writer = makeFakeEventWriter();
+    const probe = () => ({ tokensSinceLastCommit: 500_000, commitsPerHour: 0.5 });
+    const result = await watchSessionBurnRates(tmpDir, writer, probe as any, 1_000_000, 1);
+
+    expect(result).toBe(1);
+    expect(writer.events).toHaveLength(1);
+    expect(writer.events[0]!.topic).toBe("scheduler.burn_rate_exceeded");
+    expect(writer.events[0]!.data).toMatchObject({
+      session_id: "s_commit_exceeded",
+      metric: "commits_per_hour",
+      observed: 0.5,
+      threshold: 1,
+    });
+  });
+
+  test("does not emit when neither threshold is exceeded", async () => {
+    const sessionDir = join(tmpDir, "s_healthy");
+    mkdirSync(sessionDir, { recursive: true });
+    writeFileSync(join(sessionDir, "session.json"), JSON.stringify({
+      id: "s_healthy",
+      project_id: "p1",
+      kind: "standalone",
+      status: "running",
+      workflow: null,
+      created_at: new Date().toISOString(),
+    }), "utf-8");
+
+    const writer = makeFakeEventWriter();
+    const probe = () => ({ tokensSinceLastCommit: 500_000, commitsPerHour: 5 });
+    const result = await watchSessionBurnRates(tmpDir, writer, probe as any, 1_000_000, 1);
+
+    expect(result).toBe(0);
+    expect(writer.events).toHaveLength(0);
+  });
+
+  test("handles async burnRateProbe returning a Promise<BurnRateSample | null>", async () => {
+    const sessionDir = join(tmpDir, "s_async");
+    mkdirSync(sessionDir, { recursive: true });
+    writeFileSync(join(sessionDir, "session.json"), JSON.stringify({
+      id: "s_async",
+      project_id: "p1",
+      kind: "standalone",
+      status: "running",
+      workflow: null,
+      created_at: new Date().toISOString(),
+    }), "utf-8");
+
+    const writer = makeFakeEventWriter();
+    const probe = async () => ({ tokensSinceLastCommit: 2_000_000, commitsPerHour: 5 });
+    const result = await watchSessionBurnRates(tmpDir, writer, probe as any, 1_000_000, 1);
+
+    expect(result).toBe(1);
+    expect(writer.events).toHaveLength(1);
+    expect(writer.events[0]!.topic).toBe("scheduler.burn_rate_exceeded");
+  });
+
+  test("processes multiple sessions independently", async () => {
+    for (const [id, tokens, commits] of [
+      ["s_ok", 500_000, 5] as const,
+      ["s_tokens_bad", 2_000_000, 5] as const,
+      ["s_commits_bad", 500_000, 0.1] as const,
+    ]) {
+      const sessionDir = join(tmpDir, id);
+      mkdirSync(sessionDir, { recursive: true });
+      writeFileSync(join(sessionDir, "session.json"), JSON.stringify({
+        id,
+        project_id: "p1",
+        kind: "standalone",
+        status: "running",
+        workflow: null,
+        created_at: new Date().toISOString(),
+      }), "utf-8");
+    }
+
+    const writer = makeFakeEventWriter();
+    const probes: Record<string, () => { tokensSinceLastCommit: number; commitsPerHour: number }> = {
+      s_ok: () => ({ tokensSinceLastCommit: 500_000, commitsPerHour: 5 }),
+      s_tokens_bad: () => ({ tokensSinceLastCommit: 2_000_000, commitsPerHour: 5 }),
+      s_commits_bad: () => ({ tokensSinceLastCommit: 500_000, commitsPerHour: 0.1 }),
+    };
+    const probe = (sessionId: string) => probes[sessionId]?.() ?? null;
+
+    const result = await watchSessionBurnRates(tmpDir, writer, probe as any, 1_000_000, 1);
+
+    expect(result).toBe(2);
+    expect(writer.events).toHaveLength(2);
+    const exceededSessionIds = writer.events.map(e => (e.data as { session_id: string }).session_id);
+    expect(exceededSessionIds).toContain("s_tokens_bad");
+    expect(exceededSessionIds).toContain("s_commits_bad");
+    expect(exceededSessionIds).not.toContain("s_ok");
   });
 });
