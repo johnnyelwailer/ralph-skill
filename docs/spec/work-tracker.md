@@ -42,7 +42,7 @@ The contract is:
 
 Setup may establish the **initial Epic baseline** for orchestrator-mode projects during the final setup handoff, but after handoff the runtime orchestrator owns **living decomposition** and all further tracker-side decomposition changes.
 
-Pre-work ideas do not belong in the tracker by default. Raw captures, vague requests, links, screenshots, and background research live in the incubation layer until a proposal is explicitly promoted into an Epic, Story, spec change, setup run, or steering instruction. See `incubation.md`.
+Pre-work ideas do not belong in the tracker by default. Raw captures, vague requests, links, screenshots, and background research live in the incubation view until an artifact is explicitly promoted into an Epic, Story, spec change, setup run, or steering instruction. See `incubation.md`.
 
 ## Source of truth
 

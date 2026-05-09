@@ -106,7 +106,7 @@ Control subagent requirements:
 - **Least privilege** — a `config-editor` can read/validate/propose config patches for its scope; it does not get runtime session controls. A `runtime-operator` can inspect/steer sessions for its scope; it does not get daemon config write tools.
 - **No direct external APIs** — subagents use daemon tools/adapters only, never raw tracker CLIs, raw network credentials, or filesystem side channels.
 - **Preview before mutation** — policy-sensitive changes become proposed actions. The daemon applies them only after approval/policy checks.
-- **Audited delegation** — creating a subagent run, granting capabilities, producing an action proposal, approving, applying, denying, or cancelling all emit daemon-level audit events.
+- **Audited delegation** — creating a subagent run, granting capabilities, producing a proposed action, approving, applying, denying, or cancelling all emit daemon-level audit events.
 - **Revocable** — cancelling the composer turn or subagent run revokes outstanding capability handles and prevents further mutations from that run.
 
 This is the safety boundary for "composer can control everything." The user gets one natural interface, while each internal agent operates in an isolated, inspectable lane.
@@ -192,7 +192,7 @@ Requirements:
 - attempts outside the mutable surface are rejected before evaluation
 - metric extraction is daemon-owned, not agent-reported
 - environment labels are recorded because results may not transfer across hardware or external services
-- winners become proposals/artifacts, not automatic project mutations
+- winners become reviewable artifacts, not automatic project mutations
 
 If the daemon cannot protect the oracle from the agent, `experiment_loop` mode is unavailable for that target.
 

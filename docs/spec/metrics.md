@@ -78,7 +78,7 @@ Cardinality guardrails:
 - `session_id`, `story_ref`, and `change_set_ref` are allowed on object-detail endpoints, not global Prometheus counters.
 - Freeform labels, raw file paths, reviewer usernames, and tracker URLs are not metric labels. They stay in events and detail records.
 - For model comparison, `model_id` must be paired with task family/workflow phase. A global model ranking is allowed as a dashboard summary, but optimizer decisions must use task-family slices.
-- Spec-quality dimensions are explanatory/contextual. They can guide investigation and routing proposals, but they are not proof of causality.
+- Spec-quality dimensions are explanatory/contextual. They can guide investigation and routing recommendations, but they are not proof of causality.
 
 ## Canonical catalog
 
@@ -172,7 +172,7 @@ Recommended `spec_quality_tier` projection:
 |---|---|---|---|
 | `cost_per_story` | Gauge | `usage` chunks, grouped by session's `issue` | Dashboard, orchestrator |
 | `cost_per_epic` | Gauge | roll-up across Stories under an Epic | Dashboard |
-| `cost_per_research_session` | Gauge | `usage` chunks, grouped by `session_id` where `session.kind` or workflow marks research | Dashboard, incubation proposal review |
+| `cost_per_research_session` | Gauge | `usage` chunks, grouped by `session_id` where `session.kind` or workflow marks research | Dashboard, incubation promotion review |
 | `cost_per_merged_pr` | Gauge | cost summed from dispatch → merge | Burn-rate gate |
 | `daily_cost_total` | Counter (reset daily) | `usage.cost_usd` | Budget gate |
 | `daily_cost_vs_cap` | Ratio | daily_cost_total / daily_cap from project config | Budget gate (starts denying at 80%) |

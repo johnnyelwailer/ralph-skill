@@ -24,7 +24,7 @@ It must not answer that by introducing a parallel object family. The durable obj
 | Long-running monitor | `Trigger` whose action creates a research session/composer turn or alert artifact |
 | Source records and citations | daemon artifacts plus event projections over the run that acquired them |
 | Outreach draft, survey plan, interview script, response summary | artifacts with privacy/consent metadata and policy-gated adapter actions |
-| Synthesis or decision record | artifact or spec/document proposal with evidence refs |
+| Synthesis or decision record | artifact or spec/document change preview with evidence refs |
 | Promotion | explicit mutation through setup, spec/document, tracker, or session APIs |
 | Board/inbox/workstation row | query/view over artifacts, comments, triggers, sessions, and promotion refs |
 
@@ -32,7 +32,7 @@ There is no dedicated `/v1/incubation` API in v1. Clients implement an incubatio
 
 ## Lifecycle
 
-Incubation state is view data, not a separate table. Store lifecycle as metadata on the primary artifact or proposal. The lifecycle vocabulary is:
+Incubation state is view data, not a separate table. Store lifecycle as metadata on the primary artifact or promotion artifact. The lifecycle vocabulary is:
 
 ```text
 captured | clarifying | researching | synthesized | ready_for_promotion | promoted | discarded | archived
@@ -83,13 +83,13 @@ The root object for capture is a normal artifact. Incubation does not define a s
 
 `promoted_refs` are backlinks to real targets. A target may be a setup run, spec change, Epic, Story, steering instruction, decision record, or discard decision. Each ref records the target id, promotion time, and evidence artifact ids.
 
-Research protocols, source plans, outreach plans, monitor policies, and proposal previews are also ordinary artifacts. They should use typed metadata and stable artifact kinds/phases rather than new daemon tables.
+Research protocols, source plans, outreach plans, monitor policies, and promotion previews are also ordinary artifacts. They should use typed metadata and stable artifact kinds/phases rather than new daemon tables.
 
 ## API Shape
 
 Clients use existing endpoints:
 
-- `/v1/artifacts` for capture, source records, research outputs, proposals, outreach drafts, and decision records
+- `/v1/artifacts` for capture, source records, research outputs, promotion previews, outreach drafts, and decision records
 - shared comments endpoints for object-level discussion
 - `/v1/composer/turns` for agentic intake, clarification, delegation, and status explanation
 - `/v1/sessions` for provider-backed research workflows and experiment loops
@@ -132,9 +132,9 @@ Research modes are workflow/config values, not table types:
 
 | Mode | Use | Primary output |
 |---|---|---|
-| `source_synthesis` | source gathering and cited synthesis | findings, source records, proposal candidates |
+| `source_synthesis` | source gathering and cited synthesis | findings, source records, promotion candidates |
 | `monitor_tick` | recurring market/ecosystem/source tracking | delta digest, alert, no-change record |
-| `outreach_analysis` | survey/interview response analysis | anonymized response synthesis, proposal candidates |
+| `outreach_analysis` | survey/interview response analysis | anonymized response synthesis, promotion candidates |
 | `experiment_loop` | active experimentation against an immutable oracle | attempt ledger, best candidate, rejected attempts |
 
 ## Monitors
@@ -171,18 +171,18 @@ Promotion is an explicit apply action through the existing target subsystem:
 | Target | Effect |
 |---|---|
 | `setup_run` | creates or updates a setup run |
-| `spec_change` | creates a reviewable spec/document proposal |
+| `spec_change` | creates a reviewable spec/document change |
 | `epic` | creates an Epic through the tracker adapter |
 | `story` | creates a Story under normal tracker/orchestrator readiness gates |
 | `steering` | queues a steering instruction against a selected session |
 | `decision_record` | stores a durable decision note artifact |
-| `discard` | marks the source artifact/proposal as discarded |
+| `discard` | marks the source artifact/promotion artifact as discarded |
 
 The target records a backlink to the source artifact and evidence. The source artifact records `promoted_refs`. Promotion is never a hidden side effect of research completion.
 
 ## Client Surfaces
 
-The dashboard may expose an incubation inbox, kanban board, monitor list, research queue, proposal review, or mobile capture flow. Those are views over shared primitives:
+The dashboard may expose an incubation inbox, kanban board, monitor list, research queue, promotion review, or mobile capture flow. Those are views over shared primitives:
 
 - artifacts filtered by incubation metadata
 - comments and artifact refs
@@ -198,7 +198,7 @@ The UI can call the view "Incubation", but the backend should remain ordinary pr
 1. Incubation is a view/profile over shared primitives, not a separate storage or route family.
 2. No dedicated `/v1/incubation` endpoint exists in v1.
 3. Primitive gaps become generic daemon capabilities, not incubation-specific code paths.
-4. Useful ideas, research, comments, proposals, and decisions are daemon-owned artifacts/events/comments/turns, not browser-local chat state.
+4. Useful ideas, research, comments, promotion previews, and decisions are daemon-owned artifacts/events/comments/turns, not browser-local chat state.
 5. Research is non-mutating by default.
 6. Promotion is explicit and routed through the target subsystem.
 7. Provenance is preserved through source artifact refs, evidence refs, events, and target backlinks.

@@ -37,7 +37,7 @@ Setup defines the trajectory of every project using aloop.
 - **SPEC.md, CONSTITUTION.md, `aloop/config.yml`, `aloop/pipeline.yml`** — the four artifacts every loop iteration reads, directly or transitively. Everything downstream is a consequence of what setup writes.
 - **The daemon's project registry** — the set of repos the daemon is willing to run sessions against. Setup is the sole legitimate path to registration (see `daemon.md` §Project registry).
 - **The compile step's inputs** — `pipeline.yml` is authored by setup; the compile step turns it into `loop-plan.json`; the shim and the daemon only read the compiled output (see `pipeline.md` §Compile step).
-- **Incubation promotion** — setup may be started from a matured incubation proposal, but setup still owns readiness and may reject or reopen assumptions from the proposal.
+- **Incubation promotion** — setup may be started from a matured incubation artifact, but setup still owns readiness and may reject or reopen assumptions from the promotion preview.
 
 Setup is not a one-time script. It is one orchestrated workflow with multiple shells:
 
@@ -92,7 +92,7 @@ Setup is addressable from multiple surfaces. They all converge on the same daemo
 | `aloop setup` | CLI (interactive) | Human in a terminal, first-time setup |
 | `aloop setup --non-interactive` | CLI (flags) | CI, scripted provisioning, `aloop setup` invoked by a parent agent |
 | Dashboard setup wizard | Rich UI over HTTP API | User reviewing progress, chapters, drafts, and comments |
-| Incubation promotion | Inbox/research proposal over HTTP API | User turning a matured idea into a setup run |
+| Incubation promotion | Inbox/research artifact over HTTP API | User turning a matured idea into a setup run |
 | `/aloop:setup` | Slash command / external chat host | Claude Code, opencode, or any harness that supports slash commands |
 | `aloop setup <path>` | CLI from outside the target | Configuring a sibling project without `cd` |
 | `POST /v1/projects` + `POST /v1/setup/runs` | API direct | Dashboard, bot, remote orchestration |

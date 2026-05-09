@@ -44,7 +44,7 @@ T3 Code is a useful smaller-scope implementation reference for the same shape: s
 │                                                               │
 │    HTTP server · SSE hub · event bus                          │
 │    Composer turns · incubation inbox · research sessions      │
-│    promotion proposals                                       │
+│    promotion artifacts and proposed actions                   │
 │    Setup runs · session runner · workflow state machine       │
 │    Compile step                                               │
 │    Scheduler (permits: system / quota / burn-rate / concurrency)│
@@ -88,7 +88,7 @@ This is the load-bearing decision:
 `aloopd` is the single process that owns:
 
 - **Incubation views** — captured ideas, research sessions, synthesis artifacts, and explicit promotion into setup/spec/tracker/session targets, all represented through shared primitives (see `incubation.md`).
-- **Composer turns** — provider-backed, multimodal control turns that translate text, speech, media, links, and selected app context into scoped subagent delegations, daemon-owned objects, normal API mutation proposals, long-running jobs, configuration changes, or status summaries. The composer is an agentic client interface, not a second runtime.
+- **Composer turns** — provider-backed, multimodal control turns that translate text, speech, media, links, and selected app context into scoped subagent delegations, daemon-owned objects, proposed API mutations, long-running jobs, configuration changes, or status summaries. The composer is an agentic client interface, not a second runtime.
 - **Setup runs** — long-lived onboarding state before a project becomes `ready` (see `setup.md`).
 - **Sessions** — standalone, orchestrator, child. State machine, lifecycle, parent-child relationships (see `daemon.md` §Session kinds).
 - **Scheduler** — the only gate between "a turn is wanted" and "a turn is started." Composes gates for concurrency, system resources, per-provider quota, burn rate, and live overrides.
@@ -126,8 +126,8 @@ All other clients (CLI, dashboard, global composer, mobile web, bots) translate 
 - Render state they get from `GET /v1/...` endpoints.
 - Subscribe to SSE streams for live updates (`GET /v1/events`, `GET /v1/sessions/:id/events`, `GET /v1/sessions/:id/turns/:turn_id/chunks`).
 - Never persist their own state for things the daemon owns. Client-local state is limited to UI prefs, auth tokens, etc.
-- Treat incubation captures, research results, syntheses, comments, and promotion decisions as daemon-owned state, not local drafts once submitted.
-- Treat composer turns as a natural-language and multimodal interface to the same primitives. If a composer launches work or changes control-plane state, it may delegate to a scoped control subagent; the effect is still a `Project`, `SetupRun`, `Session`, `Trigger`, tracker mutation, provider override, scheduler/config patch, proposal, comment, or artifact with normal events and projections.
+- Treat incubation captures, research results, syntheses, comments, and promotion decisions as daemon-owned primitive state, not local drafts once submitted.
+- Treat composer turns as a natural-language and multimodal interface to the same primitives. If a composer launches work or changes control-plane state, it may delegate to a scoped control subagent; the effect is still a `Project`, `SetupRun`, `Session`, `Trigger`, tracker mutation, provider override, scheduler/config patch, comment, artifact, or proposed action preview with normal events and projections.
 
 This keeps the system honest: if the CLI can do X, the dashboard can do X, because X is an API endpoint. If the dashboard needs Y that no one else has, the API is missing an endpoint — fix the API, not the dashboard.
 
@@ -137,7 +137,7 @@ The end-to-end object flow is:
 incubation capture
   -> research / synthesis
   -> explicit promotion
-  -> setup run | spec proposal | Epic / Story | session steering | decision record
+  -> setup run | spec change | Epic / Story | session steering | decision record
   -> orchestrator / child sessions
   -> artifacts, metrics, learning
 ```
@@ -286,7 +286,7 @@ Agents are the least trusted principal. The daemon is the trust anchor.
 Explicit non-goals — decisions that must not drift back in:
 
 - **No business logic in the shim.** If shrinking requires moving logic, move it.
-- **No hidden intake channel.** Captures, research, and promotion proposals are represented through daemon-owned artifacts, comments, sessions, triggers, and events under `incubation.md`, not dashboard-local chat transcripts or ad hoc tracker issues.
+- **No hidden intake channel.** Captures, research, and promotion previews are represented through daemon-owned artifacts, comments, sessions, triggers, and events under `incubation.md`, not dashboard-local chat transcripts or ad hoc tracker issues.
 - **No composer-only backend.** The composer can be smart, provider-backed, and always available, but it must express durable effects as scoped subagent runs, normal API mutations, and long-running daemon jobs.
 - **No YAML parsing outside the compile step.** Shims and session runner use `loop-plan.json`.
 - **No direct tracker calls from agents.** Always `aloop-agent submit` → daemon → adapter.

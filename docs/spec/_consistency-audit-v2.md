@@ -1,6 +1,6 @@
 # Consistency Audit v2 — `docs/spec/*` (post-rewrite)
 
-Working doc. Not a spec. No edits applied — proposals only. Previous audit (`_consistency-audit.md`) is historical. Citations are `file:line`.
+Working doc. Not a spec. No edits applied — suggestions only. Previous audit (`_consistency-audit.md`) is historical. Citations are `file:line`.
 
 ---
 

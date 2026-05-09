@@ -176,7 +176,7 @@ POST   /v1/projects/:id/purge  // hard-delete sessions, logs, worktrees
 
 The composer is the universal agentic intent interface for the app. It is used by dashboard, mobile web, CLI, and future capture surfaces to turn natural-language intent into scoped delegation plans, normal daemon-owned objects, and policy-checked daemon mutations.
 
-The composer is not a privileged backend. It should not directly hold every specialized tool. A composer turn may delegate to scoped subagents that create or update artifacts, comments, research sessions, trigger-backed monitors, outreach/proposal artifacts, projects, setup runs, tracker proposals, steering instructions, sessions, provider overrides, scheduler limits, daemon config, or project config only through the same daemon mutation path those objects use elsewhere.
+The composer is not a privileged backend. It should not directly hold every specialized tool. A composer turn may delegate to scoped subagents that create or update artifacts, comments, research sessions, trigger-backed monitors, outreach or promotion artifacts, projects, setup runs, tracker work items, steering instructions, sessions, provider overrides, scheduler limits, daemon config, or project config only through the same daemon mutation path those objects use elsewhere.
 
 The composer is multimodal and voice-first where useful. Clients submit media as artifact references or upload them first through `/v1/artifacts`; the daemon normalizes them into artifacts, derived text, transcripts, OCR, source records, and provenance before provider reasoning.
 
@@ -356,7 +356,7 @@ Incubation has no dedicated v1 endpoint. It is a client/product mode over shared
 
 Clients build incubation inboxes, boards, research queues, monitor views, outreach review, and promotion review by composing:
 
-- `/v1/artifacts` for captured ideas, media, source records, research outputs, outreach drafts, proposal previews, and decision records
+- `/v1/artifacts` for captured ideas, media, source records, research outputs, outreach drafts, promotion previews, and decision records
 - shared object comments for clarification and review discussion
 - `/v1/composer/turns` for conversational capture, clarification, and delegated research planning
 - `/v1/sessions` for provider-backed research workflows and bounded experiment loops
@@ -385,7 +385,7 @@ Incubation-specific state is metadata on those objects, for example an artifact 
 }
 ```
 
-Incubation capture, research sessions, monitor profiles, outreach plans, comments, proposals, and promotion use subtype/configuration data on artifacts, comments, composer turns, sessions, triggers, and target-system mutations. Per CONSTITUTION §V.24, any missing capability belongs in a generic primitive enhancement rather than an incubation-specific route family.
+Incubation capture, research sessions, monitor profiles, outreach plans, comments, promotion previews, and promotion use subtype/configuration data on artifacts, comments, composer turns, sessions, triggers, and target-system mutations. Per CONSTITUTION §V.24, any missing capability belongs in a generic primitive enhancement rather than an incubation-specific route family.
 
 ## Sessions
 

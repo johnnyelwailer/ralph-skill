@@ -1,7 +1,8 @@
--- 019-drop-composer-proposal-refs: remove proposal-specific composer lane.
+-- 019-drop-composer-review-refs: remove promotion-specific composer lane.
 --
--- Proposals are ordinary artifacts/profile data and proposed actions. Composer
--- turns keep launched_refs and proposed_actions, not a separate proposal list.
+-- Promotion previews are ordinary artifacts/profile data and proposed actions.
+-- Composer turns keep launched_refs and proposed_actions, not a separate
+-- promotion list.
 
 CREATE TABLE IF NOT EXISTS composer_turns_v2 (
   id                          TEXT PRIMARY KEY,

@@ -28,7 +28,7 @@
 
 `aloopd` is the durable control plane that owns:
 
-- **Artifact-backed incubation entries, research sessions, and promotion proposals**
+- **Artifact-backed incubation entries, research sessions, and promotion artifacts**
 - **Composer turns** that translate user intent into daemon-owned objects and long-running jobs
 - **Active sessions** and their state machines
 - **Active setup runs** and their state machines
@@ -108,7 +108,7 @@ Practical consequences:
 - Source acquisition uses runtime extension manifests and daemon policy, not arbitrary agent network access.
 - Experiment-loop attempts use the existing sandbox adapter and deterministic exec-step/event pipeline, not a separate runner.
 - Outreach uses the same policy-controlled adapter pattern as tracker/provider integrations; draft/analyze is allowed before any outbound adapter exists.
-- Promotion creates normal target objects through their existing APIs: setup runs, spec proposals, tracker work items, session steering, or decision records.
+- Promotion creates normal target objects through their existing APIs: setup runs, spec changes, tracker work items, session steering, or decision records.
 - Mobile web, dashboard, CLI, and bots all attach to the same artifact, comments, sessions, triggers, and events through the HTTP API.
 
 The detailed contract lives in `incubation.md`; this document's invariant is that intake and research use durable daemon primitives, not client-owned conversation state or incubation-specific tables.
@@ -122,7 +122,7 @@ Practical consequences:
 - A composer turn can clarify user intent, summarize current state, prepare a proposed action, or delegate specialized work to scoped control subagents.
 - Composer input is multimodal; images, audio, video, documents, URLs, logs, and diffs are normalized into artifacts, transcripts, OCR, source records, or typed text records before provider reasoning.
 - Voice input is first-class. The daemon chooses native speech handling when the selected provider supports it, otherwise routes through a configured fallback transcriber and records transcript provenance.
-- If it starts long-running work or changes control-plane state, that effect is a normal daemon object or mutation: `Project`, `SetupRun`, `Session`, `Trigger`, tracker mutation, provider override, scheduler limit change, config patch, proposal, comment, or artifact.
+- If it starts long-running work or changes control-plane state, that effect is a normal daemon object or mutation: `Project`, `SetupRun`, `Session`, `Trigger`, tracker mutation, provider override, scheduler limit change, config patch, comment, artifact, or proposed action preview.
 - Specialized control subagents run with isolated role/scope/capability grants. They can inspect and propose within their scope; the daemon performs final mutations after policy and approval checks.
 - The composer observes child work through SQLite projections and SSE events; it does not own a hidden child-agent graph.
 - Provider-backed composer turns acquire scheduler permits using `composer_turn_id`.
@@ -249,8 +249,8 @@ Supported trigger sources:
 
 | Source | Examples | Target action |
 |---|---|---|
-| `time` | every two weeks, every Monday, cron expression, one-shot reminder | create a research session, run reconcile, refresh proposal |
-| `event` | `provider.model_catalog.changed`, `model_intelligence.candidate_recorded`, `metrics.change`, `provider.health`, tracker human comment | create a research session, queue diagnose, refresh candidate proposal |
+| `time` | every two weeks, every Monday, cron expression, one-shot reminder | create a research session, run reconcile, refresh an artifact/profile |
+| `event` | `provider.model_catalog.changed`, `model_intelligence.candidate_recorded`, `metrics.change`, `provider.health`, tracker human comment | create a research session, queue diagnose, refresh a candidate artifact |
 | `manual` | dashboard/CLI/composer "run now" | fire the same target immediately with audit trail |
 
 Trigger actions are typed, not arbitrary code:

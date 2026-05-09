@@ -36,7 +36,7 @@ You type or speak an idea, screenshot, voice note, link, document, or spec into 
 
 A good day on aloop:
 
-- You capture a half-formed product idea from your phone. Aloop attaches the link and screenshot, runs a bounded research task, and later shows a synthesis with two promotion options: create a spec-change proposal for an existing project or start setup for a new one.
+- You capture a half-formed product idea from your phone. Aloop attaches the link and screenshot, runs a bounded research task, and later shows a synthesis with two promotion options: create a spec change for an existing project or start setup for a new one.
 - You open the dashboard. Three child sessions are running in parallel across three different providers, each on its own Story, each in its own worktree. Two just merged. One is in review. The orchestrator session is scanning for what to dispatch next.
 - You type into the composer: "Track this market for a month and tell me if it becomes worth building." The composer creates an incubation-profile artifact and a trigger-backed monitor profile, then the workstation shows each research session, source record, cost, and alert.
 - Live cost and burn-rate panels show you're at 40% of today's budget. One provider is in a 20-minute cooldown; the scheduler rerouted work to the others. No alerts.

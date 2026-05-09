@@ -281,7 +281,7 @@ Each monitor tick classifies recommendations into three buckets:
 | **Cost-down substitution** | Replace a frontier default with a cheaper proprietary or open-weight route for extraction, test scaffolding, simple refactors, or other bounded work | Canary with quality floor plus cost/latency comparison |
 | **New route exploration** | Add a newly released model/provider route not used by the project | Candidate variant plus benchmark group before any default change |
 
-Patch/version upgrades are intentionally lighter than new route swaps. If the project already uses an unpinned track like `claude/opus`, the adapter's model map may resolve to the latest compatible version at permit time. If the project pins `claude/opus@4.7`, the monitor files a CR or canary proposal to move the pin. The proposal must include the old/new resolved model, price delta, benchmark delta, capability delta, deployment/route delta, and rollback condition.
+Patch/version upgrades are intentionally lighter than new route swaps. If the project already uses an unpinned track like `claude/opus`, the adapter's model map may resolve to the latest compatible version at permit time. If the project pins `claude/opus@4.7`, the monitor files a CR or canary recommendation to move the pin. The recommendation must include the old/new resolved model, price delta, benchmark delta, capability delta, deployment/route delta, and rollback condition.
 
 ### Routing policy
 
@@ -376,7 +376,7 @@ The methodologies below are deliberately out of scope. Listing them so they don'
 Every methodology that crosses Level 2 or 3 must satisfy three criteria:
 
 1. **Daemon-computed metrics only.** The metric the optimizer reads is computed by the daemon's projector from events, not by the optimizer itself or any agent it dispatches. (See `metrics.md` section Emission discipline.)
-2. **Human-gated decision boundary.** The optimizer's output is a proposal — a CR, a tuning request, a draft prompt — never an applied change. The daemon enforces that the optimizer cannot merge its own CR or apply its own tuning beyond bounds.
+2. **Human-gated decision boundary.** The optimizer's output is a reviewable artifact — a CR, a tuning request, a draft prompt — never an applied change. The daemon enforces that the optimizer cannot merge its own CR or apply its own tuning beyond bounds.
 3. **DGM test entry.** Every new optimizer capability has an entry in `_dgm-tests.md`: capability, what it can touch, cheat case, prevention, detection metric. (See `self-improvement.md` section The DGM test.)
 
 If any of the three is missing, the capability does not ship. No exceptions.
@@ -388,7 +388,7 @@ If any of the three is missing, the capability does not ship. No exceptions.
 3. **The optimizer never bypasses the CR workflow.** Lock-in changes go through tracker review like any other spec amendment.
 4. **Methodology is documented before automation.** A bandit, BO, or OPRO loop in code requires a corresponding section in this doc explaining the math, the assumptions, and the cheat-prevention.
 5. **v1 ships the data substrate; v1.5+ ships the analysis layer.** Don't reverse this order. An optimizer without data is a hallucinator.
-6. **Statistical significance is a gate, not a suggestion.** Optimizer proposals carry the evidence (effect size, sample size, confidence interval); the CR is rejectable on insufficient evidence alone.
+6. **Statistical significance is a gate, not a suggestion.** Optimizer recommendations carry the evidence (effect size, sample size, confidence interval); the CR is rejectable on insufficient evidence alone.
 7. **Budgeted benchmark mode reuses Story/workflow primitives.** No benchmark-only runner or sidecar subsystem is introduced before the existing evidence substrate is working.
 8. **Benchmark duplicates do not bypass trunk-safety rules.** Under the current shared-trunk model, same-task candidates remain serial unless a future isolated-sandbox primitive is explicitly added.
 9. **External model research is a prior, not an authority.** Public benchmarks and user reports may trigger local evaluation, but project routing changes require local evidence or human override.
