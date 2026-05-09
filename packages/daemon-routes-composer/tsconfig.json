@@ -1,12 +1,7 @@
 {
-  "extends": "../../tsconfig.base.json",
+  "extends": "../../tsconfig.json",
   "compilerOptions": {
     "outDir": "./dist"
   },
-  "include": ["src/**/*"],
-  "references": [
-    { "path": "../core" },
-    { "path": "../state-sqlite" },
-    { "path": "../daemon-routes" }
-  ]
+  "include": ["src/**/*"]
 }
