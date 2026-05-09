@@ -37,13 +37,16 @@ The catalog contains two ordinary workflow shapes:
 
 Both shapes use the same YAML format, runner, scheduler permits, event handlers, provider chains, and prompt contracts. The difference is only the session kind and agent catalog selected by the workflow.
 
+This is a hard design rule: orchestration is not a new product concept, runtime, subsystem, or API lane. It is just another workflow over the same primitives: sessions, event handlers, prompts, trigger records, queue entries, scheduler permits, artifacts, tracker work items, change sets, and daemon events. New long-running behaviors should be modeled as workflow files and prompt/catalog additions before adding any daemon concept.
+
 ### `orchestrator`
 
 ```
-start:     orch_scan → orch_consistency → orch_dispatch
-handlers:  decompose_needed, refine_needed, estimate_needed, pr_review_needed,
-           merge_conflict_pr, child_stuck, burn_rate_alert, user_comment
-events:    tracker change, child event, scheduler alert, human comment
+on.start.pipeline:  orch_scan → orch_consistency → orch_dispatch
+on.<event>:         decompose_needed, refine_needed, estimate_needed,
+                    pr_review_needed, merge_conflict_pr, child_stuck,
+                    burn_rate_alert, user_comment
+event sources:      tracker change, child event, scheduler alert, human comment
 ```
 
 For: feature/spec delivery. It keeps the live Epic/Story decomposition aligned with the project's spec, dispatches ready Stories to child workflows, reviews change sets, merges approved work into `agent/trunk`, and reacts to comments or anomalies.
@@ -53,17 +56,21 @@ This is the default long-running orchestrator workflow for projects that are sti
 ### `maintenance-loop`
 
 ```
-start:     orch_maintenance_dependencies → orch_maintenance_tests →
-           orch_maintenance_docs → orch_maintenance_demos →
-           orch_maintenance_refactor → orch_consistency → orch_dispatch
-handlers:  decompose_needed, refine_needed, estimate_needed, pr_review_needed,
+start:     none
+handlers:  dependency_signal, coverage_signal, docs_signal, demo_signal,
+           refactor_signal, bug_signal, maintenance_sweep_requested,
+           decompose_needed, refine_needed, estimate_needed, pr_review_needed,
            merge_conflict_pr, child_stuck, burn_rate_alert, user_comment
-events:    tracker change, child event, scheduler alert, human comment
+events:    normalized dependency-tool signal, coverage signal, docs drift signal,
+           demo drift signal, refactor signal, bug signal, tracker change, child event,
+           scheduler alert, human comment
 ```
 
 For: long-running repository maintenance after the project is already in useful shape.
 
 It is intentionally not a new mode, daemon, or subsystem. It is an orchestrator workflow profile that reuses the same aloop workflow format and dispatches ordinary Stories through the existing Story workflows below.
+
+The maintenance loop is event-driven by default. If no issues are created, no change sets are opened, no commits land, no dependency-tool signals arrive, and no other normalized runtime inputs fire, it should not spend provider tokens looking for work. Any relevant event may start a long refinement/dispatch/review cycle when its impact and complexity justify it.
 
 Maintenance discovery is split by responsibility so each agent has clean context:
 
@@ -72,8 +79,48 @@ Maintenance discovery is split by responsibility so each agent has clean context
 - `orch_maintenance_docs` — README, docs, API docs, examples, comments, changelog drift
 - `orch_maintenance_demos` — demos, examples, previews, fixtures, Storybook stories and states
 - `orch_maintenance_refactor` — behavior-preserving structural improvements driven by constitution factors
+- `orch_maintenance_bugs` — bug reports, regressions, crashes, support reports, CI or production failures
 
-The maintenance agents look for bounded, behavior-preserving maintenance work:
+Category handlers run only when a matching signal is emitted:
+
+- `dependency_signal` → `orch_maintenance_dependencies`
+- `coverage_signal` → `orch_maintenance_tests`
+- `docs_signal` → `orch_maintenance_docs`
+- `demo_signal` → `orch_maintenance_demos`
+- `refactor_signal` → `orch_maintenance_refactor`
+- `bug_signal` → `orch_maintenance_bugs`
+- `maintenance_sweep_requested` → all maintenance agents; intended for explicit human request or coarse scheduled health checks, not the default idle path
+
+Signals are produced by daemon/runtime projections, tracker events, external-tool adapters, child-session events, or explicit human steering. Maintenance prompts consume the normalized signal context; they do not call external APIs directly.
+
+Canonical maintenance signal sources:
+
+| Signal | Typical source topics | Examples |
+|---|---|---|
+| `dependency_signal` | `change_set.opened`, `change_set.updated`, `external.dependency.update`, `external.security.alert`, `dependency.outdated`, `dependency.lockfile_drift` | Dependabot-style PR, npm audit alert, lockfile changed after manifest edit |
+| `coverage_signal` | `coverage.changed`, `coverage.below_target`, `test.flaky`, `test.skipped`, `test.weak_area`, `session.completed` | Coverage drops after a commit, flaky suite detected, skipped tests accumulate |
+| `docs_signal` | `docs.drift`, `api.surface_changed`, `cli.help_changed`, `work_item.closed`, `change_set.merged` | Public API changed without docs, README example stale after merge |
+| `demo_signal` | `demo.drift`, `storybook.coverage_gap`, `ui.component_changed`, `artifact.proof.created` | Component changed with missing Storybook state, demo fixture stale |
+| `refactor_signal` | `quality.refactor_candidate`, `review.finding.created`, `complexity.threshold_exceeded`, `ownership.hotspot` | File grows past threshold, review repeatedly flags coupling |
+| `bug_signal` | `work_item.created`, `work_item.updated`, `external.bug_report`, `ci.regression`, `runtime.crash`, `support.report` | Tracker issue labeled bug, CI regression report, production crash |
+
+The source topics above are normalized daemon events, not prompt-visible tracker APIs. A GitHub PR, GitLab MR, Dependabot alert, Sentry crash, CI failure, or custom webhook must first be translated by an adapter, projector, or external producer into a bounded aloop event. The maintenance workflow sees only that normalized event and the curated context attached to it.
+
+There are no hardcoded maintenance trigger implementations. The shipped handler names above are workflow queue targets. Any code that can authenticate to the daemon may create a durable trigger through `/v1/triggers`, or may emit a normalized event through a typed runtime extension/adapter that existing triggers match.
+
+External trigger producers use generic primitives:
+
+- event topic, e.g. `external.bug_report`
+- normalized labels, e.g. `{source: "sentry", component: "payments"}`
+- object refs, e.g. work item, change set, commit, artifact, project, session
+- evidence refs, e.g. logs, screenshots, failing test output, security advisory
+- severity/impact fields where applicable
+
+A trigger record then maps those generic fields to a workflow handler via `queue_orchestrator_trigger`. For example, an external Sentry adapter can emit `external.bug_report` with `component=payments`; a trigger record created through the API can match that event and queue `bug_signal`. No prompt or workflow needs to know Sentry exists.
+
+Custom triggers may only queue existing workflow handler names unless the project also provides a custom workflow handler and prompt template. Trigger predicates stay in daemon-owned trigger records; prompts receive the already-matched signal context and do not evaluate arbitrary event expressions.
+
+The maintenance agents look for bounded, behavior-preserving maintenance work within the category that woke them:
 
 - keeping dependencies and generated artifacts up to date
 - raising or preserving configured test coverage targets
@@ -98,9 +145,9 @@ The workflow must not invent product functionality. If maintenance discovers mis
 ### `quick-fix`
 
 ```
-cycle:     plan → build → review
-finalizer: spec-gap → docs → final-review → cleanup
-triggers:  steer, merge_conflict, stuck_detected
+on.start.pipeline:  plan → build → review
+on.start.finalizer: spec-gap → docs → final-review → cleanup
+on.<event>:         steer, merge_conflict, stuck_detected
 ```
 
 For: single-file fixes, small refactors, S-tier complexity Stories.
@@ -115,9 +162,9 @@ Default file_scope expectation: a single source file or a tightly-related pair (
 ### `plan-build-review` (default)
 
 ```
-cycle:     plan → build × 5 → qa → review
-finalizer: spec-gap → docs → spec-review → final-review → final-qa → proof → cleanup
-triggers:  steer, merge_conflict, stuck_detected
+on.start.pipeline:  plan → build × 5 → qa → review
+on.start.finalizer: spec-gap → docs → spec-review → final-review → final-qa → proof → cleanup
+on.<event>:         steer, merge_conflict, stuck_detected
 ```
 
 The generic workflow. Used when nothing else fits or no explicit signal is present. Balanced: build iterations to handle multi-step implementation, QA + review per cycle for quality, full finalizer chain at completion.
@@ -125,9 +172,9 @@ The generic workflow. Used when nothing else fits or no explicit signal is prese
 ### `frontend-slice`
 
 ```
-cycle:     plan → frontend-build × 4 → qa → proof → review
-finalizer: spec-gap → docs → spec-review → final-review → final-qa → proof → accessibility-check → cleanup
-triggers:  steer, merge_conflict, stuck_detected, layout_regression
+on.start.pipeline:  plan → frontend-build × 4 → qa → proof → review
+on.start.finalizer: spec-gap → docs → spec-review → final-review → final-qa → proof → accessibility-check → cleanup
+on.<event>:         steer, merge_conflict, stuck_detected, layout_regression
 ```
 
 For: UI components, layout, styling, client state. Stories with file_scope under `src/components/**`, `src/styles/**`, `src/app/**`, `**/*.tsx` patterns.
@@ -141,9 +188,9 @@ Differences from default:
 ### `backend-slice`
 
 ```
-cycle:     plan → backend-build × 5 → integration → review
-finalizer: spec-gap → docs → spec-review → contract-check → final-review → final-qa → cleanup
-triggers:  steer, merge_conflict, stuck_detected, contract_mismatch
+on.start.pipeline:  plan → backend-build × 5 → integration → review
+on.start.finalizer: spec-gap → docs → spec-review → contract-check → final-review → final-qa → cleanup
+on.<event>:         steer, merge_conflict, stuck_detected, contract_mismatch
 ```
 
 For: API endpoints, business logic, data access layers. Stories with file_scope under `src/api/**`, `src/lib/**`, `src/services/**`, `src/db/**`.
@@ -156,9 +203,9 @@ Differences from default:
 ### `fullstack-slice`
 
 ```
-cycle:     plan → frontend-build → backend-build → integration → qa → proof → review
-finalizer: spec-gap → docs → spec-review → contract-check → final-review → final-qa → proof → cleanup
-triggers:  steer, merge_conflict, stuck_detected, layer_misalignment
+on.start.pipeline:  plan → frontend-build → backend-build → integration → qa → proof → review
+on.start.finalizer: spec-gap → docs → spec-review → contract-check → final-review → final-qa → proof → cleanup
+on.<event>:         steer, merge_conflict, stuck_detected, layer_misalignment
 ```
 
 For: Stories spanning UI + API + sometimes DB. Cross-layer wiring is explicit.
@@ -173,9 +220,9 @@ Use sparingly — fullstack Stories are large. Prefer two coupled smaller Storie
 ### `refactor`
 
 ```
-cycle:     plan → refactor-build → tests-still-pass → review
-finalizer: spec-gap → final-review → cleanup
-triggers:  steer, merge_conflict, stuck_detected, behavior_change_detected
+on.start.pipeline:  plan → refactor-build → tests-still-pass → review
+on.start.finalizer: spec-gap → final-review → cleanup
+on.<event>:         steer, merge_conflict, stuck_detected, behavior_change_detected
 ```
 
 For: structural changes that must NOT change behavior. Renames, extractions, file splits, dead-code removal, type tightening.
@@ -188,9 +235,9 @@ Differences from default:
 ### `migration`
 
 ```
-cycle:     plan → migration-build → backwards-compat → integration → review
-finalizer: spec-gap → docs → migration-rollback-plan → spec-review → final-review → final-qa → cleanup
-triggers:  steer, merge_conflict, stuck_detected, rollback_path_unclear
+on.start.pipeline:  plan → migration-build → backwards-compat → integration → review
+on.start.finalizer: spec-gap → docs → migration-rollback-plan → spec-review → final-review → final-qa → cleanup
+on.<event>:         steer, merge_conflict, stuck_detected, rollback_path_unclear
 ```
 
 For: breaking changes — schema migrations, API version bumps, library upgrades with surface-altering effects.
@@ -203,9 +250,9 @@ Differences from default:
 ### `docs-only`
 
 ```
-cycle:     plan → docs-build → docs-review
-finalizer: spec-gap → final-review → cleanup
-triggers:  steer, merge_conflict, stuck_detected
+on.start.pipeline:  plan → docs-build → docs-review
+on.start.finalizer: spec-gap → final-review → cleanup
+on.<event>:         steer, merge_conflict, stuck_detected
 ```
 
 For: README updates, doc site changes, API doc generation, changelog edits. file_scope under `docs/**`, `**/*.md`, `**/*.mdx`.
@@ -218,9 +265,9 @@ Differences from default:
 ### `security-fix`
 
 ```
-cycle:     plan → build → security-scan → integration → review
-finalizer: spec-gap → docs → security-final-scan → final-review → final-qa → cleanup
-triggers:  steer, merge_conflict, stuck_detected, vulnerability_introduced
+on.start.pipeline:  plan → build → security-scan → integration → review
+on.start.finalizer: spec-gap → docs → security-final-scan → final-review → final-qa → cleanup
+on.<event>:         steer, merge_conflict, stuck_detected, vulnerability_introduced
 ```
 
 For: CVE remediation, dependency vulnerability fixes, auth issues, secret exposure cleanup.
@@ -233,9 +280,9 @@ Differences from default:
 ### `perf-opt`
 
 ```
-cycle:     benchmark-baseline → plan → build → benchmark-after → review
-finalizer: spec-gap → docs → perf-final-check → final-review → cleanup
-triggers:  steer, merge_conflict, stuck_detected, regression_detected
+on.start.pipeline:  benchmark-baseline → plan → build → benchmark-after → review
+on.start.finalizer: spec-gap → docs → perf-final-check → final-review → cleanup
+on.<event>:         steer, merge_conflict, stuck_detected, regression_detected
 ```
 
 For: latency reduction, throughput improvement, memory or bundle-size reduction with a measurable target.
@@ -249,61 +296,89 @@ This workflow is the closest thing in v1 to AutoResearch (per `self-improvement.
 
 ## Workflow file structure
 
+Workflow files are trigger-keyed. The top-level shape is `on:`, and every key under `on` is a workflow event handler. There is no separate top-level `pipeline`, `finalizer`, or `triggers` block in the workflow catalog format.
+
+The conventional start/cycle handler is `on.start`. Event-driven workflows, such as `maintenance-loop`, may omit `start` entirely and only define named event handlers.
+
+Pipeline and finalizer phases do not carry prompt filenames directly; names resolve by convention (`agent: review` -> `PROMPT_review.md`, `exec: cleanup` -> `EXEC_cleanup.json`) during compile. External triggers are durable daemon records created through `/v1/triggers` or by runtime code using the daemon API; when they fire, they queue one of the handler names under `on:`.
+
 ```yaml
 # aloop/workflows/frontend-slice.yaml
 
-name: frontend-slice
-description: UI components, layout, styling, client state
+on:
+  start:
+    cycle: true
+    pipeline:
+      - agent: plan
+      - agent: frontend-build
+        repeat: 4
+        onFailure: retry
+      - agent: qa
+      - agent: proof
+      - agent: review
+        onFailure: goto frontend-build
+    finalizer:
+      - agent: spec-gap
+      - agent: docs
+      - agent: spec-review
+      - agent: final-review
+      - agent: final-qa
+      - agent: proof
+      - agent: accessibility-check
+      - exec: cleanup
 
-cycle:
-  - agent: plan
-  - agent: frontend-build
-    repeat: 4
-    onFailure: retry
-  - agent: qa
-  - agent: proof
-  - agent: review
-    onFailure: goto frontend-build
+  steer:
+    pipeline:
+      - agent: steer
 
-finalizer:
-  - PROMPT_spec-gap.md
-  - PROMPT_docs.md
-  - PROMPT_spec-review.md
-  - PROMPT_final-review.md
-  - PROMPT_final-qa.md
-  - PROMPT_proof.md
-  - PROMPT_accessibility-check.md
-  - PROMPT_cleanup.md
+  merge_conflict:
+    pipeline:
+      - agent: merge
 
-triggers:
-  steer:               PROMPT_steer.md
-  merge_conflict:      PROMPT_merge.md
-  stuck_detected:      PROMPT_debug.md
-  layout_regression:   PROMPT_orch_layout-diff.md  # this one fires into orchestrator's queue
+  stuck_detected:
+    pipeline:
+      - agent: debug
 
-selection_hints:        # consumed by orch_refine, advisory only
-  file_scope_patterns:
-    - "src/components/**"
-    - "src/styles/**"
-    - "**/*.tsx"
-    - "**/*.css"
-  labels:
-    - frontend
-    - ui
-  capabilities_required:
-    - vision
-
-defaults:
-  provider_chain: [opencode, copilot, codex, claude, gemini]
-  reasoning:
-    plan: high
-    frontend-build: medium
-    qa: medium
-    proof: medium
-    review: xhigh
+  layout_regression:
+    pipeline:
+      - agent: layout-diff
 ```
 
-The compile step reads this and produces `loop-plan.json` for the session — same machinery as any workflow.
+The compile step reads this and produces handler plans for the session. `repeat` expands into multiple steps, `onFailure` is stored in compiled transition metadata, and event handler keys remain queue targets used by the trigger engine.
+
+Metadata used to select a workflow, such as labels, file-scope patterns, or required capabilities, lives in project config / catalog metadata, not inside this compiled pipeline source. Provider defaults and reasoning defaults likewise come from daemon/project config or prompt frontmatter; the workflow file is choreography only.
+
+Event-driven orchestrator workflows use the same format. They just omit `on.start` when they should remain dormant until an event arrives:
+
+```yaml
+# aloop/workflows/maintenance-loop.yaml
+
+on:
+  dependency_signal:
+    pipeline:
+      - agent: orch_maintenance_dependencies
+      - agent: orch_consistency
+      - agent: orch_dispatch
+
+  bug_signal:
+    pipeline:
+      - agent: orch_maintenance_bugs
+      - agent: orch_consistency
+      - agent: orch_dispatch
+
+  maintenance_sweep_requested:
+    pipeline:
+      - agent: orch_maintenance_dependencies
+      - agent: orch_maintenance_tests
+      - agent: orch_maintenance_docs
+      - agent: orch_maintenance_demos
+      - agent: orch_maintenance_refactor
+      - agent: orch_maintenance_bugs
+      - agent: orch_consistency
+      - agent: orch_dispatch
+```
+
+Event-handler keys are trigger names, not expressions. A handler is dormant until the daemon queues that event into the orchestrator session.
 
 ## Selection logic
 
@@ -323,7 +398,7 @@ Workflow choice happens during `orch_refine` (when Story scope is known). Select
 
    Mapping in project `aloop/config.yml` `workflow.label_map`. Multiple matching labels — the orchestrator picks the most specific (refine prompt sees the conflict and chooses).
 
-3. **File scope pattern match.** Each workflow's `selection_hints.file_scope_patterns` are evaluated against `Story.metadata.file_scope.owned`. First match wins; ties broken by specificity (longest-prefix wins).
+3. **File scope pattern match.** The catalog/project workflow routing metadata is evaluated against `Story.metadata.file_scope.owned`. First match wins; ties broken by specificity (longest-prefix wins).
 
 4. **Complexity tier match.**
    - `S` → `quick-fix` (unless an above rule already routed it)

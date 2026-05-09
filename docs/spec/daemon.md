@@ -206,7 +206,7 @@ Three kinds, one table, same API.
 
 **Session row (StateStore `sessions` table):**
 - `id`, `project_id`, `kind`, `parent_session_id`
-- `workflow` — which compiled `loop-plan.json` is active
+- `workflow` — which compiled `workflow-plan.json` is active
 - `provider_chain` — resolved ordered chain for this session (opencode → copilot → ...)
 - `status` — canonical enum: `pending | running | paused | interrupted | stopped | completed | failed | archived`. Transitions: `pending → running` (on first permit grant); `running → paused` (explicit pause) and back; `running → interrupted` (daemon crash / graceful daemon stop mid-turn); `running → stopped` (explicit `DELETE`); `running → completed` (final review approved or workflow's own exit); `running → failed` (unrecoverable error). `interrupted | stopped | paused` are resumable. `completed | failed | archived` are terminal.
 - `worktree_path` — null for orchestrator
@@ -250,7 +250,7 @@ Supported trigger sources:
 | Source | Examples | Target action |
 |---|---|---|
 | `time` | every two weeks, every Monday, cron expression, one-shot reminder | create a research session, run reconcile, refresh an artifact/profile |
-| `event` | `provider.model_catalog.changed`, `model_intelligence.candidate_recorded`, `metrics.change`, `provider.health`, tracker human comment | create a research session, queue diagnose, refresh a candidate artifact |
+| `event` | `provider.model_catalog.changed`, `model_intelligence.candidate_recorded`, `metrics.change`, `provider.health`, tracker human comment, `change_set.opened`, `external.dependency.update`, `external.bug_report`, `coverage.below_target` | create a research session, queue diagnose, queue a maintenance signal, refresh a candidate artifact |
 | `manual` | dashboard/CLI/composer "run now" | fire the same target immediately with audit trail |
 
 Trigger actions are typed, not arbitrary code:
@@ -262,7 +262,18 @@ Trigger actions are typed, not arbitrary code:
 - `refresh_projection`
 - `emit_alert`
 
-Rules are structured filters over event topics, labels, thresholds, and object scope. No inline JavaScript, shell, or prompt-defined expressions live in trigger definitions. If a project needs custom signal detection, it must be a typed runtime extension that emits a normal event; the trigger engine consumes that event.
+Rules are structured filters over event topics, labels, thresholds, and object scope. No inline JavaScript, shell, YAML-specific mini-language, or prompt-defined expressions live in trigger definitions. If a project needs custom signal detection, it must be external code that talks to the daemon through typed primitives: emit a normal event through an adapter/runtime extension or create/update a trigger through `/v1/triggers`. The trigger engine consumes those generic records.
+
+For maintenance workflows, external producers normalize many raw inputs into ordinary daemon events, and trigger records route those events into a small handler vocabulary. Examples:
+
+- dependency-tool PR or security alert -> `dependency_signal`
+- coverage drop or flaky test -> `coverage_signal`
+- API/CLI surface drift -> `docs_signal`
+- UI component or Storybook coverage drift -> `demo_signal`
+- complexity or ownership hotspot -> `refactor_signal`
+- bug issue, support report, crash, or CI regression -> `bug_signal`
+
+Projects may add custom trigger records through the trigger API that map local event topics and filters to existing workflow handlers. If a project queues a new custom handler name, it must also ship the workflow handler and prompt template; the trigger engine does not invent prompt behavior.
 
 Trigger rows live in `StateStore` and emit `trigger.fired`, `trigger.skipped`, and `trigger.failed` events. Firing is idempotent by `(trigger_id, scheduled_for | source_event_id, target_kind)` so daemon restart or SSE replay cannot duplicate work.
 

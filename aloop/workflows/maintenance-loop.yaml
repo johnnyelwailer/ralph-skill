@@ -2,18 +2,52 @@ name: maintenance-loop
 description: Long-running repository upkeep orchestrator
 
 on:
-  start:
-    cycle: true
+  dependency_signal:
+    pipeline:
+      - agent: orch_maintenance_dependencies
+      - agent: orch_consistency
+      - agent: orch_dispatch
+
+  coverage_signal:
+    pipeline:
+      - agent: orch_maintenance_tests
+      - agent: orch_consistency
+      - agent: orch_dispatch
+
+  docs_signal:
+    pipeline:
+      - agent: orch_maintenance_docs
+      - agent: orch_consistency
+      - agent: orch_dispatch
+
+  demo_signal:
+    pipeline:
+      - agent: orch_maintenance_demos
+      - agent: orch_consistency
+      - agent: orch_dispatch
+
+  refactor_signal:
+    pipeline:
+      - agent: orch_maintenance_refactor
+      - agent: orch_consistency
+      - agent: orch_dispatch
+
+  bug_signal:
+    pipeline:
+      - agent: orch_maintenance_bugs
+      - agent: orch_consistency
+      - agent: orch_dispatch
+
+  maintenance_sweep_requested:
     pipeline:
       - agent: orch_maintenance_dependencies
       - agent: orch_maintenance_tests
       - agent: orch_maintenance_docs
       - agent: orch_maintenance_demos
       - agent: orch_maintenance_refactor
+      - agent: orch_maintenance_bugs
       - agent: orch_consistency
       - agent: orch_dispatch
-    finalizer:
-      - agent: orch_cleanup
 
   decompose_needed:
     pipeline:
@@ -71,6 +105,7 @@ defaults:
     orch_maintenance_docs: medium
     orch_maintenance_demos: medium
     orch_maintenance_refactor: high
+    orch_maintenance_bugs: high
     orch_consistency: medium
     orch_dispatch: medium
     orch_decompose: high

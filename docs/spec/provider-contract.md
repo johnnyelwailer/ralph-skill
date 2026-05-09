@@ -59,8 +59,8 @@ Chains are resolved at **permit-grant time**, not at session start, so live over
 
 Precedence, highest first:
 
-1. Per-turn queue item's frontmatter `provider:`
-2. Workflow/loop-plan override for the current phase
+1. Queued handler trigger payload or runtime override
+2. Workflow-plan override for the current handler step
 3. Prompt file's frontmatter default
 4. Project `aloop/config.yml` default
 5. Daemon `daemon.yml` default

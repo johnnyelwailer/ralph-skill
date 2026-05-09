@@ -109,7 +109,7 @@ Read by orchestrator diagnose + watchdog.
 | `turn_success_rate` | Ratio | `turn.completed`, `turn.failed` | Orchestrator, diagnose |
 | `iteration_stuck_count` | Gauge | consecutive `turn.failed` | Watchdog, diagnose |
 | `phase_retry_exhaustion_rate` | Rate | `phase_retry_exhausted` | Diagnose |
-| `cycle_advance_rate` | Rate | `cyclePosition` changes | Diagnose |
+| `handler_cursor_advance_rate` | Rate | Handler cursor changes | Diagnose |
 | `queue_depth` | Gauge | queue file inventory | Diagnose |
 | `session_events_per_hour` | Rate | all session events | Watchdog (stuck detector) |
 

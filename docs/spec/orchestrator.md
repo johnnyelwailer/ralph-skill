@@ -78,7 +78,9 @@ The prompt behavior for ambiguity handling, contradiction handling, and variant 
 
 ## Orchestrator is a session, not a program
 
-The orchestrator is **not** a separate binary, a separate runtime, or a separate process. It is a session of kind `orchestrator` running a workflow like any other. The same `aloopd` that runs a standalone plan-build-review session runs the orchestrator.
+The orchestrator is **not** a separate binary, a separate runtime, a separate process, or a special control-plane concept. It is a session of kind `orchestrator` running a workflow like any other. The same `aloopd` that runs a standalone plan-build-review session runs the orchestrator.
+
+Everything orchestration does is expressed with existing primitives: workflow event handlers, prompt turns, queue entries, scheduler permits, tracker work items, change sets, artifacts, and daemon events. If a proposed orchestrator feature needs a new daemon concept, the first design move is to try to express it as another workflow handler or trigger over those primitives.
 
 Practical consequences:
 
@@ -88,7 +90,7 @@ Practical consequences:
 - It observes children via `GET /v1/events?parent=<self.id>` (SSE). Self-healing is a *workflow* that subscribes to events and queues diagnose prompts — not a daemon-side daemon.
 - It has no worktree, or it uses project root read-only. Its work is API calls, not file edits.
 
-Different long-running orchestrator behaviors are represented as different workflow files, not different runtime concepts. For example, `maintenance-loop` is a `kind: orchestrator` workflow whose dedicated maintenance agents look for bounded repo-health work by category and then dispatch ordinary child Stories through the existing child workflow catalog.
+Different long-running orchestrator behaviors are represented as different workflow files, not different runtime concepts. For example, `maintenance-loop` is a `kind: orchestrator` workflow whose dedicated maintenance agents are triggered by normalized repo-health signals. It does not run a provider-backed scan when nothing changed; it dispatches ordinary child Stories through the existing child workflow catalog only after an event creates enough reason to act.
 
 ## Inputs, outputs, and the tracker abstraction
 
@@ -120,9 +122,9 @@ Orchestrator prompts **never** include raw tracker URLs, tracker-specific labels
 
 The orchestrator does not read the incubation inbox as a backlog. Incubation becomes orchestrator input only after explicit promotion into a spec change, Epic, Story, or steering instruction. This prevents raw ideas from bypassing refinement, file-scope ownership, and workflow selection gates.
 
-## State machine
+## Default Delivery State Machine
 
-The orchestrator cycles through a scan heartbeat that reacts to tracker events and child session events:
+The default delivery orchestrator workflow cycles through a scan heartbeat that reacts to tracker events and child session events:
 
 ```
   ┌────────── scan ──────────┐

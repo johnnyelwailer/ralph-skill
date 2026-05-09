@@ -94,7 +94,7 @@ This is the load-bearing decision:
 - **Scheduler** — the only gate between "a turn is wanted" and "a turn is started." Composes gates for concurrency, system resources, per-provider quota, burn rate, and live overrides.
 - **Trigger engine** — durable time-based and event-based triggers that create daemon work such as research sessions, monitor ticks, reconcile jobs, or artifact/profile refreshes. It decides *when to enqueue work*; the scheduler still decides whether provider-backed work may run.
 - **Event bus** — aggregates events from all sessions into per-session JSONL and the global SSE stream. Every state change publishes.
-- **Compile step** — translates `pipeline.yml` into `loop-plan.json`. See `pipeline.md` §Compile step for the canonical description (single YAML reader in the system).
+- **Compile step** — translates workflow YAML into `workflow-plan.json`. See `pipeline.md` §Compile step for the canonical description (single YAML reader in the system).
 - **Prompt context assembly** — resolves prompt `context` declarations through registered context plugins, injects bounded source-cited context blocks, and records what was injected. See `context.md`.
 - **Runtime extension manifests** — supervises typed project-code extensions such as `exec` steps and `context-provider`s through one manifest-backed execution model. See `pipeline.md` §Runtime extension manifests.
 - **Watchdog / reconcile** — stuck detection, provider quota refresh, permit expiry sweep, orphan cleanup, burn-rate tracking, crash recovery. All internal to the daemon and implemented through the trigger/reconcile substrate; no external cron.
@@ -288,9 +288,9 @@ Explicit non-goals — decisions that must not drift back in:
 - **No business logic in the shim.** If shrinking requires moving logic, move it.
 - **No hidden intake channel.** Captures, research, and promotion previews are represented through daemon-owned artifacts, comments, sessions, triggers, and events under `incubation.md`, not dashboard-local chat transcripts or ad hoc tracker issues.
 - **No composer-only backend.** The composer can be smart, provider-backed, and always available, but it must express durable effects as scoped subagent runs, normal API mutations, and long-running daemon jobs.
-- **No YAML parsing outside the compile step.** Shims and session runner use `loop-plan.json`.
+- **No YAML parsing outside the compile step.** Shims and session runner use `workflow-plan.json`.
 - **No direct tracker calls from agents.** Always `aloop-agent submit` → daemon → adapter.
-- **No expressions or inline code in pipeline YAML, prompt frontmatter, or daemon config.** Keywords (`onFailure: retry`, `trigger: merge_conflict`, `context: orch_recall`) are data; project-defined logic runs through typed runtime extension manifests.
+- **No expressions or inline code in workflow YAML, prompt frontmatter, or daemon config.** Keywords (`onFailure: retry`, `context: orch_recall`) are data; project-defined logic runs through typed runtime extension manifests.
 - **No parallel plugin systems.** New extensibility points must reuse the runtime extension manifest model unless there is a documented reason it cannot fit.
 - **No custom protocol when a standard fits.** Use HTTP/SSE/JSON/JSON Schema/MIME/Git/SQLite/Postgres/OAuth-style conventions and established tool protocols before inventing aloop-specific mechanisms.
 - **No research-specific runtime.** Source acquisition, experiment attempts, monitors, outreach drafts, artifacts, metrics, and events reuse daemon adapters, runtime extension manifests, scheduler permits, StateStore projections, and EventStore history.

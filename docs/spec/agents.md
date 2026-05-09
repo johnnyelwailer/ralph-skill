@@ -1,6 +1,6 @@
 # Agents
 
-> **Reference document.** Per-agent contracts for the bundled agent catalog. What each agent reads, writes, and commits to. What it may do and must not. Agents are **pipeline participants**, not built-in roles — projects can add, remove, or replace any of them via `pipeline.yml`.
+> **Reference document.** Per-agent contracts for the bundled agent catalog. What each agent reads, writes, and commits to. What it may do and must not. Agents are **workflow participants**, not built-in roles — projects can add, remove, or replace any of them via workflow YAML.
 >
 > Hard rules live in CONSTITUTION.md. Work items live in GitHub issues.
 >
@@ -30,14 +30,14 @@ Every agent is a **named prompt with a role, a role's permissions, and a contrac
 
 Aloop ships a bundled catalog (the ones described below). Projects can:
 
-- Drop any of them from `pipeline.yml`.
+- Drop any of them from workflow YAML.
 - Reorder them.
 - Add their own (`verify`, `debugger`, `security-audit`, `guard`, `migration`, etc.).
 - Replace a shipped agent by writing a new prompt file with the same role name — project prompt takes precedence over bundled.
 
-No agent is hardcoded in the daemon. The session runner only knows "run the prompt at `cycle[cyclePosition]` or `finalizer[finalizerPosition]` or the next queue item." Agent identity matters only to the prompt templates and to the permissions table.
+No agent is hardcoded in the daemon. The session runner only knows "run the next compiled step for the active handler run, or resume the cyclic `start` handler when no queued handler is active." Agent identity matters only to the prompt templates and to the permissions table.
 
-The bundled default pipeline (see `pipeline.yml` in the project or the installed defaults) is one configuration. Everything below describes each agent's contract, not the pipeline structure.
+The bundled default workflow is one configuration. Everything below describes each agent's contract, not the workflow structure.
 
 ## Universal contract (all agents)
 
@@ -55,7 +55,7 @@ Every agent operates under the same ground rules:
   Aloop-Session: <id>
   ```
 - **Has role-based permissions** (see `pipeline.md` §Agent contract — the permissions table defining what each role may submit and which tasks it may close).
-- **Does not modify the pipeline itself.** Only humans and the compile step edit `pipeline.yml`.
+- **Does not modify the workflow itself.** Only humans and the compile step edit workflow YAML.
 
 ## `plan`
 
@@ -189,7 +189,7 @@ For exploratory or variant-driven work, proof artifacts should be comparison-fri
 4. Cross-platform parity — logic present in one of bash/PowerShell but not the other
 5. Task hygiene — stale tasks, completed but still open, references to removed code
 
-**Cadence:** Project-configurable. Common patterns: every Nth cycle, and/or at the start of the finalizer. Configure in `pipeline.yml`; see `pipeline.md` §Event-driven dispatch.
+**Cadence:** Project-configurable. Common patterns: every Nth cycle, and/or at the start of the finalizer. Configure in workflow YAML; see `pipeline.md` §Event-driven dispatch.
 
 **Submit:** `aloop-agent submit --type spec_gap_result` with finding counts by category and created task IDs. Empty results is a valid outcome and allows the finalizer to proceed.
 
@@ -229,11 +229,12 @@ Orchestrator pipelines use a different catalog. Each still obeys the universal c
 |---|---|---|
 | `orch_product_analyst` | — (no tracker side effect) | Reads spec files; produces theme map + out-of-scope list as scratchpad |
 | `orch_scan` | scan result / queued events | Heartbeat pass that decides whether decomposition, refinement, dispatch, review, diagnose, conversation, or no action should happen next |
-| `orch_maintenance_dependencies` | scan result / queued events | Finds bounded dependency, lockfile, generated artifact, toolchain upkeep work, and dependency-tool change sets surfaced through runtime events |
-| `orch_maintenance_tests` | scan result / queued events | Finds bounded test coverage, flaky/skipped test, and testability maintenance work |
-| `orch_maintenance_docs` | scan result / queued events | Finds bounded README, docs, API docs, examples, comments, and changelog drift |
-| `orch_maintenance_demos` | scan result / queued events | Finds bounded demos, examples, previews, fixtures, and Storybook state coverage work |
-| `orch_maintenance_refactor` | scan result / queued events | Finds bounded behavior-preserving refactor work driven by constitution and quality factors |
+| `orch_maintenance_dependencies` | scan result / queued events | Handles dependency, lockfile, generated artifact, toolchain, or dependency-tool signals surfaced through runtime events |
+| `orch_maintenance_tests` | scan result / queued events | Handles coverage, flaky/skipped test, weak-test, or testability signals |
+| `orch_maintenance_docs` | scan result / queued events | Handles README, docs, API docs, examples, comments, or changelog drift signals |
+| `orch_maintenance_demos` | scan result / queued events | Handles demos, examples, previews, fixtures, and Storybook state coverage signals |
+| `orch_maintenance_refactor` | scan result / queued events | Handles behavior-preserving refactor signals driven by constitution and quality factors |
+| `orch_maintenance_bugs` | scan result / queued events | Handles bug, regression, crash, support-report, CI regression, or production failure signals |
 | `orch_decompose` | `decompose_result` | Produces Epics |
 | `orch_refine` | `refine_result` | Tightens scope of one Epic or Story |
 | `orch_sub_decompose` | `sub_decompose_result` | Produces Stories under one Epic |
@@ -247,7 +248,7 @@ Orchestrator pipelines use a different catalog. Each still obeys the universal c
 
 `orch_refine`, `orch_conversation`, `setup_judge`, and `setup_questioner` share the ambiguity/decision-handling prompt discipline from `refinement.md`. The architecture stays the same; the prompts become more explicit about classification, option synthesis, recommendation, and evidence-backed human feedback.
 
-Specialized orchestrator workflows may add dedicated orchestrator-side prompts when shared scan context would pollute the default workflow or mix unrelated responsibilities. A maintenance loop splits repo-health discovery by category, then reuses `orch_refine` to turn findings into bounded Epics/Stories and `orch_dispatch` to launch children through normal Story workflows.
+Specialized orchestrator workflows may add dedicated orchestrator-side prompts when shared scan context would pollute the default workflow or mix unrelated responsibilities. A maintenance loop splits repo-health handling by category and is dormant until normalized runtime events wake a handler. It then reuses `orch_refine` to turn findings into bounded Epics/Stories and `orch_dispatch` to launch children through normal Story workflows.
 
 ## Setup-side agents
 

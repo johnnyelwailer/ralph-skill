@@ -6,7 +6,7 @@
 
 ## Table of contents
 
-- The three concepts: cycle, finalizer, queue
+- The three concepts: handler run, cycle, finalizer
 - Final review gate (no mid-cycle exit)
 - Completion state machine
 - Edge cases
@@ -19,25 +19,25 @@
 
 ---
 
-## The three concepts: cycle, finalizer, queue
+## The three concepts: handler run, cycle, finalizer
 
-Every session's runtime behavior is expressible as three ordered inputs and one position pointer:
+Every session's runtime behavior is expressible as compiled handlers and per-run cursors:
 
-- **`cycle`** — the repeating pipeline sequence (e.g., `plan → build × 5 → qa → review`). Flat array of prompt filenames in `loop-plan.json`. Position is `cyclePosition % cycle.length`.
-- **`finalizer`** — a separate array of prompts that run once `allTasksMarkedDone` holds at a cycle boundary (spec-gap, docs, review, QA, proof, cleanup). Position is `finalizerPosition`.
-- **`queue`** — per-session `queue/NNN-*.md` files. Checked before every turn. If present, the first-sorted item runs and is deleted afterwards. Queue items do NOT advance `cyclePosition`.
+- **Handler run** — one execution of a compiled `on.<handler>` pipeline. It has its own handler name, phase, pipeline cursor, finalizer cursor, retry state, and trigger payload.
+- **Cyclic `start` handler** — the conventional repeating pipeline sequence (for example, `plan → build × 5 → qa → review`). Its cursor is saved in session state and resumes after queued handler runs drain.
+- **Finalizer** — a handler-local array of steps that runs once `allTasksMarkedDone` holds at a cycle boundary (spec-gap, docs, review, QA, proof, cleanup). It has its own finalizer cursor.
 
-This is the entire scheduling surface. Anything else is the daemon's upstream concern (watchdogs writing to queue, compile step rewriting the plan). The session runner itself just advances these pointers according to the invariants below.
+The session queue stores durable requests to run compiled handlers. Queued handlers do not rewrite the cyclic `start` handler and do not share its cursor. This is the entire scheduling surface: queue, active handler run cursor, cyclic `start` cursor, and finalizer cursor. Anything else is the daemon's upstream concern (watchdogs creating trigger records, compile step rewriting the plan). The session runner itself just advances these cursors according to the invariants below.
 
 ## Final review gate (no mid-cycle exit)
 
 In any pipeline that includes a `review` agent, the session MUST NOT exit on task completion during a build phase. The build agent can mark all tasks done, but only the finalizer's review can approve a clean exit.
 
-1. **Build detects all tasks complete** → set `allTasksMarkedDone = true` in `loop-plan.json`, log `tasks_marked_complete`. **Do not exit.** Cycle continues through qa and review.
-2. **Cycle boundary reached** (last agent in `cycle[]` finishes) → check `allTasksMarkedDone`. If true, switch to finalizer mode.
+1. **Build detects all tasks complete** → set `allTasksMarkedDone = true` in session state, log `tasks_marked_complete`. **Do not exit.** The cyclic handler continues through qa and review.
+2. **Cycle boundary reached** (last step in the cyclic handler pipeline finishes) → check `allTasksMarkedDone`. If true, switch the handler run to finalizer mode.
 3. **Finalizer runs**:
    - All finalizer agents pass without adding tasks → last agent (typically `proof`) completes → session status becomes `completed`, session ends.
-   - Any finalizer agent adds tasks → `allTasksMarkedDone` resets to false, `finalizerPosition` resets to 0, session returns to cycle mode.
+   - Any finalizer agent adds tasks → `allTasksMarkedDone` resets to false, the finalizer cursor resets to 0, session returns to cycle mode.
 
 This guarantees the finalizer (which includes the deepest review, QA, and proof passes) is the only path to clean completion. Build alone cannot finish the job.
 
@@ -50,7 +50,7 @@ This guarantees the finalizer (which includes the deepest review, QA, and proof 
          │ YES                                  │
          ▼                                      ▼
 ┌────────────────┐    finalizer agent adds tasks?
-│ finalizer mode │──── YES ──→ reset position 0, back to cycle
+│ finalizer mode │──── YES ──→ reset finalizer cursor, back to cycle
 └────────────────┘
          │ NO (all finalizer agents passed)
          ▼
@@ -61,7 +61,7 @@ This guarantees the finalizer (which includes the deepest review, QA, and proof 
 
 Key properties:
 
-- The session **never exits mid-cycle**. Queue overrides can interrupt individual *turns*, but the cycle structure always runs to completion before the `allTasksMarkedDone` check.
+- The session **never exits mid-cycle**. Queued handlers can interrupt individual *turns*, but the cyclic handler structure always runs to completion before the `allTasksMarkedDone` check.
 - `allTasksMarkedDone` is checked **only at cycle boundaries**, never mid-cycle.
 - Finalizer is aborted (not paused) when new tasks appear — all work has to be re-verified in order.
 
@@ -70,24 +70,24 @@ Key properties:
 - **Review-only pipeline** (no build phase): the invariant about waiting for finalizer doesn't apply; the pipeline runs once and exits.
 - **Build-only pipeline** (no review phase): completion on `allTasksMarkedDone` is acceptable because there's no review to gate on. Finalizer still runs if configured.
 - **Plan-build pipeline** (no review or qa agent): cycle ends after last build; if `allTasksMarkedDone`, finalizer (if configured) runs.
-- **Steering mid-flight**: queue items interrupt the next turn, not the current one. If steering arrives while finalizer is running, it runs in the next turn, and the finalizer is aborted (position reset to 0, cycle resumes afterwards).
-- **Finalizer agent adds tasks mid-run**: `allTasksMarkedDone` flips to false, `finalizerPosition` resets to 0, session returns to cycle mode. When the cycle again satisfies the boundary check, the full finalizer fires from the start.
+- **Steering mid-flight**: queued handlers interrupt the next turn, not the current one. If steering arrives while finalizer is running, it runs in the next turn, and the finalizer is aborted (cursor reset to 0, cycle resumes afterwards).
+- **Finalizer agent adds tasks mid-run**: `allTasksMarkedDone` flips to false, the finalizer cursor resets to 0, session returns to cycle mode. When the cycle again satisfies the boundary check, the full finalizer fires from the start.
 
 ## Phase advancement only on success
 
-Failed turns do not advance `cyclePosition`. The scheduler's per-turn fallthrough (see `provider-contract.md`) handles provider retries within a single turn; `cyclePosition` only moves when a turn produces a successful outcome.
+Failed turns do not advance the active handler cursor. The scheduler's per-turn fallthrough (see `provider-contract.md`) handles provider retries within a single turn; a handler cursor only moves when a turn produces a successful outcome.
 
 Rule:
 
 ```
-On turn SUCCESS:  cyclePosition = (cyclePosition + 1) % cycle.length
-On turn FAILURE:  cyclePosition stays
-Queue turn:       cyclePosition stays (queue items are interrupts)
+On turn SUCCESS:  active handler cursor advances
+On turn FAILURE:  active handler cursor stays
+Queued handler:   cyclic start cursor is saved and untouched
 ```
 
 **Turn success** means: the provider adapter emitted a `final: true` chunk AND at least one `agent.result` submit was accepted during the turn (or the agent's declared role has no submit types, e.g., a read-only probe). A turn that produces only a `usage` chunk without a submit is NOT a success — the cycle does not advance.
 
-This means a failed plan retries as plan (with the chain's next provider and any fallthrough that hasn't been tried), a failed build retries as build, a failed review retries as review. The next attempt picks a different provider if the failure classification permits (rate-limit, timeout) and a fresh permit is granted.
+This means a failed plan retries as plan (with the chain's next provider and any fallthrough that hasn't been tried), a failed build retries as build, a failed review retries as review. A failed event handler retries the same handler step. The next attempt picks a different provider if the failure classification permits (rate-limit, timeout) and a fresh permit is granted.
 
 Without this rule, the session wastes turns on downstream phases whose prerequisites were never produced (building without a plan, reviewing unplanned work).
 
@@ -103,7 +103,7 @@ Defense-in-depth, enforced by the session runner before the adapter is invoked:
 | `plan` | None | — |
 | `finalizer[*]` | Normal cycle completed with `allTasksMarkedDone` | — (gated by the state machine) |
 
-When the session runner forces a different phase, it emits `phase_prerequisite_miss` with `{requested, actual, reason}`. `cyclePosition` is NOT advanced — the next turn retries the requested phase after the substitute phase runs.
+When the session runner forces a different phase, it emits `phase_prerequisite_miss` with `{requested, actual, reason}`. The active handler cursor is NOT advanced — the next turn retries the requested phase after the substitute phase runs.
 
 ## Retry exhaustion safety valve
 
@@ -116,12 +116,12 @@ max_phase_retries = len(resolved_chain) * 2
 After `max_phase_retries` consecutive failures on the same phase, the session:
 
 1. Emits `phase_retry_exhausted` with all failure classifications.
-2. Advances `cyclePosition` anyway.
+2. Advances the active handler cursor anyway.
 3. Emits `phase_skipped` with the phase name.
 
 The skip is visible to the orchestrator (if any) via events. Orchestrator diagnose workflow may decide to pause the session, swap providers, or escalate.
 
-`max_phase_retries` is configurable per pipeline; default comes from `daemon.yml`.
+`max_phase_retries` is configurable per handler pipeline; default comes from `daemon.yml`.
 
 ## Iteration caps
 
@@ -133,7 +133,7 @@ The skip is visible to the orchestrator (if any) via events. Orchestrator diagno
 
 Implementation rules:
 
-- The compile step MUST NOT inject `max_iterations` into `loop-plan.json` for orchestrator or child sessions.
+- The compile step MUST NOT inject `max_iterations` into `workflow-plan.json` for orchestrator or child sessions.
 - Session runner treats missing `max_iterations` as unlimited.
 - Orchestrator stops children externally via the API, not via iteration cap.
 
@@ -146,7 +146,7 @@ Orchestrator sessions must never auto-complete based on `TODO.md` task status �
 - Orchestrator sessions: session runner SKIPS the `allTasksMarkedDone` check entirely. Finalizer still runs when explicitly scheduled.
 - Standalone and child sessions: normal `allTasksMarkedDone` semantics apply.
 
-Implementation: a `mode: orchestrator | session` flag in `loop-plan.json` (written by the compile step based on session kind). Runners check the flag before the cycle-boundary check.
+Implementation: a `mode: orchestrator | session` flag in `workflow-plan.json` (written by the compile step based on session kind). Runners check the flag before the cycle-boundary check.
 
 ## Invariant enforcement
 
@@ -156,13 +156,13 @@ These invariants are enforced **by the session runner inside the daemon**, not b
 - Runs it.
 - Posts results.
 
-All state-machine transitions — `cyclePosition` updates, `allTasksMarkedDone` flips, finalizer entry/exit, phase prerequisite substitution, retry counting, skip-on-exhaustion — happen daemon-side and are persisted to SQLite + JSONL before `GET /v1/sessions/:id/next` returns its next answer.
+All state-machine transitions — handler cursor updates, `allTasksMarkedDone` flips, finalizer entry/exit, phase prerequisite substitution, retry counting, skip-on-exhaustion — happen daemon-side and are persisted to SQLite + JSONL before `GET /v1/sessions/:id/next` returns its next answer.
 
 Tests cover each invariant:
 
 - Cycle-boundary-only completion check (unit test: driven event stream, expected transitions).
-- Queue item does not advance `cyclePosition` (property test).
-- Failed turn does not advance `cyclePosition` (property test).
+- Queued handler does not advance the cyclic `start` cursor (property test).
+- Failed turn does not advance the active handler cursor (property test).
 - Phase prerequisite substitution emits the correct event and does not advance.
 - Retry exhaustion advances and emits the skip event.
 - Orchestrator mode never fires `allTasksMarkedDone` (regression test on the flag path).

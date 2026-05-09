@@ -129,11 +129,11 @@ Provider-specific deployment recipes are templates. Core code must not learn clo
 - `POST /v1/projects`, `GET /v1/projects`, `GET /v1/projects/:id`, `PATCH`, `DELETE`.
 - Workspace registry table in SQLite plus workspace-project membership table.
 - Project registry table in SQLite with `status: setup_pending | ready | archived`.
-- Config loader for `daemon.yml`, `~/.aloop/overrides.yml`, per-project `aloop/config.yml` and `aloop/pipeline.yml`.
-- Compile step: `pipeline.yml` → `loop-plan.json`. Only YAML reader in system.
+- Config loader for `daemon.yml`, `~/.aloop/overrides.yml`, per-project `aloop/config.yml`, and workflow files under `aloop/workflows/` or project overrides.
+- Compile step: workflow YAML → `workflow-plan.json`. Only workflow YAML reader in system.
 - `POST /v1/daemon/reload` re-reads config files; non-listener settings apply to next permit.
 
-**Test:** create a workspace, register two projects into it, edit one project's `pipeline.yml`, hot-reload, verify new `loop-plan.json` matches expected. Invalid pipeline.yml fails compile with a precise error.
+**Test:** create a workspace, register two projects into it, edit one project's workflow override, hot-reload, verify new `workflow-plan.json` matches expected. Invalid workflow YAML fails compile with a precise error.
 
 **Non-goals:** interactive setup interview, setup-side background research, and tracker-backed setup handoff; scheduler integration.
 
@@ -180,8 +180,8 @@ Provider-specific deployment recipes are templates. Core code must not learn clo
 
 **Deliverable:**
 - `POST /v1/sessions`, `GET`, `DELETE`, `/steer`, `/events` SSE, `/log`, `/resume`.
-- Session runner: loads `loop-plan.json`, runs turns end-to-end:
-  1. Check queue → 2. Pick cycle/finalizer position → 3. Acquire permit → 4. Invoke provider → 5. Persist result → 6. Advance.
+- Session runner: loads `workflow-plan.json`, runs turns end-to-end:
+  1. Check queue → 2. Pick handler run + phase cursor → 3. Acquire permit → 4. Invoke provider → 5. Persist result → 6. Advance.
 - Cycle + finalizer + queue semantics per `loop-invariants.md`.
 - `quick-fix.yaml` workflow shipped in `aloop/workflows/`.
 - `loop.sh` shim (<150 LOC): lock + invoke runner over unix socket + exit.
@@ -232,7 +232,7 @@ Provider-specific deployment recipes are templates. Core code must not learn clo
 ## M9 — Full orchestrator workflow + parallel dispatch + file-scope enforcement
 
 **Deliverable:**
-- Full orchestrator prompt set: `orch_product_analyst`, `orch_scan`, `orch_maintenance_dependencies`, `orch_maintenance_tests`, `orch_maintenance_docs`, `orch_maintenance_demos`, `orch_maintenance_refactor`, `orch_decompose`, `orch_refine`, `orch_sub_decompose`, `orch_estimate`, `orch_consistency`, `orch_dispatch`, `orch_review`, `orch_resolver`, `orch_diagnose`, `orch_conversation`.
+- Full orchestrator prompt set: `orch_product_analyst`, `orch_scan`, `orch_maintenance_dependencies`, `orch_maintenance_tests`, `orch_maintenance_docs`, `orch_maintenance_demos`, `orch_maintenance_refactor`, `orch_maintenance_bugs`, `orch_decompose`, `orch_refine`, `orch_sub_decompose`, `orch_estimate`, `orch_consistency`, `orch_dispatch`, `orch_review`, `orch_resolver`, `orch_diagnose`, `orch_conversation`.
 - Parallel child dispatch via scheduler permits.
 - `file_scope.owned` enforcement at dispatch: overlap with in-flight Stories → permit denied.
 - Epic/Story conversation flow: `comment.created` (source=human) → `triggers.user_comment` → `PROMPT_orch_conversation.md`.

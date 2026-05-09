@@ -34,9 +34,9 @@
 
 Setup defines the trajectory of every project using aloop.
 
-- **SPEC.md, CONSTITUTION.md, `aloop/config.yml`, `aloop/pipeline.yml`** — the four artifacts every loop iteration reads, directly or transitively. Everything downstream is a consequence of what setup writes.
+- **SPEC.md, CONSTITUTION.md, `aloop/config.yml`, workflow files** — the core artifacts every workflow iteration reads, directly or transitively. Everything downstream is a consequence of what setup writes.
 - **The daemon's project registry** — the set of repos the daemon is willing to run sessions against. Setup is the sole legitimate path to registration (see `daemon.md` §Project registry).
-- **The compile step's inputs** — `pipeline.yml` is authored by setup; the compile step turns it into `loop-plan.json`; the shim and the daemon only read the compiled output (see `pipeline.md` §Compile step).
+- **The compile step's inputs** — workflow YAML is authored by setup; the compile step turns it into `workflow-plan.json`; the shim and the daemon only read the compiled output (see `pipeline.md` §Compile step).
 - **Incubation promotion** — setup may be started from a matured incubation artifact, but setup still owns readiness and may reject or reopen assumptions from the promotion preview.
 
 Setup is not a one-time script. It is one orchestrated workflow with multiple shells:
@@ -52,7 +52,7 @@ The entry point may change; the setup run does not. **A setup is not "complete" 
 What a successful setup looks like:
 
 - `POST /v1/projects` has returned a `project_id` and the registry knows the project.
-- `<project>/aloop/config.yml`, `<project>/aloop/pipeline.yml`, and `<project>/CONSTITUTION.md` exist and parse cleanly.
+- `<project>/aloop/config.yml`, selected workflow YAML, and `<project>/CONSTITUTION.md` exist and parse cleanly.
 - Every enabled provider CLI is on `PATH` and authenticates successfully from the host (and from the devcontainer, if one was chosen).
 - The project's validation commands run green against the current baseline.
 - The configured tracker adapter (github, builtin, or other) pings successfully.
@@ -218,7 +218,7 @@ Topics (in order; depth adapts to maturity):
 10. **Safety rules** — project-specific guardrails beyond the baseline (e.g., "never modify the database schema without a migration"). Folded into CONSTITUTION.md.
 11. **Data privacy** — `private` or `public`. `private` enables ZDR-specific provider configuration (see §File scaffolds for what this triggers).
 
-The interview never prompts for **runtime** defaults (thresholds, timeouts, concurrency caps, polling intervals) — those belong in `daemon.yml` and `pipeline.yml` and are edited directly. Setup's job is project intent, not scheduler tuning.
+The interview never prompts for **runtime** defaults (thresholds, timeouts, concurrency caps, polling intervals) — those belong in `daemon.yml` and workflow files and are edited directly. Setup's job is project intent, not scheduler tuning.
 
 Each answer lands incrementally in run state. Answers may resolve an ambiguity, raise a new one, or narrow a previously broad question into a concrete follow-up. The daemon only materializes the final `InterviewResult` after the latest readiness judgment says there are zero blocking ambiguities.
 
@@ -309,7 +309,7 @@ Artifacts (see §File scaffolds for full list):
   ```
 
   If disabled, `opt_out_reason` is required so proof and review agents can distinguish an intentional project choice from a missing deployment.
-- **`aloop/pipeline.yml`** — authored workflow (pipeline + finalizer + triggers). The compile step resolves it into `loop-plan.json` on first session start (see `pipeline.md` §Workflow vs pipeline vs loop-plan).
+- **Workflow YAML** — authored workflow with trigger-keyed `on:` handlers. The compile step resolves it into `workflow-plan.json` on first session start (see `pipeline.md` §Workflow vs pipeline vs workflow-plan).
 - **`.devcontainer/devcontainer.json`** — written only when the devcontainer option is selected; generator consults per-provider auth resolution (`devcontainer.md` §Auth resolution) and the chosen strategy.
 - **`.aloop/tracker/`** — initialized only when `tracker.adapter: builtin` (see `work-tracker.md` §Built-in adapter); seeded with a monotonic id counter and an empty `events.jsonl`.
 - **Project prompt templates** under `.claude/commands/aloop/`, `.opencode/commands/aloop/`, etc. — one set per activated provider surface, copied from `aloop/templates/` with setup-time variables expanded (`{{SPEC_FILES}}`, `{{VALIDATION_COMMANDS}}`, `{{CONSTITUTION}}`, `{{SAFETY_RULES}}` — see `pipeline.md`).
@@ -328,7 +328,7 @@ The readiness gate from CR #93. Setup is not complete until every applicable che
 | Check | What it verifies | Failure action |
 |---|---|---|
 | **Scaffold completeness** | All required prompt templates present (both loop and orchestrator sets where the mode warrants); all referenced files exist | List missing paths by filename |
-| **Compile preflight** | `pipeline.yml` compiles to a valid `loop-plan.json`; `{{...}}` template variables resolve | Show the compile error with file + line |
+| **Compile preflight** | Workflow YAML compiles to a valid `workflow-plan.json`; `{{...}}` template variables resolve | Show the compile error with file + line |
 | **Provider auth** | Each enabled provider authenticates from the host (and, when devcontainer is selected, from inside the container) | Provider-specific remediation (e.g., "run `claude setup-token`", "set `OPENAI_API_KEY`") |
 | **Validation baseline** | Each configured validation command executes from project root with exit status 0 | Report command output; user fixes or adjusts |
 | **Tracker adapter ping** | `TrackerAdapter.ping()` returns `healthy`; required labels exist; GitHub Project V2 accessible when configured | Adapter-specific: `gh auth status`, missing labels, insufficient scopes |
@@ -493,7 +493,7 @@ Setup writes artifacts across three locations: the project root (committed), the
 |---|---|---|---|
 | `<project>/CONSTITUTION.md` | Project-specific non-negotiable rules | Interview + spec analysis (subagent) | Yes, via CR workflow |
 | `<project>/aloop/config.yml` | Project-level runtime config | Interview + discovery | Yes, re-run setup or edit |
-| `<project>/aloop/pipeline.yml` | Authored workflow | Template + interview | Yes, triggers recompile |
+| `<project>/aloop/workflows/*.yaml` or project workflow override | Authored workflow | Template + interview | Yes, triggers recompile |
 | `<project>/SPEC.md` (greenfield) | Product/technical spec | Interview (subagent) | Yes, but treat as authoritative |
 | `<project>/VERSIONS.md` (greenfield) | Version policy table | Discovery + interview (subagent) | Yes |
 | `<project>/docs/conventions/*.md` | Stack-specific conventions | Seeded from `aloop/templates/conventions/`, customized | Yes |
@@ -534,7 +534,7 @@ Setup is the seam where abstract design becomes concrete project state. Each dow
 |---|---|---|
 | **Daemon** (`daemon.md`) | `projects` row, `~/.aloop/state/projects/<id>/` | Project cannot register; `aloop start` fails with `project_not_ready` |
 | **Scheduler** (`provider-contract.md`) | Provider chain, budget cap, daily/per-turn limits from `aloop/config.yml` | Permits denied with `provider_unavailable`, `overrides_exclude_all`, or `budget_exceeded` before work begins |
-| **Compile step** (`pipeline.md`) | `pipeline.yml`, prompt templates, `{{CONSTITUTION}}` / `{{SPEC_FILES}}` / `{{VALIDATION_COMMANDS}}` | Plan compile fails, surfaced during Phase 6; no session starts |
+| **Compile step** (`pipeline.md`) | Workflow YAML, prompt templates, `{{CONSTITUTION}}` / `{{SPEC_FILES}}` / `{{VALIDATION_COMMANDS}}` | Plan compile fails, surfaced during Phase 6; no session starts |
 | **Orchestrator** (`orchestrator.md`) | `agent/trunk` branch, tracker adapter, spec files to decompose, sensitivity hints | Decompose runs against missing / stale spec, produces bad Epics |
 | **Tracker adapter** (`work-tracker.md`) | Adapter id + config, status map, label map, webhook config | Adapter fails `ping()`; orchestrator cannot file Epics |
 | **Proof / review agents** | CONSTITUTION preview-deployment rule, preview mechanism or opt-out reason from `aloop/config.yml` | Humans get screenshots or prose but no clickable PR deployment even though the project can provide one |

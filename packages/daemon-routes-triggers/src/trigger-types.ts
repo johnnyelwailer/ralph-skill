@@ -44,6 +44,10 @@ export type TriggerAction = {
   readonly target: {
     readonly artifact_id?: string;
     readonly session_id?: string;
+    /** Workflow handler name to queue, e.g. dependency_signal or a project-defined handler. */
+    readonly trigger?: string;
+    readonly reason?: string;
+    readonly source_event_id?: string;
     readonly message?: string;
     // other target fields can be added as needed per kind
   };

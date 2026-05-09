@@ -7,7 +7,7 @@
 ## Table of contents
 
 - Core concept: steps as the unit
-- Workflow vs pipeline vs loop-plan
+- Workflow vs pipeline vs workflow-plan
 - Prompt file format (frontmatter + body)
 - Prompt context
 - Runtime extension manifests
@@ -15,7 +15,7 @@
 - Chain grammar in frontmatter
 - Shared instructions via `{{include:path}}`
 - Template variable reference
-- Compile step: pipeline.yml → loop-plan.json
+- Compile step: workflow YAML → workflow-plan.json
 - Event-driven dispatch (trigger + queue)
 - Scheduler permit hook
 - Runtime mutation
@@ -38,98 +38,130 @@ A **step** is a named pipeline unit. v1 defines two step kinds:
 
 Both are data. Neither is inline logic in YAML.
 
-A **pipeline** is an authored sequence of steps with transition rules (`repeat`, `onFailure`). The default is `plan → build × 5 → proof → qa → review`, but this is just one possible pipeline — projects author their own.
+A **pipeline** is a handler-local authored sequence of steps with transition rules (`repeat`, `onFailure`). The default start handler may use `plan → build × 5 → proof → qa → review`, but this is just one possible pipeline — projects author their own.
 
-A **workflow** is any pipeline configuration intended for a session: plan-build-review, review-only, orchestrator-scan-dispatch, etc. Every workflow is just a pipeline + some metadata.
+A **workflow** is a trigger-keyed map of handlers. Each handler owns a pipeline and, optionally, a finalizer. Plan-build-review, review-only, orchestrator-scan-dispatch, and maintenance-loop are all the same primitive: workflow YAML compiled into handler plans.
 
 Agents are **not hardcoded**. `plan`, `build`, `proof`, `qa`, `review` are bundled defaults. Projects can define any named agent (`verify`, `debugger`, `security-audit`, `docs-generator`, `guard`).
 
-Exec steps are also **not hardcoded**. Projects define them by adding manifests such as `EXEC_regen-api.yml` or `EXEC_sync-issues.yml` under the templates directory and referencing them from `pipeline.yml`.
+Exec steps are also **not hardcoded**. Projects define them by adding manifests such as `EXEC_regen-api.yml` or `EXEC_sync-issues.yml` under the templates directory and referencing them from workflow handler `pipeline` phases.
 
 Exec steps are the first use of Aloop's manifest-backed extension pattern. Prompt context providers use the same discipline: YAML declares a typed manifest, the actual logic lives in checked-in code, and the daemon executes it through a narrow lifecycle. Do not invent a separate plugin mechanism for context, metrics, event projection, or guards without first checking whether it is another typed runtime extension manifest.
 
-## Workflow vs pipeline vs loop-plan
+## Workflow vs pipeline vs workflow-plan
 
 Three artifacts, compiled in order:
 
 | Artifact | Authored by | Consumed by | Lifetime |
 |---|---|---|---|
-| `pipeline.yml` (project) | User / setup | Compile step | Edit-at-will; re-compiles on change |
-| `loop-plan.json` (session) | Compile step | Daemon + shell shim | Per session; rewritten on mutations |
+| workflow file (`aloop/workflows/*.yaml` or project override) | User / setup | Compile step | Edit-at-will; re-compiles on change |
+| `workflow-plan.json` (session) | Compile step | Daemon + shell shim | Per session; rewritten on mutations |
 | Live session state | Daemon | Clients (CLI, dashboard) | Per session; in SQLite + JSONL |
 
-The shell shim and the session runner **only** consume `loop-plan.json`, prompt files, and compiled runtime extension descriptors. Neither parses workflow YAML. The compile step is the one place pipeline YAML gets interpreted.
+The shell shim and the session runner **only** consume compiled handler plans, prompt files, and compiled runtime extension descriptors. Neither parses workflow YAML. The compile step is the one place workflow YAML gets interpreted.
 
-### pipeline.yml (source of truth)
+### Workflow YAML (source of truth)
 
 ```yaml
-pipeline:
-  - agent: plan
-  - exec: regen-api
-  - agent: build
-    repeat: 5
-    onFailure: retry
-  - agent: qa
-  - agent: review
-    onFailure: goto build
+on:
+  start:
+    cycle: true
+    pipeline:
+      - agent: plan
+      - exec: regen-api
+      - agent: build
+        repeat: 5
+        onFailure: retry
+      - agent: qa
+      - agent: review
+        onFailure: goto build
+    finalizer:
+      - agent: spec-gap
+      - agent: docs
+      - agent: spec-review
+      - agent: final-review
+      - agent: final-qa
+      - agent: proof
+      - exec: cleanup-generated
 
-finalizer:
-  - agent: spec-gap
-  - agent: docs
-  - agent: spec-review
-  - agent: final-review
-  - agent: final-qa
-  - agent: proof
-  - exec: cleanup-generated
+  merge_conflict:
+    pipeline:
+      - agent: merge
 
-triggers:
-  # Session-level (fired into this session's own queue)
-  merge_conflict:   PROMPT_merge.md
-  stuck_detected:   PROMPT_debug.md
-  steer:            PROMPT_steer.md
+  stuck_detected:
+    pipeline:
+      - agent: debug
+
+  steer:
+    pipeline:
+      - agent: steer
 ```
 
-- `pipeline`: cycle. Short repeating sequence, typically 5–7 entries. Each entry is either `agent: <name>` or `exec: <name>`. The compile step resolves `repeat`, expands `onFailure: retry` into loop-plan directives, and resolves names to prompt/manifests.
-- `finalizer`: sequence that runs once `allTasksMarkedDone` holds at cycle boundary. Uses the same step syntax as `pipeline`. Resets to position 0 if any finalizer agent adds tasks. Only the last step completing with zero new tasks ends the loop.
-- `triggers`: named event → prompt. Session-level triggers fire into the session's own queue; orchestrator workflows use a separate set of triggers (see §Event-driven dispatch and `orchestrator.md`). Daemon-side watchers and workflow authors use these names; no keyword is hardcoded in code.
+- `on`: trigger-keyed handler map. Every key is a workflow event handler name. There is no top-level `pipeline` in the workflow catalog format.
+- `on.start`: conventional cycle handler. `cycle: true` means this handler repeats until finalizer conditions are met. Event-driven workflows may omit `start`.
+- `pipeline`: handler-local sequence. Each entry is either `agent: <name>` or `exec: <name>`. The compile step resolves `repeat`, expands `onFailure: retry` into handler-plan directives, and resolves names to prompt/manifests.
+- `finalizer`: optional handler-local sequence that runs once `allTasksMarkedDone` holds at cycle boundary for cyclic handlers. Uses the same step syntax as `pipeline`.
+- other `on.<event>` handlers: dormant until the daemon queues that event into the session. External triggers created through `/v1/triggers` queue handler names; they are not defined as workflow YAML predicates.
 
-### loop-plan.json (compiled artifact)
+### workflow-plan.json (compiled artifact)
 
 ```json
 {
-  "_v": 2,
-  "cycle": [
-    { "kind": "agent", "ref": "PROMPT_plan.md" },
-    { "kind": "exec", "ref": "EXEC_regen-api.json" },
-    { "kind": "agent", "ref": "PROMPT_build.md" },
-    { "kind": "agent", "ref": "PROMPT_build.md" },
-    { "kind": "agent", "ref": "PROMPT_build.md" },
-    { "kind": "agent", "ref": "PROMPT_build.md" },
-    { "kind": "agent", "ref": "PROMPT_build.md" },
-    { "kind": "agent", "ref": "PROMPT_qa.md" },
-    { "kind": "agent", "ref": "PROMPT_review.md" }
-  ],
-  "finalizer": [
-    { "kind": "agent", "ref": "PROMPT_spec-gap.md" },
-    { "kind": "agent", "ref": "PROMPT_docs.md" },
-    { "kind": "agent", "ref": "PROMPT_spec-review.md" },
-    { "kind": "agent", "ref": "PROMPT_final-review.md" },
-    { "kind": "agent", "ref": "PROMPT_final-qa.md" },
-    { "kind": "agent", "ref": "PROMPT_proof.md" },
-    { "kind": "exec", "ref": "EXEC_cleanup-generated.json" }
-  ],
-  "triggers": {
-    "merge_conflict":   "PROMPT_merge.md",
-    "stuck_detected":   "PROMPT_debug.md",
-    "steer":            "PROMPT_steer.md"
+  "_v": 3,
+  "workflow": "plan-build-review",
+  "handlers": {
+    "start": {
+      "cycle": true,
+      "pipeline": [
+        { "kind": "agent", "ref": "PROMPT_plan.md" },
+        { "kind": "exec", "ref": "EXEC_regen-api.json" },
+        { "kind": "agent", "ref": "PROMPT_build.md" },
+        { "kind": "agent", "ref": "PROMPT_build.md" },
+        { "kind": "agent", "ref": "PROMPT_build.md" },
+        { "kind": "agent", "ref": "PROMPT_build.md" },
+        { "kind": "agent", "ref": "PROMPT_build.md" },
+        { "kind": "agent", "ref": "PROMPT_qa.md" },
+        { "kind": "agent", "ref": "PROMPT_review.md" }
+      ],
+      "finalizer": [
+        { "kind": "agent", "ref": "PROMPT_spec-gap.md" },
+        { "kind": "agent", "ref": "PROMPT_docs.md" },
+        { "kind": "agent", "ref": "PROMPT_spec-review.md" },
+        { "kind": "agent", "ref": "PROMPT_final-review.md" },
+        { "kind": "agent", "ref": "PROMPT_final-qa.md" },
+        { "kind": "agent", "ref": "PROMPT_proof.md" },
+        { "kind": "exec", "ref": "EXEC_cleanup-generated.json" }
+      ],
+      "transitions": {
+        "2": { "type": "retry" },
+        "8": { "type": "goto", "target": "build" }
+      }
+    },
+    "merge_conflict": {
+      "pipeline": [{ "kind": "agent", "ref": "PROMPT_merge.md" }]
+    },
+    "stuck_detected": {
+      "pipeline": [{ "kind": "agent", "ref": "PROMPT_debug.md" }]
+    },
+    "steer": {
+      "pipeline": [{ "kind": "agent", "ref": "PROMPT_steer.md" }]
+    }
   },
-  "cyclePosition": 0,
-  "iteration": 1,
   "version": 1
 }
 ```
 
-Typed step descriptors. Agent steps resolve to prompt files; exec steps resolve to compiled manifests. This is a structural change from the original string-array form, so adding exec support bumps the `loop-plan.json` structural version.
+The compiled artifact is a deterministic handler table. It is intentionally lower-level than authored workflow YAML:
+
+- handler names are already validated
+- `repeat` is already expanded
+- `agent` and `exec` references are already resolved
+- transition targets are already checked
+- prompt templates and exec manifests are already copied/resolved into session state
+
+Any trigger can queue any handler in this table. A queued handler does **not** rewrite or replace the `start` cycle. It creates a handler run with its own pipeline cursor. When that handler finishes, the runner returns to the next queued handler; if the queue is empty and `start.cycle` exists, it resumes the `start` handler's saved cursor. This makes event handling deterministic without interpreting workflow YAML at runtime.
+
+The compiled plan is still needed. Without it, every turn would need to parse YAML, resolve names, expand repeats, validate transitions, and discover prompt/exec files at runtime. The plan is the frozen executable form of the workflow; session state records which handler run is active and where its cursor is.
 
 ## Prompt file format (frontmatter + body)
 
@@ -231,13 +263,13 @@ See `context.md` for the plugin boundary, normalized context block shape, and gu
 
 Aloop uses one extensibility pattern for project-defined code: **runtime extension manifests**.
 
-A manifest is configuration that points at checked-in code and declares how the daemon may run it. It is not source code. This prevents `pipeline.yml`, prompt frontmatter, or daemon config from becoming an embedded programming language.
+A manifest is configuration that points at checked-in code and declares how the daemon may run it. It is not source code. This prevents workflow YAML, prompt frontmatter, or daemon config from becoming an embedded programming language.
 
 Current manifest kinds:
 
 | Kind | Lifecycle | Referenced from | Spec |
 |---|---|---|---|
-| `exec` | Runs as a pipeline step | `pipeline.yml` `exec:` entries | §Exec step manifest format |
+| `exec` | Runs as a pipeline step | workflow handler `exec:` entries | §Exec step manifest format |
 | `context-provider` | Builds and optionally observes prompt context before/after an agent turn | prompt `context:` ids via project/daemon `contexts` config | `context.md` |
 
 Both kinds follow the same rules:
@@ -369,13 +401,13 @@ Variables resolved at two stages:
 
 **Prompt content rule (hard):** orchestrator and queue prompts MUST NOT embed file contents in the body. Reference files by path; let the agent read them. No queue prompt may exceed 10 KB (excluding frontmatter).
 
-## Compile step: pipeline.yml → loop-plan.json
+## Compile step: workflow YAML → workflow-plan.json
 
-The compile step is the **only** place where pipeline YAML gets interpreted. It runs:
+The compile step is the **only** place where workflow YAML gets interpreted. It runs:
 
-- During **setup verification** (Phase 6) — the first compile is a readiness gate; if `pipeline.yml` cannot be compiled, the project is not marked `ready`. See `setup.md`.
+- During **setup verification** (Phase 6) — the first compile is a readiness gate; if workflow YAML cannot be compiled, the project is not marked `ready`. See `setup.md`.
 - On `aloop start` (and child dispatch)
-- On file-watcher-detected change to `pipeline.yml`
+- On file-watcher-detected change to workflow YAML
 - On explicit `POST /v1/sessions/:id/recompile`
 - After certain runtime mutations (escalation, `onFailure: goto X`)
 
@@ -383,60 +415,63 @@ Setup itself may be orchestrated through a dedicated setup workflow, but the sam
 
 Responsibilities:
 
-1. Read `aloop/config.yml` + `aloop/pipeline.yml` + per-agent overrides.
-2. Resolve `repeat` (unroll to the flat cycle/finalizer step arrays).
-3. Resolve `onFailure` directives into runtime-applicable rules (stored separately in session state, not in `loop-plan.json`; the daemon applies them).
-4. Resolve `agent: <name>` to `PROMPT_<name>.md` and `exec: <name>` to `EXEC_<name>.yml`.
-5. Resolve trigger name → prompt filename mapping.
-6. Resolve chain grammar for any unspecified `provider:` frontmatter using project defaults.
-7. Copy prompt files into `<session>/prompts/` with template variables expanded (setup-time set).
-8. Copy runtime extension manifests referenced by the workflow or prompt context config into the session state dir and compile them to runtime-ready JSON descriptors.
-9. Write `loop-plan.json` to session state dir.
-10. Emit `session.loop_plan.updated` on the bus.
+1. Read `aloop/config.yml` + selected workflow file + per-agent overrides.
+2. Validate every `on.<event>` handler name and phase list.
+3. Resolve `repeat` inside each handler (unroll to compiled handler step arrays).
+4. Resolve `onFailure` directives into runtime-applicable rules stored on the compiled handler.
+5. Validate transition targets inside the handler's compiled step list.
+6. Resolve `agent: <name>` to `PROMPT_<name>.md` and `exec: <name>` to `EXEC_<name>.yml`.
+7. Resolve chain grammar for any unspecified `provider:` frontmatter using project defaults.
+8. Copy prompt files into `<session>/prompts/` with template variables expanded (setup-time set).
+9. Copy runtime extension manifests referenced by the workflow or prompt context config into the session state dir and compile them to runtime-ready JSON descriptors.
+10. Write `workflow-plan.json` to session state dir.
+11. Emit `session.workflow_plan.updated` on the bus.
 
-`loop-plan.json` has a `version` field that increments on every write. The daemon logs plan changes as they happen.
+`workflow-plan.json` has a `version` field that increments on every write. The daemon logs plan changes as they happen.
 
-Rule: **the shim and the daemon never parse `pipeline.yml`.** If an operation needs pipeline-level knowledge, route it through the compile step.
+Rule: **the shim and the daemon never parse workflow YAML.** If an operation needs workflow-level knowledge, route it through the compile step.
 
 ## Event-driven dispatch (trigger + queue)
 
-The daemon's session runner is dumb in the way `loop.sh` used to try to be:
+The daemon's session runner is deliberately mechanical:
 
-1. Check queue — if a file exists, run its frontmatter's config, delete it after.
-2. Check if in finalizer mode — if yes, pick the next step from `finalizer[]`.
-3. Otherwise pick the next step from `cycle[cyclePosition]`.
-4. Request a permit (see Scheduler permit hook).
-5. Invoke the resolved adapter or runtime.
-6. Persist result + usage, update position.
+1. Check the session queue for a queued workflow handler.
+2. If a handler is queued, create a handler run with its own cursor over that handler's compiled pipeline.
+3. If a handler run is active, pick its next compiled pipeline step.
+4. If no handler run is active and `start.cycle` exists, resume the saved `start` handler cursor.
+5. If the `start` handler is in finalizer mode, pick the next compiled `start.finalizer` step.
+6. Request a permit (see Scheduler permit hook).
+7. Invoke the resolved provider adapter or runtime extension.
+8. Persist result + usage, update the active handler cursor, and close the handler run when its pipeline completes.
 
-The "intelligence" lives upstream:
+The decision-making lives upstream:
 
-- **Queue population** happens via the API (`POST /v1/sessions/:id/steer`) or by the daemon's own watchers (stuck detector, merge detector, burn-rate watcher) matching named triggers from `triggers{}` in `loop-plan.json`.
+- **Queue population** happens via the API (`POST /v1/sessions/:id/steer`), daemon watchers, durable trigger records, tracker/external adapters, or orchestrator decisions. Each queue entry names one compiled handler.
 - **Finalizer switch** is mechanical — enter finalizer when `allTasksMarkedDone`, abort finalizer back to cycle position 0 if any finalizer agent adds tasks.
-- **Trigger resolution** is keyword matching: the daemon observes an event (`merge_conflict`), looks up `triggers.merge_conflict`, writes `queue/NNN-<keyword>.md` pointing at that prompt.
-- **Exec scope in v1** is deliberate: `exec` steps may appear in `pipeline` and `finalizer`, but `triggers:` still target prompts only. Event-driven diagnosis and conversation remain agent turns.
+- **Trigger resolution** is event-to-handler dispatch: external/runtime code creates a trigger record or emits a normalized event, the daemon validates that the target handler exists in the compiled plan, and the queue stores that handler name plus the trigger payload.
+- **Exec scope in v1** is deliberate: `exec` steps may appear in handler `pipeline` and `finalizer` phases. Event-driven diagnosis and conversation remain agent turns.
 
-No expressions, no conditionals. Keywords and positions.
+No expressions, no conditionals. Handler names and cursors.
 
 Two trigger scopes, by convention:
 
 - **Session-level triggers** fire into a running session's own queue. Names have no prefix. Examples: `steer`, `stuck_detected`, `merge_conflict`, `plan_needed`.
 - **Orchestrator-level triggers** fire into the orchestrator's queue when it observes something about one of its children. Names use `child_*` prefix or `*_pr` suffix. Examples: `child_stuck`, `burn_rate_alert`, `merge_conflict_pr`, `pr_review_needed`, `user_comment`.
 
-Each workflow's `triggers:` map declares which keyword maps to which prompt; prompts themselves declare `trigger: <keyword>` in frontmatter. The daemon enforces the mapping and the scope. An orchestrator workflow cannot receive a session-level trigger; a child workflow cannot receive an orchestrator-level trigger.
+Each workflow's `on:` map declares which handler names are valid. Triggers are generic records with a normalized source topic, refs, labels, evidence refs, severity, and payload. External producers create those records through `/v1/triggers` or through runtime integrations that call the same internal API. The daemon enforces target handler existence and scope. An orchestrator workflow cannot receive a session-level trigger; a child workflow cannot receive an orchestrator-level trigger unless that handler is explicitly present in its compiled plan.
 
 | Condition | Scope | Detected by | Action |
 |---|---|---|---|
-| Steering from user | session | `POST /v1/sessions/:id/steer` | Queue using `triggers.steer` |
-| Pre-iteration merge conflict (child) | session | Git state check before turn | Queue `triggers.merge_conflict` |
-| Stuck — N consecutive failures in own session | session | Event stream analyzer | Queue `triggers.stuck_detected` |
-| Stuck — orchestrator observing a child | orchestrator | Event stream subscription on `parent=<orch.id>` | Queue `triggers.child_stuck` |
-| Burn-rate exceeded | orchestrator | Scheduler emits `scheduler.burn_rate_exceeded` | Queue `triggers.burn_rate_alert` in the orchestrator |
-| Change-set needs review | orchestrator | `change_set.opened` / `change_set.updated` | Queue `triggers.pr_review_needed` |
-| Change-set conflict with trunk | orchestrator | `change_set.conflict` | Queue `triggers.merge_conflict_pr` |
-| Human comment on Epic/Story | orchestrator | `comment.created` with `source=human` | Queue `triggers.user_comment` |
-| Orchestrator diagnose needed | orchestrator | Any anomaly classification | Queue `triggers.orch_diagnose` |
-| Custom (project-defined) | either | Project-authored watcher | Queue project's named trigger (scope declared) |
+| Steering from user | session | `POST /v1/sessions/:id/steer` | Queue `on.steer` |
+| Pre-iteration merge conflict (child) | session | Git state check before turn | Queue `on.merge_conflict` |
+| Stuck — N consecutive failures in own session | session | Event stream analyzer | Queue `on.stuck_detected` |
+| Stuck — orchestrator observing a child | orchestrator | Event stream subscription on `parent=<orch.id>` | Queue `on.child_stuck` |
+| Burn-rate exceeded | orchestrator | Scheduler emits `scheduler.burn_rate_exceeded` | Queue `on.burn_rate_alert` in the orchestrator |
+| Change-set needs review | orchestrator | `change_set.opened` / `change_set.updated` | Queue `on.pr_review_needed` |
+| Change-set conflict with trunk | orchestrator | `change_set.conflict` | Queue `on.merge_conflict_pr` |
+| Human comment on Epic/Story | orchestrator | `comment.created` with `source=human` | Queue `on.user_comment` |
+| Orchestrator diagnose needed | orchestrator | Any anomaly classification | Queue `on.orch_diagnose` |
+| Custom (project-defined) | either | Project-authored watcher or integration | Queue any compiled `on.<handler>` target |
 
 ## Scheduler permit hook
 
@@ -455,23 +490,23 @@ The session runner **never** bypasses the scheduler — even if the session is s
 
 The pipeline is mutable at runtime through two mechanisms:
 
-### Override queue
+### Handler queue
 
-`<session>/queue/` holds prompt files in the same frontmatter format as cycle prompts. The session runner checks this dir before the cycle.
+The session queue holds durable handler-run requests. The session runner checks it before resuming the cyclic `start` handler.
 
 Writers:
 - **User** via `POST /v1/sessions/:id/steer` → CLI, dashboard, or bot
-- **Daemon watchers** via trigger keywords
+- **Daemon watchers** via trigger records
 - **Orchestrator workflow** via explicit queue writes to its children
 
-Queue files are named `NNN-<description>.md` and consumed in lexical order.
+Queue records are ordered by monotonic sequence and consumed in that order. A record names a compiled handler and carries the normalized trigger payload.
 
 ### Plan rewrite
 
-For permanent changes, the compile step rewrites `loop-plan.json`:
+For permanent workflow changes, the compile step rewrites `workflow-plan.json`:
 
-- `onFailure: goto build` observed → rewrite `cyclePosition` to build's index.
-- Escalation ladder threshold crossed → inject recovery prompt; adjust position.
+- `onFailure: goto build` observed → update the active handler cursor to the compiled `build` step.
+- Escalation ladder threshold crossed → queue or inject a recovery handler; adjust the active handler cursor only through compiled transition rules.
 - Project config change → full recompile.
 
 Agents and exec steps never modify the plan themselves. Pipeline authoring is a user + compile-step concern.
@@ -562,38 +597,51 @@ Each session gets an `AUTH_HANDLE` environment variable set by the daemon before
 
 ## Orchestrator as a workflow
 
-The orchestrator is a session of kind `orchestrator` running a workflow like any other. No separate binary, no orchestrator-specific runtime.
+The orchestrator is a session of kind `orchestrator` running a workflow like any other. No separate binary, no orchestrator-specific runtime, no separate trigger engine, and no special scheduler path. Orchestration is composition of the same workflow, event, prompt, queue, permit, artifact, tracker, and change-set primitives used by every other session.
 
 Example `orchestrator.yaml` (abridged):
 
 ```yaml
-pipeline:
-  - agent: orch_scan
-  - agent: orch_decompose
-    trigger: decompose_needed
-  - agent: orch_refine
-    trigger: refine_needed
-  - agent: orch_estimate
-    trigger: estimate_needed
-  - agent: orch_consistency
-  - agent: orch_dispatch
-  - agent: orch_review
-    trigger: pr_review_needed
-  - agent: orch_resolver
-    trigger: merge_conflict_pr
+on:
+  start:
+    cycle: true
+    pipeline:
+      - agent: orch_scan
+      - agent: orch_consistency
+      - agent: orch_dispatch
+    finalizer:
+      - agent: orch_cleanup
 
-finalizer:
-  - agent: orch_cleanup
+  decompose_needed:
+    pipeline:
+      - agent: orch_decompose
+      - agent: orch_refine
+      - agent: orch_estimate
 
-triggers:
-  decompose_needed:       PROMPT_orch_decompose.md
-  refine_needed:          PROMPT_orch_refine.md
-  estimate_needed:        PROMPT_orch_estimate.md
-  pr_review_needed:       PROMPT_orch_review.md
-  merge_conflict_pr:      PROMPT_orch_resolver.md
-  orch_diagnose:          PROMPT_orch_diagnose.md
-  burn_rate_alert:        PROMPT_orch_diagnose.md
-  child_stuck:            PROMPT_orch_diagnose.md
+  refine_needed:
+    pipeline:
+      - agent: orch_refine
+      - agent: orch_estimate
+
+  estimate_needed:
+    pipeline:
+      - agent: orch_estimate
+
+  pr_review_needed:
+    pipeline:
+      - agent: orch_review
+
+  merge_conflict_pr:
+    pipeline:
+      - agent: orch_resolver
+
+  burn_rate_alert:
+    pipeline:
+      - agent: orch_diagnose
+
+  child_stuck:
+    pipeline:
+      - agent: orch_diagnose
 ```
 
 Runtime-level truths:
@@ -605,7 +653,7 @@ Runtime-level truths:
 
 Self-healing is intelligent because it is an agent turn (the diagnose prompt), not a shell script reacting to metrics. The diagnose turn's output is either a new queue item (e.g., "kill child X," "pause dispatch," "raise burn-rate threshold") or a `no_action` submit.
 
-Projects may run different orchestrator workflows with the same mechanism. For example, `maintenance-loop.yaml` is a long-running repository-upkeep orchestrator: its category-specific maintenance agents look for dependency drift, coverage gaps, documentation drift, stale demos or Storybook stories, and behavior-preserving refactor opportunities. It still creates normal Epics/Stories, still runs `orch_refine` and `orch_consistency`, and still dispatches children using ordinary Story workflows such as `refactor`, `docs-only`, `frontend-slice`, `migration`, or `plan-build-review`.
+Projects may run different orchestrator workflows with the same mechanism. For example, `maintenance-loop.yaml` is a long-running repository-upkeep orchestrator with no default cycling `start` handler. Normalized events such as `dependency_signal`, `coverage_signal`, `docs_signal`, `demo_signal`, `refactor_signal`, and `bug_signal` wake only the relevant category agent. It still creates normal Epics/Stories, still runs `orch_refine` and `orch_consistency`, and still dispatches children using ordinary Story workflows such as `refactor`, `docs-only`, `frontend-slice`, `migration`, or `plan-build-review`.
 
 `maintenance-loop` is therefore not a new daemon mode. It is just another workflow file for a `kind: orchestrator` session.
 
@@ -615,7 +663,7 @@ A child loop is a session of kind `child` running a workflow like `plan-build-re
 
 - Created by an orchestrator via the API.
 - Has its own worktree (daemon creates it on session start).
-- Has its own `loop-plan.json` compiled from the chosen workflow.
+- Has its own `workflow-plan.json` compiled from the chosen workflow.
 - Uses `aloop-agent` for all output.
 - Cannot create grandchildren (see `api.md` §Sessions §Create).
 
@@ -697,6 +745,6 @@ User-facing default `--help` shows ~8 commands: `setup`, `start`, `status`, `ste
 3. **Agents only talk through `aloop-agent`.** File-based contract is retired.
 4. **Permits gate every turn.** No exceptions, no bypasses.
 5. **Provider chains are resolved at permit-grant time.** Live overrides and health matter.
-6. **Queue + finalizer + cycle are the only scheduling surfaces.** Everything else is upstream.
-7. **Triggers are keywords, not expressions.** If a project needs a new trigger, it registers a name and a prompt. No predicates in the plan.
-8. **Inline code in YAML is forbidden.** Project-defined code runs through checked-in runtime extension manifests and files, never through shell snippets or expressions embedded in `pipeline.yml`, prompt frontmatter, or daemon config.
+6. **Queue + handler cursor + finalizer + cycle are the only scheduling surfaces.** Everything else is upstream.
+7. **Triggers are records, not workflow predicates.** If a project needs a new trigger, external/runtime code creates a normalized trigger record that targets an existing `on.<handler>` name. No predicates in the plan.
+8. **Inline code in YAML is forbidden.** Project-defined code runs through checked-in runtime extension manifests and files, never through shell snippets or expressions embedded in workflow YAML, prompt frontmatter, or daemon config.

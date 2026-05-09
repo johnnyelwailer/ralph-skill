@@ -844,6 +844,56 @@ DELETE /v1/triggers/:id
 
 `POST /fire` is a manual run-now path. It uses the same action and policy as automatic firing and emits the same trigger events.
 
+### Trigger sources
+
+`source.kind: "event"` listens to normalized daemon event topics. It never subscribes directly to GitHub, Dependabot, CI, Sentry, package registries, or other external systems. External systems feed adapters/projectors first; triggers match the resulting aloop events.
+
+External code integrates with triggers through generic daemon primitives, not workflow-specific YAML:
+
+1. A daemon adapter, runtime extension, webhook bridge, CLI, or other authenticated producer emits a normalized event with a topic, labels, refs, and evidence metadata.
+2. A durable trigger record, created with `POST /v1/triggers`, matches that event by topic/labels/threshold/scope.
+3. The trigger action creates or refreshes daemon work, such as queueing an orchestrator workflow handler.
+
+This keeps trigger producers pluggable. A Dependabot webhook bridge, a Sentry bridge, a CI adapter, or a project-local script all speak the same daemon event and trigger API; none of them become hardcoded workflow concepts.
+
+Common event-trigger sources:
+
+- tracker work item events: work item created, updated, labeled, commented, closed
+- tracker change-set events: change set opened, updated, merged, closed
+- git/projector events: commit observed, branch updated, file-scope changed
+- external-tool events: dependency update, security alert, bug report, crash report, support report
+- CI/test events: regression, coverage changed, flaky test detected
+- documentation/demo drift events: API surface changed, docs drift detected, Storybook coverage gap
+- quality events: complexity threshold exceeded, repeated review finding, ownership hotspot
+
+### Queueing orchestrator triggers
+
+`action.kind: "queue_orchestrator_trigger"` appends an event to the target orchestrator workflow's queue. `action.target` includes:
+
+```json
+{
+  "session_id": "s_orchestrator",
+  "trigger": "dependency_signal",
+  "reason": "external dependency tool opened a change set",
+  "source_event_id": "evt_..."
+}
+```
+
+The `trigger` value must be a handler name in the target workflow, such as `dependency_signal`, `coverage_signal`, `docs_signal`, `demo_signal`, `refactor_signal`, `bug_signal`, `maintenance_sweep_requested`, or a project-defined custom handler. If a project queues a custom handler, the project must also provide a custom workflow entry and prompt template for that handler.
+
+Debounce and budget policies are evaluated before queueing. A trigger that matches but is debounced, disabled, or over budget emits trigger metadata but does not queue provider-backed work.
+
+### Custom triggers
+
+Projects or external producers may create custom triggers by calling `POST /v1/triggers` with:
+
+- `source.topic` or `source.filters.topics` for event-topic matching
+- `source.filters.labels` for normalized label equality
+- `source.filters.thresholds` for numeric projected metrics
+- `action.kind: "queue_orchestrator_trigger"` with an existing or project-defined handler name
+
+Custom triggers are durable daemon records, not prompt logic and not a YAML mini-language. Predicates stay in daemon-owned trigger records; prompts receive the already-matched signal context. If the target handler is custom, the project must provide the workflow handler and prompt template that make that handler meaningful.
+
 ## Setup
 
 Setup is a resumable, long-lived setup orchestration for onboarding a project. CLI and dashboard are first-class API clients; external skill/chat hosts should drive the same API path (directly or through the CLI/shared client layer), not a privileged alternate backend. See `setup.md` for the phases and contract.

@@ -25,9 +25,9 @@ The constitution is law. Specs describe the system; this document constrains it.
 10. **Provider is an abstraction.** Five shipped adapters (OpenCode, Copilot, Codex, Gemini, Claude) implement one `ProviderAdapter` interface. The chain grammar (`provider[/track][@version]`) and mandatory per-turn fallthrough are universal; round-robin is an authoring pattern at the workflow level, never a runtime mode.
 ## III. Data-Driven
 
-11. **100% data-driven pipeline.** No hardcoded paths, prompt names, thresholds, intervals, phase sequences, or agent rosters in code. Pipelines live in `pipeline.yml`; providers in `providers.yml`; daemon settings in `daemon.yml`; project defaults in `aloop/config.yml`. The code reads these; it never encodes them.
-12. **Pipeline YAML is composition only, never logic.** Keywords (`onFailure: retry`, `trigger: merge_conflict`) are data. No expressions, no conditionals, no loops in YAML. If a workflow needs logic, it becomes a typed primitive in the daemon.
-13. **The compile step is the only YAML reader.** The shim and the daemon's runtime consume compiled `loop-plan.json`. If something needs pipeline knowledge at runtime, it routes through compile.
+11. **100% data-driven workflow.** No hardcoded paths, prompt names, thresholds, intervals, handler sequences, or agent rosters in code. Workflows live in workflow YAML; providers in `providers.yml`; daemon settings in `daemon.yml`; project defaults in `aloop/config.yml`. The code reads these; it never encodes them.
+12. **Workflow YAML is composition only, never logic.** Keywords such as `onFailure: retry` are data. No expressions, no conditionals, no inline code in YAML. If a workflow needs logic, it becomes a typed primitive in the daemon or a runtime extension manifest.
+13. **The compile step is the only YAML reader.** The shim and the daemon's runtime consume compiled `workflow-plan.json`. If something needs workflow knowledge at runtime, it routes through compile.
 14. **Silent fallbacks are forbidden.** If a config value is missing and the code has no documented default, startup fails loud. Hidden defaults are bugs.
 
 ## IV. Observability & Resilience
