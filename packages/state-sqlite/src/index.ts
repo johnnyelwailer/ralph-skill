@@ -51,6 +51,7 @@ export {
   type ResearchRunMode,
   type ResearchRun,
   type ProposalKind,
+  type ProposalState,
   type PromotionTarget,
   type PromotionRef,
   type IncubationProposal,

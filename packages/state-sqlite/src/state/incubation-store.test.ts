@@ -5,10 +5,12 @@ import {
   IncubationItemNotFoundError,
   ResearchRunNotFoundError,
   ProposalNotFoundError,
+  CommentNotFoundError,
   type IncubationScope,
   type IncubationItemStatus,
   type ResearchRunMode,
   type ProposalKind,
+  type ProposalState,
   type ResearchSourcePlan,
 } from "./incubation-store.ts";
 
@@ -349,6 +351,116 @@ describe("IncubationStore", () => {
     test("returns empty array for item with no proposals", () => {
       const item = store.createItem({ scope: "global", title: "T", description: "D" });
       expect(store.listProposals(item.id)).toEqual([]);
+    });
+  });
+
+  // ── Proposal state ─────────────────────────────────────────────────────────
+
+  describe("proposal state machine", () => {
+    test("newly created proposal has state 'draft'", () => {
+      const item = store.createItem({ scope: "global", title: "T", description: "D" });
+      const proposal = store.createProposal({
+        incubation_item_id: item.id,
+        kind: "story",
+        title: "P",
+        description: "Desc",
+      });
+      expect(proposal.state).toBe("draft");
+    });
+
+    test("updateProposal can transition state to 'ready'", () => {
+      const item = store.createItem({ scope: "global", title: "T", description: "D" });
+      const proposal = store.createProposal({
+        incubation_item_id: item.id,
+        kind: "story",
+        title: "P",
+        description: "Desc",
+      });
+      const updated = store.updateProposal(proposal.id, { state: "ready" });
+      expect(updated.state).toBe("ready");
+    });
+
+    test("applyProposal marks proposal as applied", () => {
+      const item = store.createItem({ scope: "global", title: "T", description: "D" });
+      const proposal = store.createProposal({
+        incubation_item_id: item.id,
+        kind: "story",
+        title: "P",
+        description: "Desc",
+      });
+      const applied = store.applyProposal(proposal.id);
+      expect(applied.state).toBe("applied");
+    });
+
+    test("applyProposal marks item status as promoted", () => {
+      const item = store.createItem({ scope: "global", title: "T", description: "D" });
+      const proposal = store.createProposal({
+        incubation_item_id: item.id,
+        kind: "story",
+        title: "P",
+        description: "Desc",
+      });
+      store.applyProposal(proposal.id);
+      const refreshed = store.getItem(item.id)!;
+      expect(refreshed.status).toBe("promoted");
+    });
+
+    test("applyProposal records promotion ref on the item", () => {
+      const item = store.createItem({ scope: "global", title: "T", description: "D" });
+      const proposal = store.createProposal({
+        incubation_item_id: item.id,
+        kind: "story",
+        title: "P",
+        description: "Desc",
+        promotion_target: "backlog",
+      });
+      store.applyProposal(proposal.id);
+      const refreshed = store.getItem(item.id)!;
+      expect(refreshed.promoted_refs).toContainEqual({
+        target: "backlog",
+        ref: proposal.id,
+      });
+    });
+
+    test("applyProposal is idempotent (re-apply returns same result)", () => {
+      const item = store.createItem({ scope: "global", title: "T", description: "D" });
+      const proposal = store.createProposal({
+        incubation_item_id: item.id,
+        kind: "story",
+        title: "P",
+        description: "Desc",
+      });
+      const first = store.applyProposal(proposal.id);
+      // Idempotent: re-apply does not throw, returns same proposal
+      const second = store.applyProposal(proposal.id);
+      expect(first.id).toBe(second.id);
+      expect(first.state).toBe("applied");
+      expect(second.state).toBe("applied");
+    });
+
+    test("applyProposal throws on rejected proposal", () => {
+      const item = store.createItem({ scope: "global", title: "T", description: "D" });
+      const proposal = store.createProposal({
+        incubation_item_id: item.id,
+        kind: "story",
+        title: "P",
+        description: "Desc",
+      });
+      store.updateProposal(proposal.id, { state: "rejected" });
+      expect(() => store.applyProposal(proposal.id)).toThrow("cannot apply a rejected proposal");
+    });
+
+    test("getProposal returns state in response", () => {
+      const item = store.createItem({ scope: "global", title: "T", description: "D" });
+      const proposal = store.createProposal({
+        incubation_item_id: item.id,
+        kind: "story",
+        title: "P",
+        description: "Desc",
+      });
+      expect(store.getProposal(proposal.id)!.state).toBe("draft");
+      store.updateProposal(proposal.id, { state: "ready" });
+      expect(store.getProposal(proposal.id)!.state).toBe("ready");
     });
   });
 

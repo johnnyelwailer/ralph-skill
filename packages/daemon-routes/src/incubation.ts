@@ -22,6 +22,7 @@ function itemResponse(item: ReturnType<IncubationStore["getItem"]>) {
     status: item.status,
     research_runs: item.research_runs.map(runResponse),
     proposal: item.proposal ? proposalResponse(item.proposal) : null,
+    promoted_refs: item.promoted_refs,
     created_at: item.created_at,
     updated_at: item.updated_at,
   };
@@ -52,6 +53,7 @@ function proposalResponse(p: NonNullable<Parameters<typeof IncubationStore.proto
     description: p.description,
     promotion_target: p.promotion_target ?? null,
     promotion_ref: p.promotion_ref ?? null,
+    state: p.state,
     created_at: p.created_at,
     updated_at: p.updated_at,
   };
@@ -454,6 +456,39 @@ export async function patchProposal(
   }
 }
 
+export async function applyIncubationProposal(
+  id: string,
+  deps: IncubationDeps,
+): Promise<Response> {
+  const proposal = deps.store.getProposal(id);
+  if (!proposal) return errorResponse(404, "proposal_not_found", `proposal not found: ${id}`, { id });
+
+  if (proposal.state === "applied") {
+    return badRequest("proposal already applied", { id, state: proposal.state });
+  }
+  if (proposal.state === "rejected") {
+    return badRequest("cannot apply a rejected proposal", { id, state: proposal.state });
+  }
+
+  // TODO: 2026-05-09T03:30:00Z — applyProposal is a stub that performs the store
+  // state transition. The actual side-effects (setup_run creation, tracker epic
+  // creation, steering instruction, etc.) require daemon policy tables and adapter
+  // references that are out of scope for this slice. Those will be implemented in
+  // a separate story once the daemon adapter wiring is available. The store
+  // transition here is real and correct; only the cross-system handoff is pending.
+  // See: docs/spec/incubation.md §Promotion targets, api.md §Proposals and promotion
+
+  try {
+    const applied = deps.store.applyProposal(id);
+    return jsonResponse(200, proposalResponse(applied)!);
+  } catch (err) {
+    if (err instanceof Error && err.message === "cannot apply a rejected proposal") {
+      return badRequest("cannot apply a rejected proposal", { id });
+    }
+    return errorResponse(500, "internal_error", String(err));
+  }
+}
+
 export function listProposalsForItem(
   itemId: string,
   deps: IncubationDeps,
@@ -657,6 +692,11 @@ export async function handleIncubation(
       // /v1/incubation/proposals/:id
       if (req.method === "GET") return getProposal(id, deps);
       if (req.method === "PATCH") return patchProposal(id, req, deps);
+    }
+
+    if (segments.length === 2 && segments[1] === "apply") {
+      // /v1/incubation/proposals/:id/apply
+      if (req.method === "POST") return applyIncubationProposal(id, deps);
     }
   }
 

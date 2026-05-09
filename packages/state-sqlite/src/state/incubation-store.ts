@@ -40,6 +40,8 @@ export type ProposalKind =
 
 export type PromotionTarget = "backlog" | "sprint" | "spec" | "architecture" | "workflow";
 
+export type ProposalState = "draft" | "ready" | "applied" | "rejected";
+
 export interface ResearchSourcePlan {
   kind: ResearchSourceKind;
   description: string;
@@ -73,6 +75,7 @@ export interface IncubationProposal {
   description: string;
   promotion_target?: PromotionTarget;
   promotion_ref?: PromotionRef;
+  state: ProposalState;
   created_at: string;
   updated_at: string;
 }
@@ -86,6 +89,7 @@ export interface IncubationItem {
   status: IncubationItemStatus;
   research_runs: ResearchRun[];
   proposal?: IncubationProposal;
+  promoted_refs: PromotionRef[];
   created_at: string;
   updated_at: string;
 }
@@ -100,6 +104,7 @@ interface IncubationItemRow {
   description: string;
   status: string;
   proposal_id: string | null;
+  promoted_refs: string;
   created_at: string;
   updated_at: string;
 }
@@ -125,6 +130,7 @@ interface IncubationProposalRow {
   description: string;
   promotion_target: string | null;
   promotion_ref: string | null;
+  state: string;
   created_at: string;
   updated_at: string;
 }
@@ -191,6 +197,7 @@ function rowToIncubationItem(row: IncubationItemRow, runs: ResearchRun[], propos
     status: row.status as IncubationItemStatus,
     research_runs: runs,
     proposal,
+    promoted_refs: JSON.parse(row.promoted_refs) as PromotionRef[],
     created_at: row.created_at,
     updated_at: row.updated_at,
   };
@@ -220,6 +227,7 @@ function rowToProposal(row: IncubationProposalRow): IncubationProposal {
     description: row.description,
     promotion_target: row.promotion_target as PromotionTarget | undefined,
     promotion_ref: row.promotion_ref ? (JSON.parse(row.promotion_ref) as PromotionRef) : undefined,
+    state: row.state as ProposalState,
     created_at: row.created_at,
     updated_at: row.updated_at,
   };
@@ -255,8 +263,8 @@ export class IncubationStore {
     const status = input.status ?? "active";
 
     this.db.run(
-      `INSERT INTO incubation_items (id, scope, project_id, title, description, status, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO incubation_items (id, scope, project_id, title, description, status, promoted_refs, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, '[]', ?, ?)`,
       [id, input.scope, input.project_id ?? null, input.title, input.description, status, now, now],
     );
 
@@ -313,6 +321,7 @@ export class IncubationStore {
     status?: IncubationItemStatus;
     project_id?: string | null;
     proposal_id?: string | null;
+    promoted_refs?: PromotionRef[];
     now?: string;
   }): IncubationItem {
     const now = patch.now ?? new Date().toISOString();
@@ -324,6 +333,7 @@ export class IncubationStore {
     if (patch.status !== undefined) { fields.push("status = ?"); params.push(patch.status); }
     if (patch.project_id !== undefined) { fields.push("project_id = ?"); params.push(patch.project_id ?? null); }
     if (patch.proposal_id !== undefined) { fields.push("proposal_id = ?"); params.push(patch.proposal_id ?? null); }
+    if (patch.promoted_refs !== undefined) { fields.push("promoted_refs = ?"); params.push(JSON.stringify(patch.promoted_refs)); }
 
     params.push(id);
     const changes = this.db
@@ -431,8 +441,8 @@ export class IncubationStore {
     const promotionRefJson = input.promotion_ref ? JSON.stringify(input.promotion_ref) : null;
 
     this.db.run(
-      `INSERT INTO incubation_proposals (id, incubation_item_id, kind, title, description, promotion_target, promotion_ref, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO incubation_proposals (id, incubation_item_id, kind, title, description, promotion_target, promotion_ref, state, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?)`,
       [id, input.incubation_item_id, input.kind, input.title, input.description, input.promotion_target ?? null, promotionRefJson, now, now],
     );
 
@@ -468,6 +478,7 @@ export class IncubationStore {
     description?: string;
     promotion_target?: PromotionTarget | null;
     promotion_ref?: PromotionRef | null;
+    state?: ProposalState;
     now?: string;
   }): IncubationProposal {
     const now = patch.now ?? new Date().toISOString();
@@ -484,6 +495,10 @@ export class IncubationStore {
       fields.push("promotion_ref = ?");
       params.push(patch.promotion_ref ? JSON.stringify(patch.promotion_ref) : null);
     }
+    if (patch.state !== undefined) {
+      fields.push("state = ?");
+      params.push(patch.state);
+    }
 
     params.push(id);
     const changes = this.db
@@ -491,6 +506,56 @@ export class IncubationStore {
       .run(...params as [string]);
 
     if (changes.changes === 0) throw new ProposalNotFoundError(id);
+    return this.getProposal(id)!;
+  }
+
+  /**
+   * Apply a proposal: mark it as `applied`, record the promotion ref on the
+   * parent incubation item, and transition the item to `promoted` status.
+   *
+   * Idempotent: re-applying an already-applied proposal returns the proposal
+   * without error.
+   *
+   * The actual mutation (setup_run, epic creation, steering instruction, etc.)
+   * is performed by the route handler after consulting the daemon's policy
+   * tables — those side effects are out of scope for the store layer.
+   */
+  applyProposal(id: string): IncubationProposal {
+    const proposal = this.getProposal(id);
+    if (!proposal) throw new ProposalNotFoundError(id);
+
+    if (proposal.state === "applied") {
+      // Idempotent: already applied, return as-is
+      return proposal;
+    }
+    if (proposal.state === "rejected") {
+      throw new Error("cannot apply a rejected proposal");
+    }
+    // NOTE: "draft" proposals require a prior `patchProposal` call to move to
+    // "ready" before they can be applied.  The store permits the transition
+    // here so callers can choose their own validation depth.
+
+    const now = new Date().toISOString();
+
+    // Mark proposal as applied
+    this.db.run(
+      `UPDATE incubation_proposals SET state = 'applied', updated_at = ? WHERE id = ?`,
+      [now, id],
+    );
+
+    // Append promotion ref to the parent item and set its status to promoted
+    const item = this.getItem(proposal.incubation_item_id)!;
+    const ref: PromotionRef = {
+      target: proposal.promotion_target ?? "backlog",
+      ref: id,
+    };
+    const updated_refs = [...item.promoted_refs, ref];
+
+    this.db.run(
+      `UPDATE incubation_items SET promoted_refs = ?, updated_at = ?, status = 'promoted' WHERE id = ?`,
+      [JSON.stringify(updated_refs), now, proposal.incubation_item_id],
+    );
+
     return this.getProposal(id)!;
   }
 
