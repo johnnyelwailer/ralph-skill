@@ -8,7 +8,7 @@ Incubation is the pre-tracker, pre-implementation view of uncertain work:
 
 - raw ideas, links, screenshots, voice notes, documents, logs, and pasted observations
 - clarification threads and evidence gathering before setup, spec, Epic, Story, or steering
-- background research, monitors, outreach drafts, and synthesis proposals
+- background research, monitors, outreach drafts, and synthesis artifacts
 - explicit promotion into existing setup, spec, tracker, session, or decision-record primitives
 
 Incubation answers: "What is this thought, what evidence do we have, and what could it become?"

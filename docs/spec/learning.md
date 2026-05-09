@@ -251,7 +251,7 @@ External reports are intentionally below local evidence. A leaderboard can ident
 
 ### Research Shape
 
-Model landscape research reuses incubation research primitives; it is not a new daemon subsystem.
+Model landscape research reuses the same session, trigger, artifact, and metadata-profile primitives as incubation views; it is not a new daemon subsystem.
 
 - One-shot scans use a provider-backed `Session` with a `source_synthesis` research workflow.
 - Recurring model watch uses a `Trigger` plus research protocol artifact with monitor metadata; each tick creates a research session or alert artifact.

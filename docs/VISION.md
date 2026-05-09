@@ -54,14 +54,14 @@ A bad day on aloop (and how it handles it):
 "Done" is the wrong word for a living product, but here's what v1 completion looks like:
 
 - All five providers (OpenCode, Copilot, Codex, Gemini, Claude) as first-class adapters with streaming, quota, and fallthrough.
-- Daemon-native database-backed state for workspaces, projects, incubation, setup, sessions, scheduler, metrics, and tracker projections.
+- Daemon-native database-backed state for workspaces, projects, setup, sessions, scheduler, metrics, tracker projections, and the artifacts/events/comments/triggers that power incubation views.
 - Two tracker adapters (GitHub + builtin) with feature parity for the orchestrator's minimum viable Epic/Story/change-set flow.
 - Multi-workspace, multi-project durable control plane with a stable v1 API.
 - Scheduler with permit-based gating, real quota probes, burn-rate safety, live overrides.
 - Orchestrator session with Epic → Story decomposition, parallel dispatch, quality gates, merge-to-trunk, intelligent diagnose.
 - Rehabilitated React dashboard consuming only the v1 API.
 - Setup interview + runtime producing CONSTITUTION.md + a validated project in one flow, with orchestration blocked until every ambiguity is resolved.
-- Incubation inbox with artifact-backed capture, multi-source research sessions, trigger-backed monitors, synthesis proposals, and explicit promotion into setup/spec/tracker/session targets.
+- Incubation inbox over artifact-backed capture, multi-source research sessions, trigger-backed monitors, synthesis artifacts, and explicit promotion into setup/spec/tracker/session targets.
 - Full TDD coverage of primitives, workflows, and engine.
 - Constitution invariants green across all LOC budgets.
 

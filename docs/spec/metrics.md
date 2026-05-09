@@ -183,8 +183,8 @@ Recommended `spec_quality_tier` projection:
 |---|---|---|---|
 | `incubation_capture_count` | Counter | `artifact.changed metadata.profile=incubation state=captured` | Dashboard |
 | `incubation_research_completion_rate` | Ratio | `research.update` | Dashboard, diagnose |
-| `incubation_promotion_rate` | Ratio | `proposal.changed state=applied`, `artifact.changed metadata.profile=incubation state=captured` | Dashboard |
-| `incubation_time_to_promotion_p50/p95` | Histogram | `artifact.changed metadata.profile=incubation`, `proposal.changed state=applied` | Dashboard |
+| `incubation_promotion_rate` | Ratio | `artifact.changed metadata.profile=promotion state=applied`, `artifact.changed metadata.profile=incubation state=captured` | Dashboard |
+| `incubation_time_to_promotion_p50/p95` | Histogram | `artifact.changed metadata.profile=incubation`, `artifact.changed metadata.profile=promotion state=applied` | Dashboard |
 | `incubation_source_count_by_kind` | Counter | `source.recorded` | Dashboard |
 | `incubation_experiment_attempt_count` | Counter | `experiment.recorded` | Dashboard, budget review |
 | `incubation_experiment_keeper_rate` | Ratio | `experiment.recorded keep=true/false` | Dashboard, plateau detection |

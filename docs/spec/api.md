@@ -280,7 +280,6 @@ The response includes:
       "requires_approval": true
     }
   ],
-  "proposal_refs": [],
   "usage": { "tokens_in": 1234, "tokens_out": 456, "cost_usd": 0.12 },
   "created_at": "2026-05-01T10:00:00Z",
   "updated_at": "2026-05-01T10:01:00Z"
@@ -544,7 +543,6 @@ Every event has a monotonic `id` (ms timestamp + sequence). Events are durable (
 | `experiment.recorded` | experiment-loop attempt finished | experiment attempt summary |
 | `trigger.monitor.update` | monitor trigger created, ticked, paused, alerted, or cancelled | monitor summary |
 | `outreach.changed` | outreach artifact, approval, or response state changed | outreach summary |
-| `proposal.changed` | proposal artifact created, edited, applied, or rejected | proposal summary |
 | `agent.chunk` | streaming content from a provider turn | see below |
 | `daemon.log` | daemon stdout relayed over SSE | `{level, message, fields}` |
 

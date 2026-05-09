@@ -30,7 +30,6 @@ CREATE TABLE IF NOT EXISTS composer_turns (
   delegated_refs              TEXT NOT NULL DEFAULT '[]',  -- JSON array
   launched_refs               TEXT NOT NULL DEFAULT '[]',  -- JSON array
   proposed_actions            TEXT NOT NULL DEFAULT '[]',  -- JSON array
-  proposal_refs               TEXT NOT NULL DEFAULT '[]',  -- JSON array
   usage_tokens_in             INTEGER NOT NULL DEFAULT 0,
   usage_tokens_out            INTEGER NOT NULL DEFAULT 0,
   usage_cost_usd              REAL NOT NULL DEFAULT 0,

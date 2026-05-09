@@ -68,7 +68,6 @@ function turnResponse(turn: ComposerTurn): Record<string, unknown> {
     delegated_refs: turn.delegated_refs,
     launched_refs: turn.launched_refs,
     proposed_actions: turn.proposed_actions,
-    proposal_refs: turn.proposal_refs,
     usage: turn.usage,
     created_at: turn.created_at,
     updated_at: turn.updated_at,

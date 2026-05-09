@@ -2,7 +2,7 @@
 
 > Durable, server-backed, multi-provider autonomous development and incubation system with a central voice-capable multimodal composer that delegates to scoped agents and turns captured intent into researched, specified, tracked, reviewed, and merged code without continuous human supervision.
 
-**Status:** rebuild in progress on branch `next`. Pre-rebuild code lived under `aloop/` on `master`; it is retired. The new architecture is a durable control plane (`aloopd`) with a typed API, scheduler permits, worker leases, tracker-agnostic Epic/Story/Task work items, incubation/research state, and a workflow catalog per Story type.
+**Status:** rebuild in progress on branch `next`. Pre-rebuild code lived under `aloop/` on `master`; it is retired. The new architecture is a durable control plane (`aloopd`) with a typed API, scheduler permits, worker leases, tracker-agnostic Epic/Story/Task work items, primitive-backed incubation/research views, and a workflow catalog per Story type.
 
 ## Where to start
 

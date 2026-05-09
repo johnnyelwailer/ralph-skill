@@ -30,11 +30,11 @@ This means "setup" should not be treated as a thin preflight script in the imple
 
 Incubation is also cross-cutting, but it must stay thinner than setup in v1.
 
-- **M2** provides the event/state substrate for durable artifacts, comments, sessions, proposal artifacts, and backing-store interfaces that can map to Postgres/object storage.
+- **M2** provides the event/state substrate for durable artifacts, comments, sessions, typed artifact profiles, and backing-store interfaces that can map to Postgres/object storage.
 - **M4/M5** provide scheduler-permitted provider execution and worker/lease discipline for non-mutating research sessions.
 - **M7/M8** should expose `/v1/composer` plus the artifact/comment/trigger/session plumbing needed for conversational kickoff, capture, and research evidence. Incubation is a view over those primitives, not a separate `/v1/incubation` API.
 - **M9** consumes promoted Epics/Stories/steering through the normal orchestrator path; it must not read unpromoted incubation-view artifacts as backlog.
-- **M11** provides the always-ready composer, inbox, research queue, proposal review, mobile capture path, and promotion controls in the dashboard/workstation.
+- **M11** provides the always-ready composer, inbox, research queue, artifact/profile review, mobile capture path, and promotion controls in the dashboard/workstation.
 
 The v1 bar is not a full personal knowledge-management system. It is composer-led durable capture, bounded research, source provenance, lightweight monitors, reviewable synthesis, and explicit promotion into the existing aloop subsystems.
 

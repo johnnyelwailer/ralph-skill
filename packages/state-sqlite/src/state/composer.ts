@@ -52,7 +52,6 @@ type ComposerTurnRow = {
   delegated_refs: string;
   launched_refs: string;
   proposed_actions: string;
-  proposal_refs: string;
   usage_tokens_in: number;
   usage_tokens_out: number;
   usage_cost_usd: number;
@@ -103,7 +102,6 @@ function turnFromRow(row: ComposerTurnRow): ComposerTurn {
     delegated_refs: parseJSON(row.delegated_refs, []),
     launched_refs: parseJSON(row.launched_refs, []),
     proposed_actions: parseJSON(row.proposed_actions, []),
-    proposal_refs: parseJSON(row.proposal_refs, []),
     usage: {
       tokens_in: row.usage_tokens_in,
       tokens_out: row.usage_tokens_out,
@@ -159,10 +157,10 @@ export class ComposerTurnRegistry {
         intent_hint, allowed_action_classes, delegation_policy,
         provider_chain, transcription, max_cost_usd, approval_policy,
         status, media_mode, voice_mode,
-        delegated_refs, launched_refs, proposed_actions, proposal_refs,
+        delegated_refs, launched_refs, proposed_actions,
         usage_tokens_in, usage_tokens_out, usage_cost_usd,
         created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         id,
         scopeKind,
@@ -181,7 +179,6 @@ export class ComposerTurnRegistry {
         "queued",
         "none",
         "none",
-        "[]",
         "[]",
         "[]",
         "[]",
@@ -264,7 +261,6 @@ export class ComposerTurnRegistry {
       delegated_refs?: readonly ComposerDelegatedRef[];
       launched_refs?: readonly ComposerLaunchedRef[];
       proposed_actions?: readonly ComposerProposedAction[];
-      proposal_refs?: readonly string[];
       usage?: ComposerUsage;
       now?: string;
     },
@@ -279,7 +275,6 @@ export class ComposerTurnRegistry {
       ...(patch.delegated_refs !== undefined ? { delegated_refs: patch.delegated_refs } : {}),
       ...(patch.launched_refs !== undefined ? { launched_refs: patch.launched_refs } : {}),
       ...(patch.proposed_actions !== undefined ? { proposed_actions: patch.proposed_actions } : {}),
-      ...(patch.proposal_refs !== undefined ? { proposal_refs: patch.proposal_refs } : {}),
       ...(patch.usage !== undefined ? { usage: patch.usage } : {}),
       updated_at: n,
     };
@@ -288,7 +283,7 @@ export class ComposerTurnRegistry {
       `UPDATE composer_turns SET
         status = ?, media_mode = ?, voice_mode = ?,
         delegated_refs = ?, launched_refs = ?,
-        proposed_actions = ?, proposal_refs = ?,
+        proposed_actions = ?,
         usage_tokens_in = ?, usage_tokens_out = ?, usage_cost_usd = ?,
         updated_at = ?
       WHERE id = ?`,
@@ -299,7 +294,6 @@ export class ComposerTurnRegistry {
         JSON.stringify(merged.delegated_refs),
         JSON.stringify(merged.launched_refs),
         JSON.stringify(merged.proposed_actions),
-        JSON.stringify(merged.proposal_refs),
         merged.usage.tokens_in,
         merged.usage.tokens_out,
         merged.usage.cost_usd,

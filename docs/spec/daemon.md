@@ -87,16 +87,16 @@ Fully local deployments may use the file layout below as the concrete backing fo
 
 **Split of responsibility:**
 
-- `StateStore` — **queryable current state**. What is *true now*. Indexed for fast list/filter across daemon-native objects and projections: workspaces, projects, incubation, setup, sessions, permits, provider health, tracker projections, metrics. Postgres is the primary durable implementation; SQLite is the local/single-node implementation.
+- `StateStore` — **queryable current state**. What is *true now*. Indexed for fast list/filter across daemon-native objects and projections: workspaces, projects, artifact/profile views, setup, sessions, permits, provider health, tracker projections, metrics. Postgres is the primary durable implementation; SQLite is the local/single-node implementation.
 - `EventStore` — **authoritative history**. What *happened*. Append-only, crash-safe, replayable. Object storage is the primary durable implementation; JSONL is the local/single-node implementation.
 
 The two never overlap. Queryable state is a projection of truth; append-only event history is the truth. On corruption or schema change, projections are rebuildable from event history via a deterministic projector.
 
-Tracker adapters are not the daemon's database. They are external/offline projection and mutation surfaces for the work-tracker subset. GitHub can own GitHub-native issues and PRs; the built-in tracker can own local Epic/Story/change-set files; neither owns workspaces, incubation, setup internals, scheduler state, provider health, metrics, artifacts, or composer/subagent history.
+Tracker adapters are not the daemon's database. They are external/offline projection and mutation surfaces for the work-tracker subset. GitHub can own GitHub-native issues and PRs; the built-in tracker can own local Epic/Story/change-set files; neither owns workspaces, incubation-profile artifacts, setup internals, scheduler state, provider health, metrics, artifacts, or composer/subagent history.
 
 ## Incubation
 
-Incubation is a daemon-owned view over captures, research, synthesis, and explicit promotion before setup, tracker, or implementation work begins.
+Incubation is a daemon-owned view over captures, research, synthesis, and explicit promotion before setup, tracker, or implementation work begins. It is not a separate daemon object family.
 
 Practical consequences:
 
@@ -111,7 +111,7 @@ Practical consequences:
 - Promotion creates normal target objects through their existing APIs: setup runs, spec proposals, tracker work items, session steering, or decision records.
 - Mobile web, dashboard, CLI, and bots all attach to the same artifact, comments, sessions, triggers, and events through the HTTP API.
 
-The detailed contract lives in `incubation.md`; this document's invariant is that intake and research are durable daemon state, not client-owned conversation state.
+The detailed contract lives in `incubation.md`; this document's invariant is that intake and research use durable daemon primitives, not client-owned conversation state or incubation-specific tables.
 
 ## Composer turns
 
@@ -220,7 +220,7 @@ Three kinds, one table, same API.
 
 ## Scheduler authority
 
-The scheduler is the **only gate** between a provider turn being "wanted" and a provider turn being "started." Every provider-backed turn — standalone, orchestrator, child, composer, or incubation research — acquires a permit first.
+The scheduler is the **only gate** between a provider turn being "wanted" and a provider turn being "started." Every provider-backed turn — standalone, orchestrator, child, composer, or research session — acquires a permit first.
 
 **Permit gates (composed, all must grant):**
 
@@ -256,10 +256,10 @@ Supported trigger sources:
 Trigger actions are typed, not arbitrary code:
 
 - `create_session` with a research workflow/profile
+- `create_artifact` with typed metadata/profile data
 - `fire_monitor_profile`
 - `queue_orchestrator_trigger`
 - `refresh_projection`
-- `create_proposal`
 - `emit_alert`
 
 Rules are structured filters over event topics, labels, thresholds, and object scope. No inline JavaScript, shell, or prompt-defined expressions live in trigger definitions. If a project needs custom signal detection, it must be a typed runtime extension that emits a normal event; the trigger engine consumes that event.

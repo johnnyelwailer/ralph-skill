@@ -89,7 +89,6 @@ describe("POST /v1/composer/turns", () => {
     expect(body.delegated_refs).toEqual([]);
     expect(body.launched_refs).toEqual([]);
     expect(body.proposed_actions).toEqual([]);
-    expect(body.proposal_refs).toEqual([]);
     expect(body.usage.tokens_in).toBe(0);
     expect(body.usage.tokens_out).toBe(0);
     expect(body.usage.cost_usd).toBe(0);

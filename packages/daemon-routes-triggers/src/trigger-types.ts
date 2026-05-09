@@ -7,7 +7,7 @@
 export type TriggerSourceKind = "time" | "event";
 
 /** Trigger action kinds */
-export type TriggerActionKind = "fire_monitor_profile" | "create_session" | "queue_orchestrator_trigger" | "emit_alert" | "refresh_projection" | "create_proposal";
+export type TriggerActionKind = "fire_monitor_profile" | "create_session" | "create_artifact" | "queue_orchestrator_trigger" | "emit_alert" | "refresh_projection";
 
 /** Scope kinds a trigger can be attached to */
 export type TriggerScopeKind = "project" | "workspace" | "artifact" | "global";

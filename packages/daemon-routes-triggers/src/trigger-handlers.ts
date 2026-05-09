@@ -8,7 +8,7 @@ export type TriggersDeps = {
 
 const VALID_SCOPE_KINDS = ["project", "workspace", "artifact", "global"] as const;
 const VALID_SOURCE_KINDS = ["time", "event"] as const;
-const VALID_ACTION_KINDS = ["fire_monitor_profile", "create_session", "queue_orchestrator_trigger", "emit_alert", "refresh_projection", "create_proposal"] as const;
+const VALID_ACTION_KINDS = ["fire_monitor_profile", "create_session", "create_artifact", "queue_orchestrator_trigger", "emit_alert", "refresh_projection"] as const;
 
 function validateScopeKind(kind: unknown): string | undefined {
   if (typeof kind !== "string") return "scope.kind must be a string";

@@ -103,7 +103,6 @@ describe("ComposerTurnRegistry", () => {
       expect(turn.delegated_refs).toEqual([]);
       expect(turn.launched_refs).toEqual([]);
       expect(turn.proposed_actions).toEqual([]);
-      expect(turn.proposal_refs).toEqual([]);
       expect(turn.usage.tokens_in).toBe(0);
       expect(turn.usage.tokens_out).toBe(0);
       expect(turn.usage.cost_usd).toBe(0);
@@ -362,15 +361,6 @@ describe("ComposerTurnRegistry", () => {
       });
 
       expect(updated.proposed_actions).toEqual([{ action_class: "read", description: "Read the file" }]);
-    });
-
-    test("updates proposal_refs", () => {
-      const created = registry.create(makeCreateInput({ id: "ct_proposals" }));
-      const updated = registry.updateResponse("ct_proposals", {
-        proposal_refs: ["prop_abc", "prop_xyz"],
-      });
-
-      expect(updated.proposal_refs).toEqual(["prop_abc", "prop_xyz"]);
     });
 
     test("updates usage", () => {

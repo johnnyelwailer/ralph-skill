@@ -897,7 +897,7 @@ This aligns with `DELIVERY_PLAN.md` M11.
 Adds:
 
 - mobile-first capture and triage
-- richer incubation research/proposal workbench
+- richer incubation research and artifact/profile review workbench
 - market-research workspace with monitors, source comparison, survey/interview planning, and response synthesis
 - experiment-loop workspace for fixed-oracle trials and AutoResearch-style optimization
 - hierarchical tree navigation across project, tracker, sessions, and artifacts

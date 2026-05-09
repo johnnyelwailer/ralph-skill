@@ -87,12 +87,12 @@ This is the load-bearing decision:
 
 `aloopd` is the single process that owns:
 
-- **Incubation** — captured ideas, research sessions, synthesis proposals, and explicit promotion into setup/spec/tracker/session targets (see `incubation.md`).
+- **Incubation views** — captured ideas, research sessions, synthesis artifacts, and explicit promotion into setup/spec/tracker/session targets, all represented through shared primitives (see `incubation.md`).
 - **Composer turns** — provider-backed, multimodal control turns that translate text, speech, media, links, and selected app context into scoped subagent delegations, daemon-owned objects, normal API mutation proposals, long-running jobs, configuration changes, or status summaries. The composer is an agentic client interface, not a second runtime.
 - **Setup runs** — long-lived onboarding state before a project becomes `ready` (see `setup.md`).
 - **Sessions** — standalone, orchestrator, child. State machine, lifecycle, parent-child relationships (see `daemon.md` §Session kinds).
 - **Scheduler** — the only gate between "a turn is wanted" and "a turn is started." Composes gates for concurrency, system resources, per-provider quota, burn rate, and live overrides.
-- **Trigger engine** — durable time-based and event-based triggers that create daemon work such as research sessions, monitor ticks, reconcile jobs, or proposal refreshes. It decides *when to enqueue work*; the scheduler still decides whether provider-backed work may run.
+- **Trigger engine** — durable time-based and event-based triggers that create daemon work such as research sessions, monitor ticks, reconcile jobs, or artifact/profile refreshes. It decides *when to enqueue work*; the scheduler still decides whether provider-backed work may run.
 - **Event bus** — aggregates events from all sessions into per-session JSONL and the global SSE stream. Every state change publishes.
 - **Compile step** — translates `pipeline.yml` into `loop-plan.json`. See `pipeline.md` §Compile step for the canonical description (single YAML reader in the system).
 - **Prompt context assembly** — resolves prompt `context` declarations through registered context plugins, injects bounded source-cited context blocks, and records what was injected. See `context.md`.
@@ -252,7 +252,7 @@ Six typed interfaces enclose everything external to the daemon core:
 | **TrackerAdapter** | `work-tracker.md` | github, builtin | External/offline work-item projection surface for Epic/Story/change-set workflows; not the full aloop database |
 | **SandboxAdapter** | in-daemon (seam) | worker containers/nodes, host execution, project devcontainer | Acquires the execution environment for a session and runs turns inside it; maps to sandbox-core-compatible local and hosted backends |
 | **ProjectAdapter** | in-daemon (seam) | remote clone, local-fs | Worktree operations through git clones or local filesystem without changing orchestration |
-| **StateStore** | in-daemon (seam) | Postgres, SQLite | Queryable daemon-native current state: workspaces, projects, incubation, setup, sessions, permits, projections, metrics |
+| **StateStore** | in-daemon (seam) | Postgres, SQLite | Queryable daemon-native current state: workspaces, projects, artifact/profile views, setup, sessions, permits, projections, metrics |
 | **EventStore** | in-daemon (seam) | object storage, jsonl | Authoritative append-only event and artifact storage for replay and audit |
 
 Each interface has exactly the implementations v1 needs, plus a deliberate seam for future growth. No interface has zero implementations ("abstractions without users"). No interface has an implementation that isn't actually used.
@@ -286,7 +286,7 @@ Agents are the least trusted principal. The daemon is the trust anchor.
 Explicit non-goals — decisions that must not drift back in:
 
 - **No business logic in the shim.** If shrinking requires moving logic, move it.
-- **No hidden intake channel.** Captures, research, and promotion proposals are first-class daemon state under `incubation.md`, not dashboard-local chat transcripts or ad hoc tracker issues.
+- **No hidden intake channel.** Captures, research, and promotion proposals are represented through daemon-owned artifacts, comments, sessions, triggers, and events under `incubation.md`, not dashboard-local chat transcripts or ad hoc tracker issues.
 - **No composer-only backend.** The composer can be smart, provider-backed, and always available, but it must express durable effects as scoped subagent runs, normal API mutations, and long-running daemon jobs.
 - **No YAML parsing outside the compile step.** Shims and session runner use `loop-plan.json`.
 - **No direct tracker calls from agents.** Always `aloop-agent submit` → daemon → adapter.
@@ -297,7 +297,7 @@ Explicit non-goals — decisions that must not drift back in:
 - **No second runtime process.** Orchestrators run as workflows in the same daemon, not separate binaries.
 - **No local-first-only assumption.** Any primitive that only works when the user's laptop is awake is incomplete unless it is explicitly marked local-mode only.
 - **No in-process state that outlives a request.** Session state is StateStore + EventStore, not daemon memory.
-- **No concurrency that bypasses the scheduler.** Every provider-backed session turn or incubation research turn goes through the permit protocol.
+- **No concurrency that bypasses the scheduler.** Every provider-backed session turn, including research workflow turns, goes through the permit protocol.
 - **No "aloop gh" treated specially.** GitHub is one adapter among potentially many; `security.md`'s policy table applies to all tracker adapters uniformly.
 
 These rules are not preferences. They are the architecture's load-bearing invariants; the rebuild exists to restore them.

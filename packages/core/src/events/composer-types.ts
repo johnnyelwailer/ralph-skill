@@ -218,7 +218,6 @@ export type ComposerTurn = {
   readonly delegated_refs: readonly ComposerDelegatedRef[];
   readonly launched_refs: readonly ComposerLaunchedRef[];
   readonly proposed_actions: readonly ComposerProposedAction[];
-  readonly proposal_refs: readonly string[];
   readonly usage: ComposerUsage;
   readonly created_at: string;
   readonly updated_at: string;
