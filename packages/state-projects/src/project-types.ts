@@ -2,6 +2,8 @@
 
 export type ProjectStatus = "setup_pending" | "ready" | "archived";
 
+export type ProjectWorkspaceRole = "primary" | "supporting" | "dependency" | "experiment";
+
 export type Project = {
   readonly id: string;
   readonly absPath: string;
@@ -10,19 +12,19 @@ export type Project = {
   readonly addedAt: string;
   readonly lastActiveAt: string | null;
   readonly updatedAt: string;
-  readonly workspaceIds: readonly string[];
+  /** Workspaces this project belongs to, each with a role. */
+  readonly workspaceMemberships: ReadonlyArray<{
+    readonly workspaceId: string;
+    readonly role: ProjectWorkspaceRole;
+    readonly addedAt: string;
+  }>;
 };
 
 export type ProjectFilter = {
   readonly status?: ProjectStatus;
   readonly absPath?: string;
-  /** Filter to projects that belong to this workspace (joins workspace_projects). */
+  /** Filter to projects that belong to a given workspace. */
   readonly workspaceId?: string;
-  /**
-   * Full-text search across name. Matches anywhere in the name (case-insensitive).
-   * Returns all projects when omitted.
-   */
-  readonly q?: string;
 };
 
 export type CreateProjectInput = {
@@ -30,6 +32,11 @@ export type CreateProjectInput = {
   readonly name?: string;
   readonly id?: string; // optional override, mainly for tests
   readonly now?: string;
+  /** Initial workspace memberships to create alongside the project. */
+  readonly workspaceMemberships?: ReadonlyArray<{
+    readonly workspaceId: string;
+    readonly role?: ProjectWorkspaceRole;
+  }>;
 };
 
 export class ProjectNotFoundError extends Error {

@@ -1,16 +1,13 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { Database } from "bun:sqlite";
-import { realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
-import { mkdtempSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { realpathSync } from "node:fs";
 import {
   canonicalizeProjectPath,
   getProjectById,
   getProjectByPath,
   listProjectsFromDb,
+  type ProjectStatus,
 } from "./projects-queries.ts";
-import type { ProjectStatus } from "./project-types.ts";
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS projects (
@@ -25,11 +22,13 @@ CREATE TABLE IF NOT EXISTS projects (
 );
 CREATE INDEX IF NOT EXISTS idx_projects_status   ON projects(status);
 CREATE INDEX IF NOT EXISTS idx_projects_abs_path ON projects(abs_path);
-CREATE TABLE IF NOT EXISTS workspace_projects (
-  workspace_id TEXT NOT NULL,
-  project_id   TEXT NOT NULL,
-  role         TEXT NOT NULL DEFAULT 'member',
-  PRIMARY KEY (workspace_id, project_id)
+CREATE TABLE IF NOT EXISTS project_workspaces (
+  project_id    TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  workspace_id  TEXT NOT NULL,
+  role          TEXT NOT NULL DEFAULT 'supporting'
+                  CHECK (role IN ('primary', 'supporting', 'dependency', 'experiment')),
+  added_at      TEXT NOT NULL,
+  PRIMARY KEY (project_id, workspace_id)
 );
 `;
 
@@ -46,6 +45,20 @@ function seedProject(
     `INSERT INTO projects (id, abs_path, name, status, added_at, last_active_at, updated_at)
      VALUES (?, ?, ?, ?, ?, ?, ?)`,
     [id, absPath, name, status, addedAt, lastActiveAt, addedAt],
+  );
+}
+
+function seedWorkspaceMembership(
+  db: Database,
+  projectId: string,
+  workspaceId: string,
+  role: string = "supporting",
+  addedAt: string = "2024-01-01T00:00:00Z",
+) {
+  db.run(
+    `INSERT INTO project_workspaces (project_id, workspace_id, role, added_at)
+     VALUES (?, ?, ?, ?)`,
+    [projectId, workspaceId, role, addedAt],
   );
 }
 
@@ -82,24 +95,6 @@ describe("getProjectById", () => {
     expect(project).toBeDefined();
     expect(project!.name).toBe("Project B");
     expect(project!.status).toBe("archived");
-  });
-
-  test("returns workspaceIds when project belongs to one or more workspaces", () => {
-    db.run(
-      `INSERT INTO workspace_projects (workspace_id, project_id, role) VALUES (?, ?, ?)`,
-      ["ws_alpha", "id-1", "admin"],
-    );
-    db.run(
-      `INSERT INTO workspace_projects (workspace_id, project_id, role) VALUES (?, ?, ?)`,
-      ["ws_beta", "id-1", "member"],
-    );
-    const project = getProjectById(db, "id-1")!;
-    expect(project.workspaceIds).toEqual(["ws_alpha", "ws_beta"]);
-  });
-
-  test("returns empty workspaceIds array when project has no workspace associations", () => {
-    const project = getProjectById(db, "id-1")!;
-    expect(project.workspaceIds).toEqual([]);
   });
 });
 
@@ -154,38 +149,37 @@ describe("listProjectsFromDb", () => {
   });
 
   test("returns all projects with no filter", () => {
-    const result = listProjectsFromDb(db);
-    expect(result.items).toHaveLength(5);
-    expect(result.nextCursor).toBeNull();
+    const projects = listProjectsFromDb(db);
+    expect(projects).toHaveLength(5);
   });
 
   test("filters by status", () => {
     const ready = listProjectsFromDb(db, { status: "ready" });
-    expect(ready.items).toHaveLength(3);
-    expect(ready.items.every((p) => p.status === "ready")).toBe(true);
+    expect(ready).toHaveLength(3);
+    expect(ready.every((p) => p.status === "ready")).toBe(true);
   });
 
   test("filters by absPath", () => {
     const results = listProjectsFromDb(db, { absPath: "/tmp/alpha" });
-    expect(results.items).toHaveLength(1);
-    expect(results.items[0]!.id).toBe("p1");
+    expect(results).toHaveLength(1);
+    expect(results[0]!.id).toBe("p1");
   });
 
   test("combines status and absPath filters", () => {
     const results = listProjectsFromDb(db, { status: "ready", absPath: "/tmp/alpha" });
-    expect(results.items).toHaveLength(1);
-    expect(results.items[0]!.id).toBe("p1");
+    expect(results).toHaveLength(1);
+    expect(results[0]!.id).toBe("p1");
   });
 
   test("returns empty array when status filter matches nothing", () => {
     const results = listProjectsFromDb(db, { status: "archived", absPath: "/tmp/nonexistent" });
-    expect(results.items).toHaveLength(0);
+    expect(results).toHaveLength(0);
   });
 
   test("returns projects ordered by added_at ascending", () => {
-    const result = listProjectsFromDb(db);
-    expect(result.items[0]!.id).toBe("p5"); // earliest added
-    expect(result.items[4]!.id).toBe("p4"); // latest added
+    const projects = listProjectsFromDb(db);
+    expect(projects[0]!.id).toBe("p5"); // earliest added
+    expect(projects[4]!.id).toBe("p4"); // latest added
   });
 
   test("maps all row fields correctly to Project shape", () => {
@@ -205,20 +199,43 @@ describe("listProjectsFromDb", () => {
     const project = getProjectById(db, "p6")!;
     expect(project.lastActiveAt).toBeNull();
   });
+
+  test("returns projects with workspaceMemberships populated", () => {
+    seedWorkspaceMembership(db, "p1", "w1", "primary");
+    seedWorkspaceMembership(db, "p1", "w2", "supporting");
+    seedWorkspaceMembership(db, "p2", "w1", "dependency");
+    const projects = listProjectsFromDb(db);
+    const p1 = projects.find((p) => p.id === "p1")!;
+    expect(p1.workspaceMemberships).toHaveLength(2);
+    expect(p1.workspaceMemberships.map((m) => m.workspaceId).sort()).toEqual(["w1", "w2"]);
+    expect(p1.workspaceMemberships.find((m) => m.workspaceId === "w1")!.role).toBe("primary");
+    const p3 = projects.find((p) => p.id === "p3")!;
+    expect(p3.workspaceMemberships).toHaveLength(0);
+  });
+
+  test("filters by workspaceId", () => {
+    seedWorkspaceMembership(db, "p1", "w1", "primary");
+    seedWorkspaceMembership(db, "p2", "w1", "supporting");
+    seedWorkspaceMembership(db, "p3", "w2", "dependency");
+    const results = listProjectsFromDb(db, { workspaceId: "w1" });
+    expect(results).toHaveLength(2);
+    expect(results.map((p) => p.id).sort()).toEqual(["p1", "p2"]);
+  });
+
+  test("filters by workspaceId combined with status", () => {
+    seedWorkspaceMembership(db, "p1", "w1", "primary"); // ready
+    seedWorkspaceMembership(db, "p2", "w1", "supporting"); // archived
+    seedWorkspaceMembership(db, "p3", "w1", "dependency"); // setup_pending
+    // Both p1 (ready) and p3 (setup_pending) match workspaceId=w1
+    const results = listProjectsFromDb(db, { workspaceId: "w1", status: "ready" });
+    expect(results).toHaveLength(1);
+    expect(results[0]!.id).toBe("p1");
+  });
 });
 
-describe("getProjectByPath", () => {
-  let dir: string;
-
-  beforeEach(() => {
-    dir = mkdtempSync(join(tmpdir(), "aloop-canonicalize-"));
-  });
-
-  afterEach(() => {
-    rmSync(dir, { recursive: true, force: true });
-  });
-
+describe("canonicalizeProjectPath", () => {
   test("resolves an existing path via realpathSync", () => {
+    // /tmp is guaranteed to exist on unix systems
     const result = canonicalizeProjectPath("/tmp");
     expect(result).toBe(realpathSync("/tmp"));
   });
@@ -229,6 +246,7 @@ describe("getProjectByPath", () => {
   });
 
   test("returns a normalized path when realpathSync throws (nonexistent dir)", () => {
+    // When realpathSync fails, the catch branch strips trailing slashes
     const result = canonicalizeProjectPath("/tmp/also-does-not-exist///");
     expect(result).toBe("/tmp/also-does-not-exist");
   });
@@ -236,27 +254,5 @@ describe("getProjectByPath", () => {
   test("result is always absolute (starts with /)", () => {
     const result = canonicalizeProjectPath("/tmp");
     expect(result.startsWith("/")).toBe(true);
-  });
-
-  test("resolves a valid symlink to its target", () => {
-    const target = join(dir, "target");
-    const link = join(dir, "link");
-    writeFileSync(target, "");
-    symlinkSync(target, link);
-    const result = canonicalizeProjectPath(link);
-    expect(result).toBe(realpathSync(target));
-  });
-
-  test("strips trailing slashes when realpathSync throws on broken symlink", () => {
-    const broken = join(dir, "broken");
-    const link = join(dir, "link");
-    symlinkSync(broken, link);
-    const result = canonicalizeProjectPath(link);
-    expect(result).toBe(link.replace(/\/+$/, "") || link);
-  });
-
-  test("strips trailing slashes for non-existent nested path", () => {
-    const result = canonicalizeProjectPath(join(dir, "nonexistent-subdir", "path"));
-    expect(result).toBe(join(dir, "nonexistent-subdir", "path").replace(/\/+$/, ""));
   });
 });

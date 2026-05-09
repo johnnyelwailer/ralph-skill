@@ -1,7 +1,7 @@
 import { realpathSync } from "node:fs";
 import { resolve } from "node:path";
 import type { Database } from "bun:sqlite";
-import type { Project, ProjectFilter, ProjectStatus } from "./project-types.ts";
+import type { Project, ProjectFilter, ProjectStatus, ProjectWorkspaceRole } from "./project-types.ts";
 
 type ProjectRow = {
   id: string;
@@ -11,10 +11,9 @@ type ProjectRow = {
   added_at: string;
   last_active_at: string | null;
   updated_at: string;
-  workspace_ids: string;
 };
 
-function rowToProject(row: ProjectRow, workspaceIds: readonly string[] = []): Project {
+function rowToProject(row: ProjectRow, memberships: ReadonlyArray<{ workspaceId: string; role: ProjectWorkspaceRole; addedAt: string }> = []): Project {
   return {
     id: row.id,
     absPath: row.abs_path,
@@ -23,13 +22,23 @@ function rowToProject(row: ProjectRow, workspaceIds: readonly string[] = []): Pr
     addedAt: row.added_at,
     lastActiveAt: row.last_active_at,
     updatedAt: row.updated_at,
-    workspaceIds,
+    workspaceMemberships: memberships,
   };
 }
 
-function parseWorkspaceIds(workspaceIdsStr: string): readonly string[] {
-  if (!workspaceIdsStr) return [];
-  return workspaceIdsStr.split(",").filter(Boolean);
+type WorkspaceMembershipRow = {
+  workspace_id: string;
+  role: ProjectWorkspaceRole;
+  added_at: string;
+};
+
+function loadWorkspaceMemberships(db: Database, projectId: string): ReadonlyArray<{ workspaceId: string; role: ProjectWorkspaceRole; addedAt: string }> {
+  const rows = db
+    .query<WorkspaceMembershipRow, [string]>(
+      `SELECT workspace_id, role, added_at FROM project_workspaces WHERE project_id = ?`,
+    )
+    .all(projectId);
+  return rows.map((r) => ({ workspaceId: r.workspace_id, role: r.role, addedAt: r.added_at }));
 }
 
 export function canonicalizeProjectPath(path: string): string {
@@ -41,100 +50,122 @@ export function canonicalizeProjectPath(path: string): string {
   }
 }
 
-function getWorkspaceIdsForProject(db: Database, projectId: string): readonly string[] {
-  const rows = db
-    .query<{ workspace_id: string }, [string]>(`SELECT workspace_id FROM workspace_projects WHERE project_id = ?`)
-    .all(projectId);
-  return rows.map((r) => r.workspace_id);
-}
-
 export function getProjectById(db: Database, id: string): Project | undefined {
-  const row = db
-    .query<ProjectRow, [string]>(
-      `SELECT p.*, COALESCE(GROUP_CONCAT(wp.workspace_id), '') as workspace_ids
-       FROM projects p
-       LEFT JOIN workspace_projects wp ON wp.project_id = p.id
-       WHERE p.id = ?
-       GROUP BY p.id`,
-    )
-    .get(id);
-  return row ? rowToProject(row, parseWorkspaceIds(row.workspace_ids)) : undefined;
+  const row = db.query<ProjectRow, [string]>(`SELECT * FROM projects WHERE id = ?`).get(id);
+  if (!row) return undefined;
+  return rowToProject(row, loadWorkspaceMemberships(db, id));
 }
 
 export function getProjectByPath(db: Database, absPath: string): Project | undefined {
   const canonical = canonicalizeProjectPath(absPath);
   const row = db
-    .query<ProjectRow, [string]>(
-      `SELECT p.*, COALESCE(GROUP_CONCAT(wp.workspace_id), '') as workspace_ids
-       FROM projects p
-       LEFT JOIN workspace_projects wp ON wp.project_id = p.id
-       WHERE p.abs_path = ?
-       GROUP BY p.id`,
-    )
+    .query<ProjectRow, [string]>(`SELECT * FROM projects WHERE abs_path = ?`)
     .get(canonical);
-  return row ? rowToProject(row, parseWorkspaceIds(row.workspace_ids)) : undefined;
+  if (!row) return undefined;
+  return rowToProject(row, loadWorkspaceMemberships(db, row.id));
 }
 
-/** Supports cursor-based pagination, text search, workspace filter. */
-export function listProjectsFromDb(
-  db: Database,
-  filter: ProjectFilter & { limit?: number; cursor?: string } = {},
-): { items: Project[]; nextCursor: string | null } {
-  const { status, absPath, workspaceId, q, limit, cursor } = filter;
+export function listProjectsFromDb(db: Database, filter: ProjectFilter = {}): Project[] {
+  // Join project_workspaces to support workspaceId filter and to eagerly load memberships
+  const pwAlias = "pw";
+  // Concatenate workspace fields into a single string per row; separator between rows is '|||'
+  // SQLite's GROUP_CONCAT takes at most 2 args (value, separator), so we pre-concatenate fields with '||'
+  const workspaceConcatExpr = `${pwAlias}.workspace_id || '||' || ${pwAlias}.role || '||' || ${pwAlias}.added_at`;
+  const workspaceGroupConcat = `GROUP_CONCAT(${workspaceConcatExpr}, '|||')`;
 
-  // Build conditions and params for the WHERE clause.
-  const conditions: string[] = [];
-  const params: (string | number)[] = [];
+  const cols = [
+    `p.id, p.abs_path, p.name, p.status, p.added_at, p.last_active_at, p.updated_at`,
+    `${workspaceGroupConcat} AS workspace_data`,
+  ];
 
-  if (status !== undefined) {
-    conditions.push("p.status = ?");
-    params.push(status);
-  }
-  if (absPath !== undefined) {
-    const canonical = canonicalizeProjectPath(absPath);
-    conditions.push("p.abs_path = ?");
-    params.push(canonical);
-  }
-  if (workspaceId !== undefined) {
-    conditions.push("EXISTS (SELECT 1 FROM workspace_projects wp WHERE wp.project_id = p.id AND wp.workspace_id = ?)");
-    params.push(workspaceId);
-  }
-  if (q !== undefined && q.trim() !== "") {
-    conditions.push("LOWER(p.name) LIKE ?");
-    params.push(`%${q.toLowerCase().trim()}%`);
-  }
+  let sql: string;
+  let params: (string | number)[];
 
-  const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
-
-  // Cursor-based pagination: resume after the last seen `added_at || ':' || id`.
-  if (cursor !== undefined) {
-    conditions.push("(p.added_at || ':' || p.id) > ?");
-    params.push(cursor);
+  if (filter.workspaceId !== undefined) {
+    // Must join project_workspaces to filter; always include the data subquery
+    const statusClause = filter.status !== undefined ? "AND p.status = ?" : "";
+    sql = `
+      SELECT ${cols.join(", ")},
+      (SELECT GROUP_CONCAT(workspace_id || '||' || role || '||' || added_at, '|||')
+       FROM project_workspaces WHERE project_id = p.id) AS workspace_data
+      FROM projects p
+      INNER JOIN project_workspaces ${pwAlias} ON ${pwAlias}.project_id = p.id
+      WHERE ${pwAlias}.workspace_id = ? ${statusClause}
+      GROUP BY p.id
+      ORDER BY p.added_at
+    `;
+    params = filter.status !== undefined
+      ? [filter.workspaceId, filter.status]
+      : [filter.workspaceId];
+  } else if (filter.status !== undefined && filter.absPath !== undefined) {
+    const canonical = canonicalizeProjectPath(filter.absPath);
+    sql = `
+      SELECT ${cols.join(", ")},
+      (SELECT GROUP_CONCAT(workspace_id || '||' || role || '||' || added_at, '|||')
+       FROM project_workspaces WHERE project_id = p.id) AS workspace_data
+      FROM projects p
+      LEFT JOIN project_workspaces ${pwAlias} ON ${pwAlias}.project_id = p.id
+      WHERE p.status = ? AND p.abs_path = ?
+      GROUP BY p.id
+      ORDER BY p.added_at
+    `;
+    params = [filter.status, canonical];
+  } else if (filter.status !== undefined) {
+    sql = `
+      SELECT ${cols.join(", ")},
+      (SELECT GROUP_CONCAT(workspace_id || '||' || role || '||' || added_at, '|||')
+       FROM project_workspaces WHERE project_id = p.id) AS workspace_data
+      FROM projects p
+      LEFT JOIN project_workspaces ${pwAlias} ON ${pwAlias}.project_id = p.id
+      WHERE p.status = ?
+      GROUP BY p.id
+      ORDER BY p.added_at
+    `;
+    params = [filter.status];
+  } else if (filter.absPath !== undefined) {
+    const canonical = canonicalizeProjectPath(filter.absPath);
+    sql = `
+      SELECT ${cols.join(", ")},
+      (SELECT GROUP_CONCAT(workspace_id || '||' || role || '||' || added_at, '|||')
+       FROM project_workspaces WHERE project_id = p.id) AS workspace_data
+      FROM projects p
+      LEFT JOIN project_workspaces ${pwAlias} ON ${pwAlias}.project_id = p.id
+      WHERE p.abs_path = ?
+      GROUP BY p.id
+      ORDER BY p.added_at
+    `;
+    params = [canonical];
+  } else {
+    sql = `
+      SELECT ${cols.join(", ")},
+      (SELECT GROUP_CONCAT(workspace_id || '||' || role || '||' || added_at, '|||')
+       FROM project_workspaces WHERE project_id = p.id) AS workspace_data
+      FROM projects p
+      LEFT JOIN project_workspaces ${pwAlias} ON ${pwAlias}.project_id = p.id
+      GROUP BY p.id
+      ORDER BY p.added_at
+    `;
+    params = [];
   }
-
-  const finalWhere = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
-  const effectiveLimit = limit !== undefined ? Math.min(limit, 100) : 100;
 
   const rows = db
-    .query<ProjectRow, (string | number)[]>(
-      `SELECT p.*, COALESCE(GROUP_CONCAT(wp.workspace_id), '') as workspace_ids
-       FROM projects p
-       LEFT JOIN workspace_projects wp ON wp.project_id = p.id
-       ${finalWhere}
-       GROUP BY p.id
-       ORDER BY p.added_at ASC, p.id ASC
-       LIMIT ?`,
+    .query<ProjectRow & { workspace_data: string | null }, (string | number)[]>(
+      sql,
     )
-    .all(...params, effectiveLimit + 1);
+    .all(...params);
 
-  const hasMore = rows.length > effectiveLimit;
-  const items = hasMore ? rows.slice(0, effectiveLimit) : rows;
-  const nextCursor = hasMore && items.length > 0
-    ? `${items[items.length - 1]!.added_at}:${items[items.length - 1]!.id}`
-    : null;
+  return rows.map((row) => {
+    const memberships = parseWorkspaceData(row.workspace_data);
+    return rowToProject(row, memberships);
+  });
+}
 
-  return {
-    items: items.map((row) => rowToProject(row, parseWorkspaceIds(row.workspace_ids))),
-    nextCursor,
-  };
+function parseWorkspaceData(
+  data: string | null,
+): ReadonlyArray<{ workspaceId: string; role: ProjectWorkspaceRole; addedAt: string }> {
+  if (!data || data.length === 0) return [];
+  return data.split("|||").map((segment) => {
+    const [workspaceId, role, addedAt] = segment.split("||");
+    return { workspaceId: workspaceId!, role: role as ProjectWorkspaceRole, addedAt: addedAt! };
+  });
 }

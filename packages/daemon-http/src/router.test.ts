@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { makeFetchHandler, type RouterDeps } from "./router.ts";
+import { makeFetchHandler } from "./router.ts";
 
-function makeDeps(): RouterDeps {
+function makeDeps() {
   return {
     handleDaemon: (req: Request, pathname: string) => {
       if (req.method !== "GET" || pathname !== "/v1/daemon/health") return undefined;
@@ -10,8 +10,6 @@ function makeDeps(): RouterDeps {
         headers: { "content-type": "application/json" },
       });
     },
-    handleMetrics: () => undefined,
-    handleMetricsAggregates: () => undefined,
     handleProjects: (req: Request, pathname: string) => {
       if (req.method !== "GET" || pathname !== "/v1/projects") return undefined;
       return new Response(JSON.stringify({ _v: 1, items: [] }), {
@@ -21,14 +19,9 @@ function makeDeps(): RouterDeps {
     },
     handleProviders: () => undefined,
     handleScheduler: () => undefined,
-    handleSessions: () => undefined,
-    handleArtifacts: () => undefined,
-    handleTurns: () => undefined,
-    handleEvents: () => undefined,
-    handleSetup: () => undefined,
     handleWorkspaces: () => undefined,
-    handleTriggers: () => undefined,
-    handleComposer: () => undefined,
+    handleIncubation: () => undefined,
+    handleSessions: () => undefined,
   };
 }
 
@@ -136,7 +129,7 @@ describe("makeFetchHandler (unit)", () => {
 // ─── makeFetchHandler — dispatch ordering and provider/project/scheduler routes ──
 
 describe("makeFetchHandler dispatch order", () => {
-  function makeDeps(): RouterDeps {
+  function makeDeps() {
     return {
       handleDaemon: (req: Request, pathname: string) => {
         if (pathname === "/v1/daemon/health") {
@@ -147,8 +140,6 @@ describe("makeFetchHandler dispatch order", () => {
         }
         return undefined;
       },
-      handleMetrics: () => undefined,
-      handleMetricsAggregates: () => undefined,
       handleProjects: (req: Request, pathname: string) => {
         if (pathname === "/v1/projects") {
           return new Response(JSON.stringify({ _v: 1, handler: "projects" }), {
@@ -176,14 +167,9 @@ describe("makeFetchHandler dispatch order", () => {
         }
         return undefined;
       },
-      handleSessions: () => undefined,
-      handleArtifacts: () => undefined,
-      handleTurns: () => undefined,
-      handleEvents: () => undefined,
-      handleSetup: () => undefined,
       handleWorkspaces: () => undefined,
-      handleTriggers: () => undefined,
-      handleComposer: () => undefined,
+      handleIncubation: () => undefined,
+      handleSessions: () => undefined,
     };
   }
 
@@ -208,17 +194,11 @@ describe("makeFetchHandler dispatch order", () => {
     expect(body.handler).toBe("providers");
   });
 
-  test("scheduler route is checked before composer", async () => {
+  test("scheduler route is checked last among route handlers", async () => {
     const fetch = makeFetchHandler(makeDeps());
     const res = await fetch(new Request("http://x/v1/scheduler/limits"));
     const body = await res.json() as { handler: string };
     expect(body.handler).toBe("scheduler");
-  });
-
-  test("/v1/incubation/* has no dedicated route", async () => {
-    const fetch = makeFetchHandler(makeDeps());
-    const res = await fetch(new Request("http://x/v1/incubation/any-path"));
-    expect(res.status).toBe(404);
   });
 
   test("unknown route falls through to 404 with not_found envelope", async () => {
@@ -250,52 +230,18 @@ describe("makeFetchHandler dispatch order", () => {
     expect(body.method).toBe("POST");
   });
 
+  test("workspaces route is checked before projects", async () => {
+    const fetch = makeFetchHandler(makeDeps());
+    // GET /v1/workspaces — workspaces handler returns undefined, falls through to 404
+    const res = await fetch(new Request("http://x/v1/workspaces"));
+    expect(res.status).toBe(404);
+  });
+
   test("PATCH request to /v1/projects/:id returns undefined (404 via router)", async () => {
     const fetch = makeFetchHandler(makeDeps());
     // projects handler returns undefined for this path — should 404
     const res = await fetch(new Request("http://x/v1/projects/some-id", { method: "PATCH" }));
     expect(res.status).toBe(404);
-  });
-
-  test("handleMetricsAggregates is dispatched for /v1/metrics/aggregates", async () => {
-    const customDeps = makeDeps();
-    customDeps.handleMetricsAggregates = (_req, pathname) => {
-      if (pathname === "/v1/metrics/aggregates") {
-        return new Response(JSON.stringify({ _v: 1, handler: "metrics_aggregates" }), {
-          status: 200,
-          headers: { "content-type": "application/json" },
-        });
-      }
-      return undefined;
-    };
-    const fetch = makeFetchHandler(customDeps);
-    const res = await fetch(new Request("http://x/v1/metrics/aggregates"));
-    expect(res.status).toBe(200);
-    const body = await res.json() as { handler: string };
-    expect(body.handler).toBe("metrics_aggregates");
-  });
-
-  test("metrics/aggregates route is checked after /v1/metrics (handleMetrics takes precedence)", async () => {
-    const customDeps = makeDeps();
-    let callOrder: string[] = [];
-    customDeps.handleMetrics = (_req, pathname) => {
-      if (pathname === "/v1/metrics") {
-        callOrder.push("metrics");
-        return new Response("{}", { status: 200 });
-      }
-      return undefined;
-    };
-    customDeps.handleMetricsAggregates = (_req, pathname) => {
-      if (pathname === "/v1/metrics/aggregates") {
-        callOrder.push("metrics_aggregates");
-        return new Response("{}", { status: 200 });
-      }
-      return undefined;
-    };
-    const fetch = makeFetchHandler(customDeps);
-    // /v1/metrics should go to handleMetrics
-    await fetch(new Request("http://x/v1/metrics"));
-    expect(callOrder).toEqual(["metrics"]);
   });
 
   test("route handlers returning undefined results in 404", async () => {

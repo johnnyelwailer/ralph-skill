@@ -3,6 +3,7 @@ import {
   ProjectNotFoundError,
   type Project,
   type ProjectStatus,
+  type ProjectWorkspaceRole,
 } from "@aloop/state-sqlite";
 import {
   badRequest,
@@ -11,6 +12,13 @@ import {
   parseJsonBody,
 } from "./http-helpers.ts";
 import { type Deps, projectResponse, VALID_STATUSES } from "./projects-common.ts";
+
+const VALID_WORKSPACE_ROLES: readonly ProjectWorkspaceRole[] = [
+  "primary",
+  "supporting",
+  "dependency",
+  "experiment",
+];
 
 export async function createProject(req: Request, deps: Deps): Promise<Response> {
   const body = await parseJsonBody(req);
@@ -21,10 +29,39 @@ export async function createProject(req: Request, deps: Deps): Promise<Response>
 
   const name = typeof body.data.name === "string" ? body.data.name : undefined;
 
-  const sessionsDir = typeof deps.sessionsDir === "function" ? deps.sessionsDir() : deps.sessionsDir;
+  // Parse optional workspace_ids
+  let workspaceMemberships: { workspaceId: string; role: ProjectWorkspaceRole }[] | undefined;
+  if (body.data.workspace_ids !== undefined) {
+    if (!Array.isArray(body.data.workspace_ids)) {
+      return badRequest("workspace_ids must be an array");
+    }
+    workspaceMemberships = [];
+    for (const item of body.data.workspace_ids) {
+      if (typeof item !== "object" || item === null) {
+        return badRequest("each workspace_ids entry must be an object");
+      }
+      const obj = item as Record<string, unknown>;
+      const workspaceId =
+        typeof obj.workspace_id === "string" && obj.workspace_id.length > 0
+          ? obj.workspace_id
+          : undefined;
+      if (!workspaceId) return badRequest("workspace_id is required in each workspace_ids entry");
+      const roleRaw = obj.role;
+      const role: ProjectWorkspaceRole =
+        typeof roleRaw === "string" && VALID_WORKSPACE_ROLES.includes(roleRaw as ProjectWorkspaceRole)
+          ? (roleRaw as ProjectWorkspaceRole)
+          : "supporting";
+      workspaceMemberships.push({ workspaceId, role });
+    }
+  }
+
   try {
-    const created = deps.registry.create({ absPath, ...(name !== undefined && { name }) });
-    return jsonResponse(201, projectResponse(created, sessionsDir));
+    const created = deps.registry.create({
+      absPath,
+      ...(name !== undefined && { name }),
+      ...(workspaceMemberships !== undefined && { workspaceMemberships }),
+    });
+    return jsonResponse(201, projectResponse(created));
   } catch (err) {
     if (err instanceof ProjectAlreadyRegisteredError) {
       return errorResponse(409, "project_already_registered", err.message, {
@@ -42,7 +79,6 @@ export async function patchProject(
 ): Promise<Response> {
   const body = await parseJsonBody(req);
   if ("error" in body) return body.error;
-  const sessionsDir = typeof deps.sessionsDir === "function" ? deps.sessionsDir() : deps.sessionsDir;
   try {
     let updated: Project | undefined;
     if (typeof body.data.name === "string") {
@@ -55,7 +91,7 @@ export async function patchProject(
       updated = deps.registry.updateStatus(id, body.data.status as ProjectStatus);
     }
     if (!updated) return badRequest("no updatable fields provided");
-    return jsonResponse(200, projectResponse(updated, sessionsDir));
+    return jsonResponse(200, projectResponse(updated));
   } catch (err) {
     if (err instanceof ProjectNotFoundError) {
       return errorResponse(404, "project_not_found", err.message, { id });
@@ -65,10 +101,9 @@ export async function patchProject(
 }
 
 export function archiveProject(id: string, deps: Deps): Response {
-  const sessionsDir = typeof deps.sessionsDir === "function" ? deps.sessionsDir() : deps.sessionsDir;
   try {
     const archived = deps.registry.archive(id);
-    return jsonResponse(200, projectResponse(archived, sessionsDir));
+    return jsonResponse(200, projectResponse(archived));
   } catch (err) {
     if (err instanceof ProjectNotFoundError) {
       return errorResponse(404, "project_not_found", err.message, { id });

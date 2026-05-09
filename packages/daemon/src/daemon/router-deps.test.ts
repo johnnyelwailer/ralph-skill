@@ -61,6 +61,17 @@ function makeInput(): MakeRouterDepsInput {
       list: () => [],
       get: () => undefined,
     } as never,
+    workspaceRegistry: {
+      list: () => [],
+      get: () => undefined,
+      create: () => { throw new Error("not implemented"); },
+      update: () => { throw new Error("not implemented"); },
+      delete: () => { throw new Error("not implemented"); },
+      listProjects: () => [],
+      addProject: () => { throw new Error("not implemented"); },
+      removeProject: () => { throw new Error("not implemented"); },
+      getProjectCounts: () => ({ total: 0, primary: 0, supporting: 0, dependency: 0, experiment: 0, defaultProjectId: null }),
+    } as never,
     scheduler: {
       acquire: () =>
         Promise.resolve({ ok: false, reason: "no_quota", details: {} } as never),
@@ -111,6 +122,7 @@ describe("makeRouterDeps", () => {
     expect(typeof deps.handleProjects).toBe("function");
     expect(typeof deps.handleProviders).toBe("function");
     expect(typeof deps.handleScheduler).toBe("function");
+    expect(typeof deps.handleWorkspaces).toBe("function");
   });
 
   test("handleDaemon returns 200 + v1 envelope for GET /v1/daemon/health", async () => {

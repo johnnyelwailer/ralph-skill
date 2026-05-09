@@ -11,6 +11,7 @@ import {
   type Project,
   type ProjectFilter,
   type ProjectStatus,
+  type ProjectWorkspaceRole,
 } from "@aloop/state-projects";
 
 export {
@@ -21,6 +22,7 @@ export {
   type Project,
   type ProjectFilter,
   type ProjectStatus,
+  type ProjectWorkspaceRole,
 };
 
 export class ProjectRegistry {
@@ -44,6 +46,18 @@ export class ProjectRegistry {
         throw new ProjectAlreadyRegisteredError(absPath);
       }
       throw err;
+    }
+
+    // Insert initial workspace memberships
+    if (input.workspaceMemberships && input.workspaceMemberships.length > 0) {
+      for (const membership of input.workspaceMemberships) {
+        const role: ProjectWorkspaceRole = membership.role ?? "supporting";
+        this.db.run(
+          `INSERT INTO project_workspaces (project_id, workspace_id, role, added_at)
+           VALUES (?, ?, ?, ?)`,
+          [id, membership.workspaceId, role, now],
+        );
+      }
     }
 
     return this.getByPathRequired(absPath);
@@ -98,6 +112,36 @@ export class ProjectRegistry {
 
   purge(id: string): void {
     this.db.run(`DELETE FROM projects WHERE id = ?`, [id]);
+  }
+
+  /** Add a workspace membership to a project. Idempotent — returns existing membership. */
+  addWorkspace(
+    projectId: string,
+    workspaceId: string,
+    role: ProjectWorkspaceRole = "supporting",
+    now: string = new Date().toISOString(),
+  ): { workspaceId: string; role: ProjectWorkspaceRole; addedAt: string } {
+    const existing = this.db
+      .query<{ workspace_id: string; role: string; added_at: string }, [string, string]>(
+        `SELECT workspace_id, role, added_at FROM project_workspaces WHERE project_id = ? AND workspace_id = ?`,
+      )
+      .get(projectId, workspaceId);
+    if (existing) {
+      return { workspaceId: existing.workspace_id, role: existing.role as ProjectWorkspaceRole, addedAt: existing.added_at };
+    }
+    this.db.run(
+      `INSERT INTO project_workspaces (project_id, workspace_id, role, added_at) VALUES (?, ?, ?, ?)`,
+      [projectId, workspaceId, role, now],
+    );
+    return { workspaceId, role, addedAt: now };
+  }
+
+  /** Remove a workspace membership from a project. */
+  removeWorkspace(projectId: string, workspaceId: string): void {
+    this.db.run(
+      `DELETE FROM project_workspaces WHERE project_id = ? AND workspace_id = ?`,
+      [projectId, workspaceId],
+    );
   }
 
   private getRequired(id: string): Project {

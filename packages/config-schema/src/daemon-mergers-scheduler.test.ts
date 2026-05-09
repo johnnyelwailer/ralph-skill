@@ -124,25 +124,25 @@ describe("mergeSystemLimits via mergeScheduler", () => {
     expect(r100.systemLimits.memMaxPct).toBe(100);
   });
 
-  test("load_max rejects zero", () => {
+  test("load_max accepts zero (disables the load threshold)", () => {
     const errors = makeErrors();
     const result = mergeScheduler({ system_limits: { load_max: 0 } }, errors);
-    expect(result.systemLimits.loadMax).toBe(DAEMON_DEFAULTS.scheduler.systemLimits.loadMax);
-    expect(errors.some((e) => e.includes("load_max") && e.includes("positive number"))).toBe(true);
+    expect(result.systemLimits.loadMax).toBe(0);
+    expect(errors).toHaveLength(0);
   });
 
   test("load_max rejects negative", () => {
     const errors = makeErrors();
     const result = mergeScheduler({ system_limits: { load_max: -1.5 } }, errors);
     expect(result.systemLimits.loadMax).toBe(DAEMON_DEFAULTS.scheduler.systemLimits.loadMax);
-    expect(errors.some((e) => e.includes("load_max") && e.includes("positive number"))).toBe(true);
+    expect(errors.some((e) => e.includes("load_max") && e.includes("non-negative number"))).toBe(true);
   });
 
   test("load_max rejects non-finite (NaN/Infinity)", () => {
     const errors = makeErrors();
     const result = mergeScheduler({ system_limits: { load_max: NaN } }, errors);
     expect(result.systemLimits.loadMax).toBe(DAEMON_DEFAULTS.scheduler.systemLimits.loadMax);
-    expect(errors.some((e) => e.includes("load_max") && e.includes("positive number"))).toBe(true);
+    expect(errors.some((e) => e.includes("load_max") && e.includes("non-negative number"))).toBe(true);
   });
 
   test("load_max accepts positive number", () => {

@@ -3,14 +3,6 @@ export type RouterDeps = {
     req: Request,
     pathname: string,
   ) => Response | Promise<Response | undefined> | undefined;
-  readonly handleMetrics: (
-    req: Request,
-    pathname: string,
-  ) => Response | Promise<Response | undefined> | undefined;
-  readonly handleMetricsAggregates: (
-    req: Request,
-    pathname: string,
-  ) => Response | Promise<Response | undefined> | undefined;
   readonly handleProjects: (
     req: Request,
     pathname: string,
@@ -23,40 +15,15 @@ export type RouterDeps = {
     req: Request,
     pathname: string,
   ) => Response | Promise<Response | undefined> | undefined;
-  readonly handleSessions: (
-    req: Request,
-    pathname: string,
-  ) => Response | Promise<Response | undefined> | undefined;
-  readonly handleArtifacts: (
-    req: Request,
-    pathname: string,
-  ) => Response | Promise<Response | undefined> | undefined;
-  readonly handleTurns: (
-    req: Request,
-    pathname: string,
-  ) => Response | Promise<Response | undefined> | undefined;
-  /** SSE event bus: GET /v1/events */
-  readonly handleEvents: (
-    req: Request,
-    pathname: string,
-  ) => Response | Promise<Response | undefined> | undefined;
-  /** Setup runs: /v1/setup/runs */
-  readonly handleSetup: (
-    req: Request,
-    pathname: string,
-  ) => Response | Promise<Response | undefined> | undefined;
-  /** Workspaces: /v1/workspaces */
   readonly handleWorkspaces: (
     req: Request,
     pathname: string,
   ) => Response | Promise<Response | undefined> | undefined;
-  /** Triggers: /v1/triggers */
-  readonly handleTriggers: (
+  readonly handleIncubation: (
     req: Request,
     pathname: string,
   ) => Response | Promise<Response | undefined> | undefined;
-  /** Composer: /v1/composer/* */
-  readonly handleComposer: (
+  readonly handleSessions: (
     req: Request,
     pathname: string,
   ) => Response | Promise<Response | undefined> | undefined;
@@ -76,12 +43,6 @@ export function makeFetchHandler(
     const daemonResponse = await deps.handleDaemon(req, pathname);
     if (daemonResponse) return daemonResponse;
 
-    const metricsResponse = await deps.handleMetrics(req, pathname);
-    if (metricsResponse) return metricsResponse;
-
-    const metricsAggregatesResponse = await deps.handleMetricsAggregates(req, pathname);
-    if (metricsAggregatesResponse) return metricsAggregatesResponse;
-
     if (req.method === "GET" && pathname === "/v1/events/echo") {
       // SSE echo scaffold — proves the transport works. Real event bus is M2+.
       return new Response(makeEchoStream(), {
@@ -94,6 +55,9 @@ export function makeFetchHandler(
       });
     }
 
+    const workspacesResponse = await deps.handleWorkspaces(req, pathname);
+    if (workspacesResponse) return workspacesResponse;
+
     const projectsResponse = await deps.handleProjects(req, pathname);
     if (projectsResponse) return projectsResponse;
 
@@ -103,29 +67,11 @@ export function makeFetchHandler(
     const schedulerResponse = await deps.handleScheduler(req, pathname);
     if (schedulerResponse) return schedulerResponse;
 
+    const incubationResponse = await deps.handleIncubation(req, pathname);
+    if (incubationResponse) return incubationResponse;
+
     const sessionsResponse = await deps.handleSessions(req, pathname);
     if (sessionsResponse) return sessionsResponse;
-
-    const artifactsResponse = await deps.handleArtifacts(req, pathname);
-    if (artifactsResponse) return artifactsResponse;
-
-    const turnsResponse = await deps.handleTurns(req, pathname);
-    if (turnsResponse) return turnsResponse;
-
-    const eventsResponse = await deps.handleEvents(req, pathname);
-    if (eventsResponse) return eventsResponse;
-
-    const setupResponse = await deps.handleSetup(req, pathname);
-    if (setupResponse) return setupResponse;
-
-    const workspacesResponse = await deps.handleWorkspaces(req, pathname);
-    if (workspacesResponse) return workspacesResponse;
-
-    const triggersResponse = await deps.handleTriggers(req, pathname);
-    if (triggersResponse) return triggersResponse;
-
-    const composerResponse = await deps.handleComposer(req, pathname);
-    if (composerResponse) return composerResponse;
 
     return new Response(
       JSON.stringify({

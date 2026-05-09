@@ -2,6 +2,7 @@ export {
   boolField,
   durationField,
   nonNegIntField,
+  nonNegNumField,
   pctField,
   portField,
   posIntField,

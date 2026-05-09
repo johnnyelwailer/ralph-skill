@@ -1,6 +1,7 @@
 import {
   isMapping,
   nonNegIntField,
+  nonNegNumField,
   pctField,
   pick,
   posIntField,
@@ -109,7 +110,7 @@ function mergeSystemLimits(
       def.memMaxPct,
       errors,
     ),
-    loadMax: posNumField(
+    loadMax: nonNegNumField(
       pick(raw, "load_max", "loadMax"),
       "scheduler.system_limits.load_max",
       def.loadMax,

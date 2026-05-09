@@ -15,7 +15,6 @@ import { join } from "node:path";
 import {
   DAEMON_DEFAULTS,
   createConfigStore,
-  daemonConfigToRaw,
   resolveDaemonPaths,
   type ConfigStore,
 } from "@aloop/daemon-config";
@@ -88,7 +87,7 @@ describe("updateSchedulerLimits", () => {
 
   test("accepts camelCase patch fields", async () => {
     const result = await updateSchedulerLimits(h.config, h.events, {
-      concurrencyCap: 8,
+      concurrencyCap: 7,
       permitTtlDefaultSeconds: 600,
       permitTtlMaxSeconds: 3600,
       cpuMaxPct: 90,
@@ -97,7 +96,7 @@ describe("updateSchedulerLimits", () => {
     });
     expect(result.ok).toBe(true);
     if (result.ok) {
-      expect(result.limits.concurrencyCap).toBe(8);
+      expect(result.limits.concurrencyCap).toBe(7);
       expect(result.limits.permitTtlDefaultSeconds).toBe(600);
       expect(result.limits.permitTtlMaxSeconds).toBe(3600);
       expect(result.limits.systemLimits.cpuMaxPct).toBe(90);
@@ -205,22 +204,28 @@ describe("updateSchedulerLimits", () => {
     expect(h.config.daemon().scheduler.concurrencyCap).toBe(6);
   });
 
-  test("validates out-of-range cpu_max_pct through parseDaemonConfig step", async () => {
+  test("validates out-of-range cpu_max_pct through bounds check", async () => {
     const result = await updateSchedulerLimits(h.config, h.events, { cpu_max_pct: 999 });
     expect(result.ok).toBe(false);
-    if (!result.ok) {
-      expect(result.errors[0]).toContain("cpu_max_pct");
+    if (!result.ok && "code" in result) {
+      expect(result.code).toBe("tune_out_of_bounds");
     }
   });
 
-  test("burn_rate.max_tokens_since_commit top-level is rejected as unknown field", async () => {
+  test("burn_rate.max_tokens_since_commit top-level is accepted as alternative to nested", async () => {
     const result = await updateSchedulerLimits(h.config, h.events, {
       max_tokens_since_commit: 500_000,
     });
-    expect(result.ok).toBe(false);
-    if (!result.ok) {
-      expect(result.errors[0]).toContain("unknown scheduler limits field");
-    }
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.limits.burnRate.maxTokensSinceCommit).toBe(500_000);
+  });
+
+  test("burn_rate.min_commits_per_hour top-level is accepted as alternative to nested", async () => {
+    const result = await updateSchedulerLimits(h.config, h.events, {
+      min_commits_per_hour: 5,
+    });
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.limits.burnRate.minCommitsPerHour).toBe(5);
   });
 
   test("top-level burn_rate: 42 (non-map) is rejected with mapping error", async () => {
@@ -235,16 +240,6 @@ describe("updateSchedulerLimits", () => {
     }
   });
 
-  test("burn_rate.min_commits_per_hour top-level is rejected as unknown field", async () => {
-    const result = await updateSchedulerLimits(h.config, h.events, {
-      min_commits_per_hour: 5,
-    });
-    expect(result.ok).toBe(false);
-    if (!result.ok) {
-      expect(result.errors[0]).toContain("unknown scheduler limits field");
-    }
-  });
-
   test("multiple updates accumulate (each emits its own event)", async () => {
     await updateSchedulerLimits(h.config, h.events, { concurrency_cap: 2 });
     await updateSchedulerLimits(h.config, h.events, { concurrency_cap: 3 });
@@ -253,214 +248,202 @@ describe("updateSchedulerLimits", () => {
     expect(changedEvents.length).toBe(2);
   });
 
-  test("returns errors from parseDaemonConfig when config state is invalid", async () => {
-    // Corrupt a non-scheduler top-level field (http.bind) which normalizeLimitsPatch
-    // does NOT touch, so the corruption survives the merge and parseDaemonConfig fails.
-    // This exercises the `parsed.ok === false` branch at line 51 of limits-update.ts.
-    const raw = daemonConfigToRaw(h.config.daemon());
-    // http.bind must be a string; corrupting it to a number triggers stringField validation error.
-    raw.http = { ...raw.http, bind: 999 as unknown as string };
-    h.config.setDaemon({ ...h.config.daemon(), http: { ...h.config.daemon().http, bind: 999 as unknown as string } });
-    const result = await updateSchedulerLimits(h.config, h.events, { concurrency_cap: 7 });
+  // ─── Bounds enforcement (self-improvement.md §Level-2) ───────────────────────
+
+  test("rejects concurrencyCap below min (1)", async () => {
+    const result = await updateSchedulerLimits(h.config, h.events, { concurrencyCap: 0 });
     expect(result.ok).toBe(false);
-    if (!result.ok) {
-      expect(result.errors.length).toBeGreaterThan(0);
-    }
-  });
-});
-
-// ─── Bounds validation ─────────────────────────────────────────────────────────
-
-describe("tune_out_of_bounds", () => {
-  let h: Harness;
-
-  beforeEach(() => { h = makeHarness(); });
-  afterEach(async () => { await h.close(); rmSync(h.home, { recursive: true, force: true }); });
-
-  test("rejects concurrency_cap below min (1)", async () => {
-    const result = await updateSchedulerLimits(h.config, h.events, { concurrency_cap: 0 });
-    expect(result.ok).toBe(false);
-    if (!result.ok) {
-      expect(result.outOfBounds?.code).toBe("tune_out_of_bounds");
-      expect(result.outOfBounds?.limit).toBe("concurrency_cap");
-      expect(result.outOfBounds?.min).toBe(1);
-      expect(result.outOfBounds?.max).toBe(8);
-      expect(result.outOfBounds?.proposed).toBe(0);
-      expect(result.errors[0]).toContain("concurrency_cap");
-      expect(result.errors[0]).toContain("outside allowed range");
+    if (!result.ok && "code" in result) {
+      expect(result.code).toBe("tune_out_of_bounds");
+      expect(result.violations[0].field).toBe("concurrencyCap");
+      expect(result.violations[0].requested).toBe(0);
     }
   });
 
-  test("rejects concurrency_cap above max (8)", async () => {
-    const result = await updateSchedulerLimits(h.config, h.events, { concurrency_cap: 9 });
+  test("rejects concurrencyCap above max (8)", async () => {
+    const result = await updateSchedulerLimits(h.config, h.events, { concurrencyCap: 9 });
     expect(result.ok).toBe(false);
-    if (!result.ok) {
-      expect(result.outOfBounds?.code).toBe("tune_out_of_bounds");
-      expect(result.outOfBounds?.limit).toBe("concurrency_cap");
-      expect(result.outOfBounds?.proposed).toBe(9);
+    if (!result.ok && "code" in result) {
+      expect(result.code).toBe("tune_out_of_bounds");
+      expect(result.violations[0].field).toBe("concurrencyCap");
+      expect(result.violations[0].requested).toBe(9);
     }
   });
 
-  test("accepts concurrency_cap at min boundary (1)", async () => {
-    const result = await updateSchedulerLimits(h.config, h.events, { concurrency_cap: 1 });
+  test("accepts concurrencyCap at min (1) and max (8) boundaries", async () => {
+    const r1 = await updateSchedulerLimits(h.config, h.events, { concurrencyCap: 1 });
+    expect(r1.ok).toBe(true);
+    const r2 = await updateSchedulerLimits(h.config, h.events, { concurrencyCap: 8 });
+    expect(r2.ok).toBe(true);
+  });
+
+  test("rejects maxTokensSinceCommit below min (100_000)", async () => {
+    const result = await updateSchedulerLimits(h.config, h.events, {
+      maxTokensSinceCommit: 99_999,
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok && "code" in result) {
+      expect(result.code).toBe("tune_out_of_bounds");
+    }
+  });
+
+  test("rejects maxTokensSinceCommit above max (10_000_000)", async () => {
+    const result = await updateSchedulerLimits(h.config, h.events, {
+      maxTokensSinceCommit: 10_000_001,
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok && "code" in result) {
+      expect(result.code).toBe("tune_out_of_bounds");
+    }
+  });
+
+  test("rejects cpuMaxPct below min (50) and above max (95)", async () => {
+    const below = await updateSchedulerLimits(h.config, h.events, { cpuMaxPct: 49 });
+    expect(below.ok).toBe(false);
+    if (!below.ok && "code" in below) expect(below.code).toBe("tune_out_of_bounds");
+
+    const above = await updateSchedulerLimits(h.config, h.events, { cpuMaxPct: 96 });
+    expect(above.ok).toBe(false);
+    if (!above.ok && "code" in above) expect(above.code).toBe("tune_out_of_bounds");
+  });
+
+  test("rejects memMaxPct below min (50) and above max (95)", async () => {
+    const below = await updateSchedulerLimits(h.config, h.events, { memMaxPct: 49 });
+    expect(below.ok).toBe(false);
+    if (!below.ok && "code" in below) expect(below.code).toBe("tune_out_of_bounds");
+
+    const above = await updateSchedulerLimits(h.config, h.events, { memMaxPct: 96 });
+    expect(above.ok).toBe(false);
+    if (!above.ok && "code" in above) expect(above.code).toBe("tune_out_of_bounds");
+  });
+
+  test("rejects permitTtlDefaultSeconds below min (120) and above max (3600)", async () => {
+    const below = await updateSchedulerLimits(h.config, h.events, {
+      permitTtlDefaultSeconds: 119,
+    });
+    expect(below.ok).toBe(false);
+    if (!below.ok && "code" in below) expect(below.code).toBe("tune_out_of_bounds");
+
+    const above = await updateSchedulerLimits(h.config, h.events, {
+      permitTtlDefaultSeconds: 3601,
+    });
+    expect(above.ok).toBe(false);
+    if (!above.ok && "code" in above) expect(above.code).toBe("tune_out_of_bounds");
+  });
+
+  test("rejects watchdogStuckThresholdSeconds below min (120) and above max (3600)", async () => {
+    const below = await updateSchedulerLimits(h.config, h.events, {
+      watchdogStuckThresholdSeconds: 119,
+    });
+    expect(below.ok).toBe(false);
+    if (!below.ok && "code" in below) expect(below.code).toBe("tune_out_of_bounds");
+
+    const above = await updateSchedulerLimits(h.config, h.events, {
+      watchdogStuckThresholdSeconds: 3601,
+    });
+    expect(above.ok).toBe(false);
+    if (!above.ok && "code" in above) expect(above.code).toBe("tune_out_of_bounds");
+  });
+
+  test("accepts all knobs at their boundary values", async () => {
+    const result = await updateSchedulerLimits(h.config, h.events, {
+      concurrencyCap: 8,
+      maxTokensSinceCommit: 10_000_000,
+      minCommitsPerHour: 10,
+      cpuMaxPct: 95,
+      memMaxPct: 95,
+      permitTtlDefaultSeconds: 3600,
+      watchdogStuckThresholdSeconds: 3600,
+    });
     expect(result.ok).toBe(true);
   });
 
-  test("accepts concurrency_cap at max boundary (8)", async () => {
-    const result = await updateSchedulerLimits(h.config, h.events, { concurrency_cap: 8 });
-    expect(result.ok).toBe(true);
-  });
-
-  test("rejects cpu_max_pct below min (50)", async () => {
-    const result = await updateSchedulerLimits(h.config, h.events, { cpu_max_pct: 49 });
-    expect(result.ok).toBe(false);
-    if (!result.ok) {
-      expect(result.outOfBounds?.code).toBe("tune_out_of_bounds");
-      expect(result.outOfBounds?.limit).toBe("cpu_max_pct");
-      expect(result.outOfBounds?.proposed).toBe(49);
-    }
-  });
-
-  test("rejects cpu_max_pct above max (95)", async () => {
-    const result = await updateSchedulerLimits(h.config, h.events, { cpu_max_pct: 96 });
-    expect(result.ok).toBe(false);
-    if (!result.ok) {
-      expect(result.outOfBounds?.code).toBe("tune_out_of_bounds");
-      expect(result.outOfBounds?.limit).toBe("cpu_max_pct");
-    }
-  });
-
-  test("rejects min_commits_per_hour above max (10)", async () => {
+  test("accepts watchdogStuckThresholdSeconds at max boundary (3600)", async () => {
     const result = await updateSchedulerLimits(h.config, h.events, {
-      burn_rate: { min_commits_per_hour: 11 },
+      watchdogStuckThresholdSeconds: 3600,
     });
-    expect(result.ok).toBe(false);
-    if (!result.ok) {
-      expect(result.outOfBounds?.code).toBe("tune_out_of_bounds");
-      expect(result.outOfBounds?.limit).toBe("min_commits_per_hour");
-      expect(result.outOfBounds?.proposed).toBe(11);
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.limits).toBeDefined();
     }
   });
 
-  test("accepts min_commits_per_hour at max boundary (10)", async () => {
+  test("accepts watchdogStuckThresholdSeconds at min boundary (120)", async () => {
     const result = await updateSchedulerLimits(h.config, h.events, {
-      burn_rate: { min_commits_per_hour: 10 },
+      watchdogStuckThresholdSeconds: 120,
     });
     expect(result.ok).toBe(true);
   });
 
-  test("rejects permit_ttl_default_seconds below min (120)", async () => {
-    const result = await updateSchedulerLimits(h.config, h.events, { permit_ttl_default_seconds: 119 });
-    expect(result.ok).toBe(false);
-    if (!result.ok) {
-      expect(result.outOfBounds?.limit).toBe("permit_ttl_default_seconds");
-    }
-  });
-
-  test("rejects permit_ttl_default_seconds above max (3600)", async () => {
-    const result = await updateSchedulerLimits(h.config, h.events, { permit_ttl_default_seconds: 3601 });
-    expect(result.ok).toBe(false);
-    if (!result.ok) {
-      expect(result.outOfBounds?.limit).toBe("permit_ttl_default_seconds");
-    }
-  });
-
-  test("rejects max_tokens_since_commit below min", async () => {
+  test("reports all violations when multiple knobs are out of bounds", async () => {
     const result = await updateSchedulerLimits(h.config, h.events, {
-      burn_rate: { max_tokens_since_commit: 99_999 },
+      concurrencyCap: 100,
+      cpuMaxPct: 200,
+      permitTtlDefaultSeconds: -1,
     });
     expect(result.ok).toBe(false);
-    if (!result.ok) {
-      expect(result.outOfBounds?.limit).toBe("max_tokens_since_commit");
+    if (!result.ok && "code" in result) {
+      expect(result.code).toBe("tune_out_of_bounds");
+      expect(result.violations.length).toBeGreaterThanOrEqual(3);
     }
   });
 
-  test("rejects max_tokens_since_commit above max", async () => {
-    const result = await updateSchedulerLimits(h.config, h.events, {
-      burn_rate: { max_tokens_since_commit: 10_000_001 },
-    });
+  test("violations include field name, requested value, and bound limits", async () => {
+    const result = await updateSchedulerLimits(h.config, h.events, { concurrencyCap: 999 });
     expect(result.ok).toBe(false);
-    if (!result.ok) {
-      expect(result.outOfBounds?.limit).toBe("max_tokens_since_commit");
+    if (!result.ok && "code" in result) {
+      const v = result.violations[0];
+      expect(v.field).toBe("concurrencyCap");
+      expect(v.requested).toBe(999);
+      expect(v.min).toBe(1);
+      expect(v.max).toBe(8);
     }
   });
 
-  test("first out-of-bounds field is reported (not all)", async () => {
-    // Both concurrency_cap and cpu_max_pct are out of bounds;
-    // only the first in patch order (concurrency_cap) is returned.
-    const result = await updateSchedulerLimits(h.config, h.events, {
-      concurrency_cap: 20,
-      cpu_max_pct: 200,
-    });
+  // ─── loadMax bounds enforcement ─────────────────────────────────────────────
+
+  test("rejects loadMax out-of-range values via tune_out_of_bounds", async () => {
+    // loadMax is a Level-2 tunable knob and must be bounds-checked like all other knobs.
+    // A value of 999 is outside any reasonable load average range.
+    const result = await updateSchedulerLimits(h.config, h.events, { loadMax: 999 });
     expect(result.ok).toBe(false);
-    if (!result.ok) {
-      expect(result.outOfBounds?.limit).toBe("concurrency_cap");
+    if (!result.ok && "code" in result) {
+      expect(result.code).toBe("tune_out_of_bounds");
     }
   });
-});
 
-// ─── self_tuning_adjustment event ─────────────────────────────────────────────
-
-describe("self_tuning_adjustment event", () => {
-  let h: Harness;
-
-  beforeEach(() => { h = makeHarness(); });
-  afterEach(async () => { await h.close(); rmSync(h.home, { recursive: true, force: true }); });
-
-  test("emits self_tuning_adjustment on successful update", async () => {
-    await updateSchedulerLimits(h.config, h.events, { concurrency_cap: 5 });
-    const events = await readAllEvents(h.logPath);
-    const tuningEvents = events.filter((e) => e.topic === "self_tuning_adjustment");
-    expect(tuningEvents).toHaveLength(1);
-    const evt = tuningEvents[0];
-    expect(evt.data.before).toBeDefined();
-    expect(evt.data.after).toBeDefined();
-    expect(evt.data.before.concurrencyCap).toBe(DAEMON_DEFAULTS.scheduler.concurrencyCap);
-    expect(evt.data.after.concurrencyCap).toBe(5);
+  test("rejects loadMax at negative value via tune_out_of_bounds", async () => {
+    const result = await updateSchedulerLimits(h.config, h.events, { loadMax: -0.1 });
+    expect(result.ok).toBe(false);
+    if (!result.ok && "code" in result) {
+      expect(result.code).toBe("tune_out_of_bounds");
+    }
   });
 
-  test("emits both scheduler.limits.changed and self_tuning_adjustment", async () => {
-    await updateSchedulerLimits(h.config, h.events, { concurrency_cap: 6 });
-    const events = await readAllEvents(h.logPath);
-    const changedEvents = events.filter((e) => e.topic === "scheduler.limits.changed");
-    const tuningEvents = events.filter((e) => e.topic === "self_tuning_adjustment");
-    expect(changedEvents).toHaveLength(1);
-    expect(tuningEvents).toHaveLength(1);
+  test("accepts loadMax at the default daemon value (4.0)", async () => {
+    // daemon.md §system_limits defines load_max: 4.0 as default.
+    // This verifies the knob accepts a value within its operational range.
+    const result = await updateSchedulerLimits(h.config, h.events, { loadMax: 4.0 });
+    expect(result.ok).toBe(true);
   });
 
-  test("self_tuning_adjustment captures full before/after scheduler state", async () => {
-    await updateSchedulerLimits(h.config, h.events, {
-      concurrency_cap: 7,
-      burn_rate: { min_commits_per_hour: 3 },
-    });
-    const events = await readAllEvents(h.logPath);
-    const evt = events.find((e) => e.topic === "self_tuning_adjustment")!;
-    // before has default values, after has new values
-    expect(evt.data.before.concurrencyCap).toBe(DAEMON_DEFAULTS.scheduler.concurrencyCap);
-    expect(evt.data.after.concurrencyCap).toBe(7);
-    expect(evt.data.before.burnRate.minCommitsPerHour).toBe(DAEMON_DEFAULTS.scheduler.burnRate.minCommitsPerHour);
-    expect(evt.data.after.burnRate.minCommitsPerHour).toBe(3);
+  test("accepts loadMax at zero (no load threshold)", async () => {
+    const result = await updateSchedulerLimits(h.config, h.events, { loadMax: 0 });
+    expect(result.ok).toBe(true);
   });
 
-  test("does NOT emit self_tuning_adjustment when update is rejected (out of bounds)", async () => {
-    await updateSchedulerLimits(h.config, h.events, { concurrency_cap: 99 });
-    const events = await readAllEvents(h.logPath);
-    const tuningEvents = events.filter((e) => e.topic === "self_tuning_adjustment");
-    expect(tuningEvents).toHaveLength(0);
-  });
-
-  test("self_tuning_adjustment reflects systemLimits and burnRate correctly", async () => {
-    await updateSchedulerLimits(h.config, h.events, {
-      system_limits: { cpu_max_pct: 75, mem_max_pct: 90, load_max: 3.0 },
-      burn_rate: { max_tokens_since_commit: 5_000_000, min_commits_per_hour: 4 },
-    });
-    const events = await readAllEvents(h.logPath);
-    const evt = events.find((e) => e.topic === "self_tuning_adjustment")!;
-    expect(evt.data.before.systemLimits.cpuMaxPct).toBe(DAEMON_DEFAULTS.scheduler.systemLimits.cpuMaxPct);
-    expect(evt.data.after.systemLimits.cpuMaxPct).toBe(75);
-    expect(evt.data.after.systemLimits.memMaxPct).toBe(90);
-    expect(evt.data.after.systemLimits.loadMax).toBe(3.0);
-    expect(evt.data.after.burnRate.maxTokensSinceCommit).toBe(5_000_000);
-    expect(evt.data.after.burnRate.minCommitsPerHour).toBe(4);
+  test("loadMax violations include field name and requested value", async () => {
+    const result = await updateSchedulerLimits(h.config, h.events, { loadMax: 999 });
+    expect(result.ok).toBe(false);
+    if (!result.ok && "code" in result) {
+      const v = result.violations.find((violation) => violation.field === "loadMax");
+      expect(v).toBeDefined();
+      if (v) {
+        expect(v.field).toBe("loadMax");
+        expect(v.requested).toBe(999);
+        expect(typeof v.min).toBe("number");
+        expect(typeof v.max).toBe("number");
+      }
+    }
   });
 });

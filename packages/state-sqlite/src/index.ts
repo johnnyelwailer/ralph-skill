@@ -15,11 +15,6 @@ export {
 } from "@aloop/sqlite-db";
 export { PermitProjector } from "./state/permit-projector.ts";
 export {
-  SchedulerMetricsProjector,
-  loadSchedulerMetrics,
-  type SchedulerMetricsSnapshot,
-} from "./state/scheduler-projector.ts";
-export {
   PermitRegistry,
   clearPermits,
   projectGrantedPermit,
@@ -38,39 +33,44 @@ export {
   type ProjectStatus,
 } from "./state/projects.ts";
 export {
-  ArtifactNotFoundError,
-  ArtifactRegistry,
-  type Artifact,
-  type ArtifactFilter,
-  type ArtifactKind,
-  type CreateArtifactInput,
-} from "./state/artifacts.ts";
-export {
-  WorkspaceNotFoundError,
-  WorkspaceRegistry,
-  type CreateWorkspaceInput,
-  type Workspace,
-  type WorkspaceFilter,
-  type WorkspaceProject,
-  type WorkspaceProjectRole,
-} from "./state/workspaces.ts";
-export { WorkspaceProjector } from "./state/workspace-projector.ts";
-export {
   EventCountsProjector,
   clearEventCounts,
   runProjector,
   type Projector,
 } from "./state/projector.ts";
-export { createIdempotencyStore, type IdempotencyStore } from "./state/idempotency.ts";
 export {
-  ComposerTurnNotFoundError,
-  ComposerTurnRegistry,
-  type CreateComposerTurnInput,
-} from "./state/composer.ts";
+  IncubationStore,
+  IncubationItemNotFoundError,
+  ResearchRunNotFoundError,
+  ProposalNotFoundError,
+  CommentNotFoundError,
+  type IncubationScope,
+  type IncubationItemStatus,
+  type ResearchSourceKind,
+  type ResearchSourcePlan,
+  type ResearchRunMode,
+  type ResearchRun,
+  type ProposalKind,
+  type ProposalState,
+  type PromotionTarget,
+  type PromotionRef,
+  type IncubationProposal,
+  type IncubationItem,
+  type IncubationComment,
+} from "./state/incubation-store.ts";
 export {
-  SessionNotFoundError,
+  WorkspaceRegistry,
+} from "./state/workspaces";
+export {
   SessionRegistry,
-  type Session,
-  type SessionFilter,
-  type CreateSessionInput,
-} from "./state/sessions.ts";
+  type SessionQueueItem,
+} from "./state/sessions-registry";
+export type {
+  Session,
+  SessionKind,
+  SessionStatus,
+  SessionFilter,
+  CreateSessionInput,
+  SessionNotFoundError,
+  AffectsCompletedWork,
+} from "./state/sessions-store";
