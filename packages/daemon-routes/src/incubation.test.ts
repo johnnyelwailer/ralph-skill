@@ -5,6 +5,7 @@ import {
   IncubationItemNotFoundError,
   ResearchRunNotFoundError,
   ProposalNotFoundError,
+  CommentNotFoundError,
   type IncubationScope,
   type IncubationItemStatus,
   type ResearchRunMode,
@@ -28,6 +29,11 @@ import {
   getProposal,
   patchProposal,
   listProposalsForItem,
+  createComment,
+  listComments,
+  getComment,
+  patchComment,
+  deleteComment,
 } from "./incubation.ts";
 
 function makeDeps(): IncubationDeps {
@@ -1107,5 +1113,254 @@ describe("patchProposal", () => {
     });
     const res = await patchProposal(proposalId, req, deps);
     expect(res.status).toBe(400);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────
+// Comments
+// ─────────────────────────────────────────────────────────────────
+
+describe("createComment", () => {
+  let deps: IncubationDeps;
+  let itemId: string;
+
+  beforeEach(async () => {
+    deps = makeDeps();
+    const req = new Request("http://localhost/v1/incubation/items", {
+      method: "POST",
+      body: JSON.stringify({ scope: "global", title: "Test Item", description: "desc" }),
+    });
+    const res = await createIncubationItem(req, deps);
+    itemId = (await res.json()).id;
+  });
+
+  test("returns 201 with created comment", async () => {
+    const req = new Request(`http://localhost/v1/incubation/items/${itemId}/comments`, {
+      method: "POST",
+      body: JSON.stringify({ body: "This is a comment", author: "alice" }),
+    });
+    const res = await createComment(itemId, req, deps);
+    expect(res.status).toBe(201);
+    const body = await res.json();
+    expect(body.id).toMatch(/^[0-9a-f-]{36}$/);
+    expect(body.body).toBe("This is a comment");
+    expect(body.author).toBe("alice");
+    expect(body.incubation_item_id).toBe(itemId);
+    expect(body._v).toBe(1);
+  });
+
+  test("defaults author to anonymous when not provided", async () => {
+    const req = new Request(`http://localhost/v1/incubation/items/${itemId}/comments`, {
+      method: "POST",
+      body: JSON.stringify({ body: "Anonymous comment" }),
+    });
+    const res = await createComment(itemId, req, deps);
+    expect(res.status).toBe(201);
+    const body = await res.json();
+    expect(body.author).toBe("anonymous");
+  });
+
+  test("returns 400 when body is missing", async () => {
+    const req = new Request(`http://localhost/v1/incubation/items/${itemId}/comments`, {
+      method: "POST",
+      body: JSON.stringify({ author: "bob" }),
+    });
+    const res = await createComment(itemId, req, deps);
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error.code).toBe("bad_request");
+  });
+
+  test("returns 404 when incubation item does not exist", async () => {
+    const fakeId = "00000000-0000-0000-0000-000000000000";
+    const req = new Request(`http://localhost/v1/incubation/items/${fakeId}/comments`, {
+      method: "POST",
+      body: JSON.stringify({ body: "Hello" }),
+    });
+    const res = await createComment(fakeId, req, deps);
+    expect(res.status).toBe(404);
+    const body = await res.json();
+    expect(body.error.code).toBe("incubation_item_not_found");
+  });
+});
+
+describe("listComments", () => {
+  let deps: IncubationDeps;
+  let itemId: string;
+
+  beforeEach(async () => {
+    deps = makeDeps();
+    const req = new Request("http://localhost/v1/incubation/items", {
+      method: "POST",
+      body: JSON.stringify({ scope: "global", title: "Test Item", description: "desc" }),
+    });
+    const res = await createIncubationItem(req, deps);
+    itemId = (await res.json()).id;
+
+    // Create two comments
+    for (const body of ["First comment", "Second comment"]) {
+      await createComment(itemId, new Request(`http://localhost/v1/incubation/items/${itemId}/comments`, {
+        method: "POST",
+        body: JSON.stringify({ body }),
+      }), deps);
+    }
+  });
+
+  test("returns 200 with comments ordered by created_at asc", async () => {
+    const req = new Request(`http://localhost/v1/incubation/items/${itemId}/comments`);
+    const res = await listComments(itemId, deps);
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.items).toHaveLength(2);
+    expect(body.items[0].body).toBe("First comment");
+    expect(body.items[1].body).toBe("Second comment");
+    expect(body._v).toBe(1);
+    expect(body.next_cursor).toBeNull();
+  });
+
+  test("returns 404 when incubation item does not exist", async () => {
+    const fakeId = "00000000-0000-0000-0000-000000000000";
+    const req = new Request(`http://localhost/v1/incubation/items/${fakeId}/comments`);
+    const res = await listComments(fakeId, deps);
+    expect(res.status).toBe(404);
+  });
+});
+
+describe("getComment", () => {
+  let deps: IncubationDeps;
+  let itemId: string;
+  let commentId: string;
+
+  beforeEach(async () => {
+    deps = makeDeps();
+    const req = new Request("http://localhost/v1/incubation/items", {
+      method: "POST",
+      body: JSON.stringify({ scope: "global", title: "Test Item", description: "desc" }),
+    });
+    const res = await createIncubationItem(req, deps);
+    itemId = (await res.json()).id;
+
+    const cReq = new Request(`http://localhost/v1/incubation/items/${itemId}/comments`, {
+      method: "POST",
+      body: JSON.stringify({ body: "My comment", author: "carol" }),
+    });
+    const cRes = await createComment(itemId, cReq, deps);
+    commentId = (await cRes.json()).id;
+  });
+
+  test("returns 200 with the comment", async () => {
+    const req = new Request(`http://localhost/v1/incubation/comments/${commentId}`);
+    const res = await getComment(commentId, deps);
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.id).toBe(commentId);
+    expect(body.body).toBe("My comment");
+    expect(body.author).toBe("carol");
+    expect(body._v).toBe(1);
+  });
+
+  test("returns 404 when comment does not exist", async () => {
+    const req = new Request("http://localhost/v1/incubation/comments/00000000-0000-0000-0000-000000000000");
+    const res = await getComment("00000000-0000-0000-0000-000000000000", deps);
+    expect(res.status).toBe(404);
+    const body = await res.json();
+    expect(body.error.code).toBe("incubation_comment_not_found");
+  });
+});
+
+describe("patchComment", () => {
+  let deps: IncubationDeps;
+  let itemId: string;
+  let commentId: string;
+
+  beforeEach(async () => {
+    deps = makeDeps();
+    const req = new Request("http://localhost/v1/incubation/items", {
+      method: "POST",
+      body: JSON.stringify({ scope: "global", title: "Test Item", description: "desc" }),
+    });
+    const res = await createIncubationItem(req, deps);
+    itemId = (await res.json()).id;
+
+    const cReq = new Request(`http://localhost/v1/incubation/items/${itemId}/comments`, {
+      method: "POST",
+      body: JSON.stringify({ body: "Original body" }),
+    });
+    const cRes = await createComment(itemId, cReq, deps);
+    commentId = (await cRes.json()).id;
+  });
+
+  test("returns 200 with updated comment", async () => {
+    const req = new Request(`http://localhost/v1/incubation/comments/${commentId}`, {
+      method: "PATCH",
+      body: JSON.stringify({ body: "Updated body" }),
+    });
+    const res = await patchComment(commentId, req, deps);
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.body).toBe("Updated body");
+    expect(body.id).toBe(commentId);
+  });
+
+  test("returns 400 when body is not a string", async () => {
+    const req = new Request(`http://localhost/v1/incubation/comments/${commentId}`, {
+      method: "PATCH",
+      body: JSON.stringify({ body: 123 }),
+    });
+    const res = await patchComment(commentId, req, deps);
+    expect(res.status).toBe(400);
+  });
+
+  test("returns 404 when comment does not exist", async () => {
+    const req = new Request("http://localhost/v1/incubation/comments/00000000-0000-0000-0000-000000000000", {
+      method: "PATCH",
+      body: JSON.stringify({ body: "New body" }),
+    });
+    const res = await patchComment("00000000-0000-0000-0000-000000000000", req, deps);
+    expect(res.status).toBe(404);
+    const body = await res.json();
+    expect(body.error.code).toBe("incubation_comment_not_found");
+  });
+});
+
+describe("deleteComment", () => {
+  let deps: IncubationDeps;
+  let itemId: string;
+  let commentId: string;
+
+  beforeEach(async () => {
+    deps = makeDeps();
+    const req = new Request("http://localhost/v1/incubation/items", {
+      method: "POST",
+      body: JSON.stringify({ scope: "global", title: "Test Item", description: "desc" }),
+    });
+    const res = await createIncubationItem(req, deps);
+    itemId = (await res.json()).id;
+
+    const cReq = new Request(`http://localhost/v1/incubation/items/${itemId}/comments`, {
+      method: "POST",
+      body: JSON.stringify({ body: "To be deleted" }),
+    });
+    const cRes = await createComment(itemId, cReq, deps);
+    commentId = (await cRes.json()).id;
+  });
+
+  test("returns 204 on successful deletion", async () => {
+    const req = new Request(`http://localhost/v1/incubation/comments/${commentId}`, { method: "DELETE" });
+    const res = await deleteComment(commentId, deps);
+    expect(res.status).toBe(204);
+
+    // Verify it's gone
+    const getReq = new Request(`http://localhost/v1/incubation/comments/${commentId}`);
+    const getRes = await getComment(commentId, deps);
+    expect(getRes.status).toBe(404);
+  });
+
+  test("returns 404 when comment does not exist", async () => {
+    const req = new Request("http://localhost/v1/incubation/comments/00000000-0000-0000-0000-000000000000", { method: "DELETE" });
+    const res = await deleteComment("00000000-0000-0000-0000-000000000000", deps);
+    expect(res.status).toBe(404);
+    const body = await res.json();
+    expect(body.error.code).toBe("incubation_comment_not_found");
   });
 });

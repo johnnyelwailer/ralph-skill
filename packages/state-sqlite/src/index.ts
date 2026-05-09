@@ -43,6 +43,7 @@ export {
   IncubationItemNotFoundError,
   ResearchRunNotFoundError,
   ProposalNotFoundError,
+  CommentNotFoundError,
   type IncubationScope,
   type IncubationItemStatus,
   type ResearchSourceKind,
@@ -54,6 +55,7 @@ export {
   type PromotionRef,
   type IncubationProposal,
   type IncubationItem,
+  type IncubationComment,
 } from "./state/incubation-store.ts";
 export {
   WorkspaceRegistry,

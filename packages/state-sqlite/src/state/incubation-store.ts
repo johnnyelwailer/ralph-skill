@@ -129,6 +129,26 @@ interface IncubationProposalRow {
   updated_at: string;
 }
 
+// ── IncubationComment ─────────────────────────────────────────────────────────
+
+export interface IncubationComment {
+  id: string;
+  incubation_item_id: string;
+  body: string;
+  author: string;
+  created_at: string;
+  updated_at: string;
+}
+
+interface IncubationCommentRow {
+  id: string;
+  incubation_item_id: string;
+  body: string;
+  author: string;
+  created_at: string;
+  updated_at: string;
+}
+
 // ── Errors ────────────────────────────────────────────────────────────────────
 
 export class IncubationItemNotFoundError extends Error {
@@ -149,6 +169,13 @@ export class ProposalNotFoundError extends Error {
   readonly code = "proposal_not_found";
   constructor(readonly id: string) {
     super(`proposal not found: ${id}`);
+  }
+}
+
+export class CommentNotFoundError extends Error {
+  readonly code = "incubation_comment_not_found";
+  constructor(readonly id: string) {
+    super(`incubation comment not found: ${id}`);
   }
 }
 
@@ -193,6 +220,17 @@ function rowToProposal(row: IncubationProposalRow): IncubationProposal {
     description: row.description,
     promotion_target: row.promotion_target as PromotionTarget | undefined,
     promotion_ref: row.promotion_ref ? (JSON.parse(row.promotion_ref) as PromotionRef) : undefined,
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+  };
+}
+
+function rowToComment(row: IncubationCommentRow): IncubationComment {
+  return {
+    id: row.id,
+    incubation_item_id: row.incubation_item_id,
+    body: row.body,
+    author: row.author,
     created_at: row.created_at,
     updated_at: row.updated_at,
   };
@@ -454,5 +492,72 @@ export class IncubationStore {
 
     if (changes.changes === 0) throw new ProposalNotFoundError(id);
     return this.getProposal(id)!;
+  }
+
+  // ── Comment CRUD ─────────────────────────────────────────────────────────
+
+  createComment(input: {
+    id?: string;
+    incubation_item_id: string;
+    body: string;
+    author?: string;
+    now?: string;
+  }): IncubationComment {
+    // Verify item exists first
+    const item = this.db
+      .query<IncubationItemRow, [string]>(`SELECT id FROM incubation_items WHERE id = ?`)
+      .get(input.incubation_item_id);
+    if (!item) throw new IncubationItemNotFoundError(input.incubation_item_id);
+
+    const id = input.id ?? crypto.randomUUID();
+    const now = input.now ?? new Date().toISOString();
+    const author = input.author ?? "anonymous";
+
+    this.db.run(
+      `INSERT INTO incubation_comments (id, incubation_item_id, body, author, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [id, input.incubation_item_id, input.body, author, now, now],
+    );
+
+    return this.getComment(id)!;
+  }
+
+  getComment(id: string): IncubationComment | undefined {
+    const row = this.db
+      .query<IncubationCommentRow, [string]>(`SELECT * FROM incubation_comments WHERE id = ?`)
+      .get(id);
+    return row ? rowToComment(row) : undefined;
+  }
+
+  listComments(incubation_item_id: string): IncubationComment[] {
+    return this.db
+      .query<IncubationCommentRow, [string]>(
+        `SELECT * FROM incubation_comments WHERE incubation_item_id = ? ORDER BY created_at ASC`,
+      )
+      .all(incubation_item_id)
+      .map(rowToComment);
+  }
+
+  updateComment(id: string, patch: { body?: string; now?: string }): IncubationComment {
+    const now = patch.now ?? new Date().toISOString();
+    const fields: string[] = ["updated_at = ?"];
+    const params: (string | null)[] = [now];
+
+    if (patch.body !== undefined) { fields.push("body = ?"); params.push(patch.body); }
+
+    params.push(id);
+    const changes = this.db
+      .query<{ changes: number }, [string]>(`UPDATE incubation_comments SET ${fields.join(", ")} WHERE id = ?`)
+      .run(...params as [string]);
+
+    if (changes.changes === 0) throw new CommentNotFoundError(id);
+    return this.getComment(id)!;
+  }
+
+  deleteComment(id: string): void {
+    const changes = this.db
+      .query<{ changes: number }, [string]>(`DELETE FROM incubation_comments WHERE id = ?`)
+      .run(id);
+    if (changes.changes === 0) throw new CommentNotFoundError(id);
   }
 }

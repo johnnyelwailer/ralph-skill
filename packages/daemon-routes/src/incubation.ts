@@ -1,4 +1,4 @@
-import type { IncubationStore, PromotionTarget, PromotionRef } from "@aloop/state-sqlite";
+import type { IncubationStore, IncubationComment, PromotionTarget, PromotionRef } from "@aloop/state-sqlite";
 import {
   badRequest,
   errorResponse,
@@ -54,6 +54,18 @@ function proposalResponse(p: NonNullable<Parameters<typeof IncubationStore.proto
     promotion_ref: p.promotion_ref ?? null,
     created_at: p.created_at,
     updated_at: p.updated_at,
+  };
+}
+
+function commentResponse(c: IncubationComment): Record<string, unknown> {
+  return {
+    _v: 1 as const,
+    id: c.id,
+    incubation_item_id: c.incubation_item_id,
+    body: c.body,
+    author: c.author,
+    created_at: c.created_at,
+    updated_at: c.updated_at,
   };
 }
 
@@ -457,6 +469,95 @@ export function listProposalsForItem(
   });
 }
 
+// ── Comment handlers ───────────────────────────────────────────────────────────
+
+export async function createComment(
+  itemId: string,
+  req: Request,
+  deps: IncubationDeps,
+): Promise<Response> {
+  const body = await parseJsonBody(req);
+  if ("error" in body) return body.error;
+
+  const commentBody = typeof body.data.body === "string" ? body.data.body : undefined;
+  if (!commentBody) return badRequest("body is required");
+  const author = typeof body.data.author === "string" ? body.data.author : undefined;
+
+  try {
+    const comment = deps.store.createComment({
+      incubation_item_id: itemId,
+      body: commentBody,
+      author,
+    });
+    return jsonResponse(201, commentResponse(comment));
+  } catch (err) {
+    if (err instanceof Error && "code" in err && (err as { code: string }).code === "incubation_item_not_found") {
+      return errorResponse(404, "incubation_item_not_found", (err as Error).message, { item_id: itemId });
+    }
+    return errorResponse(500, "internal_error", String(err));
+  }
+}
+
+export function listComments(
+  itemId: string,
+  deps: IncubationDeps,
+): Response {
+  const item = deps.store.getItem(itemId);
+  if (!item) return errorResponse(404, "incubation_item_not_found", `incubation item not found: ${itemId}`, { item_id: itemId });
+
+  const comments = deps.store.listComments(itemId);
+  return jsonResponse(200, {
+    _v: 1,
+    items: comments.map((c) => commentResponse(c)),
+    next_cursor: null,
+  });
+}
+
+export function getComment(
+  id: string,
+  deps: IncubationDeps,
+): Response {
+  const comment = deps.store.getComment(id);
+  if (!comment) return errorResponse(404, "incubation_comment_not_found", `incubation comment not found: ${id}`, { id });
+  return jsonResponse(200, commentResponse(comment));
+}
+
+export async function patchComment(
+  id: string,
+  req: Request,
+  deps: IncubationDeps,
+): Promise<Response> {
+  const body = await parseJsonBody(req);
+  if ("error" in body) return body.error;
+
+  if (typeof body.data.body !== "string") return badRequest("body must be a string");
+
+  try {
+    const comment = deps.store.updateComment(id, { body: body.data.body });
+    return jsonResponse(200, commentResponse(comment));
+  } catch (err) {
+    if (err instanceof Error && "code" in err && (err as { code: string }).code === "incubation_comment_not_found") {
+      return errorResponse(404, "incubation_comment_not_found", (err as Error).message, { id });
+    }
+    throw err;
+  }
+}
+
+export function deleteComment(
+  id: string,
+  deps: IncubationDeps,
+): Response {
+  try {
+    deps.store.deleteComment(id);
+    return new Response(null, { status: 204 });
+  } catch (err) {
+    if (err instanceof Error && "code" in err && (err as { code: string }).code === "incubation_comment_not_found") {
+      return errorResponse(404, "incubation_comment_not_found", (err as Error).message, { id });
+    }
+    throw err;
+  }
+}
+
 // ── Dispatcher ────────────────────────────────────────────────────────────────
 
 export async function handleIncubation(
@@ -501,6 +602,27 @@ export async function handleIncubation(
       const itemId = segments[0]!;
       if (req.method === "POST") return createProposal(itemId, req, deps);
       if (req.method === "GET") return listProposalsForItem(itemId, deps);
+    }
+
+    if (segments.length === 2 && segments[1] === "comments") {
+      // /v1/incubation/items/:id/comments
+      const itemId = segments[0]!;
+      if (req.method === "GET") return listComments(itemId, deps);
+      if (req.method === "POST") return createComment(itemId, req, deps);
+    }
+  }
+
+  const commentsPrefix = "/v1/incubation/comments/";
+  if (pathname.startsWith(commentsPrefix)) {
+    const rest = pathname.slice(commentsPrefix.length);
+    const segments = rest.split("/");
+    const id = segments[0]!;
+
+    if (segments.length === 1) {
+      // /v1/incubation/comments/:id
+      if (req.method === "GET") return getComment(id, deps);
+      if (req.method === "PATCH") return patchComment(id, req, deps);
+      if (req.method === "DELETE") return deleteComment(id, deps);
     }
   }
 
