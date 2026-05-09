@@ -1,6 +1,6 @@
 # @aloop/core
 
-Shared aloop runtime primitives: compile logic, event contracts, and statistical helpers.
+Shared aloop runtime primitives: event contracts, context contracts, and statistical helpers.
 
 ## Development
 
@@ -12,8 +12,8 @@ bun x tsc -p packages/core/tsconfig.json
 
 ## Current scope
 
-- `compile/*` — pipeline parsing and compile into `loop-plan.json`
 - `events/*` — authoritative event envelope + store interface
+- `context/*` — prompt context provider contracts and registry
 - `stats/*` — Welford and CUSUM primitives
 
 Daemon composition and persistence now live in `@aloop/daemon` and `@aloop/state-sqlite`.

@@ -1,5 +1,8 @@
 /** Setup run types — daemon-owned setup orchestration state. */
 
+// TODO(workflow-topology): The spec now names this setup input `workflow`
+// rather than `mode`. Keep this compatibility field only until the setup route
+// and persisted setup-run schema are migrated together.
 export type SetupRunMode = "standalone" | "orchestrator";
 export type SetupRunStatus = "active" | "completed" | "failed" | "abandoned";
 export type ReadinessVerdict = "resolved" | "unresolved" | "needs_deeper_research";

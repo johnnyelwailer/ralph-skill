@@ -38,6 +38,9 @@ const VALID_PHASES: readonly string[] = [
 /**
  * POST /v1/setup/runs — start a new setup run.
  * Body: { abs_path, mode?, non_interactive?, flags? }
+ *
+ * TODO(workflow-topology): Accept `workflow` as the canonical request field
+ * and translate/remove the old `mode` compatibility path.
  */
 export async function createSetupRun(req: Request, deps: SetupDeps): Promise<Response> {
   const body = await parseJsonBody(req);

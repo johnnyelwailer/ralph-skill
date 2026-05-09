@@ -701,7 +701,7 @@ describe("SetupDiscoveryResult", () => {
     const r: SetupDiscoveryResult = {
       findings: [
         { category: "environment", description: "Node 22 available", severity: "info" },
-        { category: "config", description: "pipeline.yml missing", severity: "warning" },
+        { category: "config", description: "workflow YAML missing", severity: "warning" },
         { category: "tracker", description: "GitHub token invalid", severity: "error" },
       ],
       summary: "3 findings",

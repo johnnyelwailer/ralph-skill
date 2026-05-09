@@ -22,6 +22,9 @@ export interface Session {
   readonly parentSessionId: string | null;
   readonly maxIterations: number | null;
   readonly notes: string;
+  // TODO(workflow-plan): Replace iteration/phase with active handler-run state:
+  // handler name, phase (`pipeline`/`finalizer`), cursor, trigger payload, and
+  // saved cyclic start cursor.
   readonly currentIteration: number;
   readonly currentPhase: string | null;
   readonly currentProviderId: string | null;
@@ -58,6 +61,9 @@ export interface SessionFilter {
 
 export type AffectsCompletedWork = "yes" | "no" | "unknown";
 
+// TODO(workflow-plan): Queue records should name a compiled workflow handler
+// and carry normalized trigger payload/context. The current filename/instruction
+// fields are a compatibility shim for steering-only queue behavior.
 export interface SessionQueueItem {
   readonly id: string;
   readonly sessionId: string;
