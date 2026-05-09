@@ -4,6 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { openDatabase, ProjectRegistry, SessionRegistry } from "@aloop/state-sqlite";
 import {
+  createSessionHandler,
+  listSessionsHandler,
   getSessionHandler,
   deleteSessionHandler,
   resumeSessionHandler,
@@ -524,5 +526,340 @@ describe("deleteSessionQueueItemHandler", () => {
     expect(res.status).toBe(404);
     const body = await (res as Response).json();
     expect(body.error.code).toBe("session_not_found");
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────
+// listSessionsHandler
+// ─────────────────────────────────────────────────────────────────
+
+describe("listSessionsHandler", () => {
+  let dir: string;
+  let deps: SessionsDeps;
+  let projectId: string;
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), "aloop-session-list-"));
+    deps = makeDeps(dir);
+    projectId = deps.projects.create({ absPath: join(dir, "proj1") }).id;
+  });
+
+  afterEach(() => {
+    const reg = deps.sessions as unknown as { _db: { close(): void } };
+    reg._db?.close();
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  test("returns 200 with empty items when no sessions exist", async () => {
+    const req = new Request("http://localhost/v1/sessions");
+    const res = listSessionsHandler(req, deps);
+    expect(res.status).toBe(200);
+    const body = await (res as Response).json();
+    expect(body.items).toEqual([]);
+    expect(body._v).toBe(1);
+  });
+
+  test("returns 200 with all sessions when no filter is provided", async () => {
+    const s1 = deps.sessions.create({
+      id: "s_list1",
+      projectId,
+      kind: "standalone",
+      workflow: "wf1",
+      providerChain: ["p1"],
+    });
+    const s2 = deps.sessions.create({
+      id: "s_list2",
+      projectId,
+      kind: "orchestrator",
+      workflow: "wf2",
+      providerChain: ["p2"],
+    });
+    const req = new Request("http://localhost/v1/sessions");
+    const res = listSessionsHandler(req, deps);
+    expect(res.status).toBe(200);
+    const body = await (res as Response).json();
+    expect(body.items).toHaveLength(2);
+    const ids = body.items.map((i: { id: string }) => i.id).sort();
+    expect(ids).toEqual(["s_list1", "s_list2"]);
+  });
+
+  test("filters sessions by project_id query param", async () => {
+    const otherDir = mkdtempSync(join(tmpdir(), "aloop-session-list-other-"));
+    const otherProjectId = deps.projects.create({ absPath: join(otherDir, "proj2") }).id;
+    deps.sessions.create({ id: "s_proj1", projectId, kind: "standalone", workflow: "wf", providerChain: ["p"] });
+    deps.sessions.create({ id: "s_proj2", projectId: otherProjectId, kind: "standalone", workflow: "wf", providerChain: ["p"] });
+    const req = new Request(`http://localhost/v1/sessions?project_id=${projectId}`);
+    const res = listSessionsHandler(req, deps);
+    expect(res.status).toBe(200);
+    const body = await (res as Response).json();
+    expect(body.items).toHaveLength(1);
+    expect(body.items[0].id).toBe("s_proj1");
+    rmSync(otherDir, { recursive: true, force: true });
+  });
+
+  test("filters sessions by single status query param", async () => {
+    deps.sessions.create({ id: "s_pending", projectId, kind: "standalone", workflow: "wf", providerChain: ["p"] });
+    deps.sessions.create({ id: "s_running", projectId, kind: "standalone", workflow: "wf", providerChain: ["p"] });
+    deps.sessions.updateStatus("s_running", "running");
+    const req = new Request(`http://localhost/v1/sessions?status=running`);
+    const res = listSessionsHandler(req, deps);
+    expect(res.status).toBe(200);
+    const body = await (res as Response).json();
+    expect(body.items).toHaveLength(1);
+    expect(body.items[0].id).toBe("s_running");
+    expect(body.items[0].status).toBe("running");
+  });
+
+  test("filters sessions by multiple comma-separated statuses", async () => {
+    deps.sessions.create({ id: "s_pen", projectId, kind: "standalone", workflow: "wf", providerChain: ["p"] });
+    deps.sessions.create({ id: "s_run", projectId, kind: "standalone", workflow: "wf", providerChain: ["p"] });
+    deps.sessions.create({ id: "s_comp", projectId, kind: "standalone", workflow: "wf", providerChain: ["p"] });
+    deps.sessions.updateStatus("s_run", "running");
+    deps.sessions.updateStatus("s_comp", "completed");
+    const req = new Request(`http://localhost/v1/sessions?status=pending,running`);
+    const res = listSessionsHandler(req, deps);
+    expect(res.status).toBe(200);
+    const body = await (res as Response).json();
+    expect(body.items).toHaveLength(2);
+    const statuses = body.items.map((i: { status: string }) => i.status).sort();
+    expect(statuses).toEqual(["pending", "running"]);
+  });
+
+  test("filters sessions by kind query param", async () => {
+    deps.sessions.create({ id: "s_stand", projectId, kind: "standalone", workflow: "wf", providerChain: ["p"] });
+    deps.sessions.create({ id: "s_orc", projectId, kind: "orchestrator", workflow: "wf", providerChain: ["p"] });
+    const req = new Request(`http://localhost/v1/sessions?kind=orchestrator`);
+    const res = listSessionsHandler(req, deps);
+    expect(res.status).toBe(200);
+    const body = await (res as Response).json();
+    expect(body.items).toHaveLength(1);
+    expect(body.items[0].kind).toBe("orchestrator");
+  });
+
+  test("filters sessions by parent query param", async () => {
+    const parentId = deps.sessions.create({ id: "s_parent", projectId, kind: "orchestrator", workflow: "wf", providerChain: ["p"] }).id;
+    deps.sessions.create({ id: "s_child", projectId, kind: "child", workflow: "wf", providerChain: ["p"], parentSessionId: parentId });
+    const req = new Request(`http://localhost/v1/sessions?parent=${parentId}`);
+    const res = listSessionsHandler(req, deps);
+    expect(res.status).toBe(200);
+    const body = await (res as Response).json();
+    expect(body.items).toHaveLength(1);
+    expect(body.items[0].id).toBe("s_child");
+  });
+
+  test("enforces limit query param", async () => {
+    for (let i = 0; i < 5; i++) {
+      deps.sessions.create({ id: `s_lim_${i}`, projectId, kind: "standalone", workflow: "wf", providerChain: ["p"] });
+    }
+    const req = new Request(`http://localhost/v1/sessions?limit=3`);
+    const res = listSessionsHandler(req, deps);
+    expect(res.status).toBe(200);
+    const body = await (res as Response).json();
+    expect(body.items).toHaveLength(3);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────
+// createSessionHandler
+// ─────────────────────────────────────────────────────────────────
+
+describe("createSessionHandler", () => {
+  let dir: string;
+  let deps: SessionsDeps;
+  let projectId: string;
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), "aloop-session-create-"));
+    deps = makeDeps(dir);
+    projectId = deps.projects.create({ absPath: join(dir, "proj1") }).id;
+  });
+
+  afterEach(() => {
+    const reg = deps.sessions as unknown as { _db: { close(): void } };
+    reg._db?.close();
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  test("returns 201 with the created session on success", async () => {
+    const req = new Request("http://localhost/v1/sessions", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        data: {
+          id: "s_new",
+          project_id: projectId,
+          kind: "standalone",
+          workflow: "plan-build-review",
+          provider_chain: ["opencode", "claude"],
+        },
+      }),
+    });
+    const res = await createSessionHandler(req, deps);
+    expect(res.status).toBe(201);
+    const body = await (res as Response).json();
+    expect(body.id).toBe("s_new");
+    expect(body.kind).toBe("standalone");
+    expect(body.workflow).toBe("plan-build-review");
+    expect(body.provider_chain).toEqual(["opencode", "claude"]);
+    expect(body.status).toBe("pending");
+  });
+
+  test("auto-generates session id when not provided", async () => {
+    const req = new Request("http://localhost/v1/sessions", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        data: {
+          project_id: projectId,
+          kind: "standalone",
+          workflow: "wf",
+          provider_chain: ["p1"],
+        },
+      }),
+    });
+    const res = await createSessionHandler(req, deps);
+    expect(res.status).toBe(201);
+    const body = await (res as Response).json();
+    expect(body.id).toMatch(/^[0-9a-f-]{36}$/);
+  });
+
+  test("returns 400 when project_id is missing", async () => {
+    const req = new Request("http://localhost/v1/sessions", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ data: { kind: "standalone", workflow: "wf", provider_chain: ["p"] } }),
+    });
+    const res = await createSessionHandler(req, deps);
+    expect(res.status).toBe(400);
+    const body = await (res as Response).json();
+    expect(body.error.message).toContain("project_id");
+  });
+
+  test("returns 404 when project does not exist", async () => {
+    const req = new Request("http://localhost/v1/sessions", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        data: { project_id: "nonexistent-proj", kind: "standalone", workflow: "wf", provider_chain: ["p"] },
+      }),
+    });
+    const res = await createSessionHandler(req, deps);
+    expect(res.status).toBe(404);
+    const body = await (res as Response).json();
+    expect(body.error.code).toBe("project_not_found");
+  });
+
+  test("returns 400 when kind is invalid", async () => {
+    const req = new Request("http://localhost/v1/sessions", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        data: { project_id: projectId, kind: "invalid-kind", workflow: "wf", provider_chain: ["p"] },
+      }),
+    });
+    const res = await createSessionHandler(req, deps);
+    expect(res.status).toBe(400);
+    const body = await (res as Response).json();
+    expect(body.error.message).toContain("kind");
+  });
+
+  test("returns 400 when workflow is missing", async () => {
+    const req = new Request("http://localhost/v1/sessions", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        data: { project_id: projectId, kind: "standalone", provider_chain: ["p"] },
+      }),
+    });
+    const res = await createSessionHandler(req, deps);
+    expect(res.status).toBe(400);
+    const body = await (res as Response).json();
+    expect(body.error.message).toContain("workflow");
+  });
+
+  test("returns 400 when provider_chain is not an array", async () => {
+    const req = new Request("http://localhost/v1/sessions", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        data: { project_id: projectId, kind: "standalone", workflow: "wf", provider_chain: "not-an-array" },
+      }),
+    });
+    const res = await createSessionHandler(req, deps);
+    expect(res.status).toBe(400);
+    const body = await (res as Response).json();
+    expect(body.error.message).toContain("provider_chain");
+  });
+
+  test("returns 400 when kind=child and parent_session_id is missing", async () => {
+    const req = new Request("http://localhost/v1/sessions", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        data: { project_id: projectId, kind: "child", workflow: "wf", provider_chain: ["p"] },
+      }),
+    });
+    const res = await createSessionHandler(req, deps);
+    expect(res.status).toBe(400);
+    const body = await (res as Response).json();
+    expect(body.error.message).toContain("parent_session_id");
+  });
+
+  test("returns 404 when parent session does not exist for kind=child", async () => {
+    const req = new Request("http://localhost/v1/sessions", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        data: { project_id: projectId, kind: "child", workflow: "wf", provider_chain: ["p"], parent_session_id: "nonexistent" },
+      }),
+    });
+    const res = await createSessionHandler(req, deps);
+    expect(res.status).toBe(404);
+    const body = await (res as Response).json();
+    expect(body.error.code).toBe("parent_session_not_found");
+  });
+
+  test("returns 400 when child session targets a grandchild parent", async () => {
+    const parentId = deps.sessions.create({ id: "s_gc_parent", projectId, kind: "orchestrator", workflow: "wf", providerChain: ["p"] }).id;
+    const childId = deps.sessions.create({ id: "s_actual_child", projectId, kind: "child", workflow: "wf", providerChain: ["p"], parentSessionId: parentId }).id;
+    const req = new Request("http://localhost/v1/sessions", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        data: { project_id: projectId, kind: "child", workflow: "wf", provider_chain: ["p"], parent_session_id: childId },
+      }),
+    });
+    const res = await createSessionHandler(req, deps);
+    expect(res.status).toBe(400);
+    const body = await (res as Response).json();
+    expect(body.error.message).toContain("grandchild");
+  });
+
+  test("accepts max_iterations when provided", async () => {
+    const req = new Request("http://localhost/v1/sessions", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        data: { project_id: projectId, kind: "standalone", workflow: "wf", provider_chain: ["p"], max_iterations: 10 },
+      }),
+    });
+    const res = await createSessionHandler(req, deps);
+    expect(res.status).toBe(201);
+    const body = await (res as Response).json();
+    expect(body.max_iterations).toBe(10);
+  });
+
+  test("accepts notes when provided", async () => {
+    const req = new Request("http://localhost/v1/sessions", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        data: { project_id: projectId, kind: "standalone", workflow: "wf", provider_chain: ["p"], notes: "test session" },
+      }),
+    });
+    const res = await createSessionHandler(req, deps);
+    expect(res.status).toBe(201);
+    const body = await (res as Response).json();
+    expect(body.notes).toBe("test session");
   });
 });
