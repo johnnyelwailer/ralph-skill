@@ -20,7 +20,7 @@ The new setup architecture is **cross-cutting**, not one isolated milestone. It 
 
 - **M3** provides the project registry, `setup_pending` lifecycle, and compile/readiness foundations.
 - **M5/M6** provide provider execution and long-lived daemon-run workflow substrate that setup-side agents reuse.
-- **M9** provides the orchestrator/child-loop machinery that setup can reuse under the hood for background research, setup-side judgment, and initial decomposition handoff.
+- **M9** provides the orchestrator/child-session machinery that setup can reuse under the hood for background research, setup-side judgment, and initial decomposition handoff.
 - **M11** provides the dashboard shell over the same setup API.
 - **M12** is the first full end-to-end proof that the whole setup experience works on a real project.
 
@@ -235,9 +235,9 @@ Provider-specific deployment recipes are templates. Core code must not learn clo
 - Full orchestrator prompt set: `orch_product_analyst`, `orch_scan`, `orch_maintenance_dependencies`, `orch_maintenance_tests`, `orch_maintenance_docs`, `orch_maintenance_demos`, `orch_maintenance_refactor`, `orch_maintenance_bugs`, `orch_decompose`, `orch_refine`, `orch_sub_decompose`, `orch_estimate`, `orch_consistency`, `orch_dispatch`, `orch_review`, `orch_resolver`, `orch_diagnose`, `orch_conversation`.
 - Parallel child dispatch via scheduler permits.
 - `file_scope.owned` enforcement at dispatch: overlap with in-flight Stories → permit denied.
-- Epic/Story conversation flow: `comment.created` (source=human) → `triggers.user_comment` → `PROMPT_orch_conversation.md`.
+- Epic/Story conversation flow: `comment.created` (source=human) → trigger record queues `on.user_comment` → `PROMPT_orch_conversation.md`.
 - Self-healing via `orch_diagnose` actions (`pause_session`, `redispatch`, `file_followup`, `raise_threshold`).
-- Reuse of the same orchestrator/child-loop substrate for setup-side background research and `setup_decompose` handoff, with a different setup-agent catalog rather than a separate engine.
+- Reuse of the same orchestrator/child-session substrate for setup-side background research and `setup_decompose` handoff, with a different setup-agent catalog rather than a separate engine.
 - `agent/trunk` branch management.
 
 **Test:** decompose a multi-epic spec → refine → dispatch 3 parallel children on disjoint file scopes → review → merge to `agent/trunk`. Deliberately comment on an Epic mid-flight → orchestrator replies + takes action. Deliberately dispatch overlapping scopes → second dispatch denied.

@@ -14,7 +14,7 @@
 - Phase prerequisites
 - Retry exhaustion safety valve
 - Iteration caps
-- `--no-task-exit` (orchestrator mode)
+- Orchestrator workflow task-exit behavior
 - Invariant enforcement
 
 ---
@@ -139,7 +139,7 @@ Implementation rules:
 
 **Budget controls for pay-per-use providers:** iteration caps are not a substitute for budget. For pay-per-use providers (OpenRouter via OpenCode), use scheduler burn-rate and budget gates (see `provider-contract.md` §Cost and usage capture, `daemon.md` §Scheduler authority). Subscription providers (Claude Max, Copilot, Codex, Gemini) have no per-request cost — budget caps do not apply, but concurrency and cooldown limits still do.
 
-## `--no-task-exit` (orchestrator mode)
+## Orchestrator Workflow Task-Exit Behavior
 
 Orchestrator sessions must never auto-complete based on `TODO.md` task status — their completion criterion is tracker state (issues resolved, change sets merged or closed).
 

@@ -26,7 +26,7 @@
 
 ## Agents as pipeline participants
 
-Every agent is a **named prompt with a role, a role's permissions, and a contract for what it reads/writes**. Agents are data (prompt files + frontmatter). The pipeline declares which agents run and in what order (see `pipeline.md`).
+Every agent is a **named prompt with a role, a role's permissions, and a contract for what it reads/writes**. Agents are data (prompt files + frontmatter). The workflow declares which agents run and in what order (see `pipeline.md`).
 
 Aloop ships a bundled catalog (the ones described below). Projects can:
 
@@ -262,7 +262,7 @@ Setup uses the same underlying orchestration/session machinery, but with a diffe
 | `setup_questioner` | `setup_question_batch` | Selects the next staged user questions based on current findings |
 | `setup_spec_writer` | `setup_chapter_update` | Drafts or revises spec chapters and supporting setup documents |
 | `setup_constitution_drafter` | `setup_chapter_update` | Drafts project constitution rules from spec + codebase understanding |
-| `setup_decompose` | `decompose_result` | Produces the initial Epic baseline for orchestrator-mode handoff |
+| `setup_decompose` | `decompose_result` | Produces the initial Epic baseline for orchestrator workflow handoff |
 
 ## Subagent catalog
 

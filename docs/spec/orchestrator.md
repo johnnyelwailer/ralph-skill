@@ -147,10 +147,10 @@ all done?  ── yes ──→ completed                             │
 
 At any point:
   child_stuck | burn_rate_exceeded | merge_conflict_pr | pr_review_needed
-              → queue triggers.<name> → diagnose or specialized prompt
+              → queue on.<handler> → diagnose or specialized prompt
 ```
 
-The state machine is encoded in `orchestrator.yaml` as cycle + triggers, not in code. The session runner executes it mechanically. Every orchestrator turn goes through the scheduler like any other turn (see `daemon.md` §Scheduler authority).
+The state machine is encoded in `orchestrator.yaml` as trigger-keyed `on:` handlers, not in code. The session runner executes it mechanically. Every orchestrator turn goes through the scheduler like any other turn (see `daemon.md` §Scheduler authority).
 
 **Implementation reference.** T3 Code's command/invariant/projector split is useful prior art for keeping orchestration mutations auditable: commands are validated against a projected read model, produce durable events, and projections feed shell/detail snapshots. Aloop's runtime orchestrator is broader and tracker-driven, but it should use the same discipline for daemon-owned mutations such as dispatch, pause/stop, approve/merge, proposed-plan implementation, checkpoint revert, and thread/session metadata updates. Reference: [pingdotgg/t3code](https://github.com/pingdotgg/t3code).
 
@@ -266,11 +266,11 @@ When a child session produces a change set and signals readiness:
 
 1. Child submits a final `build_result` or reaches its workflow's `completed` state. Daemon records it.
 2. Orchestrator observes via `tracker.event` (`change_set.opened` or `change_set.updated`) and event bus (`session.completed`).
-3. Orchestrator queues `PROMPT_orch_review.md` via `triggers.pr_review_needed`.
+3. Orchestrator queues the `pr_review_needed` handler.
 4. Review prompt outputs `review_result` with verdict `approved | changes_requested | reject`.
 5. Daemon applies the verdict:
    - **approved** → orchestrator queues `merge_request` submit; daemon calls `mergeChangeSet` per project policy (squash by default). Story moves to `done` via `status_map`.
-   - **changes_requested** → daemon posts review comments/threads via the adapter; child session gets its queue populated (`triggers.pr_review_requested` or similar) with the review body, resumes work.
+   - **changes_requested** → daemon posts review comments/threads via the adapter; child session gets a queued review-response handler with the review body, resumes work.
    - **reject** → issue moves back to `refined` or `needs_refinement`; the orchestrator may redispatch or escalate.
 6. After merge, orchestrator emits `merge_complete` event; reconcile job updates aggregate state.
 
@@ -327,8 +327,8 @@ Flow:
 
 1. Anomaly observed — either by daemon watchdog (stuck child, permit cascading denials, burn rate, quota exhaustion) or by orchestrator's own observation of the event bus (repeated failures on a specific issue, CI red after merge).
 2. Anomaly emits an event with a canonical classification.
-3. Orchestrator workflow's triggers map the classification to `PROMPT_orch_diagnose.md` (or a more specific diagnose prompt).
-4. The daemon queues the prompt into the orchestrator's own queue.
+3. A trigger record or workflow decision maps the classification to `on.orch_diagnose` or a more specific handler.
+4. The daemon queues that handler into the orchestrator's own queue.
 5. On next turn, the diagnose prompt runs — it reads the event context, session state, recent logs, and emits a structured action:
    - **`pause_dispatch`** — halt new children until a human acts.
    - **`pause_session <id>`** — pause one child; emit a steering prompt into its queue explaining why.
@@ -340,9 +340,9 @@ Flow:
 
 Every action is mediated by the daemon. The diagnose prompt cannot directly kill a process, merge a PR, or bypass policy. It expresses intent.
 
-Common triggers:
+Common handlers:
 
-| Event | Trigger keyword | Typical diagnose action |
+| Event | Handler | Typical diagnose action |
 |---|---|---|
 | `session.stuck` (child) | `child_stuck` | `pause_session` + steering prompt |
 | `scheduler.burn_rate_exceeded` | `burn_rate_alert` | `pause_session` or `file_followup_issue` |
@@ -372,7 +372,7 @@ Humans can comment on any Epic or Story in the tracker. Those comments are first
 
 1. A human leaves a comment on an Epic or Story via the tracker UI (GitHub issue comment, GitLab issue comment, built-in tracker append).
 2. The `TrackerAdapter` emits a `comment.created` event on the bus. The event payload includes the comment body, the author, the work item ref, and `source: "human"` (derived from the author — the adapter filters out comments authored by the aloop identity itself to avoid self-reaction loops).
-3. The orchestrator workflow's `triggers.user_comment` maps to `PROMPT_orch_conversation.md`. The daemon queues it into the orchestrator's own queue.
+3. A trigger record maps the event to `on.user_comment`. The daemon queues that handler into the orchestrator's own queue.
 4. On next turn, the conversation prompt runs. Inputs: the comment, the full Epic/Story body, all prior comments (human and orchestrator), current abstract status, linked Stories and change sets.
 5. The prompt emits `conversation_result` with a structured action:
    - **`reply`** — post a comment back via `adapter.addComment`. The orchestrator identity authors it; adapter stamps metadata so future events don't trigger re-reaction.
@@ -418,16 +418,16 @@ Some issues need special environments: vision support, a specific Node version, 
 - If `devcontainer: true` → the daemon spawns the child inside the project's devcontainer, which is the v1 local sandbox backend (see `devcontainer.md`).
 - If `node_version: "22"` → the selected sandbox backend must provide it; failure to provide emits `dispatch_infeasible`.
 
-Dispatch never blindly launches a child into the wrong environment. An infeasible dispatch halts with a diagnose trigger.
+Dispatch never blindly launches a child into the wrong environment. An infeasible dispatch halts with a queued diagnose handler.
 
 ## Conflict resolution
 
 When a change set's mergeability status becomes `no` (conflicts with `agent/trunk`):
 
 1. Adapter emits `change_set.conflict`.
-2. Orchestrator queues `PROMPT_orch_resolver.md` via `triggers.merge_conflict_pr`.
+2. Orchestrator queues the `merge_conflict_pr` handler.
 3. The resolver prompt decides: rebase (most cases), recreate (scope drift so large rebase is futile), or abandon (send back to `refine`).
-4. Rebase decisions queue `triggers.merge_conflict` into the **child's** queue so the child's next turn resolves conflicts within its own workflow. Rebase is never performed by the orchestrator on the child's branch directly — the child owns its branch.
+4. Rebase decisions queue the child's `merge_conflict` handler so the child's next turn resolves conflicts within its own workflow. Rebase is never performed by the orchestrator on the child's branch directly — the child owns its branch.
 5. Recreate means: close the current change set via adapter, clean up worktree (session end), redispatch.
 
 This keeps the conflict-resolution responsibility at the child level while the orchestrator only chooses strategy.

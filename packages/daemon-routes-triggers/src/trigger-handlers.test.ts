@@ -100,7 +100,7 @@ describe("POST /v1/triggers", () => {
     const req = createTriggerReq(deps, {
       scope: { kind: "project", id: "p_abc123" },
       source: { kind: "event", topic: "session.update" },
-      action: { kind: "create_session", target: {} },
+      action: { kind: "queue_workflow_handler", target: { session_id: "s_orch", handler: "dependency_signal" } },
       budget_policy: { max_cost_usd_per_fire: 2.5 },
       debounce_seconds: 3600,
       enabled: false,
@@ -109,6 +109,7 @@ describe("POST /v1/triggers", () => {
     expect(res.status).toBe(201);
     const body = await res.json();
     expect(body.scope.id).toBe("p_abc123");
+    expect(body.action.target.handler).toBe("dependency_signal");
     expect(body.budget_policy.max_cost_usd_per_fire).toBe(2.5);
     expect(body.debounce_seconds).toBe(3600);
     expect(body.enabled).toBe(false);

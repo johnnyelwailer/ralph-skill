@@ -1,6 +1,6 @@
 # Workflows
 
-> **Reference document.** The shipped workflow catalog and the rules for selecting one per Story. A workflow is data — a YAML file describing cycle, finalizer, triggers, and per-phase agent assignments. The daemon executes any workflow uniformly. This document specifies the ones that ship and how the orchestrator picks the right one for each Story. Hard rules live in CONSTITUTION.md. Work items live in GitHub issues.
+> **Reference document.** The shipped workflow catalog and the rules for selecting one per Story. A workflow is data — a YAML file describing trigger-keyed `on:` handlers, handler-local pipelines/finalizers, and per-step agent/exec assignments. The daemon executes any workflow uniformly. This document specifies the ones that ship and how the orchestrator picks the right one for each Story. Hard rules live in CONSTITUTION.md. Work items live in GitHub issues.
 >
 > Sources: CR #281 (specialized agent roles), CR #275 (wave + focus dispatch), `pipeline.md` (workflow mechanism), `agents.md` (per-role contracts), `work-tracker.md` (Story metadata fields).
 
@@ -56,7 +56,7 @@ This is the default long-running orchestrator workflow for projects that are sti
 ### `maintenance-loop`
 
 ```
-start:     none
+on.start:  omitted
 handlers:  dependency_signal, coverage_signal, docs_signal, demo_signal,
            refactor_signal, bug_signal, maintenance_sweep_requested,
            decompose_needed, refine_needed, estimate_needed, pr_review_needed,
@@ -106,7 +106,7 @@ Canonical maintenance signal sources:
 
 The source topics above are normalized daemon events, not prompt-visible tracker APIs. A GitHub PR, GitLab MR, Dependabot alert, Sentry crash, CI failure, or custom webhook must first be translated by an adapter, projector, or external producer into a bounded aloop event. The maintenance workflow sees only that normalized event and the curated context attached to it.
 
-There are no hardcoded maintenance trigger implementations. The shipped handler names above are workflow queue targets. Any code that can authenticate to the daemon may create a durable trigger through `/v1/triggers`, or may emit a normalized event through a typed runtime extension/adapter that existing triggers match.
+There are no hardcoded maintenance trigger implementations. The shipped handler names above are workflow queue targets. Any code that can authenticate to the daemon may create a durable trigger through `/v1/triggers`, or may emit a normalized event through a typed runtime extension/adapter that durable trigger records match.
 
 External trigger producers use generic primitives:
 
@@ -116,7 +116,7 @@ External trigger producers use generic primitives:
 - evidence refs, e.g. logs, screenshots, failing test output, security advisory
 - severity/impact fields where applicable
 
-A trigger record then maps those generic fields to a workflow handler via `queue_orchestrator_trigger`. For example, an external Sentry adapter can emit `external.bug_report` with `component=payments`; a trigger record created through the API can match that event and queue `bug_signal`. No prompt or workflow needs to know Sentry exists.
+A trigger record then maps those generic fields to a workflow handler via `queue_workflow_handler`. For example, an external Sentry adapter can emit `external.bug_report` with `component=payments`; a trigger record created through the API can match that event and queue `bug_signal`. No prompt or workflow needs to know Sentry exists.
 
 Custom triggers may only queue existing workflow handler names unless the project also provides a custom workflow handler and prompt template. Trigger predicates stay in daemon-owned trigger records; prompts receive the already-matched signal context and do not evaluate arbitrary event expressions.
 
@@ -378,7 +378,7 @@ on:
       - agent: orch_dispatch
 ```
 
-Event-handler keys are trigger names, not expressions. A handler is dormant until the daemon queues that event into the orchestrator session.
+Event-handler keys are handler names, not expressions. A handler is dormant until the daemon queues that event into the orchestrator session.
 
 ## Selection logic
 
@@ -443,7 +443,7 @@ Benchmarking is orthogonal to workflow selection. A benchmark candidate should n
 Projects add their own under `<project>/.aloop/workflows/<name>.yaml`. Schema is enforced at compile. Three rules:
 
 1. **Reference only existing agents.** A workflow that names `agent: ml-tuner` requires the project to define `aloop/templates/PROMPT_ml-tuner.md` and a role for it in the agent permissions table (per `agents.md`).
-2. **Triggers must be registered.** Every trigger keyword in the workflow must have a matching prompt file. Unknown triggers fail compile.
+2. **Handlers must resolve.** Every `on.<handler>` pipeline step must resolve to an existing prompt or exec manifest. Unknown handlers or unresolved steps fail compile.
 3. **Cycle must terminate.** Compile detects infinite `onFailure: goto` cycles and fails.
 
 The CR workflow exists for projects to upstream useful custom workflows back to aloop.

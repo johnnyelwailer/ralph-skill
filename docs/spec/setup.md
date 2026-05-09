@@ -63,7 +63,7 @@ Any gate that fails aborts setup — the daemon does not register a half-configu
 
 ### Initial decomposition vs living decomposition
 
-Setup owns **initial spec shaping** and, for orchestrator-mode projects, the **initial decomposition baseline** needed to start autonomous delivery safely.
+Setup owns **initial spec shaping** and, for projects using an orchestrator workflow, the **initial decomposition baseline** needed to start autonomous delivery safely.
 
 That includes:
 
@@ -105,7 +105,7 @@ Non-interactive flags (illustrative — see the daemon's API for the canonical s
 aloop setup \
   --spec SPEC.md \
   --providers opencode,copilot,codex,gemini,claude \
-  --mode orchestrator \
+  --workflow orchestrator \
   # (no --autonomy flag; aloop is autonomous by default) \
   --tracker github \
   --tracker-repo owner/repo \
@@ -122,7 +122,7 @@ Non-interactive setup must never prompt. Missing required configuration is a non
 Setup reuses aloop's existing orchestration machinery under the hood. It is **not** a separate engine.
 
 - The daemon runs a dedicated `setup_orchestrator` workflow, with setup-specific prompt agents and child sessions where needed.
-- Background work fans out through the same session runner, provider adapters, event log, and child-loop model used elsewhere in aloop.
+- Background work fans out through the same session runner, provider adapters, event log, and child-session model used elsewhere in aloop.
 - Setup-specific agents may analyze, research, synthesize, question, draft, and judge readiness; they may **not** dispatch normal implementation work or mark the project `ready` on their own.
 - The depth of setup adapts to the project. Small greenfield repos may finish quickly; large brownfield or research-heavy repos may remain in `setup_pending` for days while background research continues and the user answers staged questions over time.
 
@@ -134,7 +134,7 @@ Illustrative setup-side agents:
 - `setup_questioner` — targeted next-question selection based on the latest findings
 - `setup_spec_writer` — initial or revised draft spec chapters
 - `setup_constitution_drafter` — project constitution from spec + codebase understanding
-- `setup_decompose` — initial decomposition baseline for orchestrator-mode projects
+- `setup_decompose` — initial decomposition baseline for projects using an orchestrator workflow
 
 ## Setup phases
 
@@ -208,8 +208,8 @@ Topics (in order; depth adapts to maturity):
 
 1. **Primary goal** — feature development, refactor, greenfield build, maintenance. Pins vague language ("make it good" → specific acceptance criteria).
 2. **Sensitivity hints** — optional advisory flags the user can set if the project is production-deployed, security-sensitive, or otherwise high-stakes. Hints inform orchestrator strictness and comment-prompt cadence; they do not pause the autonomous loop (see §Human intervention channels as setup output).
-3. **Mode** — standalone loop vs orchestrator. The daemon computes a recommendation from spec complexity, parallelism score, and workstream count (§Edge cases covers when to override).
-4. **Tracker** — `github | builtin | <future>`. Default is `builtin` when no `gh auth status` is available; `github` when auth is present and the project has a remote. `skip` is not an option: a project without a tracker cannot run the orchestrator (standalone loops can, using `builtin` for per-session bookkeeping).
+3. **Workflow topology** — standalone Story workflow vs orchestrator workflow. The daemon computes a recommendation from spec complexity, parallelism score, and workstream count (§Edge cases covers when to override).
+4. **Tracker** — `github | builtin | <future>`. Default is `builtin` when no `gh auth status` is available; `github` when auth is present and the project has a remote. `skip` is not an option: a project without a tracker cannot run an orchestrator workflow (standalone workflows can, using `builtin` for per-session bookkeeping).
 5. **Provider selection** — which detected providers / harnesses should be used for setup intelligence, and which should be in the project's eventual runtime chain. The runtime canonical order is `[opencode, copilot, codex, gemini, claude]`, restricted to providers actually installed on the host (and with working auth, per `devcontainer.md` §Auth resolution). User may reorder or drop. Setup also records the initial model-refresh policy: off, manual, or recurring monitor (default biweekly for active projects) for future model/version reevaluation; this is project policy, not scheduler tuning.
 6. **Budget cap** — daily or per-orchestrator USD ceiling for pay-per-use providers. Consumed by the scheduler's burn-rate gate (see `provider-contract.md` §Cost and usage capture).
 7. **Devcontainer** — yes (new) / yes (existing) / no. When yes, the auth resolution strategy (`mount-first | env-first | env-only`) is surfaced with per-provider method preview (see `devcontainer.md`).
@@ -266,13 +266,13 @@ Typical blocking ambiguities:
 - two validation command sets are plausible and would produce materially different gates
 - the user answers "use whatever is best" where multiple tracker/provider/devcontainer outcomes are meaningfully different
 - a brownfield `SPEC.md` and the codebase point to different product scope
-- orchestrator mode is requested but tracker ownership, spec files, or merge target are still unclear
+- an orchestrator workflow is requested but tracker ownership, spec files, or merge target are still unclear
 
 The setup orchestrator keeps drilling into these items until they are either resolved or explicitly converted into a non-blocking advisory note. **Generation, verification, and orchestrator bootstrap are forbidden while the latest readiness verdict is not `resolved`.** In non-interactive mode, an unresolved blocking ambiguity is a hard error with the exact missing/unclear field list.
 
 ### Phase 4: Chapter review and plan confirmation
 
-Once the latest readiness verdict is `resolved`, setup renders the exact plan it is about to apply: selected mode, tracker, setup-analysis provider set, runtime provider chain, validation commands, preview-deployment policy, privacy mode, devcontainer strategy, generated artifacts, and any advisory sensitivity hints. For previewable artifacts, setup shows drafts before writing them. Greenfield `SPEC.md` / `CONSTITUTION.md` previews are reviewed here, then written in Phase 5 if approved.
+Once the latest readiness verdict is `resolved`, setup renders the exact plan it is about to apply: selected workflow topology, tracker, setup-analysis provider set, runtime provider chain, validation commands, preview-deployment policy, privacy mode, devcontainer strategy, generated artifacts, and any advisory sensitivity hints. For previewable artifacts, setup shows drafts before writing them. Greenfield `SPEC.md` / `CONSTITUTION.md` previews are reviewed here, then written in Phase 5 if approved.
 
 The review surface is chapter/document-oriented, not just a flat summary:
 
@@ -315,7 +315,7 @@ Artifacts (see §File scaffolds for full list):
 - **Project prompt templates** under `.claude/commands/aloop/`, `.opencode/commands/aloop/`, etc. — one set per activated provider surface, copied from `aloop/templates/` with setup-time variables expanded (`{{SPEC_FILES}}`, `{{VALIDATION_COMMANDS}}`, `{{CONSTITUTION}}`, `{{SAFETY_RULES}}` — see `pipeline.md`).
 - **Subagent definitions** under `.opencode/agents/` (when opencode is activated; per CR #78 and `pipeline.md` §Subagent delegation) — vision-reviewer, code-critic, test-writer, error-analyst, and others, inert for non-opencode providers.
 - **SPEC.md / VERSIONS.md / `docs/conventions/`** — for greenfield projects, generated by the setup orchestration's generation fan-out (SPEC.md from interview answers with machine-verifiable acceptance criteria; VERSIONS.md from detected + confirmed versions; convention docs seeded from `aloop/templates/conventions/` and customized with project-specific examples). Brownfield projects reuse existing specs.
-- **Initial worktree branch `agent/trunk`** — created when orchestrator mode is selected (the merge target for dispatched children; see `orchestrator.md` §Agent-trunk branch).
+- **Initial worktree branch `agent/trunk`** — created when an orchestrator workflow is selected (the merge target for dispatched children; see `orchestrator.md` §Agent-trunk branch).
 - **Tessl skill registration** (when tessl is installed) — `tessl init --project-dependencies` runs during generation; discovered skills are listed in the settings summary. Further per-task skill installation happens during orchestration (CR #48, CR #220).
 - **Tracker prerequisites** — for the GitHub adapter, required labels are created if missing and (when configured) the project's GitHub Project V2 is created with status field options aligned to the status map (CR #221). For the builtin adapter, the tracker directory is seeded.
 
@@ -327,7 +327,7 @@ The readiness gate from CR #93. Setup is not complete until every applicable che
 
 | Check | What it verifies | Failure action |
 |---|---|---|
-| **Scaffold completeness** | All required prompt templates present (both loop and orchestrator sets where the mode warrants); all referenced files exist | List missing paths by filename |
+| **Scaffold completeness** | All required prompt templates present (both Story and orchestrator sets where the selected workflow topology warrants); all referenced files exist | List missing paths by filename |
 | **Compile preflight** | Workflow YAML compiles to a valid `workflow-plan.json`; `{{...}}` template variables resolve | Show the compile error with file + line |
 | **Provider auth** | Each enabled provider authenticates from the host (and, when devcontainer is selected, from inside the container) | Provider-specific remediation (e.g., "run `claude setup-token`", "set `OPENAI_API_KEY`") |
 | **Validation baseline** | Each configured validation command executes from project root with exit status 0 | Report command output; user fixes or adjusts |
@@ -335,7 +335,7 @@ The readiness gate from CR #93. Setup is not complete until every applicable che
 | **Devcontainer build** | Container builds and starts; provider CLIs on container `PATH`; `aloop-agent` reachable from within | `devcontainer up` log; which binary is missing |
 | **Aloop-agent round-trip** | A test submit through `aloop-agent` reaches the daemon and is validated against the session's schema catalog | Connection error; schema mismatch |
 | **Daemon health** | `GET /v1/daemon/health` returns OK; scheduler permits can be acquired and released | Daemon autostart failure; SQLite schema mismatch |
-| **Decomposition/startup health** (orchestrator mode only) | Orchestrator can run one scan turn without errors | Blocking issue is logged; setup does not mark complete |
+| **Decomposition/startup health** (orchestrator workflow only) | Orchestrator can run one scan turn without errors | Blocking issue is logged; setup does not mark complete |
 
 Verification runs as an ordinary daemon-owned pipeline. The setup run record accumulates `check_result` events. When every check is `passed`, the daemon flips the project's `status` from `setup_pending` to `ready`. Only `ready` projects can have sessions started against them.
 
@@ -343,7 +343,7 @@ Per the canonical setup boundary (issues #93, #203): **intelligent default selec
 
 ### Phase 7: Handoff to runtime orchestration (optional)
 
-When the chosen mode is `orchestrator`, setup hands off to the runtime orchestrator only after Phase 6 passes and the latest readiness verdict is still `resolved`.
+When the chosen workflow topology is `orchestrator`, setup hands off to the runtime orchestrator only after Phase 6 passes and the latest readiness verdict is still `resolved`.
 
 The handoff may include:
 
@@ -422,7 +422,7 @@ Workspace membership is optional at setup start. A project may be attached to on
 **Setup run state:**
 
 ```
-POST /v1/setup/runs { abs_path, mode?, non_interactive?, flags? }
+POST /v1/setup/runs { abs_path, workflow?, non_interactive?, flags? }
 → 200 { run_id, status: "discovering" }
 ```
 
@@ -505,8 +505,8 @@ Setup writes artifacts across three locations: the project root (committed), the
 | `~/.aloop/state/projects/<id>/` | Registry row, cached discovery | Daemon | No (API only) |
 | `~/.aloop/state/setup_runs/<id>/` | Per-run state, JSONL events | Daemon | No |
 | `<tracker>/labels` | Required label set | Adapter (during setup verification/bootstrap) | Via tracker directly |
-| `<tracker>/GitHub Project V2` | Status-tracking board | Adapter (GH, orchestrator mode, CR #221) | Via GitHub UI |
-| `<project>` git ref `agent/trunk` | Orchestrator merge target | Scaffold (orchestrator mode) | Not directly |
+| `<tracker>/GitHub Project V2` | Status-tracking board | Adapter (GH, orchestrator workflow, CR #221) | Via GitHub UI |
+| `<project>` git ref `agent/trunk` | Orchestrator merge target | Scaffold (orchestrator workflow) | Not directly |
 
 Files in the project root are committed alongside code (reviewable, blame-able, revertable). Files under `~/.aloop/state/` are host-local and never committed.
 

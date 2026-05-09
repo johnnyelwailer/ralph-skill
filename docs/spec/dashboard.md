@@ -336,7 +336,7 @@ Actions scoped to work items:
 Actions scoped to sessions or turns:
 
 - steer a running session
-- inspect queue items and cancel them
+- inspect queued handler runs and cancel them
 - pause, stop, or force-stop one session
 - inspect one exact turn's chunks, logs, usage, and artifacts
 - compare one run against previous runs on the same story
@@ -927,7 +927,7 @@ Not all of this must land in v1. It should still shape the API and information a
 1. **No privileged dashboard behavior.** The workstation is only a client.
 2. **Hierarchy is inspectable.** Project → work item → session → turn → artifact must be navigable.
 3. **Realtime plus replay.** Live streams are paired with durable history.
-4. **Control exists at multiple scopes.** Project, orchestrator, work item, session, queue item.
+4. **Control exists at multiple scopes.** Project, orchestrator, work item, session, queued handler run.
 5. **Discussion is supported before synthesis-heavy mutation.**
 6. **Costs, provider health, and permit rationale are visible.**
 7. **Setup is first-class.** The workstation must handle onboarding, not just runtime.

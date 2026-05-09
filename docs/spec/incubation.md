@@ -97,7 +97,7 @@ Clients use existing endpoints:
 - setup/spec/tracker/session endpoints for promotion targets
 - `/v1/events` for replayable history, run progress, citations, scheduler decisions, and promotion audit
 
-Per CONSTITUTION §V.24, new incubation requirements map to shared primitives. When the current primitives are too narrow, the required change is a generic primitive enhancement such as a typed subtype, metadata profile, relation model, session mode, or trigger action shape.
+Per CONSTITUTION §V.24, new incubation requirements map to shared primitives. When the current primitives are too narrow, the required change is a generic primitive enhancement such as a typed subtype, metadata profile, relation model, session kind, workflow handler, or trigger action shape.
 
 ## Execution Model
 

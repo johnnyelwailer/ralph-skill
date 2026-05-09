@@ -1,13 +1,13 @@
 /**
  * Trigger types — daemon-owned time/event rules.
- * Spec: docs/spec/api.md §Triggers (line 990)
+ * Spec: docs/spec/api.md §Triggers
  */
 
 /** Trigger source kinds */
 export type TriggerSourceKind = "time" | "event";
 
 /** Trigger action kinds */
-export type TriggerActionKind = "fire_monitor_profile" | "create_session" | "create_artifact" | "queue_orchestrator_trigger" | "emit_alert" | "refresh_projection";
+export type TriggerActionKind = "fire_monitor_profile" | "create_session" | "create_artifact" | "queue_workflow_handler" | "emit_alert" | "refresh_projection";
 
 /** Scope kinds a trigger can be attached to */
 export type TriggerScopeKind = "project" | "workspace" | "artifact" | "global";
@@ -45,7 +45,7 @@ export type TriggerAction = {
     readonly artifact_id?: string;
     readonly session_id?: string;
     /** Workflow handler name to queue, e.g. dependency_signal or a project-defined handler. */
-    readonly trigger?: string;
+    readonly handler?: string;
     readonly reason?: string;
     readonly source_event_id?: string;
     readonly message?: string;

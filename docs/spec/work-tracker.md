@@ -40,7 +40,7 @@ The contract is:
 - All orchestrator interactions go through the adapter.
 - Adapters are the only code that speaks tracker-native API.
 
-Setup may establish the **initial Epic baseline** for orchestrator-mode projects during the final setup handoff, but after handoff the runtime orchestrator owns **living decomposition** and all further tracker-side decomposition changes.
+Setup may establish the **initial Epic baseline** for projects using an orchestrator workflow during the final setup handoff, but after handoff the runtime orchestrator owns **living decomposition** and all further tracker-side decomposition changes.
 
 Pre-work ideas do not belong in the tracker by default. Raw captures, vague requests, links, screenshots, and background research live in the incubation view until an artifact is explicitly promoted into an Epic, Story, spec change, setup run, or steering instruction. See `incubation.md`.
 
@@ -691,7 +691,7 @@ Event kinds the orchestrator listens for:
 
 - `work_item.created`, `work_item.updated`, `work_item.closed`, `work_item.reopened`
 - `hierarchy.child_added`, `hierarchy.child_removed`, `hierarchy.parent_added`, `hierarchy.parent_removed`
-- `comment.created`, `comment.updated` — **human comments are first-class orchestrator input** (see `orchestrator.md` §Epic/Story conversations). Adapter populates `data.source` as `"human"` for comments authored by users and `"aloop"` for comments authored by the orchestrator; the `user_comment` trigger in orchestrator workflows filters to `source=human` to avoid self-reaction loops. Comments may include `artifact_refs`; adapters should surface them in normalized events so orchestrator-side prompts and clients can reason over visual evidence without scraping tracker-native markup.
+- `comment.created`, `comment.updated` — **human comments are first-class orchestrator input** (see `orchestrator.md` §Epic/Story conversations). Adapter populates `data.source` as `"human"` for comments authored by users and `"aloop"` for comments authored by the orchestrator; the trigger record that queues `on.user_comment` filters to `source=human` to avoid self-reaction loops. Comments may include `artifact_refs`; adapters should surface them in normalized events so orchestrator-side prompts and clients can reason over visual evidence without scraping tracker-native markup.
 - `change_set.opened`, `change_set.updated`, `change_set.closed`, `change_set.merged`, `change_set.conflict`
 - `change_set.review_submitted`, `change_set.review_thread_resolved`
 

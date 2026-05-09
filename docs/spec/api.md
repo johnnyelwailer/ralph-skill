@@ -829,7 +829,7 @@ POST /v1/triggers
     "filters": {}
   },
   "action": {
-    "kind": "fire_monitor_profile|create_session|queue_orchestrator_trigger|emit_alert",
+    "kind": "fire_monitor_profile|create_session|queue_workflow_handler|emit_alert",
     "target": { "artifact_id": "a_monitor_profile_..." }
   },
   "budget_policy": { "max_cost_usd_per_fire": 3.00 },
@@ -866,20 +866,20 @@ Common event-trigger sources:
 - documentation/demo drift events: API surface changed, docs drift detected, Storybook coverage gap
 - quality events: complexity threshold exceeded, repeated review finding, ownership hotspot
 
-### Queueing orchestrator triggers
+### Queueing workflow handlers
 
-`action.kind: "queue_orchestrator_trigger"` appends an event to the target orchestrator workflow's queue. `action.target` includes:
+`action.kind: "queue_workflow_handler"` appends a handler-run request to the target workflow's queue. `action.target` includes:
 
 ```json
 {
   "session_id": "s_orchestrator",
-  "trigger": "dependency_signal",
+  "handler": "dependency_signal",
   "reason": "external dependency tool opened a change set",
   "source_event_id": "evt_..."
 }
 ```
 
-The `trigger` value must be a handler name in the target workflow, such as `dependency_signal`, `coverage_signal`, `docs_signal`, `demo_signal`, `refactor_signal`, `bug_signal`, `maintenance_sweep_requested`, or a project-defined custom handler. If a project queues a custom handler, the project must also provide a custom workflow entry and prompt template for that handler.
+The `handler` value must be a handler name in the target workflow, such as `dependency_signal`, `coverage_signal`, `docs_signal`, `demo_signal`, `refactor_signal`, `bug_signal`, `maintenance_sweep_requested`, or a project-defined custom handler. If a project queues a custom handler, the project must also provide a custom workflow entry and prompt template for that handler.
 
 Debounce and budget policies are evaluated before queueing. A trigger that matches but is debounced, disabled, or over budget emits trigger metadata but does not queue provider-backed work.
 
@@ -890,7 +890,7 @@ Projects or external producers may create custom triggers by calling `POST /v1/t
 - `source.topic` or `source.filters.topics` for event-topic matching
 - `source.filters.labels` for normalized label equality
 - `source.filters.thresholds` for numeric projected metrics
-- `action.kind: "queue_orchestrator_trigger"` with an existing or project-defined handler name
+- `action.kind: "queue_workflow_handler"` with an existing or project-defined handler name
 
 Custom triggers are durable daemon records, not prompt logic and not a YAML mini-language. Predicates stay in daemon-owned trigger records; prompts receive the already-matched signal context. If the target handler is custom, the project must provide the workflow handler and prompt template that make that handler meaningful.
 
@@ -900,7 +900,7 @@ Setup is a resumable, long-lived setup orchestration for onboarding a project. C
 
 ```
 POST   /v1/setup/runs                        start a setup run for a project (or greenfield)
-                                             body: { abs_path, mode?, non_interactive?, flags? }
+                                             body: { abs_path, workflow?, non_interactive?, flags? }
 GET    /v1/setup/runs                        list runs (active, completed, failed)
 GET    /v1/setup/runs/:id                    current phase, progress, findings, unresolved ambiguities,
                                              readiness verdict, chapters/documents summary,
@@ -919,7 +919,7 @@ GET    /v1/setup/runs/:id/events             SSE: setup events (discovery.*, int
                                              verification.*, completion.*)
 ```
 
-On successful `verification` phase, the daemon transitions the project's `status` from `setup_pending` to `ready`. The setup run emits `setup.completed` only after the full flow is done, including optional orchestrator bootstrap when the selected mode requires it.
+On successful `verification` phase, the daemon transitions the project's `status` from `setup_pending` to `ready`. The setup run emits `setup.completed` only after the full flow is done, including optional orchestrator bootstrap when the selected workflow topology requires it.
 
 **Background research.** Setup runs may continue background research while awaiting user input, and may remain active across multiple days. `resume` returns the current stage rather than restarting the flow.
 

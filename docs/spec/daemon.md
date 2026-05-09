@@ -258,7 +258,7 @@ Trigger actions are typed, not arbitrary code:
 - `create_session` with a research workflow/profile
 - `create_artifact` with typed metadata/profile data
 - `fire_monitor_profile`
-- `queue_orchestrator_trigger`
+- `queue_workflow_handler`
 - `refresh_projection`
 - `emit_alert`
 

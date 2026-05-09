@@ -33,7 +33,7 @@
 
 A **step** is a named pipeline unit. v1 defines two step kinds:
 
-- **`agent`** — a model-driven turn backed by a prompt file, provider/model preference, reasoning effort, and optional trigger.
+- **`agent`** — a model-driven turn backed by a prompt file, provider/model preference, reasoning effort, and resolved handler context.
 - **`exec`** — a deterministic code step backed by a manifest that names a runtime and a checked-in file to execute.
 
 Both are data. Neither is inline logic in YAML.
@@ -177,7 +177,6 @@ reasoning: medium
 timeout: 30m
 max_retries: 2
 retry_backoff: exponential
-trigger: null
 ---
 
 # Build Mode
@@ -193,7 +192,6 @@ Fields (all optional; defaults apply):
 - `model` — provider-specific model ID (optional; resolved from track/version when omitted).
 - `reasoning` — `low` | `medium` | `high` | `xhigh` | `none`.
 - `color` — terminal color for this phase.
-- `trigger` — named event that causes the daemon to queue this prompt (e.g., `merge_conflict`, `stuck_detected`, `burn_rate_alert`). Resolved by the daemon, never by the shim.
 - `timeout` — per-prompt provider timeout.
 - `max_retries` — per-prompt retry cap before declaring iteration failure.
 - `retry_backoff` — `none` | `linear` | `exponential`.
@@ -354,7 +352,7 @@ Chains are resolved at permit-grant time, allowing live overrides and health cha
 
 ## Shared instructions via `{{include:path}}`
 
-Prompt templates support `{{include:path}}` to inline shared instructions. Expanded during template expansion at session start or queue injection. Paths are relative to the templates directory.
+Prompt templates support `{{include:path}}` to inline shared instructions. Expanded during template expansion at session start or handler-run creation. Paths are relative to the templates directory.
 
 ```
 aloop/templates/
@@ -367,10 +365,10 @@ aloop/templates/
   PROMPT_final-review.md   # frontmatter + {{include:instructions/review.md}}
   PROMPT_qa.md             # frontmatter + {{include:instructions/qa.md}}
   PROMPT_final-qa.md       # frontmatter + {{include:instructions/qa.md}}
-  PROMPT_merge.md          # trigger: merge_conflict
-  PROMPT_steer.md          # trigger: steer
-  PROMPT_debug.md          # trigger: stuck_detected
-  PROMPT_orch_diagnose.md  # trigger: orch_diagnose, burn_rate_alert
+  PROMPT_merge.md          # used by on.merge_conflict
+  PROMPT_steer.md          # used by on.steer
+  PROMPT_debug.md          # used by on.stuck_detected
+  PROMPT_orch_diagnose.md  # used by diagnose handlers
 ```
 
 Includes may themselves contain template variables; expanded after inlining.
@@ -399,7 +397,7 @@ Variables resolved at two stages:
 | `{{ITERATION}}` | Current iteration number |
 | `{{ARTIFACTS_DIR}}` | Session artifacts directory path |
 
-**Prompt content rule (hard):** orchestrator and queue prompts MUST NOT embed file contents in the body. Reference files by path; let the agent read them. No queue prompt may exceed 10 KB (excluding frontmatter).
+**Prompt content rule (hard):** orchestrator and event-handler prompts MUST NOT embed file contents in the body. Reference files by path; let the agent read them. No queued handler prompt may exceed 10 KB (excluding frontmatter).
 
 ## Compile step: workflow YAML → workflow-plan.json
 
@@ -651,7 +649,7 @@ Runtime-level truths:
 - It subscribes to `/v1/events?parent=<self.id>` and writes to its own queue when it decides to act on anomalies — no daemon-side self-healing daemon.
 - It uses `aloop-agent` just like any other session — it submits `decompose_result`, `consistency_result`, reads `child_stuck` events, and queues `PROMPT_orch_diagnose.md` on its own queue when needed.
 
-Self-healing is intelligent because it is an agent turn (the diagnose prompt), not a shell script reacting to metrics. The diagnose turn's output is either a new queue item (e.g., "kill child X," "pause dispatch," "raise burn-rate threshold") or a `no_action` submit.
+Self-healing is intelligent because it is an agent turn (the diagnose prompt), not a shell script reacting to metrics. The diagnose turn's output is either a daemon action request (e.g., "kill child X," "pause dispatch," "raise burn-rate threshold") or a `no_action` submit.
 
 Projects may run different orchestrator workflows with the same mechanism. For example, `maintenance-loop.yaml` is a long-running repository-upkeep orchestrator with no default cycling `start` handler. Normalized events such as `dependency_signal`, `coverage_signal`, `docs_signal`, `demo_signal`, `refactor_signal`, and `bug_signal` wake only the relevant category agent. It still creates normal Epics/Stories, still runs `orch_refine` and `orch_consistency`, and still dispatches children using ordinary Story workflows such as `refactor`, `docs-only`, `frontend-slice`, `migration`, or `plan-build-review`.
 
