@@ -136,6 +136,42 @@ describe("releasePermit", () => {
     expect(events.events[0].topic).toBe("scheduler.permit.release");
     expect(events.events[0].data).toMatchObject({ permit_id: "my-permit", session_id: "my-session" });
   });
+
+  test("writes release event with composer_turn_id for composer turn owner", async () => {
+    const p = makePermit({ id: "perm-ct", composerTurnId: "ct_01", sessionId: undefined });
+    const permits = new MockPermitRegistry();
+    permits.setPermits([p]);
+    const config = makeConfig();
+    const events = new MockEventWriter();
+    const service = new SchedulerService(permits as unknown as PermitRegistry, config, events as unknown as EventWriter);
+    const result = await service.releasePermit("perm-ct");
+    expect(result).toBe(true);
+    expect(events.events).toHaveLength(1);
+    expect(events.events[0].topic).toBe("scheduler.permit.release");
+    expect(events.events[0].data).toMatchObject({
+      permit_id: "perm-ct",
+      composer_turn_id: "ct_01",
+    });
+    expect(events.events[0].data).not.toHaveProperty("session_id");
+  });
+
+  test("writes release event with control_subagent_run_id for control subagent owner", async () => {
+    const p = makePermit({ id: "perm-csar", controlSubagentRunId: "csar_99", sessionId: undefined });
+    const permits = new MockPermitRegistry();
+    permits.setPermits([p]);
+    const config = makeConfig();
+    const events = new MockEventWriter();
+    const service = new SchedulerService(permits as unknown as PermitRegistry, config, events as unknown as EventWriter);
+    const result = await service.releasePermit("perm-csar");
+    expect(result).toBe(true);
+    expect(events.events).toHaveLength(1);
+    expect(events.events[0].topic).toBe("scheduler.permit.release");
+    expect(events.events[0].data).toMatchObject({
+      permit_id: "perm-csar",
+      control_subagent_run_id: "csar_99",
+    });
+    expect(events.events[0].data).not.toHaveProperty("session_id");
+  });
 });
 
 // ─── expirePermits ─────────────────────────────────────────────────────────────
@@ -178,6 +214,42 @@ describe("expirePermits", () => {
     // Since MockPermitRegistry.listExpired returns [] by default, result is 0
     const result = await service.expirePermits();
     expect(result).toBe(0);
+  });
+
+  test("writes expire event with composer_turn_id for composer turn owner", async () => {
+    const p = makePermit({ id: "exp-ct", composerTurnId: "ct_exp_01", sessionId: undefined });
+    const permits = new MockPermitRegistry();
+    permits.setExpired([p]);
+    const config = makeConfig();
+    const events = new MockEventWriter();
+    const service = new SchedulerService(permits as unknown as PermitRegistry, config, events as unknown as EventWriter);
+    const result = await service.expirePermits("2025-01-01T00:00:00.000Z");
+    expect(result).toBe(1);
+    expect(events.events).toHaveLength(1);
+    expect(events.events[0].topic).toBe("scheduler.permit.expired");
+    expect(events.events[0].data).toMatchObject({
+      permit_id: "exp-ct",
+      composer_turn_id: "ct_exp_01",
+    });
+    expect(events.events[0].data).not.toHaveProperty("session_id");
+  });
+
+  test("writes expire event with control_subagent_run_id for control subagent owner", async () => {
+    const p = makePermit({ id: "exp-csar", controlSubagentRunId: "csar_exp_02", sessionId: undefined });
+    const permits = new MockPermitRegistry();
+    permits.setExpired([p]);
+    const config = makeConfig();
+    const events = new MockEventWriter();
+    const service = new SchedulerService(permits as unknown as PermitRegistry, config, events as unknown as EventWriter);
+    const result = await service.expirePermits("2025-01-01T00:00:00.000Z");
+    expect(result).toBe(1);
+    expect(events.events).toHaveLength(1);
+    expect(events.events[0].topic).toBe("scheduler.permit.expired");
+    expect(events.events[0].data).toMatchObject({
+      permit_id: "exp-csar",
+      control_subagent_run_id: "csar_exp_02",
+    });
+    expect(events.events[0].data).not.toHaveProperty("session_id");
   });
 });
 
