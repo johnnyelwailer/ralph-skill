@@ -8,8 +8,12 @@ import {
   listWorkspaces,
   removeProjectFromWorkspace,
   updateWorkspace,
+  addProjectToWorkspace,
 } from "./workspace-queries.ts";
-import { addProjectToWorkspace } from "./workspace-queries.ts";
+import {
+  DuplicateWorkspaceProjectError,
+  ProjectNotFoundWorkspaceError,
+} from "./workspace-types.ts";
 
 const WORKSPACE_SCHEMA = `
 CREATE TABLE IF NOT EXISTS workspaces (
@@ -274,5 +278,62 @@ describe("workspace project membership", () => {
     addProjectToWorkspace(db, w.id, "p1");
     removeProjectFromWorkspace(db, w.id, "p1");
     expect(listWorkspaceProjects(db, w.id)).toHaveLength(0);
+  });
+});
+
+describe("addProjectToWorkspace errors", () => {
+  test("throws ProjectNotFoundWorkspaceError when project does not exist", () => {
+    const w = createWorkspace(db, { name: "W" });
+    expect(() => addProjectToWorkspace(db, w.id, "nonexistent-proj")).toThrow(
+      ProjectNotFoundWorkspaceError,
+    );
+  });
+
+  test("throws ProjectNotFoundWorkspaceError when workspace does not exist", () => {
+    seedProject("p1", "P1");
+    // A workspace that doesn't exist should still throw ProjectNotFoundWorkspaceError
+    expect(() => addProjectToWorkspace(db, "nonexistent-ws", "p1")).toThrow(
+      ProjectNotFoundWorkspaceError,
+    );
+  });
+
+  test("throws DuplicateWorkspaceProjectError when project is already a member", () => {
+    const w = createWorkspace(db, { name: "W" });
+    seedProject("p1", "P1");
+    addProjectToWorkspace(db, w.id, "p1", "primary");
+    expect(() => addProjectToWorkspace(db, w.id, "p1", "supporting")).toThrow(
+      DuplicateWorkspaceProjectError,
+    );
+  });
+
+  test("DuplicateWorkspaceProjectError carries correct project and workspace ids", () => {
+    const w = createWorkspace(db, { name: "W" });
+    seedProject("p1", "P1");
+    addProjectToWorkspace(db, w.id, "p1");
+    let err: unknown;
+    try {
+      addProjectToWorkspace(db, w.id, "p1");
+    } catch (e) {
+      err = e;
+    }
+    expect(err).toBeInstanceOf(DuplicateWorkspaceProjectError);
+    if (err instanceof DuplicateWorkspaceProjectError) {
+      expect(err.workspaceId).toBe(w.id);
+      expect(err.projectId).toBe("p1");
+    }
+  });
+
+  test("ProjectNotFoundWorkspaceError carries the missing project id", () => {
+    const w = createWorkspace(db, { name: "W" });
+    let err: unknown;
+    try {
+      addProjectToWorkspace(db, w.id, "proj-missing");
+    } catch (e) {
+      err = e;
+    }
+    expect(err).toBeInstanceOf(ProjectNotFoundWorkspaceError);
+    if (err instanceof ProjectNotFoundWorkspaceError) {
+      expect(err.projectId).toBe("proj-missing");
+    }
   });
 });
