@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { toSdkModel } from "./opencode-model.ts";
+import { resolveOpencodeModel, toSdkModel } from "./opencode-model.ts";
 import type { ResolvedModel } from "@aloop/provider";
 
 describe("toSdkModel", () => {
@@ -48,5 +48,66 @@ describe("toSdkModel", () => {
     expect(typeof result.modelID).toBe("string");
     expect(result.providerID).toBe("openrouter");
     expect(result.modelID).toBe("claude@3.5");
+  });
+});
+
+// ─── resolveOpencodeModel ─────────────────────────────────────────────────────
+
+describe("resolveOpencodeModel", () => {
+  test("parses opencode provider ref with track/model", () => {
+    const result = resolveOpencodeModel("opencode/gpt-4o/reasoning");
+    expect(result.providerId).toBe("opencode");
+    expect(result.modelId).toBe("gpt-4o/reasoning");
+  });
+
+  test("parses opencode provider ref with track/model and version", () => {
+    const result = resolveOpencodeModel("opencode/gpt-4o/reasoning@2.0");
+    expect(result.providerId).toBe("opencode");
+    expect(result.modelId).toBe("gpt-4o/reasoning@2.0");
+    expect(result.version).toBe("2.0");
+  });
+
+  test("returns default model id when ref has no track", () => {
+    const result = resolveOpencodeModel("opencode");
+    expect(result.providerId).toBe("opencode");
+    expect(result.modelId).toBe("opencode/default");
+  });
+
+  test("accepts custom default model id", () => {
+    const result = resolveOpencodeModel("opencode", "opencode/custom");
+    expect(result.modelId).toBe("opencode/custom");
+  });
+
+  test("throws when ref is for a different provider", () => {
+    expect(() => resolveOpencodeModel("anthropic/sonnet")).toThrow(
+      "opencode adapter cannot resolve provider ref",
+    );
+  });
+
+  test("throws when ref has no provider id", () => {
+    expect(() => resolveOpencodeModel("")).toThrow(
+      "provider ref cannot be empty",
+    );
+  });
+
+  test("parses track-only ref (no model)", () => {
+    const result = resolveOpencodeModel("opencode/sonnet");
+    expect(result.providerId).toBe("opencode");
+    expect(result.modelId).toBe("sonnet");
+  });
+
+  test("track is included in returned model when present", () => {
+    const result = resolveOpencodeModel("opencode/gpt-4o@1.0");
+    expect(result.track).toBe("gpt-4o");
+    expect(result.version).toBe("1.0");
+    expect(result.modelId).toBe("gpt-4o@1.0");
+  });
+
+  test("empty track/model with version uses default model id", () => {
+    // "opencode@1.0" — version only, no track → uses default
+    const result = resolveOpencodeModel("opencode@1.0");
+    expect(result.providerId).toBe("opencode");
+    expect(result.modelId).toBe("opencode/default");
+    expect(result.version).toBe("1.0");
   });
 });
