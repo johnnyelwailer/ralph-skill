@@ -1,0 +1,22 @@
+{
+  "name": "@aloop/daemon-routes-events",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "bun test"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "typescript": "^5.6.0"
+  },
+  "dependencies": {
+    "@aloop/core": "workspace:*",
+    "@aloop/daemon-config": "workspace:*",
+    "@aloop/event-jsonl": "workspace:*"
+  }
+}
