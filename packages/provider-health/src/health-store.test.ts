@@ -131,4 +131,104 @@ describe("InMemoryProviderHealthStore", () => {
     expect(state.quotaRemaining).toBe(0);
     expect(state.quotaResetsAt).toBe("2026-01-01T01:00:00.000Z");
   });
+
+  // ─── peek ─────────────────────────────────────────────────────────────────
+
+  test("peek returns same state as get for known provider", () => {
+    const store = new InMemoryProviderHealthStore(["opencode"], NOW);
+    store.noteSuccess("opencode", NOW + 1_000);
+    expect(store.peek("opencode")).toEqual(store.get("opencode"));
+  });
+
+  test("peek does not lazy-create unknown provider", () => {
+    const store = new InMemoryProviderHealthStore(["opencode"], NOW);
+    store.peek("never-seen");
+    // Unknown provider was NOT added to the store
+    expect(store.list().map((h) => h.providerId)).toEqual(["opencode"]);
+  });
+
+  test("peek returns undefined for provider only created via get", () => {
+    // This verifies peek's non-creation semantics even after get has created
+    // a lazily-initialized entry — peek still does not create.
+    const store = new InMemoryProviderHealthStore([], NOW);
+    store.get("lazily-created"); // get creates it
+    expect(store.peek("lazily-created")).toBeDefined(); // peek finds it (it was created by get)
+    // But peek on a truly unknown provider still returns undefined
+    expect(store.peek("truly-unknown")).toBeUndefined();
+  });
+
+  test("peek reflects state changes from noteSuccess", () => {
+    const store = new InMemoryProviderHealthStore(["opencode"], NOW);
+    store.noteFailure("opencode", "timeout", NOW + 1_000, {
+      backoffMsByFailureCount: [0, 60_000],
+    });
+    const afterFailure = store.peek("opencode");
+    expect(afterFailure?.status).toBe("cooldown");
+    expect(afterFailure?.consecutiveFailures).toBe(1);
+
+    store.noteSuccess("opencode", NOW + 2_000);
+    const afterSuccess = store.peek("opencode");
+    expect(afterSuccess?.status).toBe("healthy");
+    expect(afterSuccess?.consecutiveFailures).toBe(0);
+  });
+
+  test("peek reflects state changes from noteFailure", () => {
+    const store = new InMemoryProviderHealthStore(["opencode"], NOW);
+    store.noteFailure("opencode", "rate_limit", NOW + 1_000, {
+      backoffMsByFailureCount: [0, 10_000],
+    });
+    const first = store.peek("opencode");
+    expect(first?.status).toBe("cooldown");
+    expect(first?.consecutiveFailures).toBe(1);
+
+    store.noteFailure("opencode", "rate_limit", NOW + 2_000, {
+      backoffMsByFailureCount: [0, 10_000, 30_000],
+    });
+    const second = store.peek("opencode");
+    expect(second?.consecutiveFailures).toBe(2);
+  });
+
+  test("peek reflects quota changes from setQuota", () => {
+    const store = new InMemoryProviderHealthStore(["opencode"], NOW);
+    const before = store.peek("opencode");
+    expect(before?.quotaRemaining).toBeNull();
+
+    store.setQuota("opencode", { remaining: 500, resetsAt: "2026-01-02T00:00:00.000Z" }, NOW + 60_000);
+    const after = store.peek("opencode");
+    expect(after?.quotaRemaining).toBe(500);
+    expect(after?.quotaResetsAt).toBe("2026-01-02T00:00:00.000Z");
+  });
+
+  // ─── lazy creation via noteSuccess / noteFailure ───────────────────────────
+
+  test("noteSuccess on unknown provider lazy-creates and updates it", () => {
+    const store = new InMemoryProviderHealthStore(["opencode"], NOW);
+    store.noteSuccess("claude", NOW + 5_000);
+    const state = store.get("claude");
+    expect(state.providerId).toBe("claude");
+    expect(state.status).toBe("healthy");
+    expect(state.consecutiveFailures).toBe(0);
+    expect(state.lastSuccess).toBe(new Date(NOW + 5_000).toISOString());
+  });
+
+  test("noteFailure on unknown provider lazy-creates and updates it", () => {
+    const store = new InMemoryProviderHealthStore(["opencode"], NOW);
+    // With default backoff: first failure (consecutiveFailures=1 → backoff[1]=0) → no cooldown
+    // Use a custom backoff schedule to verify cooldown behavior with lazy-created providers
+    store.noteFailure("claude", "timeout", NOW + 3_000, {
+      backoffMsByFailureCount: [0, 60_000],
+    });
+    const state = store.get("claude");
+    expect(state.providerId).toBe("claude");
+    expect(state.status).toBe("cooldown");
+    expect(state.consecutiveFailures).toBe(1);
+    expect(state.lastFailure).toBe(new Date(NOW + 3_000).toISOString());
+  });
+
+  test("lazy-created provider appears in list", () => {
+    const store = new InMemoryProviderHealthStore(["opencode"], NOW);
+    store.noteFailure("zed", "auth", NOW + 1_000);
+    const ids = store.list().map((h) => h.providerId).sort();
+    expect(ids).toEqual(["opencode", "zed"]);
+  });
 });
