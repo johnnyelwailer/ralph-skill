@@ -13,9 +13,11 @@ CREATE TABLE IF NOT EXISTS session_metrics (
   PRIMARY KEY (session_id, metric_name)
 );
 CREATE TABLE IF NOT EXISTS scheduler_metrics (
-  metric_name  TEXT NOT NULL PRIMARY KEY,
+  metric_name  TEXT NOT NULL,
+  gate         TEXT NOT NULL DEFAULT '',
   value        REAL NOT NULL,
-  updated_at   TEXT NOT NULL
+  updated_at   TEXT NOT NULL,
+  PRIMARY KEY (metric_name, gate)
 );
 CREATE TABLE IF NOT EXISTS provider_metrics (
   provider_id  TEXT NOT NULL,
@@ -44,15 +46,18 @@ CREATE TABLE IF NOT EXISTS metric_history (
   timestamp    TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS metric_aggregates (
-  metric_name   TEXT NOT NULL,
-  labels        TEXT NOT NULL DEFAULT '{}',
-  window_start  TEXT NOT NULL,
-  window_end    TEXT NOT NULL,
-  window_kind   TEXT NOT NULL DEFAULT 'rolling',
-  stat          TEXT NOT NULL,
-  value         REAL NOT NULL,
-  computed_at   TEXT NOT NULL,
-  PRIMARY KEY (metric_name, labels, window_start, window_kind, stat)
+  id              TEXT PRIMARY KEY,
+  scope           TEXT NOT NULL,
+  window_start    TEXT NOT NULL,
+  window_end      TEXT NOT NULL,
+  window_label    TEXT NOT NULL,
+  group_by        TEXT NOT NULL,
+  labels          TEXT NOT NULL,
+  sample_size     INTEGER NOT NULL DEFAULT 0,
+  directional     INTEGER NOT NULL DEFAULT 1,
+  metrics         TEXT NOT NULL,
+  updated_at      TEXT NOT NULL,
+  UNIQUE(scope, window_label, group_by, labels)
 );
 `;
 

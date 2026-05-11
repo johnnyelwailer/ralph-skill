@@ -25,10 +25,28 @@ CREATE INDEX IF NOT EXISTS idx_session_metrics_name    ON session_metrics(metric
 -- Written by the daemon on scheduler.permit.grant, scheduler.permit.deny,
 -- scheduler.permit.release, and scheduler.permit.expired events.
 CREATE TABLE IF NOT EXISTS scheduler_metrics (
-  metric_name  TEXT NOT NULL PRIMARY KEY,
+  metric_name  TEXT NOT NULL,
+  gate         TEXT NOT NULL DEFAULT '',
   value        REAL NOT NULL,
-  updated_at   TEXT NOT NULL
+  updated_at   TEXT NOT NULL,
+  PRIMARY KEY (metric_name, gate)
 );
+
+CREATE INDEX IF NOT EXISTS idx_scheduler_metrics_name ON scheduler_metrics(metric_name);
+
+-- session_metrics: current (latest) values for session-scoped metrics.
+-- Written by the daemon projector on usage/turn events; read by scheduler gates
+-- and orchestrator diagnose on every permit acquire.
+CREATE TABLE IF NOT EXISTS session_metrics (
+  session_id   TEXT NOT NULL,
+  metric_name  TEXT NOT NULL,
+  value        REAL NOT NULL,
+  updated_at   TEXT NOT NULL,
+  PRIMARY KEY (session_id, metric_name)
+);
+
+CREATE INDEX IF NOT EXISTS idx_session_metrics_session ON session_metrics(session_id);
+CREATE INDEX IF NOT EXISTS idx_session_metrics_name    ON session_metrics(metric_name);
 
 -- provider_metrics: per-provider health and quota state used by the provider gate.
 -- Written by the daemon on provider.health transitions and provider.quota events.
@@ -72,21 +90,3 @@ CREATE TABLE IF NOT EXISTS metric_history (
 
 CREATE INDEX IF NOT EXISTS idx_metric_history_name_time
   ON metric_history(metric_name, timestamp DESC);
-
--- metric_aggregates: periodically computed roll-ups at fixed windows.
--- Written by the daemon projector on a schedule (not on every event).
--- Used for histograms, ratios, and long-range dashboard views.
-CREATE TABLE IF NOT EXISTS metric_aggregates (
-  metric_name   TEXT NOT NULL,
-  labels        TEXT NOT NULL DEFAULT '{}',
-  window_start  TEXT NOT NULL,
-  window_end    TEXT NOT NULL,
-  window_kind   TEXT NOT NULL DEFAULT 'rolling',  -- 'rolling' | 'calendar'
-  stat          TEXT NOT NULL,   -- 'sum' | 'mean' | 'min' | 'max' | 'p50' | 'p95' | 'count'
-  value         REAL NOT NULL,
-  computed_at   TEXT NOT NULL,
-  PRIMARY KEY (metric_name, labels, window_start, window_kind, stat)
-);
-
-CREATE INDEX IF NOT EXISTS idx_metric_aggregates_name_time
-  ON metric_aggregates(metric_name, window_start DESC);

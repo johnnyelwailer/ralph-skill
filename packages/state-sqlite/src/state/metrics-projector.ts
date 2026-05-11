@@ -149,9 +149,9 @@ function upsertSchedulerMetric(
   timestamp: string,
 ): void {
   db.run(
-    `INSERT INTO scheduler_metrics (metric_name, value, updated_at)
-     VALUES (?, ?, ?)
-     ON CONFLICT(metric_name) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
+    `INSERT INTO scheduler_metrics (metric_name, gate, value, updated_at)
+     VALUES (?, '', ?, ?)
+     ON CONFLICT(metric_name, gate) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
     [metric, value, timestamp],
   );
 }

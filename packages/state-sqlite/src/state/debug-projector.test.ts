@@ -5,9 +5,11 @@ import { MetricsProjector } from "./metrics-projector.ts";
 
 const MIGRATION_008 = `
 CREATE TABLE IF NOT EXISTS scheduler_metrics (
-  metric_name  TEXT NOT NULL PRIMARY KEY,
+  metric_name  TEXT NOT NULL,
+  gate         TEXT NOT NULL DEFAULT '',
   value        REAL NOT NULL,
-  updated_at   TEXT NOT NULL
+  updated_at   TEXT NOT NULL,
+  PRIMARY KEY (metric_name, gate)
 );
 CREATE TABLE IF NOT EXISTS session_metrics (
   session_id   TEXT NOT NULL,
