@@ -11,6 +11,7 @@ import type {
 } from "./workspace-types.ts";
 import {
   addProjectToWorkspace,
+  archiveWorkspace,
   createWorkspace,
   deleteWorkspace,
   getProjectCounts,
@@ -22,6 +23,8 @@ import {
   removeProjectFromWorkspace,
   type WorkspaceProjectWithDetails,
   updateWorkspace,
+  updateWorkspaceName,
+  updateWorkspaceDescription,
 } from "./workspace-queries.ts";
 
 export class WorkspaceRegistry {
@@ -35,8 +38,9 @@ export class WorkspaceRegistry {
     return getWorkspaceById(this.db, id);
   }
 
-  list(filter: WorkspaceFilter = {}): WorkspaceWithCounts[] {
-    return listWorkspaces(this.db, filter);
+  list(filter: WorkspaceFilter = {}): { items: WorkspaceWithCounts[]; nextCursor: string | null } {
+    const items = listWorkspaces(this.db, filter);
+    return { items, nextCursor: null };
   }
 
   update(
@@ -79,5 +83,17 @@ export class WorkspaceRegistry {
 
   getProjectRole(workspaceId: string, projectId: string): WorkspaceProjectRole | null {
     return getProjectRole(this.db, workspaceId, projectId);
+  }
+
+  updateName(id: string, name: string): Workspace {
+    return updateWorkspaceName(this.db, id, name);
+  }
+
+  updateDescription(id: string, description: string): Workspace {
+    return updateWorkspaceDescription(this.db, id, description);
+  }
+
+  archive(id: string): Workspace {
+    return archiveWorkspace(this.db, id);
   }
 }

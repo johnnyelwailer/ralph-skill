@@ -2,6 +2,7 @@ import type { Database } from "bun:sqlite";
 import {
   DuplicateWorkspaceProjectError,
   ProjectNotFoundWorkspaceError,
+  WorkspaceNotFoundError,
   type CreateWorkspaceInput,
   type Workspace,
   type WorkspaceFilter,
@@ -16,9 +17,11 @@ type WorkspaceRow = {
   name: string;
   description: string;
   default_budget_usd_per_day: number;
+  default_project_id: string | null;
   metadata: string;
   created_at: string;
   updated_at: string;
+  archived_at: string | null;
 };
 
 function rowToWorkspace(row: WorkspaceRow): Workspace {
@@ -27,9 +30,11 @@ function rowToWorkspace(row: WorkspaceRow): Workspace {
     name: row.name,
     description: row.description,
     defaultBudgetUsdPerDay: row.default_budget_usd_per_day,
+    defaultProjectId: row.default_project_id,
     metadata: JSON.parse(row.metadata),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+    archivedAt: row.archived_at,
   };
 }
 
@@ -68,13 +73,14 @@ export function createWorkspace(
   const metadata = JSON.stringify(input.metadata ?? {});
 
   db.run(
-    `INSERT INTO workspaces (id, name, description, default_budget_usd_per_day, metadata, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO workspaces (id, name, description, default_budget_usd_per_day, default_project_id, metadata, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       id,
       input.name,
       input.description ?? "",
       input.defaultBudgetUsdPerDay ?? 0.0,
+      input.defaultProjectId ?? null,
       metadata,
       now,
       now,
@@ -98,6 +104,7 @@ export function listWorkspaces(
 ): WorkspaceWithCounts[] {
   const q = filter.q ?? "";
   const limit = Math.min(filter.limit ?? 50, 200);
+  const includeArchived = filter.archived ?? false;
 
   const countsSubquery = `
     SELECT
@@ -112,9 +119,6 @@ export function listWorkspaces(
     GROUP BY workspace_id
   `;
 
-  let sql: string;
-  let params: (string | number)[];
-
   const countCols = `
       COALESCE(wp_cnts.default_project_id, NULL) AS default_project_id,
       COALESCE(wp_cnts.total, 0)             AS total,
@@ -124,26 +128,44 @@ export function listWorkspaces(
       COALESCE(wp_cnts.experiment_count, 0)   AS experiment_count
   `;
 
+  let sql: string;
+  let params: (string | number)[];
+
+  const conditions: string[] = [];
   if (q.length > 0) {
     const qPattern = `%${q}%`;
+    conditions.push(`(w.name LIKE ? OR w.description LIKE ?)`);
+    params = [qPattern, qPattern];
+  } else {
+    params = [];
+  }
+
+  if (!includeArchived) {
+    conditions.push(`w.archived_at IS NULL`);
+  }
+
+  const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+
+  if (q.length > 0) {
     sql = `
       SELECT w.*,${countCols}
       FROM workspaces w
       LEFT JOIN (${countsSubquery}) wp_cnts ON wp_cnts.workspace_id = w.id
-      WHERE w.name LIKE ? OR w.description LIKE ?
+      ${whereClause}
       ORDER BY w.created_at
       LIMIT ?
     `;
-    params = [qPattern, qPattern, limit + 1];
+    params.push(limit + 1);
   } else {
     sql = `
       SELECT w.*,${countCols}
       FROM workspaces w
       LEFT JOIN (${countsSubquery}) wp_cnts ON wp_cnts.workspace_id = w.id
+      ${whereClause}
       ORDER BY w.created_at
       LIMIT ?
     `;
-    params = [limit + 1];
+    params.push(limit + 1);
   }
 
   const rows = db.query<WorkspaceWithCountsRow, (string | number)[]>(sql).all(...params);
@@ -210,7 +232,7 @@ export function updateWorkspace(
 
   if (changes.changes === 0) {
     const existing = getWorkspaceById(db, id);
-    if (!existing) throw new Error(`workspace not found: ${id}`);
+    if (!existing) throw new WorkspaceNotFoundError(id);
   }
 
   return getWorkspaceById(db, id)!;
@@ -218,6 +240,68 @@ export function updateWorkspace(
 
 export function deleteWorkspace(db: Database, id: string): void {
   db.run(`DELETE FROM workspaces WHERE id = ?`, [id]);
+}
+
+export function updateWorkspaceName(
+  db: Database,
+  id: string,
+  name: string,
+  now: string = new Date().toISOString(),
+): Workspace {
+  const trimmed = name.trim();
+  if (trimmed.length === 0) throw new Error("name cannot be empty");
+
+  const changes = db
+    .query<{ changes: number }, [string, string, string]>(
+      `UPDATE workspaces SET name = ?, updated_at = ? WHERE id = ?`,
+    )
+    .run(trimmed, now, id);
+
+  if (changes.changes === 0) {
+    const existing = getWorkspaceById(db, id);
+    if (!existing) throw new WorkspaceNotFoundError(id);
+  }
+
+  return getWorkspaceById(db, id)!;
+}
+
+export function updateWorkspaceDescription(
+  db: Database,
+  id: string,
+  description: string,
+  now: string = new Date().toISOString(),
+): Workspace {
+  const changes = db
+    .query<{ changes: number }, [string, string, string]>(
+      `UPDATE workspaces SET description = ?, updated_at = ? WHERE id = ?`,
+    )
+    .run(description, now, id);
+
+  if (changes.changes === 0) {
+    const existing = getWorkspaceById(db, id);
+    if (!existing) throw new WorkspaceNotFoundError(id);
+  }
+
+  return getWorkspaceById(db, id)!;
+}
+
+export function archiveWorkspace(
+  db: Database,
+  id: string,
+  now: string = new Date().toISOString(),
+): Workspace {
+  const changes = db
+    .query<{ changes: number }, [string, string, string]>(
+      `UPDATE workspaces SET archived_at = ?, updated_at = ? WHERE id = ?`,
+    )
+    .run(now, now, id);
+
+  if (changes.changes === 0) {
+    const existing = getWorkspaceById(db, id);
+    if (!existing) throw new WorkspaceNotFoundError(id);
+  }
+
+  return getWorkspaceById(db, id)!;
 }
 
 // ---- workspace project membership ----

@@ -7,9 +7,11 @@ export type Workspace = {
   readonly name: string;
   readonly description: string;
   readonly defaultBudgetUsdPerDay: number;
+  readonly defaultProjectId: string | null;
   readonly metadata: Record<string, unknown>;
   readonly createdAt: string;
   readonly updatedAt: string;
+  readonly archivedAt: string | null;
 };
 
 export type WorkspaceProject = {
@@ -33,6 +35,7 @@ export type CreateWorkspaceInput = {
   readonly name: string;
   readonly description?: string;
   readonly defaultBudgetUsdPerDay?: number;
+  readonly defaultProjectId?: string;
   readonly metadata?: Record<string, unknown>;
   readonly id?: string; // optional override, mainly for tests
   readonly now?: string;
@@ -42,10 +45,10 @@ export type WorkspaceFilter = {
   readonly q?: string;
   readonly limit?: number;
   readonly cursor?: string;
+  readonly archived?: boolean;
 };
 
 export type WorkspaceWithCounts = Workspace & {
-  readonly defaultProjectId: string | null;
   readonly projectCounts: WorkspaceProjectCounts;
 };
 

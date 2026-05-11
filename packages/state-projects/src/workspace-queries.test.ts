@@ -20,9 +20,11 @@ CREATE TABLE IF NOT EXISTS workspaces (
   name                      TEXT NOT NULL,
   description               TEXT NOT NULL DEFAULT '',
   default_budget_usd_per_day REAL NOT NULL DEFAULT 0.00,
+  default_project_id        TEXT,
   metadata                  TEXT NOT NULL DEFAULT '{}',
   created_at                TEXT NOT NULL,
-  updated_at                TEXT NOT NULL
+  updated_at                TEXT NOT NULL,
+  archived_at               TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_workspaces_name ON workspaces(name);
 
@@ -79,7 +81,9 @@ describe("createWorkspace", () => {
     expect(w.id).toMatch(/^[a-f0-9-]{36}$/);
     expect(w.description).toBe("");
     expect(w.defaultBudgetUsdPerDay).toBe(0);
+    expect(w.defaultProjectId).toBeNull();
     expect(w.metadata).toEqual({});
+    expect(w.archivedAt).toBeNull();
     expect(w.createdAt).toBe(w.updatedAt);
   });
 

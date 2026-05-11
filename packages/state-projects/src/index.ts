@@ -36,6 +36,9 @@ export {
   listWorkspaces,
   removeProjectFromWorkspace,
   updateWorkspace,
+  updateWorkspaceName,
+  updateWorkspaceDescription,
+  archiveWorkspace,
 } from "./workspace-queries.ts";
 
 export { WorkspaceRegistry } from "./workspace-registry.ts";
