@@ -80,6 +80,24 @@ describe("parseRequestedProviderChain", () => {
     if (result.ok) expect(result.value).toEqual([]);
   });
 
+  test("empty allow list (vs null) excludes all providers", () => {
+    // allow:[] is a present-but-empty list — every provider fails the include check,
+    // producing an empty chain. This differs from allow:null (no filter).
+    const overrides: ProviderOverrides = { allow: [], deny: null, force: null };
+    const health = makeHealthStore({
+      opencode: healthy("opencode"),
+      anthropic: healthy("anthropic"),
+      cohere: healthy("cohere"),
+    });
+    const result = resolveProviderChain(
+      ["opencode", "anthropic", "cohere"] as readonly string[],
+      overrides,
+      health,
+    );
+    expect(result.chain).toEqual([]);
+    expect(result.excludedOverrides).toEqual(["opencode", "anthropic", "cohere"]);
+  });
+
   test("non-array returns ok:false", () => {
     const result = parseRequestedProviderChain("opencode");
     expect(result.ok).toBe(false);
