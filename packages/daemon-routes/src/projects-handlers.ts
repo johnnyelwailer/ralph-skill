@@ -24,21 +24,24 @@ export function listProjects(req: Request, deps: Deps): Response {
     return badRequest(`invalid status: ${statusParam}`, { statusParam });
   }
 
-  const items = deps.registry.list({
+  const { items, nextCursor } = deps.registry.list({
     ...(statusParam !== null && { status: statusParam as ProjectStatus }),
     ...(path !== null && { absPath: path }),
     ...(workspaceId !== null && { workspaceId }),
   });
 
+  const sessionsDir = typeof deps.sessionsDir === "function" ? deps.sessionsDir() : deps.sessionsDir;
+
   return jsonResponse(200, {
     _v: 1,
-    items: items.map(projectResponse),
-    next_cursor: null,
+    items: items.map((p) => projectResponse(p, sessionsDir)),
+    next_cursor: nextCursor,
   });
 }
 
 export function getProject(id: string, deps: Deps): Response {
   const p = deps.registry.get(id);
   if (!p) return errorResponse(404, "project_not_found", `project not found: ${id}`, { id });
-  return jsonResponse(200, projectResponse(p));
+  const sessionsDir = typeof deps.sessionsDir === "function" ? deps.sessionsDir() : deps.sessionsDir;
+  return jsonResponse(200, projectResponse(p, sessionsDir));
 }

@@ -61,7 +61,7 @@ export async function createProject(req: Request, deps: Deps): Promise<Response>
       ...(name !== undefined && { name }),
       ...(workspaceMemberships !== undefined && { workspaceMemberships }),
     });
-    return jsonResponse(201, projectResponse(created));
+    return jsonResponse(201, projectResponse(created, getSessionsDir(deps)));
   } catch (err) {
     if (err instanceof ProjectAlreadyRegisteredError) {
       return errorResponse(409, "project_already_registered", err.message, {
@@ -70,6 +70,10 @@ export async function createProject(req: Request, deps: Deps): Promise<Response>
     }
     throw err;
   }
+}
+
+function getSessionsDir(deps: Deps): string {
+  return typeof deps.sessionsDir === "function" ? deps.sessionsDir() : deps.sessionsDir;
 }
 
 export async function patchProject(
@@ -91,7 +95,7 @@ export async function patchProject(
       updated = deps.registry.updateStatus(id, body.data.status as ProjectStatus);
     }
     if (!updated) return badRequest("no updatable fields provided");
-    return jsonResponse(200, projectResponse(updated));
+    return jsonResponse(200, projectResponse(updated, getSessionsDir(deps)));
   } catch (err) {
     if (err instanceof ProjectNotFoundError) {
       return errorResponse(404, "project_not_found", err.message, { id });
@@ -103,7 +107,7 @@ export async function patchProject(
 export function archiveProject(id: string, deps: Deps): Response {
   try {
     const archived = deps.registry.archive(id);
-    return jsonResponse(200, projectResponse(archived));
+    return jsonResponse(200, projectResponse(archived, getSessionsDir(deps)));
   } catch (err) {
     if (err instanceof ProjectNotFoundError) {
       return errorResponse(404, "project_not_found", err.message, { id });
