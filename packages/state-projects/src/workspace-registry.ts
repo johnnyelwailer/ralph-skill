@@ -6,6 +6,7 @@ import type {
   WorkspaceProject,
   WorkspaceProjectCounts,
   WorkspaceProjectRole,
+  WorkspaceProjectWithDetails,
   WorkspaceWithCounts,
 } from "./workspace-types.ts";
 import {
@@ -13,10 +14,13 @@ import {
   createWorkspace,
   deleteWorkspace,
   getProjectCounts,
+  getProjectRole,
   getWorkspaceById,
   listWorkspaceProjects,
+  listWorkspaceProjectsWithDetails,
   listWorkspaces,
   removeProjectFromWorkspace,
+  type WorkspaceProjectWithDetails,
   updateWorkspace,
 } from "./workspace-queries.ts";
 
@@ -51,8 +55,8 @@ export class WorkspaceRegistry {
     return deleteWorkspace(this.db, id);
   }
 
-  listProjects(workspaceId: string): WorkspaceProject[] {
-    return listWorkspaceProjects(this.db, workspaceId);
+  listProjects(workspaceId: string): WorkspaceProjectWithDetails[] {
+    return listWorkspaceProjectsWithDetails(this.db, workspaceId);
   }
 
   addProject(
@@ -71,5 +75,9 @@ export class WorkspaceRegistry {
     workspaceId: string,
   ): WorkspaceProjectCounts & { defaultProjectId: string | null } {
     return getProjectCounts(this.db, workspaceId);
+  }
+
+  getProjectRole(workspaceId: string, projectId: string): WorkspaceProjectRole | null {
+    return getProjectRole(this.db, workspaceId, projectId);
   }
 }

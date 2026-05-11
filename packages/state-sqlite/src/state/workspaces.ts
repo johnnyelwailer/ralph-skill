@@ -6,6 +6,7 @@ import type {
   WorkspaceProject,
   WorkspaceProjectCounts,
   WorkspaceProjectRole,
+  WorkspaceProjectWithDetails,
   WorkspaceWithCounts,
 } from "@aloop/state-projects";
 import {

@@ -11,7 +11,6 @@ import {
   addProjectToWorkspace,
 } from "./workspace-queries.ts";
 import {
-  DuplicateWorkspaceProjectError,
   ProjectNotFoundWorkspaceError,
 } from "./workspace-types.ts";
 
@@ -281,7 +280,27 @@ describe("workspace project membership", () => {
   });
 });
 
-describe("addProjectToWorkspace errors", () => {
+describe("addProjectToWorkspace", () => {
+  test("inserts a membership row", () => {
+    const w = createWorkspace(db, { name: "W" });
+    seedProject("p1", "P1");
+    const wp = addProjectToWorkspace(db, w.id, "p1", "primary");
+    expect(wp.workspaceId).toBe(w.id);
+    expect(wp.projectId).toBe("p1");
+    expect(wp.role).toBe("primary");
+  });
+
+  test("updates role when project is already a member (upsert)", () => {
+    const w = createWorkspace(db, { name: "W" });
+    seedProject("p1", "P1");
+    addProjectToWorkspace(db, w.id, "p1", "primary");
+    const updated = addProjectToWorkspace(db, w.id, "p1", "supporting");
+    expect(updated.role).toBe("supporting");
+    const projects = listWorkspaceProjects(db, w.id);
+    expect(projects).toHaveLength(1);
+    expect(projects[0]!.role).toBe("supporting");
+  });
+
   test("throws ProjectNotFoundWorkspaceError when project does not exist", () => {
     const w = createWorkspace(db, { name: "W" });
     expect(() => addProjectToWorkspace(db, w.id, "nonexistent-proj")).toThrow(
@@ -291,36 +310,9 @@ describe("addProjectToWorkspace errors", () => {
 
   test("throws ProjectNotFoundWorkspaceError when workspace does not exist", () => {
     seedProject("p1", "P1");
-    // A workspace that doesn't exist should still throw ProjectNotFoundWorkspaceError
     expect(() => addProjectToWorkspace(db, "nonexistent-ws", "p1")).toThrow(
       ProjectNotFoundWorkspaceError,
     );
-  });
-
-  test("throws DuplicateWorkspaceProjectError when project is already a member", () => {
-    const w = createWorkspace(db, { name: "W" });
-    seedProject("p1", "P1");
-    addProjectToWorkspace(db, w.id, "p1", "primary");
-    expect(() => addProjectToWorkspace(db, w.id, "p1", "supporting")).toThrow(
-      DuplicateWorkspaceProjectError,
-    );
-  });
-
-  test("DuplicateWorkspaceProjectError carries correct project and workspace ids", () => {
-    const w = createWorkspace(db, { name: "W" });
-    seedProject("p1", "P1");
-    addProjectToWorkspace(db, w.id, "p1");
-    let err: unknown;
-    try {
-      addProjectToWorkspace(db, w.id, "p1");
-    } catch (e) {
-      err = e;
-    }
-    expect(err).toBeInstanceOf(DuplicateWorkspaceProjectError);
-    if (err instanceof DuplicateWorkspaceProjectError) {
-      expect(err.workspaceId).toBe(w.id);
-      expect(err.projectId).toBe("p1");
-    }
   });
 
   test("ProjectNotFoundWorkspaceError carries the missing project id", () => {

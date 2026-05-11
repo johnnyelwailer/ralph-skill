@@ -244,13 +244,13 @@ export function addProjectToWorkspace(
   // Check project exists
   const project = db.query<{ id: string }, [string]>(`SELECT id FROM projects WHERE id = ?`).get(projectId);
   if (!project) {
-    throw new ProjectNotFoundWorkspaceError(workspaceId, projectId);
+    throw new ProjectNotFoundWorkspaceError(projectId);
   }
 
   // Check workspace exists
   const workspace = db.query<{ id: string }, [string]>(`SELECT id FROM workspaces WHERE id = ?`).get(workspaceId);
   if (!workspace) {
-    throw new ProjectNotFoundWorkspaceError(workspaceId, projectId);
+    throw new ProjectNotFoundWorkspaceError(projectId);
   }
 
   // Check duplicate
@@ -260,7 +260,11 @@ export function addProjectToWorkspace(
     )
     .get(workspaceId, projectId);
   if (existing) {
-    throw new DuplicateWorkspaceProjectError(workspaceId, projectId);
+    db.run(
+      `UPDATE workspace_projects SET role = ? WHERE workspace_id = ? AND project_id = ?`,
+      [role, workspaceId, projectId],
+    );
+    return { workspaceId, projectId, role, addedAt: now };
   }
 
   db.run(
@@ -315,4 +319,60 @@ export function getProjectCounts(
     dependency: row?.dependency_count ?? 0,
     experiment: row?.experiment_count ?? 0,
   };
+}
+
+export type WorkspaceProjectWithDetails = {
+  readonly workspaceId: string;
+  readonly projectId: string;
+  readonly role: WorkspaceProjectRole;
+  readonly addedAt: string;
+  readonly projectName: string;
+  readonly projectAbsPath: string;
+  readonly projectStatus: string;
+};
+
+export function getProjectRole(
+  db: Database,
+  workspaceId: string,
+  projectId: string,
+): WorkspaceProjectRole | null {
+  const row = db
+    .query<{ role: WorkspaceProjectRole }, [string, string]>(
+      `SELECT role FROM workspace_projects WHERE workspace_id = ? AND project_id = ?`,
+    )
+    .get(workspaceId, projectId);
+  return row?.role ?? null;
+}
+
+export function listWorkspaceProjectsWithDetails(
+  db: Database,
+  workspaceId: string,
+): WorkspaceProjectWithDetails[] {
+  const rows = db
+    .query<{
+      workspace_id: string;
+      project_id: string;
+      role: WorkspaceProjectRole;
+      added_at: string;
+      name: string;
+      abs_path: string;
+      status: string;
+    }, [string]>(
+      `SELECT wp.workspace_id, wp.project_id, wp.role, wp.added_at,
+              p.name, p.abs_path, p.status
+       FROM workspace_projects wp
+       INNER JOIN projects p ON p.id = wp.project_id
+       WHERE wp.workspace_id = ?
+       ORDER BY wp.added_at`,
+    )
+    .all(workspaceId);
+  return rows.map((r) => ({
+    workspaceId: r.workspace_id,
+    projectId: r.project_id,
+    role: r.role,
+    addedAt: r.added_at,
+    projectName: r.name,
+    projectAbsPath: r.abs_path,
+    projectStatus: r.status,
+  }));
 }

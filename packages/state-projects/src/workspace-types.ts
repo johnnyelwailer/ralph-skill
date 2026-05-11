@@ -19,6 +19,16 @@ export type WorkspaceProject = {
   readonly addedAt: string;
 };
 
+export type WorkspaceProjectWithDetails = {
+  readonly workspaceId: string;
+  readonly projectId: string;
+  readonly role: WorkspaceProjectRole;
+  readonly addedAt: string;
+  readonly projectName: string;
+  readonly projectAbsPath: string;
+  readonly projectStatus: string;
+};
+
 export type CreateWorkspaceInput = {
   readonly name: string;
   readonly description?: string;
