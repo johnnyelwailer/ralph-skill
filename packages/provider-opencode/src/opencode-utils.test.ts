@@ -241,6 +241,54 @@ describe("opencode-parts", () => {
       expect(chunks).toContainEqual({ type: "tool_result", content: { id: "c2", output: "ENOENT" } });
     });
 
+    test("stringifyToolOutput returns string value as-is", () => {
+      const parts = [{ id: "p1", type: "tool", tool: "read_file", callID: "c3", state: { status: "completed", input: {}, output: "raw string output" } }];
+      const chunks = translateParts(parts);
+      const result = chunks.find((c) => c.type === "tool_result");
+      expect(result?.content.output).toBe("raw string output");
+    });
+
+    test("stringifyToolOutput returns empty string for undefined output", () => {
+      const parts = [{ id: "p1", type: "tool", tool: "read_file", callID: "c4", state: { status: "completed", input: {}, output: undefined } }];
+      const chunks = translateParts(parts);
+      const result = chunks.find((c) => c.type === "tool_result");
+      expect(result?.content.output).toBe("");
+    });
+
+    test("stringifyToolOutput JSON-stringifies non-string non-undefined output", () => {
+      const parts = [{ id: "p1", type: "tool", tool: "read_file", callID: "c5", state: { status: "completed", input: {}, output: { files: ["a.txt", "b.txt"], count: 2 } } }];
+      const chunks = translateParts(parts);
+      const result = chunks.find((c) => c.type === "tool_result");
+      expect(result?.content.output).toBe('{"files":["a.txt","b.txt"],"count":2}');
+    });
+
+    test("tool_result uses state.error when state.output is undefined (error path)", () => {
+      const parts = [{ id: "p1", type: "tool", tool: "write_file", callID: "c6", state: { status: "error", input: {}, error: "EACCES permission denied" } }];
+      const chunks = translateParts(parts);
+      const result = chunks.find((c) => c.type === "tool_result");
+      expect(result?.content.output).toBe("EACCES permission denied");
+    });
+
+    test("tool_result uses state.output even when state.error is also present", () => {
+      const parts = [{ id: "p1", type: "tool", tool: "read_file", callID: "c7", state: { status: "completed", input: {}, output: "success output", error: "should not be used" } }];
+      const chunks = translateParts(parts);
+      const result = chunks.find((c) => c.type === "tool_result");
+      expect(result?.content.output).toBe("success output");
+    });
+
+    test("skips tool_result for unknown status (not completed/error)", () => {
+      const parts = [{ id: "p1", type: "tool", tool: "read_file", callID: "c8", state: { status: "pending", input: {} } }];
+      const chunks = translateParts(parts);
+      // tool_call is still emitted because it only requires tool+callID, but tool_result should not be
+      expect(chunks.find((c) => c.type === "tool_call")).toBeDefined();
+      expect(chunks.find((c) => c.type === "tool_result")).toBeUndefined();
+    });
+
+    test("empty parts array produces no chunks", () => {
+      const chunks = translateParts([]);
+      expect(chunks).toEqual([]);
+    });
+
     test("skips tool parts without callID even if completed", () => {
       const parts = [{ id: "p1", type: "tool", tool: "read_file", state: { status: "completed", input: {} } }];
       const chunks = translateParts(parts);
