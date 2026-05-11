@@ -170,6 +170,36 @@ describe("ArtifactRegistry", () => {
       expect(list).toHaveLength(2);
       expect(list.every((a) => a.kind === "image")).toBe(true);
     });
+
+    test("filters by composer_turn_id", () => {
+      const registry = makeRegistry();
+      registry.create({ project_id: "p_1", composer_turn_id: "t_1", kind: "image", filename: "a.png", media_type: "image/png", bytes: 10 });
+      registry.create({ project_id: "p_1", composer_turn_id: "t_2", kind: "screenshot", filename: "b.png", media_type: "image/png", bytes: 20 });
+      registry.create({ project_id: "p_1", composer_turn_id: "t_1", kind: "diff", filename: "c.png", media_type: "image/png", bytes: 30 });
+      const list = registry.list({ composer_turn_id: "t_1" });
+      expect(list).toHaveLength(2);
+      expect(list.every((a) => a.composer_turn_id === "t_1")).toBe(true);
+    });
+
+    test("filters by control_subagent_run_id", () => {
+      const registry = makeRegistry();
+      registry.create({ project_id: "p_1", control_subagent_run_id: "c_1", kind: "image", filename: "a.png", media_type: "image/png", bytes: 10 });
+      registry.create({ project_id: "p_1", control_subagent_run_id: "c_2", kind: "screenshot", filename: "b.png", media_type: "image/png", bytes: 20 });
+      registry.create({ project_id: "p_1", control_subagent_run_id: "c_1", kind: "diff", filename: "c.png", media_type: "image/png", bytes: 30 });
+      const list = registry.list({ control_subagent_run_id: "c_1" });
+      expect(list).toHaveLength(2);
+      expect(list.every((a) => a.control_subagent_run_id === "c_1")).toBe(true);
+    });
+
+    test("filters by multiple dimensions", () => {
+      const registry = makeRegistry();
+      registry.create({ project_id: "p_1", session_id: "s_1", composer_turn_id: "t_1", kind: "image", filename: "a.png", media_type: "image/png", bytes: 10 });
+      registry.create({ project_id: "p_1", session_id: "s_1", composer_turn_id: "t_2", kind: "screenshot", filename: "b.png", media_type: "image/png", bytes: 20 });
+      registry.create({ project_id: "p_1", session_id: "s_2", composer_turn_id: "t_1", kind: "diff", filename: "c.png", media_type: "image/png", bytes: 30 });
+      const list = registry.list({ session_id: "s_1", composer_turn_id: "t_1" });
+      expect(list).toHaveLength(1);
+      expect(list[0]!.filename).toBe("a.png");
+    });
   });
 
   describe("delete", () => {
