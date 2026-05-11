@@ -72,7 +72,8 @@ export class ProjectRegistry {
   }
 
   list(filter: ProjectFilter & { limit?: number; cursor?: string } = {}): { items: Project[]; nextCursor: string | null } {
-    return listProjectsFromDb(this.db, filter);
+    const items = listProjectsFromDb(this.db, filter);
+    return { items, nextCursor: null };
   }
 
   updateName(id: string, name: string, now: string = new Date().toISOString()): Project {

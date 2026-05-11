@@ -8,7 +8,10 @@ import type {
   WorkspaceProjectRole,
   WorkspaceWithCounts,
 } from "@aloop/state-projects";
-import { WorkspaceRegistry } from "@aloop/state-projects";
+import {
+  WorkspaceRegistry,
+  WorkspaceNotFoundError,
+} from "@aloop/state-projects";
 
 export type {
   CreateWorkspaceInput,
@@ -18,6 +21,6 @@ export type {
   WorkspaceProjectCounts,
   WorkspaceProjectRole,
   WorkspaceWithCounts,
-} from "@aloop/state-projects";
+};
 
-export { WorkspaceRegistry };
+export { WorkspaceRegistry, WorkspaceNotFoundError };

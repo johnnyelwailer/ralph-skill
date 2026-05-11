@@ -18,7 +18,6 @@ export {
   type Workspace,
   type WorkspaceFilter,
   WorkspaceNotFoundError,
-  type WorkspaceNotFoundError,
   type WorkspaceProject,
   type WorkspaceProjectCounts,
   type WorkspaceProjectRole,
