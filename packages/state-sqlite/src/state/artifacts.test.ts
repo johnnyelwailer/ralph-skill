@@ -170,6 +170,57 @@ describe("ArtifactRegistry", () => {
       expect(list).toHaveLength(2);
       expect(list.every((a) => a.kind === "image")).toBe(true);
     });
+
+    test("filters by composer_turn_id", () => {
+      const registry = makeRegistry();
+      registry.create({ project_id: "p_1", kind: "image", filename: "a.png", media_type: "image/png", bytes: 10, composer_turn_id: "ct_1" });
+      registry.create({ project_id: "p_1", kind: "screenshot", filename: "b.png", media_type: "image/png", bytes: 20, composer_turn_id: "ct_2" });
+      registry.create({ project_id: "p_1", kind: "diff", filename: "c.png", media_type: "image/png", bytes: 30, composer_turn_id: "ct_1" });
+      const list = registry.list({ composer_turn_id: "ct_1" });
+      expect(list).toHaveLength(2);
+      expect(list.every((a) => a.composer_turn_id === "ct_1")).toBe(true);
+    });
+
+    test("filters by control_subagent_run_id", () => {
+      const registry = makeRegistry();
+      registry.create({ project_id: "p_1", kind: "image", filename: "a.png", media_type: "image/png", bytes: 10, control_subagent_run_id: "run_a" });
+      registry.create({ project_id: "p_1", kind: "screenshot", filename: "b.png", media_type: "image/png", bytes: 20, control_subagent_run_id: "run_b" });
+      registry.create({ project_id: "p_1", kind: "diff", filename: "c.png", media_type: "image/png", bytes: 30, control_subagent_run_id: "run_a" });
+      const list = registry.list({ control_subagent_run_id: "run_a" });
+      expect(list).toHaveLength(2);
+      expect(list.every((a) => a.control_subagent_run_id === "run_a")).toBe(true);
+    });
+
+    test("filters by incubation_item_id", () => {
+      const registry = makeRegistry();
+      registry.create({ project_id: "p_1", kind: "image", filename: "a.png", media_type: "image/png", bytes: 10, incubation_item_id: "ii_alpha" });
+      registry.create({ project_id: "p_1", kind: "screenshot", filename: "b.png", media_type: "image/png", bytes: 20, incubation_item_id: "ii_beta" });
+      registry.create({ project_id: "p_1", kind: "diff", filename: "c.png", media_type: "image/png", bytes: 30, incubation_item_id: "ii_alpha" });
+      const list = registry.list({ incubation_item_id: "ii_alpha" });
+      expect(list).toHaveLength(2);
+      expect(list.every((a) => a.incubation_item_id === "ii_alpha")).toBe(true);
+    });
+
+    test("filters by research_run_id", () => {
+      const registry = makeRegistry();
+      registry.create({ project_id: "p_1", kind: "image", filename: "a.png", media_type: "image/png", bytes: 10, research_run_id: "rr_x" });
+      registry.create({ project_id: "p_1", kind: "screenshot", filename: "b.png", media_type: "image/png", bytes: 20, research_run_id: "rr_y" });
+      registry.create({ project_id: "p_1", kind: "diff", filename: "c.png", media_type: "image/png", bytes: 30, research_run_id: "rr_x" });
+      const list = registry.list({ research_run_id: "rr_x" });
+      expect(list).toHaveLength(2);
+      expect(list.every((a) => a.research_run_id === "rr_x")).toBe(true);
+    });
+
+    test("combines all filter dimensions (composer_turn_id + research_run_id)", () => {
+      const registry = makeRegistry();
+      registry.create({ project_id: "p_1", kind: "image", filename: "a.png", media_type: "image/png", bytes: 10, composer_turn_id: "ct_1", research_run_id: "rr_1" });
+      registry.create({ project_id: "p_1", kind: "screenshot", filename: "b.png", media_type: "image/png", bytes: 20, composer_turn_id: "ct_1", research_run_id: "rr_2" });
+      registry.create({ project_id: "p_1", kind: "diff", filename: "c.png", media_type: "image/png", bytes: 30, composer_turn_id: "ct_2", research_run_id: "rr_1" });
+      // Both filters apply (AND logic): composer_turn_id=ct_1 AND research_run_id=rr_1
+      const list = registry.list({ composer_turn_id: "ct_1", research_run_id: "rr_1" });
+      expect(list).toHaveLength(1);
+      expect(list[0]!.filename).toBe("a.png");
+    });
   });
 
   describe("delete", () => {
