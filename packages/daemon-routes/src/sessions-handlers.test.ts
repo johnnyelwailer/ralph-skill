@@ -13,6 +13,7 @@ import {
   unpauseSessionHandler,
   listSessionQueueHandler,
   deleteSessionQueueItemHandler,
+  steerSessionHandler,
 } from "./sessions-handlers.ts";
 import type { SessionsDeps } from "./sessions-handlers.ts";
 
@@ -861,5 +862,197 @@ describe("createSessionHandler", () => {
     expect(res.status).toBe(201);
     const body = await (res as Response).json();
     expect(body.notes).toBe("test session");
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────
+// steerSessionHandler
+// ─────────────────────────────────────────────────────────────────
+
+describe("steerSessionHandler", () => {
+  let dir: string;
+  let deps: SessionsDeps;
+  let sessionId: string;
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), "aloop-session-steer-"));
+    deps = makeDeps(dir);
+    sessionId = deps.sessions.create({
+      projectId: "proj-1",
+      kind: "standalone",
+      workflow: "test-workflow",
+      providerChain: ["provider-1"],
+    }).id;
+  });
+
+  afterEach(() => {
+    const reg = deps.sessions as unknown as { _db: { close(): void } };
+    reg._db?.close();
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  test("returns 201 with queue_item_id and filename when instruction is valid", async () => {
+    const req = new Request(`http://localhost/v1/sessions/${sessionId}/steer`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ instruction: "take a different approach" }),
+    });
+    const res = await steerSessionHandler(sessionId, req, deps);
+    expect(res.status).toBe(201);
+    const body = await (res as Response).json();
+    expect(body.queue_item_id).toBeTruthy();
+    expect(body.filename).toMatch(/^steer-\d+\.md$/);
+    expect(body.position).toBe(0);
+    expect(body.session_id).toBe(sessionId);
+  });
+
+  test("returns 201 and increments queue position for subsequent steer items", async () => {
+    // Enqueue first item
+    deps.sessions.enqueue({
+      sessionId,
+      filename: "steer-0.md",
+      instruction: "first instruction",
+      affectsCompletedWork: "no",
+      position: 0,
+    });
+
+    const req = new Request(`http://localhost/v1/sessions/${sessionId}/steer`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ instruction: "second instruction" }),
+    });
+    const res = await steerSessionHandler(sessionId, req, deps);
+    expect(res.status).toBe(201);
+    const body = await (res as Response).json();
+    expect(body.position).toBe(1);
+    expect(body.filename).toMatch(/^steer-\d+\.md$/);
+  });
+
+  test("defaults affects_completed_work to 'no' when not provided", async () => {
+    const req = new Request(`http://localhost/v1/sessions/${sessionId}/steer`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ instruction: "try again" }),
+    });
+    const res = await steerSessionHandler(sessionId, req, deps);
+    expect(res.status).toBe(201);
+    const body = await (res as Response).json();
+
+    // Verify the stored queue item has the correct default
+    const queueReq = new Request(`http://localhost/v1/sessions/${sessionId}/queue`);
+    const queueRes = listSessionQueueHandler(sessionId, deps);
+    const queueBody = await (queueRes as Response).json();
+    expect(queueBody.items[0].affects_completed_work).toBe("no");
+  });
+
+  test("accepts explicit affects_completed_work values", async () => {
+    const affectsValues = ["yes", "no", "unknown"] as const;
+    for (const affects of affectsValues) {
+      // Create a fresh session for each iteration to avoid queue position conflicts
+      const sid = deps.sessions.create({
+        projectId: "proj-1",
+        kind: "standalone",
+        workflow: "test-workflow",
+        providerChain: ["provider-1"],
+      }).id;
+
+      const req = new Request(`http://localhost/v1/sessions/${sid}/steer`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ instruction: `instruction ${affects}`, affects_completed_work: affects }),
+      });
+      const res = await steerSessionHandler(sid, req, deps);
+      expect(res.status).toBe(201);
+      const body = await (res as Response).json();
+      expect(body._v).toBe(1);
+    }
+  });
+
+  test("returns 404 when session does not exist", async () => {
+    const req = new Request("http://localhost/v1/sessions/nonexistent/steer", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ instruction: "steer me" }),
+    });
+    const res = await steerSessionHandler("nonexistent", req, deps);
+    expect(res.status).toBe(404);
+    const body = await (res as Response).json();
+    expect(body.error.code).toBe("session_not_found");
+  });
+
+  test("returns 400 when instruction is missing", async () => {
+    const req = new Request(`http://localhost/v1/sessions/${sessionId}/steer`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({}),
+    });
+    const res = await steerSessionHandler(sessionId, req, deps);
+    expect(res.status).toBe(400);
+    const body = await (res as Response).json();
+    expect(body.error.code).toBe("bad_request");
+    expect(body.error.message).toContain("instruction");
+  });
+
+  test("returns 400 when instruction is an empty string", async () => {
+    const req = new Request(`http://localhost/v1/sessions/${sessionId}/steer`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ instruction: "" }),
+    });
+    const res = await steerSessionHandler(sessionId, req, deps);
+    expect(res.status).toBe(400);
+    const body = await (res as Response).json();
+    expect(body.error.code).toBe("bad_request");
+    expect(body.error.message).toContain("instruction");
+  });
+
+  test("returns 400 when instruction is not a string", async () => {
+    const req = new Request(`http://localhost/v1/sessions/${sessionId}/steer`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ instruction: 12345 }),
+    });
+    const res = await steerSessionHandler(sessionId, req, deps);
+    expect(res.status).toBe(400);
+    const body = await (res as Response).json();
+    expect(body.error.code).toBe("bad_request");
+    expect(body.error.message).toContain("instruction");
+  });
+
+  test("returns 400 when body is invalid JSON", async () => {
+    const req = new Request(`http://localhost/v1/sessions/${sessionId}/steer`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: "not valid json {{{",
+    });
+    const res = await steerSessionHandler(sessionId, req, deps);
+    expect(res.status).toBe(400);
+    const body = await (res as Response).json();
+    expect(body.error.code).toBe("bad_request");
+  });
+
+  test("returns 400 when body is a JSON array", async () => {
+    const req = new Request(`http://localhost/v1/sessions/${sessionId}/steer`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify([{ instruction: "steer" }]),
+    });
+    const res = await steerSessionHandler(sessionId, req, deps);
+    expect(res.status).toBe(400);
+    const body = await (res as Response).json();
+    expect(body.error.code).toBe("bad_request");
+    expect(body.error.message).toBe("request body must be a JSON object");
+  });
+
+  test("returns 400 when body is JSON null", async () => {
+    const req = new Request(`http://localhost/v1/sessions/${sessionId}/steer`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: "null",
+    });
+    const res = await steerSessionHandler(sessionId, req, deps);
+    expect(res.status).toBe(400);
+    const body = await (res as Response).json();
+    expect(body.error.code).toBe("bad_request");
   });
 });
