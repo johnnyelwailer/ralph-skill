@@ -14,6 +14,7 @@ export {
   type MigrateResult,
 } from "@aloop/sqlite-db";
 export { PermitProjector } from "./state/permit-projector.ts";
+export { SchedulerMetricsProjector } from "./state/scheduler-projector.ts";
 export {
   PermitRegistry,
   clearPermits,

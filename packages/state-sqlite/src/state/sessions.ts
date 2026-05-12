@@ -90,7 +90,7 @@ export class SessionRegistry {
     const projectId = input.projectId;
     const kind = input.kind;
     const parentSessionId = input.parentSessionId ?? null;
-    const workflow = input.workflow ?? null;
+    const workflow = (input.workflow ?? "") || "";
     const providerChain =
       input.providerChain !== undefined ? JSON.stringify(input.providerChain) : "[]";
     const worktreePath = input.worktreePath ?? null;
