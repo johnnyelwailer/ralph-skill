@@ -344,11 +344,7 @@ export function addProjectToWorkspace(
     )
     .get(workspaceId, projectId);
   if (existing) {
-    db.run(
-      `UPDATE workspace_projects SET role = ? WHERE workspace_id = ? AND project_id = ?`,
-      [role, workspaceId, projectId],
-    );
-    return { workspaceId, projectId, role, addedAt: now };
+    throw new DuplicateWorkspaceProjectError(workspaceId, projectId);
   }
 
   db.run(

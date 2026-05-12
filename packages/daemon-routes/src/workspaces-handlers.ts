@@ -221,10 +221,10 @@ export function listWorkspacesHandler(
 ): Response {
   const url = new URL(req.url);
   const filter = parseWorkspaceFilter(url);
-  const workspaces = deps.registry.list(filter);
+  const { items } = deps.registry.list(filter);
   return jsonResponse(200, {
     _v: 1,
-    items: workspaces.map((w) => workspaceResponse(w)),
+    items: items.map((w) => workspaceResponse(w)),
     next_cursor: null,
   });
 }
