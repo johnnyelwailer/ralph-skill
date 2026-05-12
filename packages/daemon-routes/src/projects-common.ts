@@ -64,7 +64,8 @@ export function countProjectSessions(sessionsDir: string, projectId: string): {
   return { total, by_status: byStatus };
 }
 
-export function projectResponse(p: Project, sessionsDir: string): Record<string, unknown> {
+export function projectResponse(p: Project, sessionsDir: string | (() => string)): Record<string, unknown> {
+  const resolved = typeof sessionsDir === "function" ? sessionsDir() : sessionsDir;
   return {
     _v: 1,
     id: p.id,
@@ -76,7 +77,7 @@ export function projectResponse(p: Project, sessionsDir: string): Record<string,
     added_at: p.addedAt,
     last_active_at: p.lastActiveAt,
     updated_at: p.updatedAt,
-    session_counts: countProjectSessions(sessionsDir, p.id),
+    session_counts: countProjectSessions(resolved, p.id),
   };
 }
 
