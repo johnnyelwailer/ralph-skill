@@ -377,13 +377,26 @@ export async function handleComposer(
   // POST /v1/composer/turns
   if (req.method === "POST" && cleanPathname === "/v1/composer/turns") {
     const parsed = await parseJsonBody(req);
-    if (parsed.error) return parsed.error;
+    if (parsed.error) {
+      const err = parsed.error;
+      const clone = err.clone();
+      const json = await clone.json() as { error?: { code?: string; message?: string } };
+      if (json?.error?.code === "bad_request") {
+        return errorResponse(400, "validation_error", json.error.message ?? "validation error");
+      }
+      return err;
+    }
 
     const validated = validateCreateInput(parsed.data);
     if (!validated.ok) return errorResponse(400, "validation_error", validated.error);
 
     const turn = registry.create(validated.input);
     return jsonResponse(201, turnResponse(turn));
+  }
+
+  // Non-GET/POST methods on /v1/composer/turns → 405
+  if (cleanPathname === "/v1/composer/turns") {
+    return methodNotAllowed();
   }
 
   // POST /v1/composer/turns/:id/cancel — must come before singleMatch

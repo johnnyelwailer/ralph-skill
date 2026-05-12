@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { handleArtifacts, type ArtifactsDeps } from "./artifacts-handlers.ts";
@@ -362,6 +362,7 @@ describe("getArtifactContent", () => {
     });
     // Write the file to disk
     const artifactDir = join(tmp, artifact.id);
+    mkdirSync(artifactDir, { recursive: true });
     writeFileSync(join(artifactDir, "photo.png"), new Uint8Array([0x01, 0x02, 0x03, 0x04, 0x05]));
 
     const req = new Request(`http://x/v1/artifacts/${artifact.id}/content`, { method: "GET" });
