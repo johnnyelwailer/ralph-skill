@@ -41,6 +41,14 @@ export function methodNotAllowed(): Response {
 /**
  * Parse a JSON request body. Returns either { data } or { error } where
  * error is a ready-to-return Response.
+ *
+ * Supports two request body shapes:
+ *   - { project_id: ..., kind: ... }           (direct)
+ *   - { data: { project_id: ..., kind: ... } } (enveloped)
+ *
+ * The enveloped shape is what tests and external API clients send. The direct
+ * shape is what internal handlers expect. This function normalizes both to the
+ * same flat data object so route handlers don't need to know which shape was used.
  */
 export async function parseJsonBody(
   req: Request,
@@ -52,7 +60,11 @@ export async function parseJsonBody(
     if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
       return { error: badRequest("request body must be a JSON object") };
     }
-    return { data: parsed as Record<string, unknown> };
+    const obj = parsed as Record<string, unknown>;
+    if (obj.data !== undefined && typeof obj.data === "object" && obj.data !== null) {
+      return { data: obj.data as Record<string, unknown> };
+    }
+    return { data: obj };
   } catch {
     return { error: badRequest("invalid JSON body") };
   }
