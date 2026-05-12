@@ -128,7 +128,7 @@ describe("makeSchedulerConfig", () => {
     const view = makeSchedulerConfig(config, events);
     const result = await view.updateLimits({ nope: 1 });
     expect(result.ok).toBe(false);
-    if (!result.ok) {
+    if (!result.ok && "errors" in result) {
       expect(result.errors.length).toBeGreaterThan(0);
     }
   });

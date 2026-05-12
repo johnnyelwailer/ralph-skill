@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { SchedulerService } from "@aloop/scheduler";
+import type { AcquirePermitInput, SchedulerService } from "@aloop/scheduler";
 import { handleScheduler, type SchedulerDeps } from "@aloop/daemon-routes";
 
 function makeDeps(overrides: Partial<SchedulerService> = {}): SchedulerDeps {
@@ -237,12 +237,15 @@ describe("POST /v1/scheduler/permits validation", () => {
 
   test("accepts a valid permit acquisition request", async () => {
     const deps = makeDeps({
-      acquirePermit: async (input: { sessionId: string; providerCandidate: string }) => ({
+      acquirePermit: async (_input: AcquirePermitInput) => ({
         granted: true,
         permit: {
           id: "perm_test",
-          sessionId: input.sessionId,
-          providerId: input.providerCandidate,
+          sessionId: "s_1",
+          composerTurnId: null,
+          controlSubagentRunId: null,
+          projectId: null,
+          providerId: "opencode",
           ttlSeconds: 600,
           grantedAt: new Date().toISOString(),
           expiresAt: new Date(Date.now() + 600_000).toISOString(),
@@ -265,12 +268,15 @@ describe("POST /v1/scheduler/permits validation", () => {
 
   test("accepts composer_turn_id as alternative owner", async () => {
     const deps = makeDeps({
-      acquirePermit: async (input: { composerTurnId: string; providerCandidate: string }) => ({
+      acquirePermit: async (_input: AcquirePermitInput) => ({
         granted: true,
         permit: {
           id: "perm_ct",
-          composerTurnId: input.composerTurnId,
-          providerId: input.providerCandidate,
+          sessionId: null,
+          composerTurnId: "ct_abc",
+          controlSubagentRunId: null,
+          projectId: null,
+          providerId: "opencode",
           ttlSeconds: 600,
           grantedAt: new Date().toISOString(),
           expiresAt: new Date(Date.now() + 600_000).toISOString(),
@@ -293,12 +299,15 @@ describe("POST /v1/scheduler/permits validation", () => {
 
   test("accepts control_subagent_run_id as alternative owner", async () => {
     const deps = makeDeps({
-      acquirePermit: async (input: { controlSubagentRunId: string; providerCandidate: string }) => ({
+      acquirePermit: async (_input: AcquirePermitInput) => ({
         granted: true,
         permit: {
           id: "perm_cs",
-          controlSubagentRunId: input.controlSubagentRunId,
-          providerId: input.providerCandidate,
+          sessionId: null,
+          composerTurnId: null,
+          controlSubagentRunId: "cs_xyz",
+          projectId: null,
+          providerId: "opencode",
           ttlSeconds: 600,
           grantedAt: new Date().toISOString(),
           expiresAt: new Date(Date.now() + 600_000).toISOString(),
@@ -357,13 +366,15 @@ describe("POST /v1/scheduler/permits validation", () => {
 
   test("accepts estimated_cost_usd as a valid non-negative number", async () => {
     const deps = makeDeps({
-      acquirePermit: async (input: { sessionId: string; providerCandidate: string; estimatedCostUsd: number }) => ({
+      acquirePermit: async (_input: AcquirePermitInput) => ({
         granted: true,
         permit: {
           id: "perm_cost",
-          sessionId: input.sessionId,
-          providerId: input.providerCandidate,
-          estimatedCostUsd: input.estimatedCostUsd,
+          sessionId: "s_cost",
+          composerTurnId: null,
+          controlSubagentRunId: null,
+          projectId: null,
+          providerId: "opencode",
           ttlSeconds: 600,
           grantedAt: new Date().toISOString(),
           expiresAt: new Date(Date.now() + 600_000).toISOString(),
@@ -575,7 +586,7 @@ describe("PUT /v1/scheduler/limits", () => {
         ok: false,
         code: "tune_out_of_bounds",
         violations: [
-          { field: "system_limits.cpu_max_pct", value: 150, message: "must be <= 100" },
+          { field: "system_limits.cpu_max_pct", requested: 150, min: 0, max: 100 },
         ],
       }),
     });
@@ -699,24 +710,28 @@ describe("parseJsonBody helper", () => {
   test("JSON array body returns error", async () => {
     const result = await parseBody("[1,2,3]");
     expect("error" in result).toBe(true);
+    if (!("error" in result)) throw new Error("expected error");
     expect(result.error.status).toBe(400);
   });
 
   test("JSON null body returns error", async () => {
     const result = await parseBody("null");
     expect("error" in result).toBe(true);
+    if (!("error" in result)) throw new Error("expected error");
     expect(result.error.status).toBe(400);
   });
 
   test("non-JSON text returns error", async () => {
     const result = await parseBody("not json at all");
     expect("error" in result).toBe(true);
+    if (!("error" in result)) throw new Error("expected error");
     expect(result.error.status).toBe(400);
   });
 
   test("plain number body returns error", async () => {
     const result = await parseBody("42");
     expect("error" in result).toBe(true);
+    if (!("error" in result)) throw new Error("expected error");
     expect(result.error.status).toBe(400);
   });
 
