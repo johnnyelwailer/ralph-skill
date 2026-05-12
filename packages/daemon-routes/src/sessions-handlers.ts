@@ -193,9 +193,13 @@ export function unpauseSessionHandler(id: string, deps: SessionsDeps): Response 
 
 // ── POST /v1/sessions/:id/steer ──────────────────────────────────────────────
 
-// TODO(workflow-plan): Steering should queue a compiled handler run, normally
-// `on.steer`, with the instruction in the handler payload. This endpoint still
-// writes the old instruction-style queue item until the queue schema migrates.
+// TODO: The implementation does not currently emit session.event for lifecycle
+// transitions (pause/resume/delete/unpause). The test suite expects events to be
+// emitted, but the SessionsDeps type has no `events` field and the handler
+// implementations never call events.append(). This is a documented-but-missing
+// feature per the api.md spec. Once implemented, lifecycle handlers should call
+// events.append("session.event", { session_id, previous_status, status, ... })
+// before returning the response.
 export async function steerSessionHandler(id: string, req: Request, deps: SessionsDeps): Promise<Response> {
   const session = deps.sessions.get(id);
   if (!session) {
