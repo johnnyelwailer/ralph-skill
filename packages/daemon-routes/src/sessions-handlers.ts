@@ -73,7 +73,7 @@ export async function createSessionHandler(req: Request, deps: SessionsDeps): Pr
   const kindInput = body.data.kind;
   let kind: typeof VALID_KINDS[number] | undefined;
   if (kindInput === undefined) {
-    kind = "standalone";
+    return badRequest("kind is required");
   } else if (VALID_KINDS.includes(kindInput as typeof VALID_KINDS[number])) {
     kind = kindInput as typeof VALID_KINDS[number];
   } else {
@@ -83,12 +83,14 @@ export async function createSessionHandler(req: Request, deps: SessionsDeps): Pr
   const workflow =
     typeof body.data.workflow === "string" && body.data.workflow.length > 0
       ? body.data.workflow
-      : "plan-build-review";
+      : undefined;
+  if (!workflow) return badRequest("workflow is required");
 
   const providerChain =
     Array.isArray(body.data.provider_chain)
       ? (body.data.provider_chain as string[])
-      : ["opencode"];
+      : undefined;
+  if (!providerChain) return badRequest("provider_chain must be an array of provider ids");
 
   // kind=child requires parent_session_id
   if (kind === "child") {
@@ -159,12 +161,12 @@ export function resumeSessionHandler(id: string, deps: SessionsDeps): Response {
   if (!session) {
     return errorResponse(404, "session_not_found", `session not found: ${id}`, { id });
   }
-  const terminal = ["completed", "failed"];
+  const terminal = ["failed"];
   if (terminal.includes(session.status)) {
     return errorResponse(409, "session_not_resumable", `cannot resume session in status: ${session.status}`, { id, status: session.status });
   }
-  if (session.status === "running") {
-    return errorResponse(409, "session_not_paused", `cannot resume session in status: ${session.status}. Must be paused, stopped, or interrupted.`, { id, status: session.status });
+  if (session.status === "pending" || session.status === "running" || session.status === "completed") {
+    return badRequest(`cannot resume session in status: ${session.status}. Must be paused, stopped, or interrupted.`);
   }
   const updated = deps.sessions.updateStatus(id, "running", { startedAt: new Date().toISOString() });
   return jsonResponse(200, sessionResponse(updated));
@@ -177,9 +179,11 @@ export function pauseSessionHandler(id: string, deps: SessionsDeps): Response {
   if (!session) {
     return errorResponse(404, "session_not_found", `session not found: ${id}`, { id });
   }
-  const terminal = ["completed", "failed"];
-  if (terminal.includes(session.status)) {
+  if (session.status === "completed" || session.status === "failed") {
     return errorResponse(409, "session_not_pausable", `cannot pause session in status: ${session.status}`, { id, status: session.status });
+  }
+  if (session.status !== "running") {
+    return badRequest(`cannot pause session in status: ${session.status}. Must be running.`);
   }
   const updated = deps.sessions.updateStatus(id, "paused");
   return jsonResponse(200, sessionResponse(updated));
