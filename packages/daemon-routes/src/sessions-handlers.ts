@@ -80,15 +80,15 @@ export async function createSessionHandler(req: Request, deps: SessionsDeps): Pr
     }
   }
 
-  const workflow =
-    typeof body.data.workflow === "string" && body.data.workflow.length > 0
-      ? body.data.workflow
-      : undefined;
+  if (body.data.workflow === undefined || body.data.workflow === null || typeof body.data.workflow !== "string" || body.data.workflow.length === 0) {
+    return badRequest("workflow is required");
+  }
+  const workflow = body.data.workflow;
 
-  const providerChain =
-    Array.isArray(body.data.provider_chain) && body.data.provider_chain.length > 0
-      ? (body.data.provider_chain as string[])
-      : undefined;
+  if (body.data.provider_chain === undefined || body.data.provider_chain === null || !Array.isArray(body.data.provider_chain) || body.data.provider_chain.length === 0) {
+    return badRequest("provider_chain is required and must be a non-empty array");
+  }
+  const providerChain = body.data.provider_chain as string[];
 
   // kind=child requires parent_session_id
   if (kind === "child") {

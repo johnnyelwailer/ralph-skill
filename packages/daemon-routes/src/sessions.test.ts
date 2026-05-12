@@ -61,6 +61,8 @@ function makeMockSessionRegistry(sessionsDir: string): SessionRegistry {
       // Write session.json and directories to disk for handler integration
       const sessionDir = join(sessionsDir, id);
       mkdirSync(sessionDir, { recursive: true });
+      mkdirSync(join(sessionDir, "queue"), { recursive: true });
+      mkdirSync(join(sessionDir, "worktree"), { recursive: true });
       writeFileSync(join(sessionDir, "session.json"), JSON.stringify({
         id,
         project_id: input.projectId,
@@ -773,7 +775,7 @@ describe("POST /v1/sessions", () => {
     const req = new Request("http://x/v1/sessions", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ project_id: "p_abc" }),
+      body: JSON.stringify({ project_id: "p_abc", workflow: "default", provider_chain: ["opencode"] }),
     });
     const res = await handleSessions(req, deps, "/v1/sessions");
     expect(res!.status).toBe(201);
@@ -794,6 +796,7 @@ describe("POST /v1/sessions", () => {
         project_id: "p_xyz",
         kind: "orchestrator",
         workflow: "my-workflow",
+        provider_chain: ["opencode", "claude"],
       }),
     });
     const res = await handleSessions(req, deps, "/v1/sessions");
@@ -810,7 +813,7 @@ describe("POST /v1/sessions", () => {
     const req = new Request("http://x/v1/sessions", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ project_id: "p_dirs" }),
+      body: JSON.stringify({ project_id: "p_dirs", workflow: "default", provider_chain: ["opencode"] }),
     });
     const res = await handleSessions(req, deps, "/v1/sessions");
     expect(res!.status).toBe(201);
@@ -839,7 +842,7 @@ describe("POST /v1/sessions", () => {
     const parentReq = new Request("http://x/v1/sessions", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ project_id: "p_parent", kind: "orchestrator" }),
+      body: JSON.stringify({ project_id: "p_parent", kind: "orchestrator", workflow: "orch", provider_chain: ["opencode"] }),
     });
     const parentRes = await handleSessions(parentReq, deps, "/v1/sessions");
     expect(parentRes!.status).toBe(201);
@@ -849,7 +852,7 @@ describe("POST /v1/sessions", () => {
     const req = new Request("http://x/v1/sessions", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ project_id: "p_child", kind: "child", parent_session_id: parent.id }),
+      body: JSON.stringify({ project_id: "p_child", kind: "child", parent_session_id: parent.id, workflow: "child", provider_chain: ["opencode"] }),
     });
     const res = await handleSessions(req, deps, "/v1/sessions");
     expect(res!.status).toBe(201);
@@ -863,7 +866,7 @@ describe("POST /v1/sessions", () => {
     const req = new Request("http://x/v1/sessions", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ project_id: "p_child", kind: "child" }),
+      body: JSON.stringify({ project_id: "p_child", kind: "child", workflow: "child", provider_chain: ["opencode"] }),
     });
     const res = await handleSessions(req, deps, "/v1/sessions");
     expect(res!.status).toBe(400);
@@ -876,7 +879,7 @@ describe("POST /v1/sessions", () => {
     const req = new Request("http://x/v1/sessions", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ project_id: "p_child", kind: "child", parent_session_id: "s_nonexistent" }),
+      body: JSON.stringify({ project_id: "p_child", kind: "child", parent_session_id: "s_nonexistent", workflow: "child", provider_chain: ["opencode"] }),
     });
     const res = await handleSessions(req, deps, "/v1/sessions");
     expect(res!.status).toBe(400);
@@ -888,7 +891,7 @@ describe("POST /v1/sessions", () => {
     const gpReq = new Request("http://x/v1/sessions", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ project_id: "p_gp", kind: "orchestrator" }),
+      body: JSON.stringify({ project_id: "p_gp", kind: "orchestrator", workflow: "gp", provider_chain: ["opencode"] }),
     });
     const gpRes = await handleSessions(gpReq, deps, "/v1/sessions");
     expect(gpRes!.status).toBe(201);
@@ -898,7 +901,7 @@ describe("POST /v1/sessions", () => {
     const parentReq = new Request("http://x/v1/sessions", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ project_id: "p_parent", kind: "child", parent_session_id: gp.id }),
+      body: JSON.stringify({ project_id: "p_parent", kind: "child", parent_session_id: gp.id, workflow: "parent", provider_chain: ["opencode"] }),
     });
     const parentRes = await handleSessions(parentReq, deps, "/v1/sessions");
     expect(parentRes!.status).toBe(201);
@@ -908,7 +911,7 @@ describe("POST /v1/sessions", () => {
     const req = new Request("http://x/v1/sessions", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ project_id: "p_gc", kind: "child", parent_session_id: parent.id }),
+      body: JSON.stringify({ project_id: "p_gc", kind: "child", parent_session_id: parent.id, workflow: "gc", provider_chain: ["opencode"] }),
     });
     const res = await handleSessions(req, deps, "/v1/sessions");
     expect(res!.status).toBe(400);
@@ -925,6 +928,7 @@ describe("POST /v1/sessions", () => {
         project_id: "p_fields",
         kind: "standalone",
         workflow: "test-workflow",
+        provider_chain: ["opencode"],
         issue: 42,
         max_iterations: 10,
         notes: "Test session notes",
@@ -958,6 +962,8 @@ describe("POST /v1/sessions", () => {
       body: JSON.stringify({
         project_id: "p_nulls",
         kind: "standalone",
+        workflow: "test",
+        provider_chain: ["opencode"],
         parent_session_id: null,
         max_iterations: null,
         notes: null,
@@ -979,6 +985,8 @@ describe("POST /v1/sessions", () => {
       body: JSON.stringify({
         project_id: "p_bad_types",
         kind: "standalone",
+        workflow: "test",
+        provider_chain: ["opencode"],
         issue: "not a number",
         max_iterations: "also not",
         notes: 123,
@@ -987,10 +995,9 @@ describe("POST /v1/sessions", () => {
     const res = await handleSessions(req, deps, "/v1/sessions");
     expect(res!.status).toBe(201);
     const body = await resJson<Record<string, unknown>>(res!);
-    // Invalid types are ignored (not stored)
-    expect(body.issue).toBeUndefined();
-    expect(body.max_iterations).toBeUndefined();
-    expect(body.notes).toBeUndefined();
+    expect(body.issue_ref).toBeNull();
+    expect(body.max_iterations).toBeNull();
+    expect(body.notes).toBe("");
   });
 });
 
