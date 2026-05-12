@@ -140,8 +140,8 @@ export function deleteSessionHandler(id: string, req: Request, deps: SessionsDep
   }
 
   if (mode === "force") {
-    deps.sessions.delete(id);
-    return jsonResponse(200, { id, status: "deleted" });
+    deps.sessions.updateStatus(id, "stopped");
+    return jsonResponse(200, { id, status: "stopped" });
   } else {
     const updated = deps.sessions.updateStatus(id, "stopped");
     return jsonResponse(200, sessionResponse(updated));
@@ -155,9 +155,12 @@ export function resumeSessionHandler(id: string, deps: SessionsDeps): Response {
   if (!session) {
     return errorResponse(404, "session_not_found", `session not found: ${id}`, { id });
   }
-  const validStatuses = ["interrupted", "stopped", "paused"];
-  if (!validStatuses.includes(session.status)) {
-    return badRequest(`cannot resume session in status: ${session.status}. Valid statuses: ${validStatuses.join(", ")}`);
+  const terminal = ["completed", "failed"];
+  if (terminal.includes(session.status)) {
+    return errorResponse(409, "session_not_resumable", `cannot resume session in status: ${session.status}`, { id, status: session.status });
+  }
+  if (session.status === "running") {
+    return errorResponse(409, "session_not_paused", `cannot resume session in status: ${session.status}. Must be paused, stopped, or interrupted.`, { id, status: session.status });
   }
   const updated = deps.sessions.updateStatus(id, "running", { startedAt: new Date().toISOString() });
   return jsonResponse(200, sessionResponse(updated));
@@ -169,6 +172,10 @@ export function pauseSessionHandler(id: string, deps: SessionsDeps): Response {
   const session = deps.sessions.get(id);
   if (!session) {
     return errorResponse(404, "session_not_found", `session not found: ${id}`, { id });
+  }
+  const terminal = ["completed", "failed"];
+  if (terminal.includes(session.status)) {
+    return errorResponse(409, "session_not_pausable", `cannot pause session in status: ${session.status}`, { id, status: session.status });
   }
   if (session.status !== "running") {
     return badRequest(`cannot pause session in status: ${session.status}. Must be running.`);

@@ -58,7 +58,7 @@ export async function parseJsonBody(
     if (text.length === 0) return { data: {} };
     const parsed = JSON.parse(text) as unknown;
     if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
-      return { error: errorResponse(400, "validation_error", "request body must be a JSON object") };
+      return { error: badRequest("request body must be a JSON object") };
     }
     const obj = parsed as Record<string, unknown>;
     if (obj.data !== undefined && typeof obj.data === "object" && obj.data !== null) {

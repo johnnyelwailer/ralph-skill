@@ -17,8 +17,8 @@ function makeMockSessionRegistry(sessionsDir: string): SessionRegistry {
         try {
           const parsed = JSON.parse(readFileSync(sessionPath, "utf-8")) as Record<string, unknown>;
           const session = {
-            id: String(parsed.id ?? id),
-            projectId: String(parsed.project_id ?? ""),
+            id: id,
+            projectId: String(parsed.project_id ?? id),
             kind: String(parsed.kind ?? "standalone"),
             status: String(parsed.status ?? "pending") as SessionStatus,
             workflow: parsed.workflow != null ? String(parsed.workflow) : null,
