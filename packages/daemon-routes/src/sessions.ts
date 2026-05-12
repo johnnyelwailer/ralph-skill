@@ -50,12 +50,7 @@ export function handleSessions(req: Request, deps: SessionsDeps, pathname: strin
   const logMatch = pathname.match(/^\/v1\/sessions\/([^/?#]+)\/log$/);
   if (logMatch) {
     if (req.method !== "GET") return methodNotAllowed();
-    const id = logMatch[1]!;
-    const session = deps.sessions.get(id);
-    if (!session) {
-      return errorResponse(404, "session_not_found", `session not found: ${id}`, { id });
-    }
-    return readSessionLog(req, deps, id);
+    return readSessionLog(req, deps, logMatch[1]!);
   }
 
   // POST /v1/sessions/:id/resume
@@ -92,11 +87,16 @@ export function handleSessions(req: Request, deps: SessionsDeps, pathname: strin
 
 function readSessionLog(req: Request, deps: SessionsDeps, sessionId: string): Response {
   const sessionsDir = typeof deps.sessionsDir === "function" ? deps.sessionsDir() : deps.sessionsDir;
-  const logPath = `${sessionsDir}/${sessionId}/log.jsonl`;
+  const sessionDir = `${sessionsDir}/${sessionId}`;
+  const logPath = `${sessionDir}/log.jsonl`;
 
   const url = new URL(req.url);
   const format = url.searchParams.get("format") ?? "sse";
   const since = url.searchParams.get("since") ?? undefined;
+
+  if (!existsSync(sessionDir)) {
+    return errorResponse(404, "session_not_found", `session not found: ${sessionId}`, { id: sessionId });
+  }
 
   if (!existsSync(logPath)) {
     return jsonResponse(200, { _v: 1, items: [], next_cursor: null });

@@ -13,7 +13,6 @@ function makeMockSessionRegistry(sessionsDir: string): SessionRegistry {
       const cached = storage.get(id);
       if (cached) return cached;
       const sessionPath = join(sessionsDir, id, "session.json");
-      const sessionDir = join(sessionsDir, id);
       if (existsSync(sessionPath)) {
         try {
           const parsed = JSON.parse(readFileSync(sessionPath, "utf-8")) as Record<string, unknown>;
@@ -40,30 +39,6 @@ function makeMockSessionRegistry(sessionsDir: string): SessionRegistry {
           storage.set(id, session);
           return session;
         } catch { return undefined; }
-      }
-      if (existsSync(sessionDir) && existsSync(join(sessionDir, "log.jsonl"))) {
-        const session = {
-          id,
-          projectId: id,
-          kind: "standalone" as const,
-          status: "pending" as SessionStatus,
-          workflow: null,
-          providerChain: null,
-          issueRef: null,
-          parentSessionId: null,
-          maxIterations: null,
-          notes: "",
-          currentIteration: 0,
-          currentPhase: null,
-          currentProviderId: null,
-          lastEventId: null,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-          stoppedAt: null,
-          startedAt: null,
-        };
-        storage.set(id, session);
-        return session;
       }
       return undefined;
     },
