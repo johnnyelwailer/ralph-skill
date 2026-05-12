@@ -1,16 +1,59 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdtempSync, rmSync, writeFileSync, readFileSync, mkdirSync, existsSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync, readFileSync, mkdirSync, existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { handleSessions, type SessionsDeps } from "./sessions.ts";
 import type { SessionRegistry, ProjectRegistry, SessionQueueItem } from "@aloop/state-sqlite";
 
-function makeMockSessionRegistry(): SessionRegistry {
+function makeMockSessionRegistry(sessionsDir: string): SessionRegistry {
   const storage = new Map<string, ReturnType<SessionRegistry["get"]>>();
   const queueItems: SessionQueueItem[] = [];
   return {
-    get(id) { return storage.get(id); },
-    list() { return Array.from(storage.values()); },
+    get(id) {
+      const cached = storage.get(id);
+      if (cached) return cached;
+      const sessionPath = join(sessionsDir, id, "session.json");
+      if (existsSync(sessionPath)) {
+        try {
+          const parsed = JSON.parse(readFileSync(sessionPath, "utf-8")) as Record<string, unknown>;
+          const session = {
+            id: String(parsed.id ?? id),
+            projectId: String(parsed.project_id ?? ""),
+            kind: String(parsed.kind ?? "standalone"),
+            status: String(parsed.status ?? "pending") as SessionStatus,
+            workflow: parsed.workflow != null ? String(parsed.workflow) : null,
+            providerChain: (parsed.provider_chain as string[] | null ?? null),
+            issueRef: parsed.issue_ref != null ? String(parsed.issue_ref) : null,
+            parentSessionId: parsed.parent_session_id != null ? String(parsed.parent_session_id) : null,
+            maxIterations: parsed.max_iterations != null ? Number(parsed.max_iterations) : null,
+            notes: parsed.notes != null ? String(parsed.notes) : "",
+            currentIteration: Number(parsed.current_iteration ?? 0),
+            currentPhase: parsed.current_phase != null ? String(parsed.current_phase) : null,
+            currentProviderId: parsed.current_provider_id != null ? String(parsed.current_provider_id) : null,
+            lastEventId: parsed.last_event_id != null ? String(parsed.last_event_id) : null,
+            createdAt: String(parsed.created_at ?? new Date().toISOString()),
+            updatedAt: String(parsed.updated_at ?? new Date().toISOString()),
+            stoppedAt: parsed.stopped_at != null ? String(parsed.stopped_at) : null,
+            startedAt: parsed.started_at != null ? String(parsed.started_at) : null,
+          };
+          storage.set(id, session);
+          return session;
+        } catch { return undefined; }
+      }
+      return undefined;
+    },
+    list() {
+      if (!existsSync(sessionsDir)) return Array.from(storage.values());
+      const entries = readdirSync(sessionsDir, { withFileTypes: true });
+      const sessions: ReturnType<SessionRegistry["get"]>[] = [];
+      for (const entry of entries) {
+        if (entry.isDirectory()) {
+          const s = storage.get(entry.name) ?? this.get(entry.name);
+          if (s) sessions.push(s);
+        }
+      }
+      return sessions.length > 0 ? sessions : Array.from(storage.values());
+    },
     create(input) {
       const session = { id: input.id ?? crypto.randomUUID(), projectId: input.projectId, kind: input.kind, status: "pending" as const, workflow: input.workflow, providerChain: input.providerChain, issueRef: input.issueRef ?? null, parentSessionId: input.parentSessionId ?? null, maxIterations: input.maxIterations ?? null, notes: input.notes ?? "", currentIteration: 0, currentPhase: null, currentProviderId: null, lastEventId: null, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), stoppedAt: null, startedAt: null };
       storage.set(session.id, session);
@@ -18,7 +61,8 @@ function makeMockSessionRegistry(): SessionRegistry {
     },
     delete(id) { storage.delete(id); },
     updateStatus(id, status) {
-      const s = storage.get(id)!;
+      const s = this.get(id);
+      if (!s) throw new Error(`session not found: ${id}`);
       const updated = { ...s, status, updatedAt: new Date().toISOString() };
       storage.set(id, updated);
       return updated;
@@ -48,10 +92,11 @@ function makeMockProjectRegistry(): ProjectRegistry {
 
 function makeDeps(sessionId?: string): SessionsDeps {
   const base = mkdtempSync(join(tmpdir(), "aloop-sessions-test-"));
+  const sessionsDir = join(base, sessionId ?? "sessions");
   return {
-    sessions: makeMockSessionRegistry(),
+    sessions: makeMockSessionRegistry(sessionsDir),
     projects: makeMockProjectRegistry(),
-    sessionsDir: () => join(base, sessionId ?? "sessions"),
+    sessionsDir: () => sessionsDir,
   };
 }
 

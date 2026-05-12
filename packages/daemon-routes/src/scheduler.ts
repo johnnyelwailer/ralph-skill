@@ -52,12 +52,14 @@ export async function handleScheduler(
     const providerCandidate = asNonEmptyString(parsed.data.provider_candidate);
     const ttlSeconds = asPositiveInt(parsed.data.ttl_seconds);
     const estimatedCostUsd = asNonNegativeNumber(parsed.data.estimated_cost_usd);
+    if (!sessionId && !composerTurnId && !controlSubagentRunId) {
+      return badRequest("session_id is required (or composer_turn_id or control_subagent_run_id)");
+    }
     const owners = [
       sessionId ? { sessionId } : undefined,
       composerTurnId ? { composerTurnId } : undefined,
       controlSubagentRunId ? { controlSubagentRunId } : undefined,
     ].filter((owner): owner is { sessionId: string } | { composerTurnId: string } | { controlSubagentRunId: string } => owner !== undefined);
-    if (owners.length === 0) return badRequest("one owner field is required");
     if (owners.length > 1) return badRequest("only one owner field may be provided");
     if (!providerCandidate) return badRequest("provider_candidate is required");
     if (ttlSeconds === "invalid") return badRequest("ttl_seconds must be a positive integer");
