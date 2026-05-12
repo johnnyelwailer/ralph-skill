@@ -63,6 +63,11 @@ export type {
   CreateComposerTurnInput,
 } from "./state/composer.ts";
 export {
+  createIdempotencyStore,
+  type IdempotencyResult,
+  type IdempotencyStore,
+} from "./state/idempotency.ts";
+export {
   SessionRegistry,
   type SessionQueueItem,
 } from "./state/sessions-registry";

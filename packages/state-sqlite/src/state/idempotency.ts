@@ -54,9 +54,17 @@ export function createIdempotencyStore(db: Database): IdempotencyStore {
       const now = new Date();
       const createdAt = now.toISOString();
       const expiresAt = makeExpiresAt(now);
+      const serialized = serializeForIdempotency(result);
       db.prepare(
         "INSERT OR REPLACE INTO idempotency_keys (key, status, result, created_at, expires_at) VALUES (?, ?, ?, ?, ?)",
-      ).run(key, status, JSON.stringify(result), createdAt, expiresAt);
+      ).run(key, status, serialized, createdAt, expiresAt);
     },
   };
+}
+
+function serializeForIdempotency(value: unknown): string {
+  if (value instanceof Error) {
+    return JSON.stringify({ __error: true, name: value.name, message: value.message, stack: value.stack });
+  }
+  return JSON.stringify(value);
 }

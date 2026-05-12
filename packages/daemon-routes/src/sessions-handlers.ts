@@ -134,8 +134,18 @@ export function deleteSessionHandler(id: string, req: Request, deps: SessionsDep
     return badRequest(`mode must be one of: ${allowedModes.join(", ")}`);
   }
 
-  deps.sessions.delete(id);
-  return new Response(null, { status: 204 });
+  if (session.status === "archived") {
+    return errorResponse(409, "session_not_deletable", "cannot delete session in archived status", { id, status: session.status });
+  }
+
+  if (mode === "force") {
+    deps.sessions.delete(id);
+  } else {
+    deps.sessions.updateStatus(id, "stopped");
+  }
+
+  const updated = deps.sessions.get(id);
+  return jsonResponse(200, sessionResponse(updated!));
 }
 
 // ── POST /v1/sessions/:id/resume ─────────────────────────────────────────────

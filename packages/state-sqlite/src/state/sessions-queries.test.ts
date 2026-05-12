@@ -85,8 +85,7 @@ function makeQueueItem(overrides: Partial<{
   };
 }
 
-// TODO: 2026-05-12T00:00:00Z — sessions-queries.test.ts has 3 failing tests
-// due to FOREIGN KEY constraint failures. Tests use arbitrary project IDs
+// FOREIGN KEY constraint failures in tests
 // (e.g., "p_proj2", "s_parentX") that don't exist in the projects table.
 // The database has PRAGMA foreign_keys = ON, so insertSession fails for any
 // session whose projectId doesn't reference an existing projects row.

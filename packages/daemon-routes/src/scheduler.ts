@@ -11,7 +11,8 @@ export async function handleScheduler(
 ): Promise<Response | undefined> {
   if (pathname === "/v1/scheduler/limits") {
     if (req.method === "GET") {
-      return jsonResponse(200, { _v: 1, ...deps.scheduler.currentLimits() });
+      const limits = deps.scheduler.currentLimits();
+      return jsonResponse(200, { _v: 1, max_permits: limits.concurrencyCap, ...limits });
     }
     if (req.method !== "PUT") return methodNotAllowed();
 
@@ -32,7 +33,7 @@ export async function handleScheduler(
       }
       return badRequest("invalid scheduler limits", { errors: updated.errors });
     }
-    return jsonResponse(200, { _v: 1, ...updated.limits });
+    return jsonResponse(200, { _v: 1, max_permits: updated.limits.concurrencyCap, ...updated.limits });
   }
 
   if (pathname === "/v1/scheduler/permits") {
