@@ -98,7 +98,7 @@ export async function createSessionHandler(req: Request, deps: SessionsDeps): Pr
         : undefined;
     if (!parentId) return badRequest("kind=child requires parent_session_id");
     const parent = deps.sessions.get(parentId);
-    if (!parent) return errorResponse(404, "parent_session_not_found", `parent session not found: ${parentId}`, { parent_session_id: parentId });
+    if (!parent) return badRequest(`parent session not found: ${parentId}`);
     if (parent.kind === "child") return badRequest("grandchild sessions are not allowed");
   }
 
@@ -107,13 +107,18 @@ export async function createSessionHandler(req: Request, deps: SessionsDeps): Pr
       ? body.data.max_iterations
       : null;
 
+  const issueRef =
+    body.data.issue !== undefined && body.data.issue !== null
+      ? (typeof body.data.issue === "number" && !Number.isNaN(body.data.issue) ? String(body.data.issue) : null)
+      : null;
+
   const session = deps.sessions.create({
     id: typeof body.data.id === "string" && body.data.id.length > 0 ? body.data.id : undefined,
     projectId,
     kind,
     workflow,
     providerChain,
-    issueRef: body.data.issue ?? null,
+    issueRef,
     parentSessionId: kind === "child" ? body.data.parent_session_id : null,
     maxIterations,
     notes: typeof body.data.notes === "string" ? body.data.notes : "",
@@ -163,8 +168,8 @@ export function resumeSessionHandler(id: string, deps: SessionsDeps): Response {
   if (terminal.includes(session.status)) {
     return errorResponse(409, "session_not_resumable", `cannot resume session in status: ${session.status}`, { id, status: session.status });
   }
-  if (session.status === "pending" || session.status === "running" || session.status === "completed") {
-    return badRequest(`cannot resume session in status: ${session.status}. Must be paused, stopped, or interrupted.`);
+  if (session.status !== "stopped" && session.status !== "interrupted" && session.status !== "paused") {
+    return errorResponse(409, "session_not_resumable", `cannot resume session in status: ${session.status}`, { id, status: session.status });
   }
   const updated = deps.sessions.updateStatus(id, "running", { startedAt: new Date().toISOString() });
   return jsonResponse(200, sessionResponse(updated));
@@ -180,8 +185,11 @@ export function pauseSessionHandler(id: string, deps: SessionsDeps): Response {
   if (session.status === "completed" || session.status === "failed") {
     return errorResponse(409, "session_not_pausable", `cannot pause session in status: ${session.status}`, { id, status: session.status });
   }
-  if (session.status !== "running") {
-    return badRequest(`cannot pause session in status: ${session.status}. Must be running.`);
+  if (session.status === "paused" || session.status === "stopped" || session.status === "interrupted") {
+    return errorResponse(409, "session_not_pausable", `cannot pause session in status: ${session.status}`, { id, status: session.status });
+  }
+  if (session.status !== "running" && session.status !== "pending") {
+    return errorResponse(409, "session_not_pausable", `cannot pause session in status: ${session.status}`, { id, status: session.status });
   }
   const updated = deps.sessions.updateStatus(id, "paused");
   return jsonResponse(200, sessionResponse(updated));
@@ -195,7 +203,7 @@ export function unpauseSessionHandler(id: string, deps: SessionsDeps): Response 
     return errorResponse(404, "session_not_found", `session not found: ${id}`, { id });
   }
   if (session.status !== "paused") {
-    return badRequest(`cannot unpause session in status: ${session.status}. Must be paused.`);
+    return errorResponse(409, "session_not_paused", `cannot unpause session in status: ${session.status}`, { id, status: session.status });
   }
   const updated = deps.sessions.updateStatus(id, "running");
   return jsonResponse(200, sessionResponse(updated));

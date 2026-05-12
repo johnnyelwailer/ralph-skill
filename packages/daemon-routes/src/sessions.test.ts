@@ -1095,17 +1095,19 @@ describe("GET /v1/sessions/:id/log", () => {
 // ─── Helpers for session lifecycle tests ───────────────────────────────────────
 
 /** Write a session.json with the given status into a pre-created session dir. */
-function writeSessionStatus(dir: string, status: string, id = "s_lifecycle_001"): void {
-  mkdirSync(dir, { recursive: true });
+function writeSessionStatus(sessionDir: string, status: string): void {
+  mkdirSync(sessionDir, { recursive: true });
   writeFileSync(
-    join(dir, "session.json"),
+    join(sessionDir, "session.json"),
     JSON.stringify({
-      id,
+      id: require("node:path").basename(sessionDir),
       project_id: "p_test",
       kind: "standalone",
       status,
       workflow: "plan-build-review",
+      provider_chain: "[\"opencode\"]",
       created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
     }),
     "utf-8",
   );
