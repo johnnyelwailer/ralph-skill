@@ -235,7 +235,7 @@ function validateCreateInput(data: unknown): {
   if (!scope) return { ok: false, error: "scope.kind is required and must be a valid kind" };
 
   const message = d.message;
-  if (typeof message !== "string") return { ok: false, error: "message is required and must be a string" };
+  if (typeof message !== "string" || message.length === 0) return { ok: false, error: "message is required and must be a non-empty string" };
 
   const id = d.id;
   if (id !== undefined && typeof id !== "string") {
@@ -380,7 +380,8 @@ export async function handleComposer(
 
   // POST /v1/composer/turns/:id/cancel — must come before singleMatch
   const cancelMatch = pathname.match(/^\/v1\/composer\/turns\/([^/]+)\/cancel$/);
-  if (cancelMatch && req.method === "POST") {
+  if (cancelMatch) {
+    if (req.method !== "POST") return methodNotAllowed();
     const id = cancelMatch[1]!;
     try {
       const turn = registry.updateStatus(id, "cancelled");
@@ -421,11 +422,14 @@ export async function handleComposer(
         return errorResponse(500, "internal_error", String(err));
       }
     }
+
+    return methodNotAllowed();
   }
 
   // GET /v1/composer/turns/:id/chunks
   const chunksMatch = pathname.match(/^\/v1\/composer\/turns\/([^/]+)\/chunks$/);
-  if (chunksMatch && req.method === "GET") {
+  if (chunksMatch) {
+    if (req.method !== "GET") return methodNotAllowed();
     // Composer's own turn chunks are stored in its own turn event stream.
     // For now, return an empty replay stream — real-time streaming would need
     // a persistent subscription to the global event bus, same as session turns.
@@ -464,7 +468,8 @@ export async function handleComposer(
 
   // GET /v1/composer/turns/:id/launched
   const launchedMatch = pathname.match(/^\/v1\/composer\/turns\/([^/]+)\/launched$/);
-  if (launchedMatch && req.method === "GET") {
+  if (launchedMatch) {
+    if (req.method !== "GET") return methodNotAllowed();
     const id = launchedMatch[1]!;
     try {
       const turn = registry.getById(id);

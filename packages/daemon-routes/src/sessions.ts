@@ -19,13 +19,10 @@ export { type SessionsDeps } from "./sessions-handlers.ts";
 
 export function handleSessions(req: Request, deps: SessionsDeps, pathname: string): Response | Promise<Response> | undefined {
   // GET /v1/sessions
-  if (req.method === "GET" && pathname === "/v1/sessions") {
-    return listSessionsHandler(req, deps);
-  }
-
-  // POST /v1/sessions
-  if (req.method === "POST" && pathname === "/v1/sessions") {
-    return createSessionHandler(req, deps);
+  if (pathname === "/v1/sessions") {
+    if (req.method === "GET") return listSessionsHandler(req, deps);
+    if (req.method === "POST") return createSessionHandler(req, deps);
+    return methodNotAllowed();
   }
 
   // POST /v1/sessions/:id/steer
@@ -37,19 +34,22 @@ export function handleSessions(req: Request, deps: SessionsDeps, pathname: strin
 
   // GET /v1/sessions/:id/queue
   const queueMatch = pathname.match(/^\/v1\/sessions\/([^/?#]+)\/queue$/);
-  if (queueMatch && req.method === "GET") {
+  if (queueMatch) {
+    if (req.method !== "GET") return methodNotAllowed();
     return listSessionQueueHandler(queueMatch[1]!, deps);
   }
 
   // DELETE /v1/sessions/:id/queue/:itemId
   const queueDeleteMatch = pathname.match(/^\/v1\/sessions\/([^/?#]+)\/queue\/([^/?#]+)$/);
-  if (queueDeleteMatch && req.method === "DELETE") {
+  if (queueDeleteMatch) {
+    if (req.method !== "DELETE") return methodNotAllowed();
     return deleteSessionQueueItemHandler(queueDeleteMatch[1]!, queueDeleteMatch[2]!, deps);
   }
 
   // GET /v1/sessions/:id/log
   const logMatch = pathname.match(/^\/v1\/sessions\/([^/?#]+)\/log$/);
-  if (logMatch && req.method === "GET") {
+  if (logMatch) {
+    if (req.method !== "GET") return methodNotAllowed();
     const id = logMatch[1]!;
     const session = deps.sessions.get(id);
     if (!session) {
@@ -60,31 +60,31 @@ export function handleSessions(req: Request, deps: SessionsDeps, pathname: strin
 
   // POST /v1/sessions/:id/resume
   const resumeMatch = pathname.match(/^\/v1\/sessions\/([^/?#]+)\/resume$/);
-  if (resumeMatch && req.method === "POST") {
+  if (resumeMatch) {
+    if (req.method !== "POST") return methodNotAllowed();
     return resumeSessionHandler(resumeMatch[1]!, deps);
   }
 
   // POST /v1/sessions/:id/pause
   const pauseMatch = pathname.match(/^\/v1\/sessions\/([^/?#]+)\/pause$/);
-  if (pauseMatch && req.method === "POST") {
+  if (pauseMatch) {
+    if (req.method !== "POST") return methodNotAllowed();
     return pauseSessionHandler(pauseMatch[1]!, deps);
   }
 
   // POST /v1/sessions/:id/unpause
   const unpauseMatch = pathname.match(/^\/v1\/sessions\/([^/?#]+)\/unpause$/);
-  if (unpauseMatch && req.method === "POST") {
+  if (unpauseMatch) {
+    if (req.method !== "POST") return methodNotAllowed();
     return unpauseSessionHandler(unpauseMatch[1]!, deps);
   }
 
   // GET /v1/sessions/:id
   const detailMatch = pathname.match(/^\/v1\/sessions\/([^/?#]+)$/);
-  if (detailMatch && req.method === "GET") {
-    return getSessionHandler(detailMatch[1]!, deps);
-  }
-
-  // DELETE /v1/sessions/:id
-  if (detailMatch && req.method === "DELETE") {
-    return deleteSessionHandler(detailMatch[1]!, req, deps);
+  if (detailMatch) {
+    if (req.method === "GET") return getSessionHandler(detailMatch[1]!, deps);
+    if (req.method === "DELETE") return deleteSessionHandler(detailMatch[1]!, req, deps);
+    return methodNotAllowed();
   }
 
   return undefined;
