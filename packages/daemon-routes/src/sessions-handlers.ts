@@ -71,26 +71,24 @@ export async function createSessionHandler(req: Request, deps: SessionsDeps): Pr
   }
 
   const kindInput = body.data.kind;
-  let kind: typeof VALID_KINDS[number] | undefined;
-  if (kindInput === undefined) {
-    return badRequest("kind is required");
-  } else if (VALID_KINDS.includes(kindInput as typeof VALID_KINDS[number])) {
-    kind = kindInput as typeof VALID_KINDS[number];
-  } else {
-    return badRequest(`kind must be one of: ${VALID_KINDS.join(", ")}`);
+  let kind: typeof VALID_KINDS[number] = "standalone";
+  if (kindInput !== undefined) {
+    if (VALID_KINDS.includes(kindInput as typeof VALID_KINDS[number])) {
+      kind = kindInput as typeof VALID_KINDS[number];
+    } else {
+      return badRequest(`kind must be one of: ${VALID_KINDS.join(", ")}`);
+    }
   }
 
   const workflow =
     typeof body.data.workflow === "string" && body.data.workflow.length > 0
       ? body.data.workflow
       : undefined;
-  if (!workflow) return badRequest("workflow is required");
 
   const providerChain =
-    Array.isArray(body.data.provider_chain)
+    Array.isArray(body.data.provider_chain) && body.data.provider_chain.length > 0
       ? (body.data.provider_chain as string[])
       : undefined;
-  if (!providerChain) return badRequest("provider_chain must be an array of provider ids");
 
   // kind=child requires parent_session_id
   if (kind === "child") {

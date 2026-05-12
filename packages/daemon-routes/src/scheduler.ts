@@ -12,7 +12,21 @@ export async function handleScheduler(
   if (pathname === "/v1/scheduler/limits") {
     if (req.method === "GET") {
       const limits = deps.scheduler.currentLimits();
-      return jsonResponse(200, { _v: 1, max_permits: limits.concurrencyCap, ...limits });
+      return jsonResponse(200, {
+        _v: 1,
+        max_permits: limits.concurrencyCap,
+        permit_ttl_default_seconds: limits.permitTtlDefaultSeconds,
+        permit_ttl_max_seconds: limits.permitTtlMaxSeconds,
+        system_limits: {
+          cpu_max_pct: limits.systemLimits.cpuMaxPct,
+          mem_max_pct: limits.systemLimits.memMaxPct,
+          load_max: limits.systemLimits.loadMax,
+        },
+        burn_rate: {
+          max_tokens_since_commit: limits.burnRate.maxTokensSinceCommit,
+          min_commits_per_hour: limits.burnRate.minCommitsPerHour,
+        },
+      });
     }
     if (req.method !== "PUT") return methodNotAllowed();
 
@@ -33,7 +47,21 @@ export async function handleScheduler(
       }
       return badRequest("invalid scheduler limits", { errors: updated.errors });
     }
-    return jsonResponse(200, { _v: 1, max_permits: updated.limits.concurrencyCap, ...updated.limits });
+    return jsonResponse(200, {
+        _v: 1,
+        max_permits: updated.limits.concurrencyCap,
+        permit_ttl_default_seconds: updated.limits.permitTtlDefaultSeconds,
+        permit_ttl_max_seconds: updated.limits.permitTtlMaxSeconds,
+        system_limits: {
+          cpu_max_pct: updated.limits.systemLimits.cpuMaxPct,
+          mem_max_pct: updated.limits.systemLimits.memMaxPct,
+          load_max: updated.limits.systemLimits.loadMax,
+        },
+        burn_rate: {
+          max_tokens_since_commit: updated.limits.burnRate.maxTokensSinceCommit,
+          min_commits_per_hour: updated.limits.burnRate.minCommitsPerHour,
+        },
+      });
   }
 
   if (pathname === "/v1/scheduler/permits") {
