@@ -247,6 +247,61 @@ describe("parseJsonBody", () => {
     expect(result.data).toEqual(data);
   });
 
+  test("unwraps enveloped body when top-level 'data' field is an object", async () => {
+    // The enveloped shape is used by tests and external API clients
+    const enveloped = { data: { project_id: "proj-1", kind: "standalone" } };
+    const req = new Request("http://x/", {
+      method: "POST",
+      body: JSON.stringify(enveloped),
+    });
+    const result = await parseJsonBody(req);
+    expect("data" in result).toBe(true);
+    expect(result.data).toEqual({ project_id: "proj-1", kind: "standalone" });
+  });
+
+  test("unwraps enveloped body preserving all nested fields", async () => {
+    const enveloped = {
+      data: {
+        project_id: "proj-x",
+        kind: "orchestrated",
+        workflow: "test",
+        provider_chain: ["provider-1", "provider-2"],
+        metadata: { source: "api" },
+      },
+    };
+    const req = new Request("http://x/", {
+      method: "POST",
+      body: JSON.stringify(enveloped),
+    });
+    const result = await parseJsonBody(req);
+    expect("data" in result).toBe(true);
+    expect(result.data).toEqual(enveloped.data);
+    expect((result.data as Record<string, unknown>).metadata).toEqual({ source: "api" });
+  });
+
+  test("returns direct shape when 'data' field is a primitive", async () => {
+    // When data is present but not an object, treat it as a regular field (not unwrapped)
+    const body = { data: "just a string", other_field: true };
+    const req = new Request("http://x/", {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+    const result = await parseJsonBody(req);
+    expect("data" in result).toBe(true);
+    expect(result.data).toEqual(body);
+  });
+
+  test("returns direct shape when 'data' field is null", async () => {
+    const body = { data: null, foo: "bar" };
+    const req = new Request("http://x/", {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+    const result = await parseJsonBody(req);
+    expect("data" in result).toBe(true);
+    expect(result.data).toEqual(body);
+  });
+
   test("returns error Response (not throw) for all error cases", async () => {
     // Verify error path always returns a Response object, never throws
     const invalidCases = [
