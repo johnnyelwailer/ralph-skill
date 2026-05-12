@@ -80,6 +80,30 @@ describe("appendPermitGrant", () => {
     });
   });
 
+  test("includes project_id in event when projectId is non-null", async () => {
+    const { events, append } = mockEventWriter();
+    await appendPermitGrant({ append }, {
+      permitId: "perm_proj",
+      owner: { sessionId: "sess_proj" },
+      projectId: "proj_test_123",
+      providerId: "opencode",
+      ttlSeconds: 600,
+      grantedAt: "2024-01-01T00:00:00.000Z",
+      expiresAt: "2024-01-01T00:10:00.000Z",
+    });
+
+    expect(events).toHaveLength(1);
+    expect(events[0]!.data).toEqual({
+      permit_id: "perm_proj",
+      session_id: "sess_proj",
+      project_id: "proj_test_123",
+      provider_id: "opencode",
+      ttl_seconds: 600,
+      granted_at: "2024-01-01T00:00:00.000Z",
+      expires_at: "2024-01-01T00:10:00.000Z",
+    });
+  });
+
   test("returns void (undefined)", async () => {
     const { append } = mockEventWriter();
     const result = await appendPermitGrant({ append }, {
