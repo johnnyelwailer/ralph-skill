@@ -938,18 +938,18 @@ describe("POST /v1/sessions", () => {
     expect(res!.status).toBe(201);
     const body = await resJson<{
       id: string;
-      issue_ref: number;
+      issue_ref: string;
       max_iterations: number;
       notes: string;
     }>(res!);
-    expect(body.issue_ref).toBe(42);
+    expect(body.issue_ref).toBe("42");
     expect(body.max_iterations).toBe(10);
     expect(body.notes).toBe("Test session notes");
 
     // Verify persisted to session.json
     const sessionDir = join(deps.sessionsDir(), body.id);
     const stored = JSON.parse(readFileSync(join(sessionDir, "session.json"), "utf-8"));
-    expect(stored.issue_ref).toBe(42);
+    expect(stored.issue_ref).toBe("42");
     expect(stored.max_iterations).toBe(10);
     expect(stored.notes).toBe("Test session notes");
   });

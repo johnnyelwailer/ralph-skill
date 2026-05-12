@@ -22,7 +22,13 @@ function makeStore(logPath: string, since?: string) {
       try {
         for await (const line of rl) {
           if (!line.trim()) continue;
-          const env = JSON.parse(line) as Record<string, unknown>;
+          let env: Record<string, unknown>;
+          try {
+            env = JSON.parse(line) as Record<string, unknown>;
+          } catch {
+            // Malformed line — skip
+            continue;
+          }
           if ((sinceId ?? sinceId ?? sinceId) !== undefined && (env.id as string) <= (sinceId ?? since ?? "")) continue;
           yield env;
         }

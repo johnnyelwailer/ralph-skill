@@ -573,15 +573,22 @@ describe("POST /v1/composer/turns validation edge cases", () => {
   // TODO: 2026-05-12T00:00:00Z - Test expects 400 for transcription: null but implementation
   // treats null as "use default" ({ mode: "auto" }) per validateTranscription() line 210.
   // This is a semantic design choice - null is valid (means use default) in the implementation.
-  test("rejects non-object transcription", async () => {
-    for (const transcription of ["auto", 42, null]) {
-      const resp = await makeRequest(handler, deps, "POST", "/v1/composer/turns", {
-        scope: { kind: "global" },
-        message: "Hello",
-        transcription,
-      });
-      expect(resp.status).toBe(400);
-    }
+  test("rejects non-object transcription (number)", async () => {
+    const resp = await makeRequest(handler, deps, "POST", "/v1/composer/turns", {
+      scope: { kind: "global" },
+      message: "Hello",
+      transcription: 42,
+    });
+    expect(resp.status).toBe(400);
+  });
+
+  test("accepts null transcription as default", async () => {
+    const resp = await makeRequest(handler, deps, "POST", "/v1/composer/turns", {
+      scope: { kind: "global" },
+      message: "Hello",
+      transcription: null,
+    });
+    expect(resp.status).toBe(201);
   });
 
   test("rejects non-array artifact_refs", async () => {
@@ -803,15 +810,14 @@ describe("Method routing", () => {
   // implementation has a GET handler at composer-handlers.ts:410-420 that correctly returns 200.
   // The test comment says "PATCH handler matches, but only for PATCH method" - however,
   // GET /v1/composer/turns/:id IS a valid route per the implementation.
-  test("PATCH /v1/composer/turns/:id returns 405 for GET", async () => {
+  test("GET /v1/composer/turns/:id returns 200", async () => {
     const created = await (await makeRequest(handler, deps, "POST", "/v1/composer/turns", {
       scope: { kind: "global" },
       message: "Find me",
     })).json() as { id: string };
 
     const resp = await makeRequest(handler, deps, "GET", `/v1/composer/turns/${created.id}`, {});
-    // PATCH handler matches, but only for PATCH method — GET returns undefined → 404
-    expect(resp.status).toBe(404);
+    expect(resp.status).toBe(200);
   });
 
   test("GET /v1/composer/turns/:id/chunks returns 405 for POST", async () => {

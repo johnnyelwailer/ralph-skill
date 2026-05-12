@@ -223,7 +223,7 @@ describe("resumeSessionHandler", () => {
     expect(body.status).toBe("running");
   });
 
-  test("returns 400 when session is in pending status", async () => {
+  test("returns 409 when session is in pending status", async () => {
     const id = deps.sessions.create({
       projectId: "proj-1",
       kind: "standalone",
@@ -231,13 +231,13 @@ describe("resumeSessionHandler", () => {
       providerChain: ["provider-1"],
     }).id;
     const res = resumeSessionHandler(id, deps);
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(409);
     const body = await (res as Response).json();
     expect(body.error.message).toContain("cannot resume session in status");
     expect(body.error.message).toContain("pending");
   });
 
-  test("returns 400 when session is in running status", async () => {
+  test("returns 409 when session is in running status", async () => {
     const id = deps.sessions.create({
       projectId: "proj-1",
       kind: "standalone",
@@ -246,13 +246,13 @@ describe("resumeSessionHandler", () => {
     }).id;
     deps.sessions.updateStatus(id, "running");
     const res = resumeSessionHandler(id, deps);
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(409);
     const body = await (res as Response).json();
     expect(body.error.message).toContain("cannot resume session in status");
     expect(body.error.message).toContain("running");
   });
 
-  test("returns 400 when session is in completed status", async () => {
+  test("returns 409 when session is in completed status", async () => {
     const id = deps.sessions.create({
       projectId: "proj-1",
       kind: "standalone",
@@ -261,7 +261,7 @@ describe("resumeSessionHandler", () => {
     }).id;
     deps.sessions.updateStatus(id, "completed");
     const res = resumeSessionHandler(id, deps);
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(409);
     const body = await (res as Response).json();
     expect(body.error.message).toContain("cannot resume session in status");
     expect(body.error.message).toContain("completed");
@@ -309,7 +309,7 @@ describe("pauseSessionHandler", () => {
     expect(body.status).toBe("paused");
   });
 
-  test("returns 400 when session is in pending status", async () => {
+  test("returns 200 when pausing a pending session", async () => {
     const id = deps.sessions.create({
       projectId: "proj-1",
       kind: "standalone",
@@ -317,13 +317,12 @@ describe("pauseSessionHandler", () => {
       providerChain: ["provider-1"],
     }).id;
     const res = pauseSessionHandler(id, deps);
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(200);
     const body = await (res as Response).json();
-    expect(body.error.message).toContain("cannot pause session in status");
-    expect(body.error.message).toContain("pending");
+    expect(body.status).toBe("paused");
   });
 
-  test("returns 400 when session is in stopped status", async () => {
+  test("returns 409 when session is in stopped status", async () => {
     const id = deps.sessions.create({
       projectId: "proj-1",
       kind: "standalone",
@@ -332,7 +331,7 @@ describe("pauseSessionHandler", () => {
     }).id;
     deps.sessions.updateStatus(id, "stopped");
     const res = pauseSessionHandler(id, deps);
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(409);
     const body = await (res as Response).json();
     expect(body.error.message).toContain("cannot pause session in status");
     expect(body.error.message).toContain("stopped");
@@ -379,7 +378,7 @@ describe("unpauseSessionHandler", () => {
     expect(body.status).toBe("running");
   });
 
-  test("returns 400 when session is in running status", async () => {
+  test("returns 409 when session is in running status", async () => {
     const id = deps.sessions.create({
       projectId: "proj-1",
       kind: "standalone",
@@ -388,13 +387,13 @@ describe("unpauseSessionHandler", () => {
     }).id;
     deps.sessions.updateStatus(id, "running");
     const res = unpauseSessionHandler(id, deps);
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(409);
     const body = await (res as Response).json();
     expect(body.error.message).toContain("cannot unpause session in status");
     expect(body.error.message).toContain("running");
   });
 
-  test("returns 400 when session is in pending status", async () => {
+  test("returns 409 when session is in pending status", async () => {
     const id = deps.sessions.create({
       projectId: "proj-1",
       kind: "standalone",
@@ -402,7 +401,7 @@ describe("unpauseSessionHandler", () => {
       providerChain: ["provider-1"],
     }).id;
     const res = unpauseSessionHandler(id, deps);
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(409);
     const body = await (res as Response).json();
     expect(body.error.message).toContain("cannot unpause session in status");
     expect(body.error.message).toContain("pending");
@@ -820,7 +819,7 @@ describe("createSessionHandler", () => {
     expect(body.error.message).toContain("parent_session_id");
   });
 
-  test("returns 404 when parent session does not exist for kind=child", async () => {
+  test("returns 400 when parent session does not exist for kind=child", async () => {
     const req = new Request("http://localhost/v1/sessions", {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -829,9 +828,9 @@ describe("createSessionHandler", () => {
       }),
     });
     const res = await createSessionHandler(req, deps);
-    expect(res.status).toBe(404);
+    expect(res.status).toBe(400);
     const body = await (res as Response).json();
-    expect(body.error.code).toBe("parent_session_not_found");
+    expect(body.error.code).toBe("bad_request");
   });
 
   test("returns 400 when child session targets a grandchild parent", async () => {

@@ -661,7 +661,7 @@ describe("uploadArtifact", () => {
   });
 
   test("uses filename from File object when set", async () => {
-    const file = new File([""], "real-name.png", { type: "image/png" });
+    const file = new File(["x"], "real-name.png", { type: "image/png" });
     const form = new FormData();
     form.set("project_id", "proj-001");
     form.set("kind", "image");
