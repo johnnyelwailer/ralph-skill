@@ -17,6 +17,7 @@ import {
 import { resolveDaemonPaths } from "@aloop/daemon-config";
 import { startHttp, startSocket, type RunningHttp, type RunningSocket } from "@aloop/daemon-http";
 import { createOpencodeAdapter } from "@aloop/provider-opencode";
+import { createOpencodeCliAdapter } from "@aloop/provider-opencode-cli";
 import { acquireLock, releaseLock } from "./lock.ts";
 import { SchedulerService, startSchedulerWatchdog, type RunningWatchdog } from "@aloop/scheduler";
 import { makeSchedulerConfig } from "./scheduler-config.ts";
@@ -86,6 +87,7 @@ export async function startDaemon(opts: StartDaemonOptions = {}): Promise<Runnin
   });
   const providerRegistry = new ProviderRegistry();
   providerRegistry.register(createOpencodeAdapter());
+  providerRegistry.register(createOpencodeCliAdapter());
   const providerHealth = new InMemoryProviderHealthStore(providerRegistry.list().map((adapter) => adapter.id));
   const scheduler = new SchedulerService(permits, makeSchedulerConfig(config, events), events, { providerQuota: createProviderQuotaProbe(providerHealth) });
   const routerDeps = makeRouterDeps({

@@ -1,4 +1,5 @@
 import { badRequest, errorResponse, jsonResponse, methodNotAllowed, parseJsonBody } from "./http-helpers";
+import type { EventWriter } from "@aloop/state-sqlite";
 import type { SessionRegistry } from "@aloop/state-sqlite";
 import type { ProjectRegistry } from "@aloop/state-projects";
 
@@ -6,6 +7,7 @@ export type SessionsDeps = {
   readonly sessions: SessionRegistry;
   readonly projects: ProjectRegistry;
   readonly sessionsDir: string | (() => string);
+  readonly events?: EventWriter;
 };
 
 const VALID_KINDS = ["standalone", "orchestrator", "child"] as const;
@@ -148,11 +150,36 @@ export function deleteSessionHandler(id: string, req: Request, deps: SessionsDep
     return errorResponse(409, "session_not_stoppable", `cannot delete session in status: ${session.status}`, { id, status: session.status });
   }
 
+  const previousStatus = session.status;
   if (mode === "force") {
     deps.sessions.updateStatus(id, "stopped");
+    if (deps.events) {
+      void deps.events.append("session.forced", {
+        session_id: id,
+        previous_status: previousStatus,
+      });
+      void deps.events.append("session.event", {
+        session_id: id,
+        previous_status: previousStatus,
+        status: "stopped",
+        kind: session.kind,
+        workflow: session.workflow,
+        project_id: session.projectId,
+      });
+    }
     return jsonResponse(200, { id, status: "stopped" });
   } else {
     const updated = deps.sessions.updateStatus(id, "stopped");
+    if (deps.events) {
+      void deps.events.append("session.event", {
+        session_id: id,
+        previous_status: previousStatus,
+        status: "stopped",
+        kind: session.kind,
+        workflow: session.workflow,
+        project_id: session.projectId,
+      });
+    }
     return jsonResponse(200, sessionResponse(updated));
   }
 }
@@ -171,7 +198,18 @@ export function resumeSessionHandler(id: string, deps: SessionsDeps): Response {
   if (session.status !== "stopped" && session.status !== "interrupted" && session.status !== "paused") {
     return errorResponse(409, "session_not_resumable", `cannot resume session in status: ${session.status}`, { id, status: session.status });
   }
+  const previousStatus = session.status;
   const updated = deps.sessions.updateStatus(id, "running", { startedAt: new Date().toISOString() });
+  if (deps.events) {
+    void deps.events.append("session.event", {
+      session_id: id,
+      previous_status: previousStatus,
+      status: "running",
+      kind: session.kind,
+      workflow: session.workflow,
+      project_id: session.projectId,
+    });
+  }
   return jsonResponse(200, sessionResponse(updated));
 }
 
@@ -191,7 +229,18 @@ export function pauseSessionHandler(id: string, deps: SessionsDeps): Response {
   if (session.status !== "running" && session.status !== "pending") {
     return errorResponse(409, "session_not_pausable", `cannot pause session in status: ${session.status}`, { id, status: session.status });
   }
+  const previousStatus = session.status;
   const updated = deps.sessions.updateStatus(id, "paused");
+  if (deps.events) {
+    void deps.events.append("session.event", {
+      session_id: id,
+      previous_status: previousStatus,
+      status: "paused",
+      kind: session.kind,
+      workflow: session.workflow,
+      project_id: session.projectId,
+    });
+  }
   return jsonResponse(200, sessionResponse(updated));
 }
 
@@ -205,19 +254,23 @@ export function unpauseSessionHandler(id: string, deps: SessionsDeps): Response 
   if (session.status !== "paused") {
     return errorResponse(409, "session_not_paused", `cannot unpause session in status: ${session.status}`, { id, status: session.status });
   }
+  const previousStatus = session.status;
   const updated = deps.sessions.updateStatus(id, "running");
+  if (deps.events) {
+    void deps.events.append("session.event", {
+      session_id: id,
+      previous_status: previousStatus,
+      status: "running",
+      kind: session.kind,
+      workflow: session.workflow,
+      project_id: session.projectId,
+    });
+  }
   return jsonResponse(200, sessionResponse(updated));
 }
 
 // ── POST /v1/sessions/:id/steer ──────────────────────────────────────────────
 
-// TODO: The implementation does not currently emit session.event for lifecycle
-// transitions (pause/resume/delete/unpause). The test suite expects events to be
-// emitted, but the SessionsDeps type has no `events` field and the handler
-// implementations never call events.append(). This is a documented-but-missing
-// feature per the api.md spec. Once implemented, lifecycle handlers should call
-// events.append("session.event", { session_id, previous_status, status, ... })
-// before returning the response.
 export async function steerSessionHandler(id: string, req: Request, deps: SessionsDeps): Promise<Response> {
   const session = deps.sessions.get(id);
   if (!session) {
