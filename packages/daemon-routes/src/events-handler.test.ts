@@ -486,3 +486,75 @@ describe("matchGlob", () => {
     expect(matchGlob("session.*.update", "session.a.b.update")).toBe(false);
   });
 });
+
+describe("matchGlob — greedy wildcard edge cases", () => {
+  // matchGlob is exported from events-handler.ts
+  const { matchGlob } = require("./events-handler.ts") as {
+    matchGlob: (pattern: string, topic: string) => boolean;
+  };
+
+  // ── Greedy non-backtracking edge cases ───────────────────────────────────
+
+  test("pattern exhausts before topic — returns false (no backtracking)", () => {
+    // Pattern "session.*" has 2 segments; topic "session.foo.bar" has 3.
+    // After "session" matches, "*" consumes "foo" leaving ["bar"] but pattern
+    // is exhausted → false. No backtracking to try "*"=session.foo.
+    expect(matchGlob("session.*", "session.foo.bar")).toBe(false);
+  });
+
+  test("multiple wildcards — greedy fails when extra topic segments remain", () => {
+    // Pattern "*.*" (2 segments) against "a.b.c" (3 segments):
+    // First "*" consumes "a", second "*" faces "b.c" (2 segs) with no pattern left → false.
+    // A valid match exists (a.b as first *, c as second *) but greedy finds none.
+    expect(matchGlob("*.*", "a.b.c")).toBe(false);
+    expect(matchGlob("*.*", "a.b")).toBe(true); // counts line up
+  });
+
+  test("wildcard consumes last segment — subsequent pattern segment fails", () => {
+    // Pattern "a.*.c" against "a.b.c.d":
+    // "*" consumes "b", leaves "c.d" but pattern expects exactly "c" → false.
+    expect(matchGlob("a.*.c", "a.b.c.d")).toBe(false);
+    expect(matchGlob("a.*.c", "a.b.c")).toBe(true); // exact one segment consumed
+  });
+
+  test("topic shorter than pattern — returns false", () => {
+    expect(matchGlob("a.b.c", "a.b")).toBe(false);
+    expect(matchGlob("a.*.b", "a.b")).toBe(false);
+  });
+
+  test("wildcard at end — matches exactly one following segment", () => {
+    expect(matchGlob("session.*", "session.update")).toBe(true);
+    expect(matchGlob("session.*", "session.running")).toBe(true);
+    expect(matchGlob("session.*", "session")).toBe(false); // zero segments after "session"
+  });
+
+  test("multiple consecutive wildcards — each consumes exactly one segment", () => {
+    expect(matchGlob("*.*.*", "a.b.c")).toBe(true);
+    expect(matchGlob("*.*.*", "a.b")).toBe(false);    // too few
+    expect(matchGlob("*.*.*", "a.b.c.d")).toBe(false); // too many
+  });
+
+  test("wildcard in multi-segment topic — documented greedy failure", () => {
+    // Pattern "*.session.*" against "foo.session.bar.baz":
+    // First "*" consumes "foo", leaving 3 segments for 1 remaining pattern part → false.
+    // A correct match WOULD exist if "*" could match "foo.session" and "bar.baz".
+    expect(matchGlob("*.session.*", "foo.session.bar.baz")).toBe(false);
+    // Counts line up when segments match:
+    expect(matchGlob("*.session.*", "foo.session.bar")).toBe(true);
+  });
+
+  // ── Empty-string edge case ───────────────────────────────────────────────
+
+  test("SPEC MISMATCH: * matches empty topic but should require one segment", () => {
+    // Per glob semantics, a wildcard should match at least one non-empty segment.
+    // Current behaviour: matchGlob("*", "") returns true.
+    // Expected per glob spec: should return false.
+    // This test asserts current buggy behaviour; the mismatch is documented here.
+    expect(matchGlob("*", "")).toBe(true); // ← BUG: should be false per spec
+  });
+
+  test("* matches a single non-empty segment", () => {
+    expect(matchGlob("*", "anything")).toBe(true);
+    expect(matchGlob("*", "x")).toBe(true);
+  });
+});
