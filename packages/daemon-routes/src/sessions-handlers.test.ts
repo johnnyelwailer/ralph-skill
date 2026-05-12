@@ -134,14 +134,18 @@ describe("deleteSessionHandler", () => {
   });
 
   test("accepts mode=force query param without error", async () => {
+    // TODO: 2025-05-12 - spec/api.md: DELETE /v1/sessions?mode=force marks status=stopped per spec line 444,
+    // but test comment says "hard-deletes the session" which contradicts spec.
+    // Per constitution VII.29: "Act accordingly" via TODO since spec takes precedence.
     const req = new Request(`http://localhost/v1/sessions/${sessionId}?mode=force`, {
       method: "DELETE",
     });
     const res = deleteSessionHandler(sessionId, req, deps);
     expect(res.status).toBe(200);
-    // mode=force hard-deletes the session
     const getRes = getSessionHandler(sessionId, deps);
-    expect(getRes.status).toBe(404);
+    expect(getRes.status).toBe(200);
+    const body = await (getRes as Response).json();
+    expect(body.status).toBe("stopped");
   });
 
   test("accepts mode=graceful query param without error", async () => {
