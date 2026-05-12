@@ -70,22 +70,25 @@ export async function createSessionHandler(req: Request, deps: SessionsDeps): Pr
     return errorResponse(404, "project_not_found", `project not found: ${projectId}`, { project_id: projectId });
   }
 
-  const kind = VALID_KINDS.includes(body.data.kind as typeof VALID_KINDS[number])
-    ? (body.data.kind as typeof VALID_KINDS[number])
-    : undefined;
-  if (!kind) return badRequest(`kind must be one of: ${VALID_KINDS.join(", ")}`);
+  const kindInput = body.data.kind;
+  let kind: typeof VALID_KINDS[number] | undefined;
+  if (kindInput === undefined) {
+    kind = "standalone";
+  } else if (VALID_KINDS.includes(kindInput as typeof VALID_KINDS[number])) {
+    kind = kindInput as typeof VALID_KINDS[number];
+  } else {
+    return badRequest(`kind must be one of: ${VALID_KINDS.join(", ")}`);
+  }
 
   const workflow =
     typeof body.data.workflow === "string" && body.data.workflow.length > 0
       ? body.data.workflow
-      : undefined;
-  if (!workflow) return badRequest("workflow is required");
+      : "plan-build-review";
 
   const providerChain =
     Array.isArray(body.data.provider_chain)
       ? (body.data.provider_chain as string[])
-      : undefined;
-  if (!providerChain) return badRequest("provider_chain must be an array of provider ids");
+      : ["opencode"];
 
   // kind=child requires parent_session_id
   if (kind === "child") {
@@ -135,8 +138,9 @@ export function deleteSessionHandler(id: string, req: Request, deps: SessionsDep
     return badRequest(`mode must be one of: ${allowedModes.join(", ")}`);
   }
 
-  if (session.status === "archived") {
-    return errorResponse(409, "session_not_deletable", "cannot delete session in archived status", { id, status: session.status });
+  const terminal = ["completed", "failed", "archived"];
+  if (terminal.includes(session.status)) {
+    return errorResponse(409, "session_not_stoppable", `cannot delete session in status: ${session.status}`, { id, status: session.status });
   }
 
   if (mode === "force") {
@@ -176,9 +180,6 @@ export function pauseSessionHandler(id: string, deps: SessionsDeps): Response {
   const terminal = ["completed", "failed"];
   if (terminal.includes(session.status)) {
     return errorResponse(409, "session_not_pausable", `cannot pause session in status: ${session.status}`, { id, status: session.status });
-  }
-  if (session.status !== "running") {
-    return badRequest(`cannot pause session in status: ${session.status}. Must be running.`);
   }
   const updated = deps.sessions.updateStatus(id, "paused");
   return jsonResponse(200, sessionResponse(updated));
@@ -277,7 +278,11 @@ export function deleteSessionQueueItemHandler(
   if (!session) {
     return errorResponse(404, "session_not_found", `session not found: ${id}`, { id });
   }
-  deps.sessions.dequeueItem(id, itemId);
+  try {
+    deps.sessions.dequeueItem(id, itemId);
+  } catch {
+    return errorResponse(404, "queue_item_not_found", `queue item not found: ${itemId}`, { id, item_id: itemId });
+  }
   return new Response(null, { status: 204 });
 }
 
