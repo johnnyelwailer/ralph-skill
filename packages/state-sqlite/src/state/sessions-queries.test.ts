@@ -17,13 +17,18 @@ import {
   updateSessionPhase,
   updateSessionStatus,
 } from "./sessions-queries.ts";
-import type { Session } from "./sessions-store.ts";
+import type {
+  AffectsCompletedWork,
+  Session,
+  SessionKind,
+  SessionStatus,
+} from "./sessions-store.ts";
 
 function makeSession(overrides: Partial<{
   id: string;
   projectId: string;
-  kind: string;
-  status: string;
+  kind: SessionKind;
+  status: SessionStatus;
   workflow: string;
   providerChain: string[];
   issueRef: string | null;
@@ -43,8 +48,8 @@ function makeSession(overrides: Partial<{
   return {
     id: "s_test1",
     projectId: "p_proj1",
-    kind: "standalone",
-    status: "pending",
+    kind: "standalone" as SessionKind,
+    status: "pending" as SessionStatus,
     workflow: "plan-build-review",
     providerChain: ["opencode"],
     issueRef: null,
@@ -68,7 +73,7 @@ function makeQueueItem(overrides: Partial<{
   sessionId: string;
   filename: string;
   instruction: string;
-  affectsCompletedWork: string;
+  affectsCompletedWork: AffectsCompletedWork;
   position: number;
   createdAt: string;
 }> = {}): Parameters<typeof insertQueueItem>[1] {
@@ -78,7 +83,7 @@ function makeQueueItem(overrides: Partial<{
     sessionId: "s_test1",
     filename: "plan.md",
     instruction: "write the spec",
-    affectsCompletedWork: "unknown",
+    affectsCompletedWork: "unknown" as AffectsCompletedWork,
     position: 0,
     createdAt: now,
     ...overrides,
@@ -94,14 +99,25 @@ function makeQueueItem(overrides: Partial<{
 // registry to create projects for each test session.
 // Affected tests: insertSession stores all session fields, listSessionsFromDb
 // filters by parentSessionId, getQueueItem finds queue item by id and sessionId
+describe("sessions-queries", () => {
   let dir: string;
   let db: ReturnType<typeof openDatabase>["db"];
+
+  function seedProject(projectId: string, absPath?: string): void {
+    const now = "2025-01-01T00:00:00.000Z";
+    const path = absPath ?? `/tmp/project-${projectId}-${Date.now()}`;
+    db.run(
+      `INSERT INTO projects (id, abs_path, name, status, added_at, updated_at) VALUES (?, ?, ?, 'ready', ?, ?)`,
+      [projectId, path, `project-${projectId}`, now, now],
+    );
+  }
 
   beforeEach(() => {
     dir = join(tmpdir(), `aloop-sq-test-${Date.now()}-${Math.random()}`);
     mkdirSync(dir, { recursive: true });
     const opened = openDatabase(join(dir, "db.sqlite"));
     db = opened.db;
+    seedProject("p_proj1");
   });
 
   afterEach(() => {
@@ -112,6 +128,7 @@ function makeQueueItem(overrides: Partial<{
   // ── insertSession / getSessionById ─────────────────────────────────────────
 
   test("insertSession and getSessionById round-trip", () => {
+    seedProject("p_x");
     const s = makeSession({ id: "s_round", projectId: "p_x" });
     insertSession(db, s);
     const found = getSessionById(db, "s_round");
@@ -127,6 +144,8 @@ function makeQueueItem(overrides: Partial<{
   });
 
   test("insertSession stores all session fields", () => {
+    seedProject("p_proj2");
+    insertSession(db, makeSession({ id: "s_parent1" }));
     const now = "2025-06-15T10:30:00.000Z";
     const s = makeSession({
       id: "s_allfields",
@@ -168,6 +187,8 @@ function makeQueueItem(overrides: Partial<{
   // ── listSessionsFromDb ─────────────────────────────────────────────────────
 
   test("listSessionsFromDb returns all sessions when no filter", () => {
+    seedProject("p_a");
+    seedProject("p_b");
     insertSession(db, makeSession({ id: "s_a", projectId: "p_a" }));
     insertSession(db, makeSession({ id: "s_b", projectId: "p_b" }));
     const rows = listSessionsFromDb(db);
@@ -175,6 +196,8 @@ function makeQueueItem(overrides: Partial<{
   });
 
   test("listSessionsFromDb filters by projectId", () => {
+    seedProject("p_filter");
+    seedProject("p_other");
     insertSession(db, makeSession({ id: "s_a", projectId: "p_filter" }));
     insertSession(db, makeSession({ id: "s_b", projectId: "p_other" }));
     const rows = listSessionsFromDb(db, { projectId: "p_filter" });
@@ -200,6 +223,7 @@ function makeQueueItem(overrides: Partial<{
   });
 
   test("listSessionsFromDb filters by parentSessionId", () => {
+    insertSession(db, makeSession({ id: "s_parentX" }));
     insertSession(db, makeSession({ id: "s_a", parentSessionId: "s_parentX" }));
     insertSession(db, makeSession({ id: "s_b", parentSessionId: null }));
     const rows = listSessionsFromDb(db, { parentSessionId: "s_parentX" });
@@ -354,7 +378,7 @@ function makeQueueItem(overrides: Partial<{
     const session = makeSession({ id: "s_getq" });
     insertSession(db, session);
     insertQueueItem(db, makeQueueItem({ id: "q_find", sessionId: "s_getq" }));
-    const found = getQueueItem(db, "q_find", "s_getq");
+    const found = getQueueItem(db, "s_getq", "q_find");
     expect(found).not.toBeUndefined();
     expect(found!.id).toBe("q_find");
   });

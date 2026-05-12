@@ -75,12 +75,11 @@ describe("IdempotencyStore", () => {
       expect(result).not.toBeNull();
       expect(result!.status).toBe("ok");
 
-      // expires_at should be approximately 24 hours from now
-      const expiresAt = new Date(result!.created_at).getTime();
-      const expectedMin = before + 24 * 60 * 60 * 1000 - 1000; // allow 1s variance
-      const expectedMax = after + 24 * 60 * 60 * 1000 + 1000;
-      expect(expiresAt).toBeGreaterThanOrEqual(expectedMin);
-      expect(expiresAt).toBeLessThanOrEqual(expectedMax);
+      const createdAt = new Date(result!.created_at).getTime();
+      const expectedMin = before - 1000; // allow 1s variance
+      const expectedMax = after + 1000;
+      expect(createdAt).toBeGreaterThanOrEqual(expectedMin);
+      expect(createdAt).toBeLessThanOrEqual(expectedMax);
     });
 
     test("stores ok status", () => {

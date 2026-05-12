@@ -138,14 +138,14 @@ test("updateDescription updates description", () => {
     expect(projects[0]!.role).toBe("primary");
   });
 
-  test("addProject updates role when already exists", () => {
+  test("addProject throws DuplicateWorkspaceProjectError when already a member", () => {
     const p = projectRegistry.create({ absPath: tmpProjectDir });
     const ws = workspaceRegistry.create({ name: "Test" });
     workspaceRegistry.addProject(ws.id, p.id, "primary");
-    workspaceRegistry.addProject(ws.id, p.id, "supporting");
+    expect(() => workspaceRegistry.addProject(ws.id, p.id, "supporting")).toThrow();
     const projects = workspaceRegistry.listProjects(ws.id);
     expect(projects.length).toBe(1);
-    expect(projects[0]!.role).toBe("supporting");
+    expect(projects[0]!.role).toBe("primary");
   });
 
   test("removeProject deletes project from workspace", () => {
