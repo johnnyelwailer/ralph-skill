@@ -4,6 +4,8 @@ import type { SessionStatus } from "@aloop/core";
 import type { SchedulerService } from "@aloop/scheduler";
 import type { HealthCounters } from "./health.ts";
 
+export type { HealthCounters };
+
 export function buildCounters(sessionsDir: string, scheduler: SchedulerService): HealthCounters {
   const sessionsByStatus: Record<string, number> = {};
   let sessionsTotal = 0;

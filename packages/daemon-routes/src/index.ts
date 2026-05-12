@@ -10,3 +10,4 @@ export {
   notFoundResponse,
   parseJsonBody,
 } from "./http-helpers.ts";
+export type { MetricsDeps, MetricsAggregatesDeps } from "./metrics.ts";

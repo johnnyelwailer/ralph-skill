@@ -50,4 +50,5 @@ export type PermitDecision = PermitGranted | PermitDenied;
 
 export type LimitsUpdateResult =
   | { ok: true; limits: SchedulerLimits }
-  | { ok: false; errors: readonly string[] };
+  | { ok: false; errors: readonly string[] }
+  | { ok: false; code: "tune_out_of_bounds"; violations: readonly { readonly field: string; readonly requested: number; readonly min: number; readonly max: number }[] };

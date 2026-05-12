@@ -20,7 +20,8 @@ export function mergeScheduler(raw: unknown, errors: string[]): DaemonConfig["sc
     errors.push("scheduler: must be a mapping");
     return def;
   }
-  return {
+  const projectsVal = mergeProjectSchedulerConfig(pick(raw, "projects", "projects"), errors);
+  const base = {
     concurrencyCap: posIntField(
       pick(raw, "concurrency_cap", "concurrencyCap"),
       "scheduler.concurrency_cap",
@@ -41,14 +42,18 @@ export function mergeScheduler(raw: unknown, errors: string[]): DaemonConfig["sc
     ),
     systemLimits: mergeSystemLimits(pick(raw, "system_limits", "systemLimits"), errors),
     burnRate: mergeBurnRate(pick(raw, "burn_rate", "burnRate"), errors),
-    projects: mergeProjectSchedulerConfig(pick(raw, "projects", "projects"), errors),
   };
+  return Object.freeze(
+    projectsVal !== undefined && Object.keys(projectsVal).length > 0
+      ? { ...base, projects: projectsVal }
+      : base,
+  ) as DaemonConfig["scheduler"];
 }
 
 function mergeProjectSchedulerConfig(
   raw: unknown,
   errors: string[],
-): DaemonConfig["scheduler"]["projects"] {
+): Readonly<Record<string, ProjectSchedulerConfig>> {
   const def = DAEMON_DEFAULTS.scheduler.projects ?? {};
   if (raw === undefined) return def;
   if (!isMapping(raw)) {

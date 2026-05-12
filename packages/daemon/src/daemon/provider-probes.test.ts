@@ -61,10 +61,10 @@ describe("createProviderQuotaProbe", () => {
 
   // ── unavailable path ────────────────────────────────────────────────────────
 
-  test("returns result with ok=false for degraded provider (auth failure)", () => {
+  test("returns result with ok=false for degraded provider (auth failure)", async () => {
     store.noteFailure("prov-a", "auth");
     const probe = makeProbe();
-    const result = probe("prov-a");
+    const result = await probe("prov-a");
     expect(result).not.toBeNull();
     expect(result!.ok).toBe(false);
     expect(result!.reason).toBe("provider_unavailable");
@@ -73,13 +73,13 @@ describe("createProviderQuotaProbe", () => {
     expect(result!.details.failure_reason).toBe("auth");
   });
 
-  test("returns result with ok=false for cooldown provider (rate_limit with backoff)", () => {
+  test("returns result with ok=false for cooldown provider (rate_limit with backoff)", async () => {
     // Backoff kicks in at 3+ consecutive failures for rate_limit
     store.noteFailure("prov-a", "rate_limit");
     store.noteFailure("prov-a", "rate_limit");
     store.noteFailure("prov-a", "rate_limit");
     const probe = makeProbe();
-    const result = probe("prov-a");
+    const result = await probe("prov-a");
     expect(result).not.toBeNull();
     expect(result!.ok).toBe(false);
     expect(result!.reason).toBe("provider_unavailable");
@@ -87,7 +87,7 @@ describe("createProviderQuotaProbe", () => {
     expect(result!.retryAfterSeconds).toBeGreaterThan(0);
   });
 
-  test("includes cooldown_until in details for cooldown providers", () => {
+  test("includes cooldown_until in details for cooldown providers", async () => {
     // Set up cooldown with a known future expiry
     const futureCooldown = new Date(Date.now() + 120_000).toISOString();
     store["states"].set("prov-a", {
@@ -103,27 +103,27 @@ describe("createProviderQuotaProbe", () => {
       updatedAt: new Date().toISOString(),
     });
     const probe = makeProbe();
-    const result = probe("prov-a");
+    const result = await probe("prov-a");
     expect(result!.details.cooldown_until).toBe(futureCooldown);
   });
 
-  test("does not include cooldown_until in details for degraded providers", () => {
+  test("does not include cooldown_until in details for degraded providers", async () => {
     // auth failure → degraded → cooldownUntil is null
     store.noteFailure("prov-a", "auth");
     const probe = makeProbe();
-    const result = probe("prov-a");
+    const result = await probe("prov-a");
     expect(result!.details).not.toHaveProperty("cooldown_until");
   });
 
-  test("includes failure_reason in details for degraded providers", () => {
+  test("includes failure_reason in details for degraded providers", async () => {
     // auth failures immediately degrade regardless of failure count
     store.noteFailure("prov-a", "auth");
     const probe = makeProbe();
-    const result = probe("prov-a");
+    const result = await probe("prov-a");
     expect(result!.details.failure_reason).toBe("auth");
   });
 
-  test("computes retryAfterSeconds as ceiling of remaining cooldown seconds", () => {
+  test("computes retryAfterSeconds as ceiling of remaining cooldown seconds", async () => {
     const futureCooldown = new Date(Date.now() + 90_000).toISOString();
     store["states"].set("prov-a", {
       providerId: "prov-a",
@@ -138,7 +138,7 @@ describe("createProviderQuotaProbe", () => {
       updatedAt: new Date().toISOString(),
     });
     const probe = makeProbe();
-    const result = probe("prov-a");
+    const result = await probe("prov-a");
     // ~90 seconds ± 2s tolerance for test execution time
     expect(result!.retryAfterSeconds).toBeGreaterThanOrEqual(88);
     expect(result!.retryAfterSeconds).toBeLessThanOrEqual(92);

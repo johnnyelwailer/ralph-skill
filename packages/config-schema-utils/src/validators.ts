@@ -41,7 +41,19 @@ export function posIntField(
   path: string,
   def: number,
   errors: string[],
-): number {
+): number;
+export function posIntField(
+  v: unknown,
+  path: string,
+  def: undefined,
+  errors: string[],
+): number | undefined;
+export function posIntField(
+  v: unknown,
+  path: string,
+  def: number | undefined,
+  errors: string[],
+): number | undefined {
   if (v === undefined) return def;
   if (typeof v !== "number" || !Number.isInteger(v) || v < 1) {
     errors.push(`${path}: must be a positive integer`);
@@ -55,7 +67,19 @@ export function nonNegIntField(
   path: string,
   def: number,
   errors: string[],
-): number {
+): number;
+export function nonNegIntField(
+  v: unknown,
+  path: string,
+  def: undefined,
+  errors: string[],
+): number | undefined;
+export function nonNegIntField(
+  v: unknown,
+  path: string,
+  def: number | undefined,
+  errors: string[],
+): number | undefined {
   if (v === undefined) return def;
   if (typeof v !== "number" || !Number.isFinite(v)) {
     errors.push(`${path}: must be a non-negative integer`);

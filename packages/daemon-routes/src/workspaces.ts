@@ -1,4 +1,4 @@
-import type { WorkspaceRegistry } from "@aloop/state-sqlite";
+import type { ProjectRegistry, WorkspaceRegistry } from "@aloop/state-sqlite";
 import { methodNotAllowed, notFoundResponse } from "./http-helpers.ts";
 import {
   addProjectToWorkspaceHandler,
@@ -11,7 +11,7 @@ import {
   removeProjectFromWorkspaceHandler,
 } from "./workspaces-handlers.ts";
 
-export type WorkspacesDeps = { readonly registry: WorkspaceRegistry };
+export type WorkspacesDeps = { readonly registry: WorkspaceRegistry; readonly projectRegistry: ProjectRegistry };
 
 /**
  * Dispatcher for /v1/workspaces/*. Each verb routes to a focused handler in

@@ -247,7 +247,7 @@ export class ComposerTurnRegistry {
 
     const rows = this.db
       .query<ComposerTurnRow, (string | number)[]>(sql)
-      .all([...params, ...(filter.cursor ? [filter.cursor] : []), limit]);
+      .all(...params, ...(filter.cursor ? [filter.cursor] : []), limit);
 
     return rows.map(turnFromRow);
   }

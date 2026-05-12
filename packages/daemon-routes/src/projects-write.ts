@@ -3,8 +3,8 @@ import {
   ProjectNotFoundError,
   type Project,
   type ProjectStatus,
-  type ProjectWorkspaceRole,
 } from "@aloop/state-sqlite";
+import type { ProjectWorkspaceRole } from "@aloop/state-projects";
 import {
   badRequest,
   errorResponse,

@@ -3,9 +3,9 @@ import { Database } from "bun:sqlite";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { getMetrics, getMetricAggregates, getMetricHistory, handleMetrics, type MetricsDeps } from "./metrics-handlers.ts";
+import { getMetrics, getMetricAggregates, getMetricHistory, handleMetrics, type MetricsHandlerDeps } from "./metrics-handlers.ts";
 
-function makeDeps(): { deps: MetricsDeps; db: Database } {
+function makeDeps(): { deps: MetricsHandlerDeps; db: Database } {
   const db = new Database();
   // Create the metrics tables (mirrors 008-migrations.sql)
   db.exec(`
@@ -61,7 +61,7 @@ function makeDeps(): { deps: MetricsDeps; db: Database } {
 }
 
 let dir: string;
-let deps: MetricsDeps;
+let deps: MetricsHandlerDeps;
 let db: Database;
 
 beforeEach(() => {

@@ -5,7 +5,7 @@ import {
 import type { ParseResult } from "@aloop/core";
 import { writeFileSync } from "node:fs";
 import { stringify as yamlStringify } from "yaml";
-import { DAEMON_DEFAULTS, type DaemonConfig } from "./daemon-types.ts";
+import { DAEMON_DEFAULTS, type ContextConfig, type DaemonConfig } from "./daemon-types.ts";
 import {
   mergeContexts,
   mergeFeatures,
@@ -16,7 +16,7 @@ import {
   mergeWatchdog,
 } from "./daemon-mergers.ts";
 
-export { DAEMON_DEFAULTS, type DaemonConfig };
+export { DAEMON_DEFAULTS, type ContextConfig, type DaemonConfig };
 
 const TOP_LEVEL_KEYS = [
   "http",

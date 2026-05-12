@@ -28,7 +28,7 @@ export async function handleProjects(
       const store = deps.idempotencyStore;
       const key = store ? req.headers.get("Idempotency-Key")?.trim() : null;
       // Idempotency: return cached response for a repeated key.
-      if (key) {
+      if (key && store) {
         const cached = store.get(key);
         if (cached) {
           return jsonResponse(200, cached.result);

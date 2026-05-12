@@ -1,7 +1,5 @@
 import { badRequest, errorResponse, jsonResponse, methodNotAllowed, parseJsonBody } from "./http-helpers";
-import type { EventWriter } from "@aloop/state-sqlite";
-import type { SessionRegistry } from "@aloop/state-sqlite";
-import type { ProjectRegistry } from "@aloop/state-projects";
+import type { EventWriter, ProjectRegistry, SessionKind, SessionRegistry, SessionStatus } from "@aloop/state-sqlite";
 
 export type SessionsDeps = {
   readonly sessions: SessionRegistry;
@@ -28,10 +26,10 @@ export function listSessionsHandler(req: Request, deps: SessionsDeps): Response 
   const cursorParam = url.searchParams.get("cursor");
 
   const status = statusParam
-    ? (statusParam.split(",").filter((s) => VALID_STATUSES.includes(s as typeof VALID_STATUSES[number])) as readonly string[])
+    ? (statusParam.split(",").filter((s) => VALID_STATUSES.includes(s as typeof VALID_STATUSES[number])) as readonly SessionStatus[])
     : undefined;
   const kind = kindParam
-    ? (kindParam.split(",").filter((k) => VALID_KINDS.includes(k as typeof VALID_KINDS[number])) as readonly string[])
+    ? (kindParam.split(",").filter((k) => VALID_KINDS.includes(k as typeof VALID_KINDS[number])) as readonly SessionKind[])
     : undefined;
   const limit = limitParam ? Number(limitParam) : undefined;
   const cursor = cursorParam ? Number(cursorParam) : undefined;
@@ -123,7 +121,7 @@ export async function createSessionHandler(req: Request, deps: SessionsDeps): Pr
     issueRef,
     parentSessionId: kind === "child" ? body.data.parent_session_id : null,
     maxIterations,
-    notes: typeof body.data.notes === "string" ? body.data.notes : "",
+    notes: typeof body.data.notes === "string" ? (body.data.notes as string) : "",
   });
 
   return jsonResponse(201, sessionResponse(session));

@@ -73,7 +73,7 @@ export function loadSchedulerMetrics(db: Database): SchedulerMetricsSnapshot {
     denialsByGate.set(row.gate, row.value);
   }
   const totalRow = db
-    .query<{ value: number }, [string]>(
+    .query<{ value: number }, []>(
       `SELECT value FROM scheduler_metrics WHERE metric_name = 'permit_decision_total' AND gate = ''`,
     )
     .get();

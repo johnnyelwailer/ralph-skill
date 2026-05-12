@@ -64,7 +64,7 @@ export type {
   ComposerTurnScopeKind,
   ComposerTurnStatus,
   CreateComposerTurnInput,
-} from "./state/composer.ts";
+} from "@aloop/core";
 export {
   createIdempotencyStore,
   type IdempotencyResult,

@@ -34,7 +34,7 @@ export function createIdempotencyStore(db: Database): IdempotencyStore {
       const row = db
         .prepare<
           { status: string; result: string; created_at: string },
-          string
+          [string, string]
         >(
           "SELECT status, result, created_at FROM idempotency_keys WHERE key = ? AND expires_at > ?",
         )

@@ -13,7 +13,7 @@
 import type { Database } from "bun:sqlite";
 import { badRequest, errorResponse, jsonResponse } from "./http-helpers.ts";
 
-export type MetricsDeps = { readonly db: Database };
+export type MetricsHandlerDeps = { readonly db: Database };
 
 // ── Prometheus text exposition ──────────────────────────────────────────────────
 
@@ -76,7 +76,7 @@ function renderPrometheusText(db: Database): string {
 
 // ── GET /v1/metrics ─────────────────────────────────────────────────────────────
 
-export function getMetrics(_req: Request, deps: MetricsDeps): Response {
+export function getMetrics(_req: Request, deps: MetricsHandlerDeps): Response {
   const text = renderPrometheusText(deps.db);
   return new Response(text, {
     status: 200,
@@ -90,7 +90,7 @@ export function getMetrics(_req: Request, deps: MetricsDeps): Response {
 
 export async function getMetricAggregates(
   req: Request,
-  deps: MetricsDeps,
+  deps: MetricsHandlerDeps,
 ): Promise<Response> {
   const url = new URL(req.url);
 
@@ -156,7 +156,7 @@ export async function getMetricAggregates(
 
 export async function getMetricHistory(
   req: Request,
-  deps: MetricsDeps,
+  deps: MetricsHandlerDeps,
 ): Promise<Response> {
   const url = new URL(req.url);
 
@@ -202,7 +202,7 @@ export async function getMetricHistory(
 
 export async function handleMetrics(
   req: Request,
-  deps: MetricsDeps,
+  deps: MetricsHandlerDeps,
   pathname: string,
 ): Promise<Response | undefined> {
   if (!pathname.startsWith("/v1/metrics")) return undefined;

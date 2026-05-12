@@ -26,6 +26,8 @@ import { makeRouterDeps } from "./router-deps.ts";
 import { loadInitialConfig } from "./start-config.ts";
 import type { ConfigStore, DaemonConfig, DaemonPaths, OverridesConfig } from "@aloop/daemon-config";
 import { InMemoryProviderHealthStore, ProviderRegistry } from "@aloop/provider";
+import type { OpencodeRunTurn as OpencodeSdkRunTurn } from "@aloop/provider-opencode";
+import type { OpencodeRunTurn as OpencodeCliRunTurn } from "@aloop/provider-opencode-cli";
 
 export type StartDaemonOptions = {
   /** Override the HTTP port from daemon.yml. Pass 0 for an ephemeral port. */
@@ -35,6 +37,10 @@ export type StartDaemonOptions = {
   paths?: DaemonPaths;
   /** Override database path. Defaults to <stateDir>/db.sqlite; pass ":memory:" for tests. */
   dbPath?: string;
+  /** Override the OpenCode SDK runTurn implementation. */
+  opencodeSdkRunTurn?: OpencodeSdkRunTurn;
+  /** Override the OpenCode CLI runTurn implementation. */
+  opencodeCliRunTurn?: OpencodeCliRunTurn;
 };
 
 export type RunningDaemon = {
@@ -86,8 +92,8 @@ export async function startDaemon(opts: StartDaemonOptions = {}): Promise<Runnin
     nextId: makeIdGenerator(),
   });
   const providerRegistry = new ProviderRegistry();
-  providerRegistry.register(createOpencodeAdapter());
-  providerRegistry.register(createOpencodeCliAdapter());
+  providerRegistry.register(createOpencodeAdapter(opts.opencodeSdkRunTurn ? { runTurn: opts.opencodeSdkRunTurn } : {}));
+  providerRegistry.register(createOpencodeCliAdapter(opts.opencodeCliRunTurn ? { runTurn: opts.opencodeCliRunTurn } : {}));
   const providerHealth = new InMemoryProviderHealthStore(providerRegistry.list().map((adapter) => adapter.id));
   const scheduler = new SchedulerService(permits, makeSchedulerConfig(config, events), events, { providerQuota: createProviderQuotaProbe(providerHealth) });
   const routerDeps = makeRouterDeps({

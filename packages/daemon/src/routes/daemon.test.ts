@@ -13,7 +13,7 @@ function makeDeps(overrides: Partial<{
   features?: { daemonConfigWrite: boolean };
   reloadError?: string[];
 }> = {}): DaemonDeps {
-  const daemonCfg: typeof defaultDaemon.features = {
+  const daemonFeatures = {
     daemonConfigWrite: false,
     ...overrides.features,
   };
@@ -31,7 +31,7 @@ function makeDeps(overrides: Partial<{
     },
     retention: { completedSessionsDays: 30, interruptedSessionsDays: 90, abandonedSetupDays: 14 },
     logging: { level: "info" as const },
-    features: daemonCfg,
+    features: daemonFeatures,
   };
 
   const configWrap = { _v: 1 as const, version: "0.1.0", daemon: defaultDaemon, providers: [] };
