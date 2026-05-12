@@ -133,7 +133,7 @@ function emitConcurrency(lines: string[], scheduler: SchedulerService): void {
 
   for (const permit of inFlight) {
     lines.push(
-      `aloop_scheduler_permit{session_id="${escapeLabel(permit.sessionId)}",provider_id="${escapeLabel(permit.providerId)}"} 1`,
+      `aloop_scheduler_permit{session_id="${escapeLabel(permit.sessionId ?? "")}",provider_id="${escapeLabel(permit.providerId)}"} 1`,
     );
   }
 }

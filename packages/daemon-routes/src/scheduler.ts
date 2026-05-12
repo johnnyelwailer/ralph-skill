@@ -35,17 +35,17 @@ export async function handleScheduler(
 
     const updated = await deps.scheduler.updateLimits(parsed.data);
     if (!updated.ok) {
-      if ("code" in updated && updated.code === "tune_out_of_bounds") {
-        return jsonResponse(422, {
-          _v: 1,
-          error: {
-            code: "tune_out_of_bounds",
-            message: "scheduler tuning request violates hard bounds",
-            details: { violations: updated.violations },
-          },
-        });
+      if ("errors" in updated) {
+        return badRequest("invalid scheduler limits", { errors: updated.errors });
       }
-      return badRequest("invalid scheduler limits", { errors: updated.errors });
+      return jsonResponse(422, {
+        _v: 1,
+        error: {
+          code: "tune_out_of_bounds",
+          message: "scheduler tuning request violates hard bounds",
+          details: { violations: updated.violations },
+        },
+      });
     }
     return jsonResponse(200, {
         _v: 1,

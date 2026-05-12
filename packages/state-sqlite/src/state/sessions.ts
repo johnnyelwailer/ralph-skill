@@ -143,7 +143,7 @@ export class SessionRegistry {
         params.push(...status);
       } else {
         conditions.push("status = ?");
-        params.push(status);
+        params.push(status as SessionStatus);
       }
     }
 
@@ -154,7 +154,7 @@ export class SessionRegistry {
         params.push(...kind);
       } else {
         conditions.push("kind = ?");
-        params.push(kind);
+        params.push(kind as SessionKind);
       }
     }
 
@@ -211,7 +211,7 @@ export class SessionRegistry {
     now: string = new Date().toISOString(),
   ): void {
     const sets: string[] = ["updated_at = ?"];
-    const params: (string | number | null)[] = [now];
+    const params: (string | number)[] = [now];
 
     if (costUsd !== undefined) {
       sets.push("cost_usd = ?");

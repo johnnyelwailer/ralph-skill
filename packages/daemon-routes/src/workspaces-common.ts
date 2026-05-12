@@ -45,9 +45,9 @@ export function parseWorkspaceFilter(url: URL): WorkspaceFilter {
     ? Number(url.searchParams.get("limit"))
     : undefined;
   const cursor = url.searchParams.get("cursor") ?? undefined;
-  const filter: WorkspaceFilter = {};
-  if (q !== undefined) filter.q = q;
-  if (limit !== undefined) filter.limit = limit;
-  if (cursor !== undefined) filter.cursor = cursor;
-  return filter;
+  return {
+    ...(q !== undefined && { q }),
+    ...(limit !== undefined && { limit }),
+    ...(cursor !== undefined && { cursor }),
+  };
 }

@@ -1,5 +1,5 @@
 import { badRequest, errorResponse, jsonResponse, methodNotAllowed, parseJsonBody } from "./http-helpers";
-import type { EventWriter, ProjectRegistry, SessionKind, SessionRegistry, SessionStatus } from "@aloop/state-sqlite";
+import type { EventWriter, ProjectRegistry, SessionFilter, SessionKind, SessionRegistry, SessionStatus } from "@aloop/state-sqlite";
 
 export type SessionsDeps = {
   readonly sessions: SessionRegistry;
@@ -34,7 +34,15 @@ export function listSessionsHandler(req: Request, deps: SessionsDeps): Response 
   const limit = limitParam ? Number(limitParam) : undefined;
   const cursor = cursorParam ? Number(cursorParam) : undefined;
 
-  const items = deps.sessions.list({ projectId, status, kind, parentSessionId: parentParam ?? undefined, limit, cursor });
+  const filter: SessionFilter = {
+    ...(projectId !== undefined && { projectId }),
+    ...(status !== undefined && { status }),
+    ...(kind !== undefined && { kind }),
+    ...(parentParam !== undefined && { parentSessionId: parentParam }),
+    ...(limit !== undefined && { limit }),
+    ...(cursor !== undefined && { cursor }),
+  };
+  const items = deps.sessions.list(filter);
   return jsonResponse(200, {
     _v: 1,
     items: items.map(sessionResponse),
@@ -91,8 +99,9 @@ export async function createSessionHandler(req: Request, deps: SessionsDeps): Pr
   const providerChain = body.data.provider_chain as string[];
 
   // kind=child requires parent_session_id
+  let parentId: string | undefined = undefined;
   if (kind === "child") {
-    const parentId =
+    parentId =
       typeof body.data.parent_session_id === "string" && body.data.parent_session_id.length > 0
         ? body.data.parent_session_id
         : undefined;
@@ -113,13 +122,13 @@ export async function createSessionHandler(req: Request, deps: SessionsDeps): Pr
       : null;
 
   const session = deps.sessions.create({
-    id: typeof body.data.id === "string" && body.data.id.length > 0 ? body.data.id : undefined,
+    ...(typeof body.data.id === "string" && body.data.id.length > 0 && { id: body.data.id }),
     projectId,
     kind,
     workflow,
     providerChain,
     issueRef,
-    parentSessionId: kind === "child" ? body.data.parent_session_id : null,
+    parentSessionId: kind === "child" ? (parentId as string) : null,
     maxIterations,
     notes: typeof body.data.notes === "string" ? (body.data.notes as string) : "",
   });

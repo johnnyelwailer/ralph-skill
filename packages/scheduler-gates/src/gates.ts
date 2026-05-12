@@ -145,17 +145,18 @@ export async function checkProjectGate(
     };
   }
 
-  if ((config.dailyCostCapCents ?? 0) > 0) {
+  const dailyCostCapCents = config.dailyCostCapCents ?? 0;
+  if (dailyCostCapCents > 0) {
     const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
     const sample = await probes.projectDailyCost?.(projectId, today);
-    if (sample && sample.costUsdCents > config.dailyCostCapCents) {
+    if (sample && sample.costUsdCents > dailyCostCapCents) {
       return {
         ok: false,
         reason: "project_daily_cost_cap_exceeded",
         details: {
           project_id: projectId,
           cost_usd_cents: sample.costUsdCents,
-          daily_cost_cap_cents: config.dailyCostCapCents,
+          daily_cost_cap_cents: dailyCostCapCents,
         },
       };
     }
