@@ -65,13 +65,18 @@ describe("SessionRegistry", () => {
   });
 
   test("create sets nulls for optional fields", () => {
+    registry.create({
+      id: "s_parent1",
+      projectId: "p_proj1",
+      kind: "orchestrator",
+    });
     const session = registry.create({
       id: "s_opts",
       projectId: "p_proj1",
       kind: "child",
       parentSessionId: "s_parent1",
     });
-    expect(session.workflow).toBeNull();
+    expect(session.workflow).toBe("");
     expect(session.providerChain).toEqual([]);
     expect(session.worktreePath).toBeNull();
     expect(session.parentSessionId).toBe("s_parent1");
