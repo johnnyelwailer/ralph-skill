@@ -263,6 +263,169 @@ describe("POST /v1/scheduler/permits validation", () => {
     expect(body.permit.id).toBe("perm_test");
   });
 
+  test("accepts composer_turn_id as alternative owner", async () => {
+    const deps = makeDeps({
+      acquirePermit: async (input: { composerTurnId: string; providerCandidate: string }) => ({
+        granted: true,
+        permit: {
+          id: "perm_ct",
+          composerTurnId: input.composerTurnId,
+          providerId: input.providerCandidate,
+          ttlSeconds: 600,
+          grantedAt: new Date().toISOString(),
+          expiresAt: new Date(Date.now() + 600_000).toISOString(),
+        },
+      }),
+    });
+    const req = new Request("http://x/v1/scheduler/permits", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ composer_turn_id: "ct_abc", provider_candidate: "opencode" }),
+    });
+    const res = await handleScheduler(req, deps, "/v1/scheduler/permits");
+
+    expect(res).toBeDefined();
+    expect(res!.status).toBe(200);
+    const body = await resJson<{ granted: boolean; permit: { id: string } }>(res!);
+    expect(body.granted).toBe(true);
+    expect(body.permit.id).toBe("perm_ct");
+  });
+
+  test("accepts control_subagent_run_id as alternative owner", async () => {
+    const deps = makeDeps({
+      acquirePermit: async (input: { controlSubagentRunId: string; providerCandidate: string }) => ({
+        granted: true,
+        permit: {
+          id: "perm_cs",
+          controlSubagentRunId: input.controlSubagentRunId,
+          providerId: input.providerCandidate,
+          ttlSeconds: 600,
+          grantedAt: new Date().toISOString(),
+          expiresAt: new Date(Date.now() + 600_000).toISOString(),
+        },
+      }),
+    });
+    const req = new Request("http://x/v1/scheduler/permits", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ control_subagent_run_id: "cs_xyz", provider_candidate: "opencode" }),
+    });
+    const res = await handleScheduler(req, deps, "/v1/scheduler/permits");
+
+    expect(res).toBeDefined();
+    expect(res!.status).toBe(200);
+    const body = await resJson<{ granted: boolean; permit: { id: string } }>(res!);
+    expect(body.granted).toBe(true);
+    expect(body.permit.id).toBe("perm_cs");
+  });
+
+  test("returns 400 when none of session_id, composer_turn_id, or control_subagent_run_id is provided", async () => {
+    const deps = makeDeps();
+    const req = new Request("http://x/v1/scheduler/permits", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ provider_candidate: "opencode" }),
+    });
+    const res = await handleScheduler(req, deps, "/v1/scheduler/permits");
+
+    expect(res).toBeDefined();
+    expect(res!.status).toBe(400);
+    const body = await resJson<{ error: { code: string; message: string } }>(res!);
+    expect(body.error.code).toBe("bad_request");
+    expect(body.error.message).toContain("session_id is required (or composer_turn_id or control_subagent_run_id)");
+  });
+
+  test("returns 400 when more than one owner field is provided", async () => {
+    const deps = makeDeps();
+    const req = new Request("http://x/v1/scheduler/permits", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        session_id: "s_1",
+        composer_turn_id: "ct_abc",
+        provider_candidate: "opencode",
+      }),
+    });
+    const res = await handleScheduler(req, deps, "/v1/scheduler/permits");
+
+    expect(res).toBeDefined();
+    expect(res!.status).toBe(400);
+    const body = await resJson<{ error: { code: string; message: string } }>(res!);
+    expect(body.error.code).toBe("bad_request");
+    expect(body.error.message).toContain("only one owner field may be provided");
+  });
+
+  test("accepts estimated_cost_usd as a valid non-negative number", async () => {
+    const deps = makeDeps({
+      acquirePermit: async (input: { sessionId: string; providerCandidate: string; estimatedCostUsd: number }) => ({
+        granted: true,
+        permit: {
+          id: "perm_cost",
+          sessionId: input.sessionId,
+          providerId: input.providerCandidate,
+          estimatedCostUsd: input.estimatedCostUsd,
+          ttlSeconds: 600,
+          grantedAt: new Date().toISOString(),
+          expiresAt: new Date(Date.now() + 600_000).toISOString(),
+        },
+      }),
+    });
+    const req = new Request("http://x/v1/scheduler/permits", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        session_id: "s_cost",
+        provider_candidate: "opencode",
+        estimated_cost_usd: 0.05,
+      }),
+    });
+    const res = await handleScheduler(req, deps, "/v1/scheduler/permits");
+
+    expect(res).toBeDefined();
+    expect(res!.status).toBe(200);
+    const body = await resJson<{ granted: boolean }>(res!);
+    expect(body.granted).toBe(true);
+  });
+
+  test("returns 400 when estimated_cost_usd is negative", async () => {
+    const deps = makeDeps();
+    const req = new Request("http://x/v1/scheduler/permits", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        session_id: "s_1",
+        provider_candidate: "opencode",
+        estimated_cost_usd: -0.01,
+      }),
+    });
+    const res = await handleScheduler(req, deps, "/v1/scheduler/permits");
+
+    expect(res).toBeDefined();
+    expect(res!.status).toBe(400);
+    const body = await resJson<{ error: { code: string; message: string } }>(res!);
+    expect(body.error.code).toBe("bad_request");
+    expect(body.error.message).toContain("estimated_cost_usd");
+  });
+
+  test("returns 400 when estimated_cost_usd is non-finite", async () => {
+    const deps = makeDeps();
+    const req = new Request("http://x/v1/scheduler/permits", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        session_id: "s_1",
+        provider_candidate: "opencode",
+        estimated_cost_usd: Infinity,
+      }),
+    });
+    const res = await handleScheduler(req, deps, "/v1/scheduler/permits");
+
+    expect(res).toBeDefined();
+    expect(res!.status).toBe(400);
+    const body = await resJson<{ error: { code: string; message: string } }>(res!);
+    expect(body.error.code).toBe("bad_request");
+  });
+
   test("forwards denial from scheduler as granted=false response", async () => {
     const deps = makeDeps({
       acquirePermit: async () => ({
@@ -291,7 +454,7 @@ describe("POST /v1/scheduler/permits validation", () => {
 // ─── GET /v1/scheduler/limits ────────────────────────────────────────────────
 
 describe("GET /v1/scheduler/limits", () => {
-  test("returns 200 with full limits envelope", async () => {
+  test("returns 200 with full limits envelope including nested system_limits and burn_rate", async () => {
     const deps = makeDeps({
       currentLimits: () => ({
         concurrencyCap: 3,
@@ -306,9 +469,23 @@ describe("GET /v1/scheduler/limits", () => {
 
     expect(res).toBeDefined();
     expect(res!.status).toBe(200);
-    const body = await resJson<{ _v: number; max_permits: number }>(res!);
+    const body = await resJson<{
+      _v: number;
+      max_permits: number;
+      permit_ttl_default_seconds: number;
+      permit_ttl_max_seconds: number;
+      system_limits: { cpu_max_pct: number; mem_max_pct: number; load_max: number };
+      burn_rate: { max_tokens_since_commit: number; min_commits_per_hour: number };
+    }>(res!);
     expect(body._v).toBe(1);
     expect(body.max_permits).toBe(3);
+    expect(body.permit_ttl_default_seconds).toBe(600);
+    expect(body.permit_ttl_max_seconds).toBe(3600);
+    expect(body.system_limits.cpu_max_pct).toBe(80);
+    expect(body.system_limits.mem_max_pct).toBe(85);
+    expect(body.system_limits.load_max).toBe(4.0);
+    expect(body.burn_rate.max_tokens_since_commit).toBe(1_000_000);
+    expect(body.burn_rate.min_commits_per_hour).toBe(10);
   });
 
   test("returns 405 for POST on limits route", async () => {
@@ -330,7 +507,7 @@ describe("GET /v1/scheduler/limits", () => {
 // ─── PUT /v1/scheduler/limits ────────────────────────────────────────────────
 
 describe("PUT /v1/scheduler/limits", () => {
-  test("returns 200 with updated limits on success", async () => {
+  test("returns 200 with full structured limits on success", async () => {
     const deps = makeDeps({
       updateLimits: async () => ({
         ok: true,
@@ -352,9 +529,23 @@ describe("PUT /v1/scheduler/limits", () => {
 
     expect(res).toBeDefined();
     expect(res!.status).toBe(200);
-    const body = await resJson<{ _v: number; max_permits: number }>(res!);
+    const body = await resJson<{
+      _v: number;
+      max_permits: number;
+      permit_ttl_default_seconds: number;
+      permit_ttl_max_seconds: number;
+      system_limits: { cpu_max_pct: number; mem_max_pct: number; load_max: number };
+      burn_rate: { max_tokens_since_commit: number; min_commits_per_hour: number };
+    }>(res!);
     expect(body._v).toBe(1);
     expect(body.max_permits).toBe(7);
+    expect(body.permit_ttl_default_seconds).toBe(600);
+    expect(body.permit_ttl_max_seconds).toBe(3600);
+    expect(body.system_limits.cpu_max_pct).toBe(80);
+    expect(body.system_limits.mem_max_pct).toBe(85);
+    expect(body.system_limits.load_max).toBe(4.0);
+    expect(body.burn_rate.max_tokens_since_commit).toBe(1_000_000);
+    expect(body.burn_rate.min_commits_per_hour).toBe(10);
   });
 
   test("returns 400 when updateLimits returns errors", async () => {
@@ -376,6 +567,33 @@ describe("PUT /v1/scheduler/limits", () => {
     const body = await resJson<{ error: { code: string; details: { errors: string[] } } }>(res!);
     expect(body.error.code).toBe("bad_request");
     expect(body.error.details.errors).toContain("unknown scheduler limits field: nope");
+  });
+
+  test("returns 422 when updateLimits returns tune_out_of_bounds", async () => {
+    const deps = makeDeps({
+      updateLimits: async () => ({
+        ok: false,
+        code: "tune_out_of_bounds",
+        violations: [
+          { field: "system_limits.cpu_max_pct", value: 150, message: "must be <= 100" },
+        ],
+      }),
+    });
+    const req = new Request("http://x/v1/scheduler/limits", {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ system_limits: { cpu_max_pct: 150 } }),
+    });
+    const res = await handleScheduler(req, deps, "/v1/scheduler/limits");
+
+    expect(res).toBeDefined();
+    expect(res!.status).toBe(422);
+    const body = await resJson<{
+      error: { code: string; message: string; details: { violations: unknown[] } };
+    }>(res!);
+    expect(body.error.code).toBe("tune_out_of_bounds");
+    expect(body.error.message).toBe("scheduler tuning request violates hard bounds");
+    expect(body.error.details.violations).toHaveLength(1);
   });
 
   test("returns 400 for non-JSON body", async () => {
