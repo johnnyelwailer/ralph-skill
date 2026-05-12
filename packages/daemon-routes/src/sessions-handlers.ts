@@ -1,4 +1,4 @@
-import { badRequest, errorResponse, jsonResponse, parseJsonBody } from "./http-helpers";
+import { badRequest, errorResponse, jsonResponse, methodNotAllowed, parseJsonBody } from "./http-helpers";
 import type { SessionRegistry } from "@aloop/state-sqlite";
 import type { ProjectRegistry } from "@aloop/state-projects";
 
@@ -196,8 +196,8 @@ export async function steerSessionHandler(id: string, req: Request, deps: Sessio
   if ("error" in body) return body.error;
 
   const instruction =
-    typeof body.data.instruction === "string" && body.data.instruction.length > 0
-      ? body.data.instruction
+    typeof body.data.instruction === "string" && body.data.instruction.trim().length > 0
+      ? body.data.instruction.trim()
       : undefined;
   if (!instruction) return badRequest("instruction is required");
 

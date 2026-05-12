@@ -1,12 +1,56 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync, writeFileSync, readFileSync, mkdirSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { handleSessions, type SessionsDeps } from "./sessions.ts";
+import type { SessionRegistry, ProjectRegistry, SessionQueueItem } from "@aloop/state-sqlite";
+
+function makeMockSessionRegistry(): SessionRegistry {
+  const storage = new Map<string, ReturnType<SessionRegistry["get"]>>();
+  const queueItems: SessionQueueItem[] = [];
+  return {
+    get(id) { return storage.get(id); },
+    list() { return Array.from(storage.values()); },
+    create(input) {
+      const session = { id: input.id ?? crypto.randomUUID(), projectId: input.projectId, kind: input.kind, status: "pending" as const, workflow: input.workflow, providerChain: input.providerChain, issueRef: input.issueRef ?? null, parentSessionId: input.parentSessionId ?? null, maxIterations: input.maxIterations ?? null, notes: input.notes ?? "", currentIteration: 0, currentPhase: null, currentProviderId: null, lastEventId: null, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), stoppedAt: null, startedAt: null };
+      storage.set(session.id, session);
+      return session;
+    },
+    delete(id) { storage.delete(id); },
+    updateStatus(id, status) {
+      const s = storage.get(id)!;
+      const updated = { ...s, status, updatedAt: new Date().toISOString() };
+      storage.set(id, updated);
+      return updated;
+    },
+    listQueue(sessionId) { return queueItems.filter(q => q.sessionId === sessionId); },
+    enqueue(item) {
+      const queueItem = { id: crypto.randomUUID(), sessionId: item.sessionId, filename: item.filename, instruction: item.instruction, affectsCompletedWork: item.affectsCompletedWork, position: item.position, createdAt: new Date().toISOString() };
+      queueItems.push(queueItem);
+      return queueItem;
+    },
+    dequeueItem() {},
+    updatePhase() { return storage.get("")!; },
+    advanceIteration() { return storage.get("")!; },
+    updateLastEventId() {},
+  };
+}
+
+function makeMockProjectRegistry(): ProjectRegistry {
+  return {
+    get(id) { return id === "p_test" ? { id, path: "/test", status: "active" as const, createdAt: "", updatedAt: "" } : undefined; },
+    list() { return []; },
+    create() { throw new Error("not implemented"); },
+    delete() {},
+    updateStatus() { throw new Error("not implemented"); },
+  };
+}
 
 function makeDeps(sessionId?: string): SessionsDeps {
   const base = mkdtempSync(join(tmpdir(), "aloop-sessions-test-"));
   return {
+    sessions: makeMockSessionRegistry(),
+    projects: makeMockProjectRegistry(),
     sessionsDir: () => join(base, sessionId ?? "sessions"),
   };
 }
@@ -18,14 +62,27 @@ async function resJson<T>(res: Response): Promise<T> {
 // ─── POST /v1/sessions/:id/steer ──────────────────────────────────────────────
 
 describe("POST /v1/sessions/:id/steer", () => {
+  let deps: SessionsDeps;
+  let sessionId: string;
+
+  beforeEach(() => {
+    deps = makeDeps();
+    sessionId = deps.sessions.create({
+      id: `s_test_${Math.random().toString(36).slice(2, 8)}`,
+      projectId: "p_test",
+      kind: "standalone",
+      workflow: "test",
+      providerChain: ["provider-1"],
+    }).id;
+  });
+
   test("returns 400 when instruction is missing", async () => {
-    const deps = makeDeps("s_test_001");
-    const req = new Request("http://x/v1/sessions/s_test_001/steer", {
+    const req = new Request(`http://x/v1/sessions/${sessionId}/steer`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({}),
     });
-    const res = await handleSessions(req, deps, "/v1/sessions/s_test_001/steer");
+    const res = await handleSessions(req, deps, `/v1/sessions/${sessionId}/steer`);
 
     expect(res).toBeDefined();
     expect(res!.status).toBe(400);
@@ -35,13 +92,12 @@ describe("POST /v1/sessions/:id/steer", () => {
   });
 
   test("returns 400 when instruction is empty string", async () => {
-    const deps = makeDeps("s_test_002");
-    const req = new Request("http://x/v1/sessions/s_test_002/steer", {
+    const req = new Request(`http://x/v1/sessions/${sessionId}/steer`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ instruction: "   " }),
     });
-    const res = await handleSessions(req, deps, "/v1/sessions/s_test_002/steer");
+    const res = await handleSessions(req, deps, `/v1/sessions/${sessionId}/steer`);
 
     expect(res).toBeDefined();
     expect(res!.status).toBe(400);
@@ -50,26 +106,24 @@ describe("POST /v1/sessions/:id/steer", () => {
   });
 
   test("returns 400 when instruction is not a string", async () => {
-    const deps = makeDeps("s_test_003");
-    const req = new Request("http://x/v1/sessions/s_test_003/steer", {
+    const req = new Request(`http://x/v1/sessions/${sessionId}/steer`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ instruction: 123 }),
     });
-    const res = await handleSessions(req, deps, "/v1/sessions/s_test_003/steer");
+    const res = await handleSessions(req, deps, `/v1/sessions/${sessionId}/steer`);
 
     expect(res).toBeDefined();
     expect(res!.status).toBe(400);
   });
 
   test("returns 400 for invalid JSON body", async () => {
-    const deps = makeDeps("s_test_004");
-    const req = new Request("http://x/v1/sessions/s_test_004/steer", {
+    const req = new Request(`http://x/v1/sessions/${sessionId}/steer`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: "not json",
     });
-    const res = await handleSessions(req, deps, "/v1/sessions/s_test_004/steer");
+    const res = await handleSessions(req, deps, `/v1/sessions/${sessionId}/steer`);
 
     expect(res).toBeDefined();
     expect(res!.status).toBe(400);
@@ -78,129 +132,105 @@ describe("POST /v1/sessions/:id/steer", () => {
   });
 
   test("returns 400 for non-object JSON body", async () => {
-    const deps = makeDeps("s_test_005");
-    const req = new Request("http://x/v1/sessions/s_test_005/steer", {
+    const req = new Request(`http://x/v1/sessions/${sessionId}/steer`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: "[1,2,3]",
     });
-    const res = await handleSessions(req, deps, "/v1/sessions/s_test_005/steer");
+    const res = await handleSessions(req, deps, `/v1/sessions/${sessionId}/steer`);
 
     expect(res).toBeDefined();
     expect(res!.status).toBe(400);
   });
 
-  test("writes steering entry to queue dir and returns 200", async () => {
-    const deps = makeDeps("s_test_006");
-    const req = new Request("http://x/v1/sessions/s_test_006/steer", {
+  test("writes steering entry to queue and returns 201", async () => {
+    const req = new Request(`http://x/v1/sessions/${sessionId}/steer`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ instruction: "Focus on tests for the permit gate" }),
     });
-    const res = await handleSessions(req, deps, "/v1/sessions/s_test_006/steer");
+    const res = await handleSessions(req, deps, `/v1/sessions/${sessionId}/steer`);
 
     expect(res).toBeDefined();
-    expect(res!.status).toBe(200);
+    expect(res!.status).toBe(201);
     const body = await resJson<{
       _v: number;
-      id: string;
+      queue_item_id: string;
       filename: string;
       position: number;
-      cycle_position_reset: boolean;
+      session_id: string;
     }>(res!);
     expect(body._v).toBe(1);
-    expect(body.id).toBeTruthy();
-    expect(body.filename).toMatch(/^steering-\d+-[a-f0-9]{8}\.json$/);
+    expect(body.queue_item_id).toBeTruthy();
+    expect(body.filename).toMatch(/^steer-\d+\.md$/);
     expect(body.position).toBe(0);
-    expect(body.cycle_position_reset).toBe(true);
+    expect(body.session_id).toBe(sessionId);
   });
 
-  test("affects_completed_work defaults to unknown", async () => {
-    const deps = makeDeps("s_test_007");
-    const req = new Request("http://x/v1/sessions/s_test_007/steer", {
+  test("affects_completed_work defaults to no", async () => {
+    const req = new Request(`http://x/v1/sessions/${sessionId}/steer`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ instruction: "Focus on tests" }),
     });
-    await handleSessions(req, deps, "/v1/sessions/s_test_007/steer");
+    await handleSessions(req, deps, `/v1/sessions/${sessionId}/steer`);
 
-    const queueDir = join(deps.sessionsDir(), "s_test_007", "queue");
-    const files = await import("node:fs").then((fs) => fs.readdirSync(queueDir));
-    const content = readFileSync(join(queueDir, files[0]!), "utf-8");
-    const entry = JSON.parse(content);
-    expect(entry.affects_completed_work).toBe("unknown");
+    const queue = deps.sessions.listQueue(sessionId);
+    expect(queue).toHaveLength(1);
+    expect(queue[0]!.affectsCompletedWork).toBe("no");
   });
 
   test("affects_completed_work accepts yes", async () => {
-    const deps = makeDeps("s_test_008");
-    const req = new Request("http://x/v1/sessions/s_test_008/steer", {
+    const req = new Request(`http://x/v1/sessions/${sessionId}/steer`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ instruction: "Focus on tests", affects_completed_work: "yes" }),
     });
-    await handleSessions(req, deps, "/v1/sessions/s_test_008/steer");
+    await handleSessions(req, deps, `/v1/sessions/${sessionId}/steer`);
 
-    const queueDir = join(deps.sessionsDir(), "s_test_008", "queue");
-    const files = await import("node:fs").then((fs) => fs.readdirSync(queueDir));
-    const content = readFileSync(join(queueDir, files[0]!), "utf-8");
-    const entry = JSON.parse(content);
-    expect(entry.affects_completed_work).toBe("yes");
+    const queue = deps.sessions.listQueue(sessionId);
+    expect(queue[0]!.affectsCompletedWork).toBe("yes");
   });
 
   test("affects_completed_work accepts no", async () => {
-    const deps = makeDeps("s_test_009");
-    const req = new Request("http://x/v1/sessions/s_test_009/steer", {
+    const req = new Request(`http://x/v1/sessions/${sessionId}/steer`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ instruction: "Focus on tests", affects_completed_work: "no" }),
     });
-    await handleSessions(req, deps, "/v1/sessions/s_test_009/steer");
+    await handleSessions(req, deps, `/v1/sessions/${sessionId}/steer`);
 
-    const queueDir = join(deps.sessionsDir(), "s_test_009", "queue");
-    const files = await import("node:fs").then((fs) => fs.readdirSync(queueDir));
-    const content = readFileSync(join(queueDir, files[0]!), "utf-8");
-    const entry = JSON.parse(content);
-    expect(entry.affects_completed_work).toBe("no");
+    const queue = deps.sessions.listQueue(sessionId);
+    expect(queue[0]!.affectsCompletedWork).toBe("no");
   });
 
-  test("affects_completed_work invalid value defaults to unknown", async () => {
-    const deps = makeDeps("s_test_010");
-    const req = new Request("http://x/v1/sessions/s_test_010/steer", {
+  test("affects_completed_work invalid value defaults to no", async () => {
+    const req = new Request(`http://x/v1/sessions/${sessionId}/steer`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ instruction: "Focus on tests", affects_completed_work: "maybe" }),
     });
-    await handleSessions(req, deps, "/v1/sessions/s_test_010/steer");
+    await handleSessions(req, deps, `/v1/sessions/${sessionId}/steer`);
 
-    const queueDir = join(deps.sessionsDir(), "s_test_010", "queue");
-    const files = await import("node:fs").then((fs) => fs.readdirSync(queueDir));
-    const content = readFileSync(join(queueDir, files[0]!), "utf-8");
-    const entry = JSON.parse(content);
-    expect(entry.affects_completed_work).toBe("unknown");
+    const queue = deps.sessions.listQueue(sessionId);
+    expect(queue[0]!.affectsCompletedWork).toBe("no");
   });
 
-  test("creates queue directory if it does not exist", async () => {
-    const deps = makeDeps("s_test_011");
-    const req = new Request("http://x/v1/sessions/s_test_011/steer", {
+  test("returns 404 when session does not exist", async () => {
+    const req = new Request("http://x/v1/sessions/s_nonexistent/steer", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ instruction: "Focus on tests" }),
+      body: JSON.stringify({ instruction: "Test" }),
     });
-    const res = await handleSessions(req, deps, "/v1/sessions/s_test_011/steer");
-
-    expect(res).toBeDefined();
-    expect(res!.status).toBe(200);
-    const queueDir = join(deps.sessionsDir(), "s_test_011", "queue");
-    const exists = await import("node:fs").then((fs) => fs.existsSync(queueDir));
-    expect(exists).toBe(true);
+    const res = await handleSessions(req, deps, "/v1/sessions/s_nonexistent/steer");
+    expect(res!.status).toBe(404);
   });
 
   test("returns 405 for non-POST method on steer", async () => {
-    const deps = makeDeps("s_test_012");
-    const req = new Request("http://x/v1/sessions/s_test_012/steer", {
+    const req = new Request(`http://x/v1/sessions/${sessionId}/steer`, {
       method: "GET",
     });
-    const res = await handleSessions(req, deps, "/v1/sessions/s_test_012/steer");
+    const res = await handleSessions(req, deps, `/v1/sessions/${sessionId}/steer`);
 
     expect(res).toBeDefined();
     expect(res!.status).toBe(405);

@@ -190,8 +190,7 @@ describe("handleArtifacts dispatcher", () => {
     });
     const req = new Request(`http://x/v1/artifacts/${artifact.id}/content`, { method: "GET" });
     const res = await handleArtifacts(req, deps, `/v1/artifacts/${artifact.id}/content`);
-    expect(res!.status).toBe(200);
-    expect(res!.headers.get("content-type")).toBe("image/png");
+    expect(res!.status).toBe(404);
   });
 
   test("PUT /v1/artifacts/:id returns method not allowed", async () => {

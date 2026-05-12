@@ -1,3 +1,4 @@
+import { methodNotAllowed } from "./http-helpers.ts";
 import type { SessionsDeps } from "./sessions-handlers.ts";
 import {
   createSessionHandler,
@@ -27,33 +28,35 @@ export function handleSessions(req: Request, deps: SessionsDeps, pathname: strin
     return createSessionHandler(req, deps);
   }
 
+  // POST /v1/sessions/:id/steer
+  const steerMatch = pathname.match(/^\/v1\/sessions\/([^/?#]+)\/steer$/);
+  if (steerMatch) {
+    if (req.method !== "POST") return methodNotAllowed();
+    return steerSessionHandler(steerMatch[1]!, req, deps);
+  }
+
   // GET /v1/sessions/:id
   const detailMatch = pathname.match(/^\/v1\/sessions\/([^/?#]+)$/);
   if (detailMatch) {
     const id = detailMatch[1]!;
 
     // POST /v1/sessions/:id/resume
-    if (req.method === "POST" && url.pathname === `/v1/sessions/${id}/resume`) {
+    if (req.method === "POST") {
       return resumeSessionHandler(id, deps);
     }
 
     // POST /v1/sessions/:id/pause
-    if (req.method === "POST" && url.pathname === `/v1/sessions/${id}/pause`) {
+    if (req.method === "POST") {
       return pauseSessionHandler(id, deps);
     }
 
     // POST /v1/sessions/:id/unpause
-    if (req.method === "POST" && url.pathname === `/v1/sessions/${id}/unpause`) {
+    if (req.method === "POST") {
       return unpauseSessionHandler(id, deps);
     }
 
-    // POST /v1/sessions/:id/steer
-    if (req.method === "POST" && url.pathname === `/v1/sessions/${id}/steer`) {
-      return steerSessionHandler(id, req, deps);
-    }
-
     // GET /v1/sessions/:id/queue
-    if (req.method === "GET" && url.pathname === `/v1/sessions/${id}/queue`) {
+    if (req.method === "GET") {
       return listSessionQueueHandler(id, deps);
     }
 

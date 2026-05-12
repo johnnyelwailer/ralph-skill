@@ -142,8 +142,9 @@ async function uploadArtifact(req: Request, deps: ArtifactsDeps): Promise<Respon
   if (typeof kind !== "string" || kind.trim().length === 0) {
     return badRequest("kind is required");
   }
+  const trimmedKind = kind.trim() as ArtifactKind;
   const validKinds: ArtifactKind[] = ["image", "screenshot", "mockup", "diff", "other"];
-  if (!validKinds.includes(kind as ArtifactKind)) {
+  if (!validKinds.includes(trimmedKind)) {
     return badRequest(`kind must be one of: ${validKinds.join(", ")}`);
   }
 
@@ -152,7 +153,7 @@ async function uploadArtifact(req: Request, deps: ArtifactsDeps): Promise<Respon
     return badRequest("file field is required and must be a file");
   }
 
-  const filename = (file as File).name ?? "unknown";
+  const filename = (file as File).name || "unknown";
   const mediaType = (file as File).type || "application/octet-stream";
   const bytes = (file as File).size;
 
@@ -182,7 +183,7 @@ async function uploadArtifact(req: Request, deps: ArtifactsDeps): Promise<Respon
     session_id: sessionIdValue?.trim() ?? null,
     setup_run_id: setupRunIdValue?.trim() ?? null,
     work_item_key: workItemKeyValue?.trim() ?? null,
-    kind: kind as ArtifactKind,
+    kind: trimmedKind,
     phase: phaseValue?.trim() ?? null,
     label: labelValue?.trim() ?? null,
     filename,

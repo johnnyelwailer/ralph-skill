@@ -51,6 +51,18 @@ export {
   type CreateArtifactInput,
 } from "./state/artifacts.ts";
 export {
+  ComposerTurnRegistry,
+  ComposerTurnNotFoundError,
+} from "./state/composer.ts";
+export type {
+  ComposerTurn,
+  ComposerTurnFilter,
+  ComposerTurnScope,
+  ComposerTurnScopeKind,
+  ComposerTurnStatus,
+  CreateComposerTurnInput,
+} from "./state/composer.ts";
+export {
   SessionRegistry,
   type SessionQueueItem,
 } from "./state/sessions-registry";
