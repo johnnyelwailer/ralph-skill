@@ -141,6 +141,7 @@ export async function startDaemon(opts: StartDaemonOptions = {}): Promise<Runnin
       watchdog?.stop();
       await http!.stop();
       await socket!.stop();
+      await providerRegistry.disposeAll();
       await eventStore!.close();
       db.close();
       releaseLock(paths.pidFile);

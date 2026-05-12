@@ -186,6 +186,7 @@ describe("daemonConfigToRaw", () => {
         max_tokens_since_commit: 1_000_000,
         min_commits_per_hour: 1,
       },
+      projects: {},
     });
     expect(raw.watchdog).toEqual({
       tick_interval: 15,

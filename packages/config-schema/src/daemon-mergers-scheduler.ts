@@ -44,7 +44,7 @@ export function mergeScheduler(raw: unknown, errors: string[]): DaemonConfig["sc
     burnRate: mergeBurnRate(pick(raw, "burn_rate", "burnRate"), errors),
   };
   return Object.freeze(
-    projectsVal !== undefined && Object.keys(projectsVal).length > 0
+    projectsVal !== undefined
       ? { ...base, projects: projectsVal }
       : base,
   ) as DaemonConfig["scheduler"];
