@@ -140,12 +140,11 @@ export function deleteSessionHandler(id: string, req: Request, deps: SessionsDep
 
   if (mode === "force") {
     deps.sessions.delete(id);
+    return jsonResponse(200, { id, status: "deleted" });
   } else {
-    deps.sessions.updateStatus(id, "stopped");
+    const updated = deps.sessions.updateStatus(id, "stopped");
+    return jsonResponse(200, sessionResponse(updated));
   }
-
-  const updated = deps.sessions.get(id);
-  return jsonResponse(200, sessionResponse(updated!));
 }
 
 // ── POST /v1/sessions/:id/resume ─────────────────────────────────────────────

@@ -100,15 +100,17 @@ describe("deleteSessionHandler", () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
-  test("returns 204 when session is deleted", async () => {
+  test("returns 200 and stops session with default mode=graceful", async () => {
     const req = new Request(`http://localhost/v1/sessions/${sessionId}`, {
       method: "DELETE",
     });
     const res = deleteSessionHandler(sessionId, req, deps);
-    expect(res.status).toBe(204);
-    // Verify it's gone
+    expect(res.status).toBe(200);
+    // Verify session still exists but status is "stopped"
     const getRes = getSessionHandler(sessionId, deps);
-    expect(getRes.status).toBe(404);
+    expect(getRes.status).toBe(200);
+    const body = await (getRes as Response).json();
+    expect(body.status).toBe("stopped");
   });
 
   test("returns 404 when session does not exist", async () => {
@@ -136,7 +138,10 @@ describe("deleteSessionHandler", () => {
       method: "DELETE",
     });
     const res = deleteSessionHandler(sessionId, req, deps);
-    expect(res.status).toBe(204);
+    expect(res.status).toBe(200);
+    // mode=force hard-deletes the session
+    const getRes = getSessionHandler(sessionId, deps);
+    expect(getRes.status).toBe(404);
   });
 
   test("accepts mode=graceful query param without error", async () => {
@@ -144,7 +149,12 @@ describe("deleteSessionHandler", () => {
       method: "DELETE",
     });
     const res = deleteSessionHandler(sessionId, req, deps);
-    expect(res.status).toBe(204);
+    expect(res.status).toBe(200);
+    // mode=graceful stops the session (doesn't hard-delete)
+    const getRes = getSessionHandler(sessionId, deps);
+    expect(getRes.status).toBe(200);
+    const body = await (getRes as Response).json();
+    expect(body.status).toBe("stopped");
   });
 });
 
