@@ -29,7 +29,7 @@ export function makeRouterDeps(input: MakeRouterDepsInput): RouterDeps {
   const sessionsDir = () => join(input.config.paths().stateDir, "sessions");
   return {
     handleDaemon: (req, pathname) =>
-      handleDaemonRoute(req, { startedAt: input.startedAt, config: input.config }, pathname),
+      handleDaemonRoute(req, { startedAt: input.startedAt, config: input.config, scheduler: input.scheduler, registry: input.registry, sessionsDir }, pathname),
     handleProjects: (req, pathname) =>
       handleProjectsRoute(
         req,

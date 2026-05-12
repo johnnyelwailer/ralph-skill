@@ -43,6 +43,9 @@ export {
   WorkspaceRegistry,
 } from "./state/workspaces";
 export {
+  WorkspaceProjector,
+} from "./state/workspace-projector.ts";
+export {
   ArtifactRegistry,
   ArtifactNotFoundError,
   type Artifact,
