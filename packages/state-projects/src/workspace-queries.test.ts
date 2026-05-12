@@ -11,6 +11,7 @@ import {
   addProjectToWorkspace,
 } from "./workspace-queries.ts";
 import {
+  DuplicateWorkspaceProjectError,
   ProjectNotFoundWorkspaceError,
 } from "./workspace-types.ts";
 
@@ -294,15 +295,13 @@ describe("addProjectToWorkspace", () => {
     expect(wp.role).toBe("primary");
   });
 
-  test("updates role when project is already a member (upsert)", () => {
+  test("throws DuplicateWorkspaceProjectError when project is already a member", () => {
     const w = createWorkspace(db, { name: "W" });
     seedProject("p1", "P1");
     addProjectToWorkspace(db, w.id, "p1", "primary");
-    const updated = addProjectToWorkspace(db, w.id, "p1", "supporting");
-    expect(updated.role).toBe("supporting");
-    const projects = listWorkspaceProjects(db, w.id);
-    expect(projects).toHaveLength(1);
-    expect(projects[0]!.role).toBe("supporting");
+    expect(() => addProjectToWorkspace(db, w.id, "p1", "supporting")).toThrow(
+      DuplicateWorkspaceProjectError,
+    );
   });
 
   test("throws ProjectNotFoundWorkspaceError when project does not exist", () => {
