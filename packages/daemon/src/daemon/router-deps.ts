@@ -11,6 +11,7 @@ import {
 import type { SchedulerService } from "@aloop/scheduler";
 import type { EventWriter, ProjectRegistry, SessionRegistry, WorkspaceRegistry } from "@aloop/state-sqlite";
 import { handleDaemon as handleDaemonRoute } from "../routes/daemon.ts";
+import { join } from "node:path";
 
 export type MakeRouterDepsInput = {
   readonly registry: ProjectRegistry;
@@ -25,6 +26,7 @@ export type MakeRouterDepsInput = {
 };
 
 export function makeRouterDeps(input: MakeRouterDepsInput): RouterDeps {
+  const sessionsDir = () => join(input.config.paths().stateDir, "sessions");
   return {
     handleDaemon: (req, pathname) =>
       handleDaemonRoute(req, { startedAt: input.startedAt, config: input.config }, pathname),
@@ -33,6 +35,7 @@ export function makeRouterDeps(input: MakeRouterDepsInput): RouterDeps {
         req,
         {
           registry: input.registry,
+          sessionsDir,
         },
         pathname,
       ),
@@ -69,6 +72,7 @@ export function makeRouterDeps(input: MakeRouterDepsInput): RouterDeps {
         {
           sessions: input.sessionRegistry,
           projects: input.registry,
+          sessionsDir,
         },
         pathname,
       ),

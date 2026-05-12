@@ -5,6 +5,7 @@ import type { ProjectRegistry } from "@aloop/state-projects";
 export type SessionsDeps = {
   readonly sessions: SessionRegistry;
   readonly projects: ProjectRegistry;
+  readonly sessionsDir: string | (() => string);
 };
 
 const VALID_KINDS = ["standalone", "orchestrator", "child"] as const;
