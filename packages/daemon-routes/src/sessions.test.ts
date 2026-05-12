@@ -82,7 +82,7 @@ function makeMockSessionRegistry(sessionsDir: string): SessionRegistry {
 
 function makeMockProjectRegistry(): ProjectRegistry {
   return {
-    get(id) { return id === "p_test" ? { id, path: "/test", status: "active" as const, createdAt: "", updatedAt: "" } : undefined; },
+    get(id) { return id.startsWith("p_") ? { id, path: "/test", status: "active" as const, createdAt: "", updatedAt: "" } : undefined; },
     list() { return []; },
     create() { throw new Error("not implemented"); },
     delete() {},
