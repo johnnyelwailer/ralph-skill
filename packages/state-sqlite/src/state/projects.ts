@@ -73,7 +73,13 @@ export class ProjectRegistry {
 
   list(filter: ProjectFilter & { limit?: number; cursor?: string } = {}): { items: Project[]; nextCursor: string | null } {
     const items = listProjectsFromDb(this.db, filter);
-    return { items, nextCursor: null };
+    const effectiveLimit = filter.limit !== undefined ? Math.min(filter.limit, 100) : undefined;
+    const hasMore = items.length > (effectiveLimit ?? 101);
+    if (hasMore) {
+      items.pop();
+    }
+    const nextCursor = hasMore && items.length > 0 ? `${items[items.length - 1]!.addedAt}:${items[items.length - 1]!.id}` : null;
+    return { items, nextCursor };
   }
 
   updateName(id: string, name: string, now: string = new Date().toISOString()): Project {

@@ -25,6 +25,12 @@ export type ProjectFilter = {
   readonly absPath?: string;
   /** Filter to projects that belong to a given workspace. */
   readonly workspaceId?: string;
+  /** Case-insensitive name search (LIKE %nameSearch%). */
+  readonly nameSearch?: string;
+  /** Cursor for pagination — value is created_at:id of last item from previous page. */
+  readonly cursor?: string;
+  /** Max items to return (capped at 100 by handler). */
+  readonly limit?: number;
 };
 
 export type CreateProjectInput = {
