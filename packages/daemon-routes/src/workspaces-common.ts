@@ -1,11 +1,11 @@
 import type {
   CreateWorkspaceInput,
-  ProjectRegistry,
   Workspace,
   WorkspaceFilter,
   WorkspaceRegistry,
   WorkspaceWithCounts,
-} from "@aloop/state-sqlite";
+} from "@aloop/state-projects";
+import type { ProjectRegistry } from "@aloop/state-sqlite";
 
 export type Deps = { readonly registry: WorkspaceRegistry; readonly projectRegistry: ProjectRegistry };
 

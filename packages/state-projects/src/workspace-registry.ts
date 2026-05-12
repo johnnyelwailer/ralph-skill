@@ -21,7 +21,6 @@ import {
   listWorkspaceProjectsWithDetails,
   listWorkspaces,
   removeProjectFromWorkspace,
-  type WorkspaceProjectWithDetails,
   updateWorkspace,
   updateWorkspaceName,
   updateWorkspaceDescription,

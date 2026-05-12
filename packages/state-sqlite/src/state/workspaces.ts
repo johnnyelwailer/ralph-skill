@@ -21,6 +21,7 @@ export type {
   WorkspaceProject,
   WorkspaceProjectCounts,
   WorkspaceProjectRole,
+  WorkspaceProjectWithDetails,
   WorkspaceWithCounts,
 };
 

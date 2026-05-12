@@ -21,6 +21,7 @@ export {
   type WorkspaceProject,
   type WorkspaceProjectCounts,
   type WorkspaceProjectRole,
+  type WorkspaceProjectWithDetails,
   type WorkspaceWithCounts,
   DuplicateWorkspaceProjectError,
   WorkspaceProjectNotFoundError,

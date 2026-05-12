@@ -135,7 +135,7 @@ function validateScope(scope: unknown): ComposerTurnScope | null {
   const kind = validateScopeKind(s.kind);
   if (!kind) return null;
   if (s.id !== undefined && typeof s.id !== "string") return null;
-  return { kind, id: s.id as string | undefined };
+  return s.id !== undefined ? { kind, id: s.id as string } : { kind };
 }
 
 function validateArtifactRef(ref: unknown): ComposerArtifactRef | null {
@@ -246,34 +246,40 @@ function validateCreateInput(data: unknown): {
   if (artifact_refs !== undefined && !Array.isArray(artifact_refs)) {
     return { ok: false, error: "artifact_refs must be an array" };
   }
-  const parsedArtifactRefs = artifact_refs
+  const artifactRefResults = artifact_refs
     ? (artifact_refs as unknown[]).map(validateArtifactRef)
     : [];
-  if (parsedArtifactRefs.some((r) => r === null)) {
+  const nullArtifactIdx = artifactRefResults.findIndex((r) => r === null);
+  if (nullArtifactIdx !== -1) {
     return { ok: false, error: "artifact_refs entries must have artifact_id string" };
   }
+  const parsedArtifactRefs = artifactRefResults as ComposerArtifactRef[];
 
   const media_inputs = d.media_inputs;
   if (media_inputs !== undefined && !Array.isArray(media_inputs)) {
     return { ok: false, error: "media_inputs must be an array" };
   }
-  const parsedMediaInputs = media_inputs
+  const mediaInputResults = media_inputs
     ? (media_inputs as unknown[]).map(validateMediaInput)
     : [];
-  if (parsedMediaInputs.some((m) => m === null)) {
+  const nullMediaIdx = mediaInputResults.findIndex((m) => m === null);
+  if (nullMediaIdx !== -1) {
     return { ok: false, error: "media_inputs entries must have valid kind and shape" };
   }
+  const parsedMediaInputs = mediaInputResults as ComposerMediaInput[];
 
   const context_refs = d.context_refs;
   if (context_refs !== undefined && !Array.isArray(context_refs)) {
     return { ok: false, error: "context_refs must be an array" };
   }
-  const parsedContextRefs = context_refs
+  const contextRefResults = context_refs
     ? (context_refs as unknown[]).map(validateContextRef)
     : [];
-  if (parsedContextRefs.some((r) => r === null)) {
+  const nullContextIdx = contextRefResults.findIndex((r) => r === null);
+  if (nullContextIdx !== -1) {
     return { ok: false, error: "context_refs entries must have valid kind and required id field" };
   }
+  const parsedContextRefs = contextRefResults as ComposerContextRef[];
 
   const intent_hint = d.intent_hint;
   if (intent_hint !== undefined && (typeof intent_hint !== "string" || !VALID_INTENT_HINTS.has(intent_hint))) {
@@ -353,15 +359,17 @@ export async function handleComposer(
   // GET /v1/composer/turns
   if (req.method === "GET" && cleanPathname === "/v1/composer/turns") {
     const url = new URL(req.url);
-    const filter: ComposerTurnFilter = {
-      scope_kind: url.searchParams.get("scope_kind") as ComposerTurnScopeKind | undefined,
-      scope_id: url.searchParams.get("scope_id") ?? undefined,
-      status: url.searchParams.get("status") as ComposerTurnStatus | undefined,
-      limit: url.searchParams.get("limit")
-        ? Number.parseInt(url.searchParams.get("limit")!, 10)
-        : undefined,
-      cursor: url.searchParams.get("cursor") ?? undefined,
-    };
+    const filter: ComposerTurnFilter = {};
+    const scopeKind = url.searchParams.get("scope_kind");
+    if (scopeKind !== null) filter.scope_kind = scopeKind as ComposerTurnScopeKind;
+    const scopeId = url.searchParams.get("scope_id");
+    if (scopeId !== null) filter.scope_id = scopeId;
+    const status = url.searchParams.get("status");
+    if (status !== null) filter.status = status as ComposerTurnStatus;
+    const limitStr = url.searchParams.get("limit");
+    if (limitStr !== null) filter.limit = Number.parseInt(limitStr, 10);
+    const cursor = url.searchParams.get("cursor");
+    if (cursor !== null) filter.cursor = cursor;
     const turns = registry.list(filter);
     return jsonResponse(200, turnListResponse(turns, filter));
   }

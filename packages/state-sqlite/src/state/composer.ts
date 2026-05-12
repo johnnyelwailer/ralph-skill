@@ -73,19 +73,24 @@ function parseJSON<T>(val: string, fallback: T): T {
 }
 
 function scopeFromRow(row: ComposerTurnRow): ComposerTurnScope {
-  return { kind: row.scope_kind as ComposerTurnScopeKind, id: row.scope_id ?? undefined };
+  return row.scope_id !== null
+    ? { kind: row.scope_kind as ComposerTurnScopeKind, id: row.scope_id }
+    : { kind: row.scope_kind as ComposerTurnScopeKind };
 }
 
 function turnFromRow(row: ComposerTurnRow): ComposerTurn {
-  return {
+  const scope: ComposerTurnScope = row.scope_id !== null
+    ? { kind: row.scope_kind as ComposerTurnScopeKind, id: row.scope_id }
+    : { kind: row.scope_kind as ComposerTurnScopeKind };
+
+  const result: ComposerTurn = {
     _v: 1,
     id: row.id,
-    scope: scopeFromRow(row),
+    scope,
     message: row.message,
     artifact_refs: parseJSON(row.artifact_refs, []),
     media_inputs: parseJSON(row.media_inputs, []),
     context_refs: parseJSON(row.context_refs, []),
-    intent_hint: (row.intent_hint ?? undefined) as ComposerIntentHint | undefined,
     allowed_action_classes: parseJSON(row.allowed_action_classes, []),
     delegation_policy: parseJSON(row.delegation_policy, {
       allow_subagents: true,
@@ -94,7 +99,6 @@ function turnFromRow(row: ComposerTurnRow): ComposerTurn {
     }),
     provider_chain: parseJSON(row.provider_chain, []),
     transcription: parseJSON(row.transcription, { mode: "auto" as ComposerTranscriptionMode }),
-    max_cost_usd: row.max_cost_usd ?? undefined,
     approval_policy: row.approval_policy as ComposerApprovalPolicy,
     status: row.status as ComposerTurnStatus,
     media_mode: row.media_mode as ComposerMediaMode,
@@ -110,6 +114,15 @@ function turnFromRow(row: ComposerTurnRow): ComposerTurn {
     created_at: row.created_at,
     updated_at: row.updated_at,
   };
+
+  if (row.intent_hint !== null) {
+    (result as { intent_hint?: ComposerIntentHint }).intent_hint = row.intent_hint as ComposerIntentHint;
+  }
+  if (row.max_cost_usd !== null) {
+    (result as { max_cost_usd?: number }).max_cost_usd = row.max_cost_usd;
+  }
+
+  return result;
 }
 
 // ---------------------------------------------------------------------------
