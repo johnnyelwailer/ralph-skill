@@ -1,3 +1,8 @@
+import { handleComposer } from "@aloop/daemon-routes-composer";
+import { handleArtifacts } from "@aloop/daemon-routes-artifacts";
+import { handleTriggers } from "@aloop/daemon-routes-triggers";
+import { handleSetup } from "@aloop/daemon-routes-setup";
+import { handleEvents } from "@aloop/daemon-routes";
 import type { ConfigStore } from "@aloop/daemon-config";
 import type { RouterDeps } from "@aloop/daemon-http";
 import type { InMemoryProviderHealthStore, ProviderRegistry } from "@aloop/provider";
@@ -9,7 +14,7 @@ import {
   handleSessions as handleSessionsRoute,
 } from "@aloop/daemon-routes";
 import type { SchedulerService } from "@aloop/scheduler";
-import type { EventWriter, ProjectRegistry, SessionRegistry, WorkspaceRegistry } from "@aloop/state-sqlite";
+import type { ComposerTurnRegistry, EventWriter, ProjectRegistry, SessionRegistry, WorkspaceRegistry, ArtifactRegistry } from "@aloop/state-sqlite";
 import { handleDaemon as handleDaemonRoute } from "../routes/daemon.ts";
 import { join } from "node:path";
 
@@ -17,6 +22,8 @@ export type MakeRouterDepsInput = {
   readonly registry: ProjectRegistry;
   readonly workspaceRegistry: WorkspaceRegistry;
   readonly sessionRegistry: SessionRegistry;
+  readonly composerRegistry: ComposerTurnRegistry;
+  readonly artifactRegistry: ArtifactRegistry;
   readonly scheduler: SchedulerService;
   readonly startedAt: number;
   readonly config: ConfigStore;
@@ -27,6 +34,8 @@ export type MakeRouterDepsInput = {
 
 export function makeRouterDeps(input: MakeRouterDepsInput): RouterDeps {
   const sessionsDir = () => join(input.config.paths().stateDir, "sessions");
+  const artifactsDir = () => join(input.config.paths().stateDir, "artifacts");
+  const triggersDir = () => join(input.config.paths().stateDir, "triggers");
   return {
     handleDaemon: (req, pathname) =>
       handleDaemonRoute(req, { startedAt: input.startedAt, config: input.config, scheduler: input.scheduler, registry: input.registry, sessionsDir }, pathname),
@@ -76,5 +85,15 @@ export function makeRouterDeps(input: MakeRouterDepsInput): RouterDeps {
         },
         pathname,
       ),
+    handleComposer: (req, pathname) =>
+      handleComposer(req, { db: input.composerRegistry["_db"] }, pathname),
+    handleArtifacts: (req, pathname) =>
+      handleArtifacts(req, { registry: input.artifactRegistry, artifactsDir }, pathname),
+    handleTriggers: (req, pathname) =>
+      handleTriggers(req, { store: { triggersDir } }, pathname),
+    handleSetup: (req, pathname) =>
+      handleSetup(req, { store: { stateDir: input.config.paths().stateDir }, eventsDir: input.config.paths().stateDir }, pathname),
+    handleEvents: (req, pathname) =>
+      handleEvents(req, { logFile: () => input.config.paths().logFile, sessionsDir }, pathname),
   };
 }

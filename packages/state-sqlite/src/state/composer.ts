@@ -142,7 +142,11 @@ export class ComposerTurnNotFoundError extends Error {
 // ---------------------------------------------------------------------------
 
 export class ComposerTurnRegistry {
-  constructor(private readonly db: Database) {}
+  constructor(private readonly _db: Database) {}
+
+  get db(): Database {
+    return this._db;
+  }
 
   /**
    * Create a new composer turn.

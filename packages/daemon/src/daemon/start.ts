@@ -11,6 +11,8 @@ import {
   ProjectRegistry,
   SessionRegistry,
   WorkspaceRegistry,
+  ComposerTurnRegistry,
+  ArtifactRegistry,
   type Database,
   type EventWriter,
 } from "@aloop/state-sqlite";
@@ -83,6 +85,8 @@ export async function startDaemon(opts: StartDaemonOptions = {}): Promise<Runnin
   const registry = new ProjectRegistry(db);
   const workspaceRegistry = new WorkspaceRegistry(db);
   const sessionRegistry = new SessionRegistry(db);
+  const composerRegistry = new ComposerTurnRegistry(db);
+  const artifactRegistry = new ArtifactRegistry(db);
   const permits = new PermitRegistry(db);
   eventStore = new JsonlEventStore(paths.logFile);
   const events = createEventWriter({
@@ -100,6 +104,8 @@ export async function startDaemon(opts: StartDaemonOptions = {}): Promise<Runnin
     registry,
     workspaceRegistry,
     sessionRegistry,
+    composerRegistry,
+    artifactRegistry,
     scheduler,
     startedAt,
     config,
