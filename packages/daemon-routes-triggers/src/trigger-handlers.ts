@@ -1,6 +1,13 @@
 import { badRequest, errorResponse, jsonResponse, methodNotAllowed, notFoundResponse, parseJsonBody } from "@aloop/daemon-routes";
 import type { TriggerStore } from "./trigger-store.ts";
-import type { CreateTriggerInput, PatchTriggerInput } from "./trigger-types.ts";
+import type {
+  CreateTriggerInput,
+  PatchTriggerInput,
+  TriggerAction,
+  TriggerActionKind,
+  TriggerScopeKind,
+  TriggerSourceKind,
+} from "./trigger-types.ts";
 
 export type TriggersDeps = {
   readonly store: TriggerStore;
@@ -104,21 +111,20 @@ function validateCreateTriggerInput(data: unknown): { input?: CreateTriggerInput
 
   const input: CreateTriggerInput = {
     scope: {
-      kind: scope.kind,
+      kind: scope.kind as TriggerScopeKind,
       id: scope.id === "global" || scope.kind === "global" ? null : (scope.id as string | null),
     },
     source: {
-      kind: source.kind,
-      schedule: typeof source.schedule === "string" ? source.schedule : undefined,
-      topic: source.topic === null || typeof source.topic === "string" ? source.topic : undefined,
-      filters:
-        source.filters && typeof source.filters === "object"
-          ? (source.filters as Record<string, unknown>)
-          : undefined,
+      kind: source.kind as TriggerSourceKind,
+      ...(typeof source.schedule === "string" ? { schedule: source.schedule } : {}),
+      ...(source.topic === null || typeof source.topic === "string" ? { topic: source.topic } : {}),
+      ...(source.filters && typeof source.filters === "object"
+        ? { filters: source.filters as Record<string, unknown> }
+        : {}),
     },
     action: {
-      kind: action.kind,
-      target: action.target as Record<string, unknown>,
+      kind: action.kind as TriggerActionKind,
+      target: action.target as TriggerAction["target"],
     },
     ...(budget_policy !== undefined ? { budget_policy } : {}),
     ...(debounce_seconds !== undefined ? { debounce_seconds } : {}),
@@ -144,7 +150,7 @@ function validatePatchInput(data: unknown): { input?: PatchTriggerInput; error?:
     const scopeKindErr = validateScopeKind(scope.kind);
     if (scopeKindErr) return { error: badRequest(scopeKindErr) };
     input.scope = {
-      kind: scope.kind,
+      kind: scope.kind as TriggerScopeKind,
       id: scope.id === null || scope.kind === "global" ? null : (scope.id as string | null),
     };
   }
@@ -157,10 +163,12 @@ function validatePatchInput(data: unknown): { input?: PatchTriggerInput; error?:
     const sourceKindErr = validateTriggerSourceKind(source.kind);
     if (sourceKindErr) return { error: badRequest(sourceKindErr) };
     input.source = {
-      kind: source.kind,
-      schedule: typeof source.schedule === "string" ? source.schedule : undefined,
-      topic: source.topic === null || typeof source.topic === "string" ? source.topic : undefined,
-      filters: source.filters as Record<string, unknown> | undefined,
+      kind: source.kind as TriggerSourceKind,
+      ...(typeof source.schedule === "string" ? { schedule: source.schedule } : {}),
+      ...(source.topic === null || typeof source.topic === "string" ? { topic: source.topic } : {}),
+      ...(source.filters && typeof source.filters === "object"
+        ? { filters: source.filters as Record<string, unknown> }
+        : {}),
     };
   }
 
@@ -172,8 +180,8 @@ function validatePatchInput(data: unknown): { input?: PatchTriggerInput; error?:
     const actionKindErr = validateActionKind(action.kind);
     if (actionKindErr) return { error: badRequest(actionKindErr) };
     input.action = {
-      kind: action.kind,
-      target: action.target as Record<string, unknown>,
+      kind: action.kind as TriggerActionKind,
+      target: action.target as TriggerAction["target"],
     };
   }
 
@@ -222,11 +230,12 @@ export async function handleTriggers(
       const scopeKind = url.searchParams.get("scope_kind") ?? undefined;
       const scopeId = url.searchParams.get("scope_id") ?? undefined;
       const enabled = url.searchParams.get("enabled");
-      const items = deps.store.list({
-        scope_kind: scopeKind ?? undefined,
-        scope_id: scopeId === "" ? null : scopeId ?? undefined,
-        enabled: enabled === "true" ? true : enabled === "false" ? false : undefined,
-      });
+      const filter: Parameters<TriggerStore["list"]>[0] = {
+        ...(scopeKind !== undefined ? { scope_kind: scopeKind as TriggerScopeKind } : {}),
+        ...(scopeId !== undefined ? { scope_id: scopeId === "" ? null : scopeId } : {}),
+        ...(enabled === "true" || enabled === "false" ? { enabled: enabled === "true" } : {}),
+      };
+      const items = deps.store.list(filter);
       return jsonResponse(200, { _v: 1, items, next_cursor: null });
     }
 

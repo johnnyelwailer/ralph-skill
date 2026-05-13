@@ -41,12 +41,18 @@ export async function handleEventsSSE(
   const sessionId = url.searchParams.get("session_id") ?? undefined;
   const parentId = url.searchParams.get("parent") ?? undefined;
   const since = url.searchParams.get("since") ?? req.headers.get("Last-Event-ID") ?? undefined;
+  const filter = {
+    topics,
+    ...(sessionId !== undefined ? { sessionId } : {}),
+    ...(parentId !== undefined ? { parentId } : {}),
+    ...(since !== undefined ? { since } : {}),
+  };
 
   // Collect all historical events from the log file
   const historical: EventEnvelope[] = [];
   try {
     for await (const env of deps.store.read(deps.logPath)) {
-      if (!shouldSkip(env, { topics, sessionId, parentId, since })) {
+      if (!shouldSkip(env, filter)) {
         historical.push(env);
       }
     }
@@ -70,7 +76,7 @@ export async function handleEventsSSE(
 
       // Tail the log file for new events; cleanup via req.signal abort
       tailLogFile(deps.logPath, (env) => {
-        if (!shouldSkip(env, { topics, sessionId, parentId, since })) {
+        if (!shouldSkip(env, filter)) {
           try {
             controller.enqueue(enc.encode(formatSSE(env)));
           } catch {

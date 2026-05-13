@@ -5,6 +5,7 @@ import type { Projector } from "./projector.ts";
 type PermitGrantEvent = {
   permit_id: string;
   session_id: string;
+  project_id?: string;
   provider_id: string;
   ttl_seconds: number;
   granted_at: string;
@@ -23,7 +24,7 @@ export class ProjectDailyCostProjector implements Projector {
   apply(db: Database, event: EventEnvelope): void {
     if (event.topic === "scheduler.permit.grant") {
       const data = event.data as PermitGrantEvent;
-      const projectId = (event.metadata as Record<string, unknown> | undefined)?.project_id as string | null | undefined;
+      const projectId = data.project_id ?? (eventMetadata(event)?.project_id as string | undefined);
       if (!projectId) return;
       // Skip only if cost is absent (undefined) or explicitly ≤ 0.
       // Undefined means "no cost data" — insert a row with cost 0 so the project
@@ -53,6 +54,10 @@ export class ProjectDailyCostProjector implements Projector {
       // can come from an explicit cost reconciliation event.)
     }
   }
+}
+
+function eventMetadata(event: EventEnvelope): Record<string, unknown> | undefined {
+  return (event as EventEnvelope & { readonly metadata?: Record<string, unknown> }).metadata;
 }
 
 export type ProjectDailyCostSnapshot = {

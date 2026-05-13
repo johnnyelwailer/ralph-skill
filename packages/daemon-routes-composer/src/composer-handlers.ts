@@ -39,7 +39,8 @@ import type { Database } from "bun:sqlite";
 // ---------------------------------------------------------------------------
 
 export type ComposerDeps = {
-  readonly db: Database;
+  readonly registry?: ComposerTurnRegistry;
+  readonly db?: Database;
 };
 
 // ---------------------------------------------------------------------------
@@ -144,8 +145,8 @@ function validateArtifactRef(ref: unknown): ComposerArtifactRef | null {
   if (typeof r.artifact_id !== "string") return null;
   return {
     artifact_id: r.artifact_id,
-    role: r.role as string | null | undefined,
-    selection: r.selection as string | null | undefined,
+    ...(r.role === null || typeof r.role === "string" ? { role: r.role } : {}),
+    ...(r.selection === null || typeof r.selection === "string" ? { selection: r.selection } : {}),
   };
 }
 
@@ -154,15 +155,29 @@ function validateMediaInput(input: unknown): ComposerMediaInput | null {
   const m = input as Record<string, unknown>;
   const kind = m.kind;
   if (typeof kind !== "string" || !VALID_MEDIA_KINDS.has(kind)) return null;
+  const transcriptSource = m.transcript_source;
+  if (
+    transcriptSource !== undefined &&
+    transcriptSource !== null &&
+    transcriptSource !== "client" &&
+    transcriptSource !== "daemon" &&
+    transcriptSource !== "provider" &&
+    transcriptSource !== "external"
+  ) return null;
+  if (m.derived_refs !== undefined && !Array.isArray(m.derived_refs)) return null;
   return {
     kind: kind as ComposerMediaInput["kind"],
-    artifact_id: m.artifact_id as string | undefined,
-    url: m.url as string | null | undefined,
-    caption: m.caption as string | null | undefined,
-    transcript_artifact_id: m.transcript_artifact_id as string | null | undefined,
-    transcript_text: m.transcript_text as string | null | undefined,
-    transcript_source: m.transcript_source as ComposerMediaInput["transcript_source"],
-    derived_refs: m.derived_refs as string[] | undefined,
+    ...(typeof m.artifact_id === "string" ? { artifact_id: m.artifact_id } : {}),
+    ...(m.url === null || typeof m.url === "string" ? { url: m.url } : {}),
+    ...(m.caption === null || typeof m.caption === "string" ? { caption: m.caption } : {}),
+    ...(m.transcript_artifact_id === null || typeof m.transcript_artifact_id === "string"
+      ? { transcript_artifact_id: m.transcript_artifact_id }
+      : {}),
+    ...(m.transcript_text === null || typeof m.transcript_text === "string"
+      ? { transcript_text: m.transcript_text }
+      : {}),
+    ...(transcriptSource !== undefined ? { transcript_source: transcriptSource } : {}),
+    ...(Array.isArray(m.derived_refs) ? { derived_refs: m.derived_refs as string[] } : {}),
   };
 }
 
@@ -214,8 +229,10 @@ function validateTranscription(t: unknown): ComposerTranscription | null {
   if (typeof mode !== "string" || !VALID_TRANSCRIPTION_MODES.has(mode)) return null;
   return {
     mode: mode as ComposerTranscriptionMode,
-    language: tr.language as string | undefined,
-    allow_client_transcript: tr.allow_client_transcript as boolean | undefined,
+    ...(typeof tr.language === "string" ? { language: tr.language } : {}),
+    ...(typeof tr.allow_client_transcript === "boolean"
+      ? { allow_client_transcript: tr.allow_client_transcript }
+      : {}),
   };
 }
 
@@ -351,15 +368,20 @@ export async function handleComposer(
   deps: ComposerDeps,
   pathname: string,
 ): Promise<Response | undefined> {
-  const db = deps.db;
-  const registry = new ComposerTurnRegistry(db);
+  const registry = deps.registry ?? new ComposerTurnRegistry(requiredDb(deps));
   // Strip query string from pathname for route matching
   const cleanPathname = pathname.split("?")[0]!;
 
   // GET /v1/composer/turns
   if (req.method === "GET" && cleanPathname === "/v1/composer/turns") {
     const url = new URL(req.url);
-    const filter: ComposerTurnFilter = {};
+    const filter: {
+      scope_kind?: ComposerTurnScopeKind;
+      scope_id?: string;
+      status?: ComposerTurnStatus;
+      limit?: number;
+      cursor?: string;
+    } = {};
     const scopeKind = url.searchParams.get("scope_kind");
     if (scopeKind !== null) filter.scope_kind = scopeKind as ComposerTurnScopeKind;
     const scopeId = url.searchParams.get("scope_id");
@@ -377,7 +399,7 @@ export async function handleComposer(
   // POST /v1/composer/turns
   if (req.method === "POST" && cleanPathname === "/v1/composer/turns") {
     const parsed = await parseJsonBody(req);
-    if (parsed.error) {
+    if ("error" in parsed) {
       const err = parsed.error;
       const clone = err.clone();
       const json = await clone.json() as { error?: { code?: string; message?: string } };
@@ -504,4 +526,9 @@ export async function handleComposer(
   }
 
   return undefined;
+}
+
+function requiredDb(deps: ComposerDeps): Database {
+  if (!deps.db) throw new Error("ComposerDeps requires either registry or db");
+  return deps.db;
 }

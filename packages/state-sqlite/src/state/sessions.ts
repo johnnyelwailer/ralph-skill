@@ -231,7 +231,7 @@ export class SessionRegistry {
     }
 
     params.push(id);
-    this.db.run(`UPDATE sessions SET ${sets.join(", ")} WHERE id = ?`, ...params);
+    this.db.run(`UPDATE sessions SET ${sets.join(", ")} WHERE id = ?`, params);
   }
 
   archive(id: string, now: string = new Date().toISOString()): Session {

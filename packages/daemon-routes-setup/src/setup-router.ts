@@ -99,3 +99,5 @@ export function handleSetup(
 
   return undefined;
 }
+
+export type { SetupDeps };

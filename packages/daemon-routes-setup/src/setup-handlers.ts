@@ -60,7 +60,12 @@ export async function createSetupRun(req: Request, deps: SetupDeps): Promise<Res
       ? (body.data.flags as Record<string, string>)
       : {};
 
-  const input: CreateSetupRunInput = { absPath, mode, nonInteractive, flags };
+  const input: CreateSetupRunInput = {
+    absPath,
+    ...(mode !== undefined ? { mode } : {}),
+    nonInteractive,
+    flags,
+  };
   const run = deps.store.create(input);
 
   return jsonResponse(201, buildRunResponse(run, deps));
@@ -176,7 +181,12 @@ export async function commentSetupRun(
     ? (body.data.artifact_refs as string[])
     : undefined;
 
-  const input: SetupCommentInput = { target_type: targetType, target_id: targetId, body: commentBody, artifact_refs: artifactRefs };
+  const input: SetupCommentInput = {
+    target_type: targetType as SetupCommentInput["target_type"],
+    target_id: targetId,
+    body: commentBody,
+    ...(artifactRefs !== undefined ? { artifact_refs: artifactRefs } : {}),
+  };
   const run = deps.store.addComment(id, input);
   return jsonResponse(200, buildRunResponse(run, deps));
 }
@@ -395,9 +405,3 @@ function countFindings(run: SetupRun): number {
   if (f.environment) count++;
   return count;
 }
-
-// Re-export parseJsonBody from daemon-routes for use in handlers
-import { parseJsonBody as _parseJsonBody } from "@aloop/daemon-routes";
-// Named import is unused warning fix — actually use it
-const parseJsonBody = _parseJsonBody;
-void parseJsonBody;

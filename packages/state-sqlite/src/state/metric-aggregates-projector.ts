@@ -50,9 +50,7 @@ export class MetricAggregatesProjector implements Projector {
       control_subagent_run_id?: string;
       project_id?: string;
     };
-    const metadata = event.metadata as Record<string, unknown> | undefined;
-
-    const scope = this.resolveScope(data, metadata);
+    const scope = this.resolveScope(data, eventMetadata(event));
     const now = event.timestamp;
 
     this.upsertMetric(db, scope, "all", this.epochAnchor(), now, "gate", JSON.stringify({ gate: "concurrency" }), {
@@ -75,9 +73,7 @@ export class MetricAggregatesProjector implements Projector {
       control_subagent_run_id?: string;
       project_id?: string;
     };
-    const metadata = event.metadata as Record<string, unknown> | undefined;
-
-    const scope = this.resolveScope(data, metadata);
+    const scope = this.resolveScope(data, eventMetadata(event));
     const now = event.timestamp;
     const gate = (data.gate ?? "unknown").slice(0, 64);
     const labels = JSON.stringify({ gate });
@@ -231,4 +227,8 @@ export class MetricAggregatesProjector implements Projector {
 
     tx();
   }
+}
+
+function eventMetadata(event: EventEnvelope): Record<string, unknown> | undefined {
+  return (event as EventEnvelope & { readonly metadata?: Record<string, unknown> }).metadata;
 }

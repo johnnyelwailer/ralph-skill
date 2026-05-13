@@ -1,7 +1,7 @@
 import { handleComposer } from "@aloop/daemon-routes-composer";
 import { handleArtifacts } from "@aloop/daemon-routes-artifacts";
-import { handleTriggers } from "@aloop/daemon-routes-triggers";
-import { handleSetup } from "@aloop/daemon-routes-setup";
+import { handleTriggers, TriggerStore } from "@aloop/daemon-routes-triggers";
+import { handleSetup, SetupStore } from "@aloop/daemon-routes-setup";
 import { handleEvents } from "@aloop/daemon-routes";
 import type { ConfigStore } from "@aloop/daemon-config";
 import type { RouterDeps } from "@aloop/daemon-http";
@@ -36,6 +36,8 @@ export function makeRouterDeps(input: MakeRouterDepsInput): RouterDeps {
   const sessionsDir = () => join(input.config.paths().stateDir, "sessions");
   const artifactsDir = () => join(input.config.paths().stateDir, "artifacts");
   const triggersDir = () => join(input.config.paths().stateDir, "triggers");
+  const triggerStore = new TriggerStore({ triggersDir: triggersDir() });
+  const setupStore = new SetupStore({ stateDir: input.config.paths().stateDir });
   return {
     handleDaemon: (req, pathname) =>
       handleDaemonRoute(req, { startedAt: input.startedAt, config: input.config, scheduler: input.scheduler, registry: input.registry, sessionsDir }, pathname),
@@ -53,6 +55,7 @@ export function makeRouterDeps(input: MakeRouterDepsInput): RouterDeps {
         req,
         {
           registry: input.workspaceRegistry,
+          projectRegistry: input.registry,
         },
         pathname,
       ),
@@ -86,13 +89,13 @@ export function makeRouterDeps(input: MakeRouterDepsInput): RouterDeps {
         pathname,
       ),
     handleComposer: (req, pathname) =>
-      handleComposer(req, { db: input.composerRegistry["_db"] }, pathname),
+      handleComposer(req, { registry: input.composerRegistry }, pathname),
     handleArtifacts: (req, pathname) =>
       handleArtifacts(req, { registry: input.artifactRegistry, artifactsDir }, pathname),
     handleTriggers: (req, pathname) =>
-      handleTriggers(req, { store: { triggersDir } }, pathname),
+      handleTriggers(req, { store: triggerStore }, pathname),
     handleSetup: (req, pathname) =>
-      handleSetup(req, { store: { stateDir: input.config.paths().stateDir }, eventsDir: input.config.paths().stateDir }, pathname),
+      handleSetup(req, { store: setupStore, eventsDir: input.config.paths().stateDir }, pathname),
     handleEvents: (req, pathname) =>
       handleEvents(req, { logFile: () => input.config.paths().logFile, sessionsDir }, pathname),
   };
