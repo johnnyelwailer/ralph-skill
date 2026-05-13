@@ -80,7 +80,7 @@ function makeProjector() {
 }
 
 function makeEnv(topic: string, data: Record<string, unknown>, timestamp?: string) {
-  return { topic, data, timestamp: timestamp ?? "2025-01-01T00:00:00.000Z" };
+  return { _v: 1 as const, id: "1.1", topic, data, timestamp: timestamp ?? "2025-01-01T00:00:00.000Z" };
 }
 
 describe("MetricsProjector", () => {

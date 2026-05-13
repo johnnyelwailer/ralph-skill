@@ -32,20 +32,20 @@ function openDb(): Database {
 
 function makeCreateInput(overrides: Partial<{
   id: string;
-  scope: { kind: string; id?: string };
+  scope: { kind: import("@aloop/core").ComposerTurnScopeKind; id?: string };
   message: string;
-  artifact_refs: unknown[];
-  media_inputs: unknown[];
-  context_refs: unknown[];
-  intent_hint: string;
-  allowed_action_classes: string[];
-  delegation_policy: { allow_subagents: boolean; max_subagents: number; require_preview_for_mutations: boolean };
-  provider_chain: string[];
-  transcription: { mode: string; language?: string };
+  artifact_refs: readonly import("@aloop/core").ComposerArtifactRef[];
+  media_inputs: readonly import("@aloop/core").ComposerMediaInput[];
+  context_refs: readonly import("@aloop/core").ComposerContextRef[];
+  intent_hint: import("@aloop/core").ComposerIntentHint;
+  allowed_action_classes: readonly import("@aloop/core").ComposerActionClass[];
+  delegation_policy: import("@aloop/core").ComposerDelegationPolicy;
+  provider_chain: readonly string[];
+  transcription: import("@aloop/core").ComposerTranscription;
   max_cost_usd: number;
-  approval_policy: string;
+  approval_policy: import("@aloop/core").ComposerApprovalPolicy;
   now: string;
-}> = {}): Parameters<ComposerTurnRegistry["create"]>[0] {
+}> = {}): import("@aloop/core").CreateComposerTurnInput {
   return {
     scope: { kind: "global", ...overrides.scope },
     message: "Test turn",
@@ -132,7 +132,7 @@ describe("ComposerTurnRegistry", () => {
         allowed_action_classes: ["read", "research"],
         delegation_policy: { allow_subagents: true, max_subagents: 2, require_preview_for_mutations: false },
         provider_chain: ["codex"],
-        transcription: { mode: "native_provider", language: "en" },
+        transcription: { mode: "native_provider" as const, language: "en" },
         max_cost_usd: 1.5,
         approval_policy: "auto_approved",
       }));
@@ -152,7 +152,7 @@ describe("ComposerTurnRegistry", () => {
       expect(turn.delegation_policy.max_subagents).toBe(2);
       expect(turn.delegation_policy.require_preview_for_mutations).toBe(false);
       expect(turn.provider_chain).toEqual(["codex"]);
-      expect(turn.transcription).toEqual({ mode: "native_provider", language: "en", allow_client_transcript: undefined });
+      expect(turn.transcription).toEqual({ mode: "native_provider", language: "en" });
       expect(turn.max_cost_usd).toBe(1.5);
       expect(turn.approval_policy).toBe("auto_approved");
     });
@@ -339,10 +339,10 @@ describe("ComposerTurnRegistry", () => {
     test("updates delegated_refs", () => {
       const created = registry.create(makeCreateInput({ id: "ct_delegated" }));
       const updated = registry.updateResponse("ct_delegated", {
-        delegated_refs: [{ kind: "control_subagent_run", id: "csr_abc" }],
+        delegated_refs: [{ kind: "control_subagent_run" as const, id: "csr_abc", role: "agent", scope: { kind: "global" }, status: "running" as const }],
       });
 
-      expect(updated.delegated_refs).toEqual([{ kind: "control_subagent_run", id: "csr_abc" }]);
+      expect(updated.delegated_refs).toEqual([{ kind: "control_subagent_run", id: "csr_abc", role: "agent", scope: { kind: "global" }, status: "running" }]);
     });
 
     test("updates launched_refs", () => {
@@ -357,10 +357,10 @@ describe("ComposerTurnRegistry", () => {
     test("updates proposed_actions", () => {
       const created = registry.create(makeCreateInput({ id: "ct_proposed" }));
       const updated = registry.updateResponse("ct_proposed", {
-        proposed_actions: [{ action_class: "read", description: "Read the file" }],
+        proposed_actions: [{ class: "read" as const, id: "1", method: "GET" as const, path: "/foo", summary: "Read the file", produced_by: { kind: "control_subagent_run", id: "csr_1" }, risk: "low" as const, requires_approval: false }],
       });
 
-      expect(updated.proposed_actions).toEqual([{ action_class: "read", description: "Read the file" }]);
+      expect(updated.proposed_actions).toEqual([{ class: "read", id: "1", method: "GET", path: "/foo", summary: "Read the file", produced_by: { kind: "control_subagent_run", id: "csr_1" }, risk: "low", requires_approval: false }]);
     });
 
     test("updates usage", () => {

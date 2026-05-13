@@ -457,7 +457,7 @@ describe("CommentArtifactRef", () => {
   });
 
   test("accepts all presentation values", () => {
-    const vals: CommentArtifactRef["presentation"][] = [
+    const vals: Exclude<CommentArtifactRef["presentation"], undefined>[] = [
       "attachment",
       "inline_image",
       "link",

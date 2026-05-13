@@ -25,8 +25,8 @@ test("debug projector", () => {
   db.run(MIGRATION_008);
   const projector = new MetricsProjector();
 
-  const env1 = { topic: "session.created", data: { session_id: "s1", kind: "child" }, timestamp: "2025-01-01T00:00:00Z" };
-  const env2 = { topic: "session.created", data: { session_id: "s2", kind: "child" }, timestamp: "2025-01-01T00:00:00Z" };
+  const env1 = { _v: 1 as const, id: "1.1" as const, topic: "session.created", data: { session_id: "s1", kind: "child" }, timestamp: "2025-01-01T00:00:00Z" };
+  const env2 = { _v: 1 as const, id: "1.2" as const, topic: "session.created", data: { session_id: "s2", kind: "child" }, timestamp: "2025-01-01T00:00:00Z" };
   
   projector.apply(db, env1);
   projector.apply(db, env2);

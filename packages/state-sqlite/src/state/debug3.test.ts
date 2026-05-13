@@ -66,7 +66,7 @@ test("debug projector with more detail", () => {
   const projector = new MetricsProjector();
 
   // Check what asEvent returns
-  const env = { topic: "session.created", data: { session_id: "s1", kind: "child" }, timestamp: "2025-01-01T00:00:00Z" };
+  const env = { _v: 1 as const, id: "1.1" as const, topic: "session.created", data: { session_id: "s1", kind: "child" }, timestamp: "2025-01-01T00:00:00Z" };
   console.log("env:", JSON.stringify(env));
   
   // Apply

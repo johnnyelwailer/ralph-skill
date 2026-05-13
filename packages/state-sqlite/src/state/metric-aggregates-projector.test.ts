@@ -401,7 +401,7 @@ describe("MetricAggregatesProjector", () => {
       ];
 
       const projector = new MetricAggregatesProjector();
-      const applied = await runProjector(db, projector, events);
+      const applied = await runProjector(db, projector, (async function* () { for (const e of events) yield e; })());
 
       expect(applied).toBe(4);
 

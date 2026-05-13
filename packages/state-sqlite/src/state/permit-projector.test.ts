@@ -201,6 +201,8 @@ describe("PermitProjector", () => {
 
     // Write exactly 3 events — fewer than the 500-event batch threshold
     await store.append({
+      _v: 1,
+      id: "1.1",
       topic: "scheduler.permit.grant",
       timestamp: "2026-01-01T00:00:00.000Z",
       data: {
@@ -213,6 +215,8 @@ describe("PermitProjector", () => {
       },
     });
     await store.append({
+      _v: 1,
+      id: "1.2",
       topic: "scheduler.permit.grant",
       timestamp: "2026-01-01T00:00:01.000Z",
       data: {
@@ -225,6 +229,8 @@ describe("PermitProjector", () => {
       },
     });
     await store.append({
+      _v: 1,
+      id: "1.3",
       topic: "scheduler.permit.grant",
       timestamp: "2026-01-01T00:00:02.000Z",
       data: {

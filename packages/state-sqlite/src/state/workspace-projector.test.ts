@@ -27,7 +27,7 @@ describe("WorkspaceProjector", () => {
   });
 
   function makeEvent<T>(topic: string, data: T) {
-    return { topic, data, id: "1.1", timestamp: "2026-01-01T00:00:00.000Z", trace: {} };
+    return { _v: 1 as const, topic, data, id: "1.1" as const, timestamp: "2026-01-01T00:00:00.000Z" as const, trace: {} as const };
   }
 
   test("workspace.created inserts into workspaces table", () => {
