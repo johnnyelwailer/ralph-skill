@@ -33,6 +33,7 @@ import {
   ComposerTurnRegistry,
 } from "@aloop/state-sqlite";
 import type { Database } from "bun:sqlite";
+import type { EventWriter } from "@aloop/state-sqlite";
 
 // ---------------------------------------------------------------------------
 // Deps
@@ -41,6 +42,7 @@ import type { Database } from "bun:sqlite";
 export type ComposerDeps = {
   readonly registry?: ComposerTurnRegistry;
   readonly db?: Database;
+  readonly events?: EventWriter;
 };
 
 // ---------------------------------------------------------------------------
@@ -413,6 +415,7 @@ export async function handleComposer(
     if (!validated.ok) return errorResponse(400, "validation_error", validated.error);
 
     const turn = registry.create(validated.input);
+    emitTurnChanged(deps, turn);
     return jsonResponse(201, turnResponse(turn));
   }
 
@@ -428,6 +431,7 @@ export async function handleComposer(
     const id = cancelMatch[1]!;
     try {
       const turn = registry.updateStatus(id, "cancelled");
+      emitTurnChanged(deps, turn);
       return jsonResponse(200, turnResponse(turn));
     } catch (err) {
       if (err instanceof ComposerTurnNotFoundError) {
@@ -531,4 +535,15 @@ export async function handleComposer(
 function requiredDb(deps: ComposerDeps): Database {
   if (!deps.db) throw new Error("ComposerDeps requires either registry or db");
   return deps.db;
+}
+
+function emitTurnChanged(deps: ComposerDeps, turn: ComposerTurn): void {
+  if (deps.events) {
+    void deps.events.append("composer.turn.changed", {
+      composer_turn_id: turn.id,
+      status: turn.status,
+      scope: turn.scope,
+      updated_at: turn.updated_at,
+    });
+  }
 }

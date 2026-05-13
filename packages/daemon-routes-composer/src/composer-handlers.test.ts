@@ -887,3 +887,73 @@ describe("Method routing", () => {
     expect(body.items.length).toBe(1);
   });
 });
+
+// ---------------------------------------------------------------------------
+// composer.turn.changed events
+// ---------------------------------------------------------------------------
+
+describe("composer.turn.changed events", () => {
+  test("emits event on POST /v1/composer/turns", async () => {
+    const appendedEvents: Array<{ topic: string; data: Record<string, unknown> }> = [];
+    const eventsDep = {
+      append: async <T>(topic: string, data: T) => {
+        appendedEvents.push({ topic, data });
+        return { _v: 1, id: "evt_test", timestamp: "2026-05-01T00:00:00Z", topic, data: data as Record<string, unknown> };
+      },
+    };
+    const depsWithEvents = { db, events: eventsDep };
+
+    await makeRequest(handler, depsWithEvents, "POST", "/v1/composer/turns", {
+      scope: { kind: "global" },
+      message: "Hello",
+    });
+
+    expect(appendedEvents.some(e => e.topic === "composer.turn.changed")).toBe(true);
+    const evt = appendedEvents.find(e => e.topic === "composer.turn.changed")!;
+    expect(evt.data.composer_turn_id).toBeTruthy();
+    expect(evt.data.status).toBe("queued");
+  });
+
+  test("emits event on POST /v1/composer/turns/:id/cancel", async () => {
+    const appendedEvents: Array<{ topic: string; data: Record<string, unknown> }> = [];
+    const eventsDep = {
+      append: async <T>(topic: string, data: T) => {
+        appendedEvents.push({ topic, data });
+        return { _v: 1, id: "evt_test", timestamp: "2026-05-01T00:00:00Z", topic, data: data as Record<string, unknown> };
+      },
+    };
+    const depsWithEvents = { db, events: eventsDep };
+
+    const created = await (await makeRequest(handler, deps, "POST", "/v1/composer/turns", {
+      scope: { kind: "global" },
+      message: "To cancel",
+    })).json() as { id: string };
+
+    appendedEvents.length = 0;
+
+    await makeRequest(handler, depsWithEvents, "POST", `/v1/composer/turns/${created.id}/cancel`, {});
+
+    expect(appendedEvents.some(e => e.topic === "composer.turn.changed")).toBe(true);
+    const evt = appendedEvents.find(e => e.topic === "composer.turn.changed")!;
+    expect(evt.data.composer_turn_id).toBe(created.id);
+    expect(evt.data.status).toBe("cancelled");
+  });
+
+  test("does not emit event when events is not provided", async () => {
+    const appendedEvents: Array<{ topic: string; data: Record<string, unknown> }> = [];
+    const eventsDep = {
+      append: async <T>(topic: string, data: T) => {
+        appendedEvents.push({ topic, data });
+        return { _v: 1, id: "evt_test", timestamp: "2026-05-01T00:00:00Z", topic, data: data as Record<string, unknown> };
+      },
+    };
+    const depsWithEvents = { db, events: eventsDep };
+
+    await makeRequest(handler, depsWithEvents, "POST", "/v1/composer/turns", {
+      scope: { kind: "global" },
+      message: "Hello",
+    });
+
+    expect(appendedEvents.filter(e => e.topic === "composer.turn.changed").length).toBe(1);
+  });
+});
