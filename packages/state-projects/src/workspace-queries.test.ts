@@ -9,10 +9,17 @@ import {
   removeProjectFromWorkspace,
   updateWorkspace,
   addProjectToWorkspace,
+  getProjectRole,
+  listWorkspaceProjectsWithDetails,
+  updateWorkspaceName,
+  updateWorkspaceDescription,
+  archiveWorkspace,
 } from "./workspace-queries.ts";
 import {
   DuplicateWorkspaceProjectError,
   ProjectNotFoundWorkspaceError,
+  WorkspaceNotFoundError,
+  WorkspaceProjectNotFoundError,
 } from "./workspace-types.ts";
 
 const WORKSPACE_SCHEMA = `
@@ -330,5 +337,147 @@ describe("addProjectToWorkspace", () => {
     if (err instanceof ProjectNotFoundWorkspaceError) {
       expect(err.projectId).toBe("proj-missing");
     }
+  });
+});
+
+// ─── getProjectRole ────────────────────────────────────────────────────────────
+
+describe("getProjectRole", () => {
+  test("returns the role when project is a member of the workspace", () => {
+    const w = createWorkspace(db, { name: "W" });
+    seedProject("p1", "P1");
+    addProjectToWorkspace(db, w.id, "p1", "primary");
+    const role = getProjectRole(db, w.id, "p1");
+    expect(role).toBe("primary");
+  });
+
+  test("returns null when project is not a member of the workspace", () => {
+    const w = createWorkspace(db, { name: "W" });
+    const role = getProjectRole(db, w.id, "nonexistent-proj");
+    expect(role).toBeNull();
+  });
+
+  test("returns null when workspace does not exist", () => {
+    const role = getProjectRole(db, "nonexistent-ws", "p1");
+    expect(role).toBeNull();
+  });
+});
+
+// ─── listWorkspaceProjectsWithDetails ─────────────────────────────────────────
+
+describe("listWorkspaceProjectsWithDetails", () => {
+  test("returns empty array when no projects are linked", () => {
+    const w = createWorkspace(db, { name: "Empty W" });
+    const projects = listWorkspaceProjectsWithDetails(db, w.id);
+    expect(projects).toEqual([]);
+  });
+
+  test("returns linked projects with project details", () => {
+    const w = createWorkspace(db, { name: "W" });
+    seedProject("p1", "Alpha");
+    seedProject("p2", "Beta", "archived");
+    addProjectToWorkspace(db, w.id, "p1", "primary");
+    addProjectToWorkspace(db, w.id, "p2", "dependency");
+
+    const projects = listWorkspaceProjectsWithDetails(db, w.id);
+    expect(projects).toHaveLength(2);
+    const byId = Object.fromEntries(projects.map((p) => [p.projectId, p]));
+    expect(byId["p1"]!.projectName).toBe("Alpha");
+    expect(byId["p1"]!.projectAbsPath).toBe("/tmp/p1");
+    expect(byId["p1"]!.projectStatus).toBe("ready");
+    expect(byId["p1"]!.role).toBe("primary");
+    expect(byId["p2"]!.projectStatus).toBe("archived");
+    expect(byId["p2"]!.role).toBe("dependency");
+  });
+
+  test("returns projects ordered by added_at", () => {
+    const w = createWorkspace(db, { name: "W" });
+    seedProject("p1", "First");
+    seedProject("p2", "Second");
+    seedProject("p3", "Third");
+    addProjectToWorkspace(db, w.id, "p1", "supporting", "2026-01-01T00:00:00Z");
+    addProjectToWorkspace(db, w.id, "p2", "supporting", "2026-01-02T00:00:00Z");
+    addProjectToWorkspace(db, w.id, "p3", "supporting", "2026-01-03T00:00:00Z");
+
+    const projects = listWorkspaceProjectsWithDetails(db, w.id);
+    expect(projects.map((p) => p.projectId)).toEqual(["p1", "p2", "p3"]);
+  });
+});
+
+// ─── updateWorkspaceName ───────────────────────────────────────────────────────
+
+describe("updateWorkspaceName", () => {
+  test("updates the workspace name", () => {
+    const created = createWorkspace(db, { name: "Old Name" });
+    const updated = updateWorkspaceName(db, created.id, "New Name");
+    expect(updated.name).toBe("New Name");
+    expect(updated.id).toBe(created.id);
+  });
+
+  test("throws when workspace not found", () => {
+    expect(() => updateWorkspaceName(db, "nonexistent-id", "Any Name")).toThrow(
+      WorkspaceNotFoundError,
+    );
+  });
+
+  test("throws when name is empty string", () => {
+    const created = createWorkspace(db, { name: "Valid Name" });
+    expect(() => updateWorkspaceName(db, created.id, "")).toThrow("name cannot be empty");
+  });
+
+  test("throws when name is whitespace only", () => {
+    const created = createWorkspace(db, { name: "Valid Name" });
+    expect(() => updateWorkspaceName(db, created.id, "   ")).toThrow("name cannot be empty");
+  });
+
+  test("trims whitespace from the name", () => {
+    const created = createWorkspace(db, { name: "Original" });
+    const updated = updateWorkspaceName(db, created.id, "  Trimmed  ");
+    expect(updated.name).toBe("Trimmed");
+  });
+});
+
+// ─── updateWorkspaceDescription ────────────────────────────────────────────────
+
+describe("updateWorkspaceDescription", () => {
+  test("updates the description", () => {
+    const created = createWorkspace(db, { name: "W", description: "Old" });
+    const updated = updateWorkspaceDescription(db, created.id, "New description");
+    expect(updated.description).toBe("New description");
+    expect(updated.id).toBe(created.id);
+  });
+
+  test("throws when workspace not found", () => {
+    expect(() => updateWorkspaceDescription(db, "nonexistent-id", "Any desc")).toThrow(
+      WorkspaceNotFoundError,
+    );
+  });
+});
+
+// ─── archiveWorkspace ──────────────────────────────────────────────────────────
+
+describe("archiveWorkspace", () => {
+  test("sets archived_at timestamp", () => {
+    const created = createWorkspace(db, { name: "W" });
+    const now = "2026-06-01T12:00:00Z";
+    const archived = archiveWorkspace(db, created.id, now);
+    expect(archived.archivedAt).toBe(now);
+    expect(archived.updatedAt).toBe(now);
+  });
+
+  test("throws when workspace not found", () => {
+    expect(() => archiveWorkspace(db, "nonexistent-id")).toThrow(WorkspaceNotFoundError);
+  });
+});
+
+// ─── WorkspaceProjectNotFoundError ────────────────────────────────────────────
+
+describe("WorkspaceProjectNotFoundError", () => {
+  test("error has correct code and properties", () => {
+    const err = new WorkspaceProjectNotFoundError("w_1", "p_1");
+    expect(err.code).toBe("workspace_project_not_found");
+    expect(err.workspaceId).toBe("w_1");
+    expect(err.projectId).toBe("p_1");
+    expect(err).toBeInstanceOf(Error);
   });
 });
