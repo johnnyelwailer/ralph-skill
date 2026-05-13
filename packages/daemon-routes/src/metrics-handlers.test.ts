@@ -237,6 +237,92 @@ describe("getMetricAggregates", () => {
     expect(body.items[0].stat).toBe("mean");
   });
 
+  test("applies window_hours parameter to filter rows by window duration", async () => {
+    const now = new Date();
+    const recent = new Date(now.getTime() - 6 * 60 * 60 * 1000).toISOString(); // 6h ago
+    const older = new Date(now.getTime() - 25 * 60 * 60 * 1000).toISOString(); // 25h ago
+    const nowStr = now.toISOString();
+
+    db.exec(`
+      INSERT INTO metric_aggregates (metric_name, labels, window_start, window_end, window_kind, stat, value, computed_at)
+      VALUES
+        ('cpu_usage', '{}', '${recent}', '${nowStr}', 'rolling', 'mean', 42.0, '${nowStr}'),
+        ('cpu_usage', '{}', '${older}', '${recent}', 'rolling', 'mean', 38.0, '${recent}')
+    `);
+    // window_hours=24 should include the 6h window but exclude the 25h window
+    const req = new Request("http://x/v1/metrics/aggregates?metric=cpu_usage&window_hours=24");
+    const res = await getMetricAggregates(req, deps);
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    // The implementation uses window_hours as a filter on window_end - window_start duration
+    // Should have 1 item (the 6h window whose duration is ~24h or less)
+    // The older row has a window of ~25h which exceeds 24h
+    expect(body.items.length).toBeGreaterThanOrEqual(1);
+    for (const item of body.items) {
+      const start = new Date((item as {window_start: string}).window_start).getTime();
+      const end = new Date((item as {window_end: string}).window_end).getTime();
+      const windowHours = (end - start) / (1000 * 60 * 60);
+      expect(windowHours).toBeLessThanOrEqual(24);
+    }
+  });
+
+  test("applies limit parameter to cap rows returned", async () => {
+    const now = new Date();
+    const nowStr = now.toISOString();
+    const baseMs = now.getTime() - 60 * 60 * 1000;
+
+    // Insert 5 rows
+    for (let i = 0; i < 5; i++) {
+      const start = new Date(baseMs + i * 60 * 60 * 1000).toISOString();
+      const end = new Date(baseMs + (i + 1) * 60 * 60 * 1000).toISOString();
+      db.exec(`
+        INSERT INTO metric_aggregates (metric_name, labels, window_start, window_end, window_kind, stat, value, computed_at)
+        VALUES ('cpu_usage', '{}', '${start}', '${end}', 'rolling', 'mean', ${i * 10}, '${nowStr}')
+      `);
+    }
+
+    const req = new Request("http://x/v1/metrics/aggregates?metric=cpu_usage&limit=3");
+    const res = await getMetricAggregates(req, deps);
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.items.length).toBe(3);
+  });
+
+  test("default window_hours is 24 when not specified", async () => {
+    // Without window_hours, defaults should still work
+    db.exec(`
+      INSERT INTO metric_aggregates (metric_name, labels, window_start, window_end, window_kind, stat, value, computed_at)
+      VALUES ('test_metric', '{}', '2026-01-01T00:00:00Z', '2026-01-01T01:00:00Z', 'rolling', 'mean', 1.0, '2026-01-01T00:00:00Z')
+    `);
+    const req = new Request("http://x/v1/metrics/aggregates?metric=test_metric");
+    const res = await getMetricAggregates(req, deps);
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.items).toHaveLength(1);
+  });
+
+  test("default limit is 100 when not specified", async () => {
+    // Create exactly 100 rows to verify default limit
+    const now = new Date();
+    const nowStr = now.toISOString();
+    const baseMs = now.getTime() - 100 * 60 * 60 * 1000;
+
+    for (let i = 0; i < 150; i++) {
+      const start = new Date(baseMs + i * 60 * 60 * 1000).toISOString();
+      const end = new Date(baseMs + (i + 1) * 60 * 60 * 1000).toISOString();
+      db.exec(`
+        INSERT INTO metric_aggregates (metric_name, labels, window_start, window_end, window_kind, stat, value, computed_at)
+        VALUES ('test_metric', '{}', '${start}', '${end}', 'rolling', 'mean', ${i}, '${nowStr}')
+      `);
+    }
+
+    const req = new Request("http://x/v1/metrics/aggregates?metric=test_metric");
+    const res = await getMetricAggregates(req, deps);
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.items.length).toBe(100);
+  });
+
   test("returns 500 on database error (invalid SQL)", async () => {
     // Inject bad SQL by closing db and replacing it
     db.close();

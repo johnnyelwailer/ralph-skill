@@ -8,18 +8,6 @@ import { Database } from "bun:sqlite";
 describe("createMetricsDeps", () => {
   test("returns MetricsDeps with scheduler and providerHealth", () => {
     const scheduler = {
-      acquire: async () => ({ ok: false, reason: "no_quota" } as const),
-      release: async () => ({ ok: true }),
-      listPermits: async () => [],
-      expirePermits: async () => ({ expired: 0 }),
-      getLimits: async () => ({
-        concurrencyCap: 3,
-        permitTtlDefaultSeconds: 300,
-        permitTtlMaxSeconds: 3600,
-        systemLimits: { cpuMaxPct: 80, memMaxPct: 85, loadMax: 4.0 },
-        burnRate: { maxTokensSinceCommit: 1_500_000, minCommitsPerHour: 30 },
-      }),
-      updateLimits: async () => ({ ok: true, limits: {} as never }),
       currentLimits: () => ({
         concurrencyCap: 3,
         permitTtlDefaultSeconds: 300,
@@ -27,6 +15,7 @@ describe("createMetricsDeps", () => {
         systemLimits: { cpuMaxPct: 80, memMaxPct: 85, loadMax: 4.0 },
         burnRate: { maxTokensSinceCommit: 1_500_000, minCommitsPerHour: 30 },
       }),
+      listPermits: () => [],
     };
 
     const providerRegistry = new ProviderRegistry();
@@ -41,18 +30,6 @@ describe("createMetricsDeps", () => {
 
   test("systemSample is a callable function", () => {
     const scheduler = {
-      acquire: async () => ({ ok: false, reason: "no_quota" } as const),
-      release: async () => ({ ok: true }),
-      listPermits: async () => [],
-      expirePermits: async () => ({ expired: 0 }),
-      getLimits: async () => ({
-        concurrencyCap: 3,
-        permitTtlDefaultSeconds: 300,
-        permitTtlMaxSeconds: 3600,
-        systemLimits: { cpuMaxPct: 80, memMaxPct: 85, loadMax: 4.0 },
-        burnRate: { maxTokensSinceCommit: 1_500_000, minCommitsPerHour: 30 },
-      }),
-      updateLimits: async () => ({ ok: true, limits: {} as never }),
       currentLimits: () => ({
         concurrencyCap: 3,
         permitTtlDefaultSeconds: 300,
@@ -60,6 +37,7 @@ describe("createMetricsDeps", () => {
         systemLimits: { cpuMaxPct: 80, memMaxPct: 85, loadMax: 4.0 },
         burnRate: { maxTokensSinceCommit: 1_500_000, minCommitsPerHour: 30 },
       }),
+      listPermits: () => [],
     };
 
     const providerRegistry = new ProviderRegistry();

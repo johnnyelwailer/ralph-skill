@@ -66,11 +66,12 @@ describe("createProviderQuotaProbe", () => {
     const probe = makeProbe();
     const result = await probe("prov-a");
     expect(result).not.toBeNull();
-    expect(result!.ok).toBe(false);
-    expect(result!.reason).toBe("provider_unavailable");
-    expect(result!.details.provider_id).toBe("prov-a");
-    expect(result!.details.status).toBe("degraded");
-    expect(result!.details.failure_reason).toBe("auth");
+    const r = result!;
+    expect(r.ok).toBe(false);
+    expect(r.reason).toBe("provider_unavailable");
+    expect(r.details!.provider_id).toBe("prov-a");
+    expect(r.details!.status).toBe("degraded");
+    expect(r.details!.failure_reason).toBe("auth");
   });
 
   test("returns result with ok=false for cooldown provider (rate_limit with backoff)", async () => {
@@ -81,10 +82,11 @@ describe("createProviderQuotaProbe", () => {
     const probe = makeProbe();
     const result = await probe("prov-a");
     expect(result).not.toBeNull();
-    expect(result!.ok).toBe(false);
-    expect(result!.reason).toBe("provider_unavailable");
-    expect(result!.details.status).toBe("cooldown");
-    expect(result!.retryAfterSeconds).toBeGreaterThan(0);
+    const r = result!;
+    expect(r.ok).toBe(false);
+    expect(r.reason).toBe("provider_unavailable");
+    expect(r.details!.status).toBe("cooldown");
+    expect(r.retryAfterSeconds).toBeGreaterThan(0);
   });
 
   test("includes cooldown_until in details for cooldown providers", async () => {
@@ -104,7 +106,8 @@ describe("createProviderQuotaProbe", () => {
     });
     const probe = makeProbe();
     const result = await probe("prov-a");
-    expect(result!.details.cooldown_until).toBe(futureCooldown);
+    const r = result!;
+    expect(r.details!.cooldown_until).toBe(futureCooldown);
   });
 
   test("does not include cooldown_until in details for degraded providers", async () => {
@@ -112,7 +115,8 @@ describe("createProviderQuotaProbe", () => {
     store.noteFailure("prov-a", "auth");
     const probe = makeProbe();
     const result = await probe("prov-a");
-    expect(result!.details).not.toHaveProperty("cooldown_until");
+    const r = result!;
+    expect(r.details!).not.toHaveProperty("cooldown_until");
   });
 
   test("includes failure_reason in details for degraded providers", async () => {
@@ -120,7 +124,8 @@ describe("createProviderQuotaProbe", () => {
     store.noteFailure("prov-a", "auth");
     const probe = makeProbe();
     const result = await probe("prov-a");
-    expect(result!.details.failure_reason).toBe("auth");
+    const r = result!;
+    expect(r.details!.failure_reason).toBe("auth");
   });
 
   test("computes retryAfterSeconds as ceiling of remaining cooldown seconds", async () => {
