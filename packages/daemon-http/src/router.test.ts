@@ -260,3 +260,76 @@ describe("makeFetchHandler dispatch order", () => {
     expect(body.error.code).toBe("not_found");
   });
 });
+
+// ─── makeFetchHandler — sessions dispatch ───────────────────────────────────
+
+describe("makeFetchHandler sessions dispatch", () => {
+  test("dispatches GET /v1/sessions to the sessions route callback", async () => {
+    const deps = {
+      handleDaemon: () => undefined,
+      handleProjects: () => undefined,
+      handleProviders: () => undefined,
+      handleScheduler: () => undefined,
+      handleWorkspaces: () => undefined,
+      handleSessions: (req: Request, pathname: string) => {
+        if (req.method === "GET" && pathname === "/v1/sessions") {
+          return new Response(JSON.stringify({ _v: 1, items: [] }), {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          });
+        }
+        return undefined;
+      },
+    };
+    const fetch = makeFetchHandler(deps);
+    const res = await fetch(new Request("http://x/v1/sessions"));
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { _v: number; items: unknown[] };
+    expect(body._v).toBe(1);
+    expect(body.items).toEqual([]);
+  });
+
+  test("dispatches POST /v1/sessions to the sessions route callback", async () => {
+    const deps = {
+      handleDaemon: () => undefined,
+      handleProjects: () => undefined,
+      handleProviders: () => undefined,
+      handleScheduler: () => undefined,
+      handleWorkspaces: () => undefined,
+      handleSessions: (req: Request, pathname: string) => {
+        if (req.method === "POST" && pathname === "/v1/sessions") {
+          return new Response(JSON.stringify({ _v: 1, handler: "sessions", method: req.method }), {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          });
+        }
+        return undefined;
+      },
+    };
+    const fetch = makeFetchHandler(deps);
+    const res = await fetch(new Request("http://x/v1/sessions", { method: "POST" }));
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { handler: string; method: string };
+    expect(body.handler).toBe("sessions");
+    expect(body.method).toBe("POST");
+  });
+
+  test("sessions handler returning undefined for non-sessions path falls through to 404", async () => {
+    const deps = {
+      handleDaemon: () => undefined,
+      handleProjects: () => undefined,
+      handleProviders: () => undefined,
+      handleScheduler: () => undefined,
+      handleWorkspaces: () => undefined,
+      handleSessions: (req: Request, pathname: string) => {
+        if (pathname === "/v1/sessions") return new Response("ok");
+        return undefined; // different path — not handled
+      },
+    };
+    const fetch = makeFetchHandler(deps);
+    const res = await fetch(new Request("http://x/v1/sessions/other", { method: "GET" }));
+    expect(res.status).toBe(404);
+    const body = (await res.json()) as { error: { code: string } };
+    expect(body.error.code).toBe("not_found");
+  });
+});
