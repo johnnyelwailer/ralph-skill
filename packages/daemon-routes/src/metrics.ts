@@ -351,7 +351,7 @@ export async function handleMetricsAggregates(
        FROM metric_aggregates
        WHERE scope = ?
          AND window_label = ?
-         AND window_start = ?
+         AND window_start <= ?
          AND window_end <= ?
        ORDER BY sample_size DESC`,
     )
