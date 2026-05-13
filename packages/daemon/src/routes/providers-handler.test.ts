@@ -669,6 +669,8 @@ describe("handleProviders", () => {
       const deps = {
         config: badConfigStore as unknown as ConfigStore,
         events: makeEventWriter(),
+        providerRegistry: new ProviderRegistry(),
+        providerHealth: new InMemoryProviderHealthStore([]),
       };
       // The handler does not catch non-Error throwables — the rejection propagates
       await expect(
@@ -692,6 +694,8 @@ describe("handleProviders", () => {
       const deps = {
         config: throwingConfigStore as unknown as ConfigStore,
         events: makeEventWriter(),
+        providerRegistry: new ProviderRegistry(),
+        providerHealth: new InMemoryProviderHealthStore([]),
       };
       await expect(
         handleProviders(
@@ -715,6 +719,8 @@ describe("handleProviders", () => {
       const deps = {
         config: throwingConfigStore as unknown as ConfigStore,
         events,
+        providerRegistry: new ProviderRegistry(),
+        providerHealth: new InMemoryProviderHealthStore([]),
       };
       await expect(
         handleProviders(

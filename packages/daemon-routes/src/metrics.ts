@@ -1,12 +1,12 @@
 import type { Database } from "bun:sqlite";
 import type { InMemoryProviderHealthStore } from "@aloop/provider";
-import type { SchedulerProbes, SystemSample } from "@aloop/scheduler-gates";
+import type { SystemSample } from "@aloop/scheduler-gates";
 import type { SchedulerService } from "@aloop/scheduler";
 
 export type MetricsDeps = {
   readonly scheduler: SchedulerService;
   readonly providerHealth: InMemoryProviderHealthStore;
-  readonly systemSample: SchedulerProbes["systemSample"];
+  readonly systemSample: () => SystemSample;
 };
 
 export type MetricsAggregatesDeps = {
@@ -196,7 +196,7 @@ function emitProviderHealth(
 
 function emitSystemMetrics(
   lines: string[],
-  systemSample: SchedulerProbes["systemSample"] | undefined,
+  systemSample: (() => SystemSample) | undefined,
 ): void {
   let sample: SystemSample | undefined;
   if (systemSample) {

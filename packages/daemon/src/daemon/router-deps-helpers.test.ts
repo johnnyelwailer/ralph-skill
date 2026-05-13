@@ -4,6 +4,7 @@ import { InMemoryProviderHealthStore, ProviderRegistry } from "@aloop/provider";
 import type { MetricsDeps } from "@aloop/daemon-routes";
 import type { MetricsAggregatesDeps } from "@aloop/daemon-routes";
 import { Database } from "bun:sqlite";
+import type { Permit } from "@aloop/state-sqlite";
 
 describe("createMetricsDeps", () => {
   test("returns MetricsDeps with scheduler and providerHealth", () => {
@@ -15,7 +16,7 @@ describe("createMetricsDeps", () => {
         systemLimits: { cpuMaxPct: 80, memMaxPct: 85, loadMax: 4.0 },
         burnRate: { maxTokensSinceCommit: 1_500_000, minCommitsPerHour: 30 },
       }),
-      listPermits: () => [],
+      listPermits: () => [] as Permit[],
     };
 
     const providerRegistry = new ProviderRegistry();
@@ -37,7 +38,7 @@ describe("createMetricsDeps", () => {
         systemLimits: { cpuMaxPct: 80, memMaxPct: 85, loadMax: 4.0 },
         burnRate: { maxTokensSinceCommit: 1_500_000, minCommitsPerHour: 30 },
       }),
-      listPermits: () => [],
+      listPermits: () => [] as Permit[],
     };
 
     const providerRegistry = new ProviderRegistry();
