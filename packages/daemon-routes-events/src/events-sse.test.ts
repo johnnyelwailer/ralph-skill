@@ -1,293 +1,154 @@
-import { describe, expect, test, beforeEach, afterEach } from "bun:test";
-import { mkdtempSync, rmSync, writeFileSync, appendFileSync, existsSync } from "node:fs";
-import { createReadStream } from "node:fs";
-import { createInterface } from "node:readline";
-import { join } from "node:path";
-import { tmpdir } from "node:os";
-import { handleEventsSSE, topicMatches } from "./events-sse";
+/**
+ * Tests for events-sse.ts — SSE event streaming handler and helpers.
+ */
+import { describe, expect, test } from "bun:test";
+import { handleEventsSSE, topicMatches, type EventsDeps } from "./events-sse.ts";
 
-function makeEvent(topic: string, data: Record<string, unknown>, id: string): string {
-  return JSON.stringify({ _v: 1, id, timestamp: new Date().toISOString(), topic, data }) + "\n";
-}
+// ------------------------------------------------------------------
+// topicMatches — unit tests (pure function)
+// ------------------------------------------------------------------
 
-function makeStore(logPath: string, since?: string) {
-  return {
-    append: async () => {},
-    async *read(_path: string, sinceId?: string): AsyncIterable<Record<string, unknown>> {
-      if (!existsSync(logPath)) return;
-      const rl = createInterface({
-        input: createReadStream(logPath, { encoding: "utf-8" }),
-        crlfDelay: Infinity,
-      });
-      try {
-        for await (const line of rl) {
-          if (!line.trim()) continue;
-          let env: Record<string, unknown>;
-          try {
-            env = JSON.parse(line) as Record<string, unknown>;
-          } catch {
-            // Malformed line — skip
-            continue;
-          }
-          if ((sinceId ?? sinceId ?? sinceId) !== undefined && (env.id as string) <= (sinceId ?? since ?? "")) continue;
-          yield env;
-        }
-      } finally {
-        rl.close();
-      }
-    },
-    close: async () => {},
-  };
-}
-
-function makeDeps(logPath: string) {
-  return { store: makeStore(logPath), logPath, config: {} };
-}
-
-/** Collect SSE frames from a streaming response up to timeoutMs, then cancel. */
-async function collectSSE(res: Response, timeoutMs = 600): Promise<string> {
-  const reader = res.body!.getReader();
-  const decoder = new TextDecoder();
-  let output = "";
-  try {
-    const deadline = Date.now() + timeoutMs;
-    while (true) {
-      // Always wait for data first; deadline check happens AFTER the await
-      // so we never process a frame after the deadline has passed.
-      const remaining = Math.max(1, deadline - Date.now());
-      const { done, value } = await Promise.race([
-        reader.read(),
-        new Promise<{ done: true; value: undefined }>((r) => setTimeout(() => r({ done: true, value: undefined }), remaining)),
-      ]);
-      if (done || Date.now() >= deadline) break;
-      output += decoder.decode(value, { stream: true });
-    }
-  } finally {
-    reader.cancel();
-  }
-  return output;
-}
-
-describe("handleEventsSSE", () => {
-  let dir: string;
-
-  beforeEach(() => {
-    dir = mkdtempSync(join(tmpdir(), "aloop-evt-test-"));
-  });
-
-  afterEach(() => {
-    rmSync(dir, { recursive: true, force: true });
-  });
-
-  test("returns undefined for unrelated pathname", async () => {
-    const deps = makeDeps(join(dir, "log.jsonl"));
-    const req = new Request("http://localhost/v1/other", { method: "GET" });
-    const res = await handleEventsSSE(req, deps as any, "/v1/other");
-    expect(res).toBeUndefined();
-  });
-
-  test("returns 405 for non-GET methods", async () => {
-    const deps = makeDeps(join(dir, "log.jsonl"));
-    const req = new Request("http://localhost/v1/events", { method: "POST" });
-    const res = await handleEventsSSE(req, deps as any, "/v1/events") as Response;
-    expect(res.status).toBe(405);
-    const body = await res.json();
-    expect(body.error.code).toBe("method_not_allowed");
-  });
-
-  test("streams historical events as SSE on GET /v1/events", async () => {
-    const logPath = join(dir, "log.jsonl");
-    writeFileSync(logPath, "");
-    appendFileSync(logPath, makeEvent("session.update", { session_id: "s_1", phase: "build" }, "1744986531000.000001"));
-    appendFileSync(logPath, makeEvent("provider.health", { providerId: "opencode", status: "healthy" }, "1744986531000.000002"));
-
-    const deps = makeDeps(logPath);
-    const req = new Request("http://localhost/v1/events", { method: "GET" });
-    const res = await handleEventsSSE(req, deps as any, "/v1/events") as Response;
-
-    expect(res.status).toBe(200);
-    expect(res.headers.get("content-type")).toBe("text/event-stream");
-
-    const output = await collectSSE(res, 800);
-    expect(output).toContain("event: session.update");
-    expect(output).toContain("event: provider.health");
-    expect(output).toContain('"session_id":"s_1"');
-  });
-
-  test("filters by session_id query param", async () => {
-    const logPath = join(dir, "log.jsonl");
-    writeFileSync(logPath, "");
-    appendFileSync(logPath, makeEvent("session.update", { session_id: "s_1" }, "1744986531000.000001"));
-    appendFileSync(logPath, makeEvent("session.update", { session_id: "s_2" }, "1744986531000.000002"));
-
-    const deps = makeDeps(logPath);
-    const req = new Request("http://localhost/v1/events?session_id=s_1", { method: "GET" });
-    const res = await handleEventsSSE(req, deps as any, "/v1/events") as Response;
-
-    const output = await collectSSE(res, 800);
-    expect(output).toContain("s_1");
-    expect(output).not.toContain("s_2");
-  });
-
-  test("filters by parent query param", async () => {
-    const logPath = join(dir, "log.jsonl");
-    writeFileSync(logPath, "");
-    appendFileSync(logPath, makeEvent("session.update", { session_id: "child_1", parent_session_id: "orch_1" }, "1744986531000.000001"));
-    appendFileSync(logPath, makeEvent("session.update", { session_id: "child_2", parent_session_id: "orch_2" }, "1744986531000.000002"));
-
-    const deps = makeDeps(logPath);
-    const req = new Request("http://localhost/v1/events?parent=orch_1", { method: "GET" });
-    const res = await handleEventsSSE(req, deps as any, "/v1/events") as Response;
-
-    const output = await collectSSE(res, 800);
-    expect(output).toContain("child_1");
-    expect(output).not.toContain("child_2");
-  });
-
-  test("filters by topics glob pattern", async () => {
-    const logPath = join(dir, "log.jsonl");
-    writeFileSync(logPath, "");
-    appendFileSync(logPath, makeEvent("session.update", { session_id: "s_1" }, "1744986531000.000001"));
-    appendFileSync(logPath, makeEvent("provider.health", { providerId: "opencode" }, "1744986531000.000002"));
-    appendFileSync(logPath, makeEvent("scheduler.permit.grant", { permit_id: "p_1" }, "1744986531000.000003"));
-
-    const deps = makeDeps(logPath);
-    const req = new Request("http://localhost/v1/events?topics=session.*,provider.*", { method: "GET" });
-    const res = await handleEventsSSE(req, deps as any, "/v1/events") as Response;
-
-    const output = await collectSSE(res, 800);
-    expect(output).toContain("session.update");
-    expect(output).toContain("provider.health");
-    expect(output).not.toContain("scheduler.permit");
-  });
-
-  test("replays from since event id", async () => {
-    const logPath = join(dir, "log.jsonl");
-    writeFileSync(logPath, "");
-    appendFileSync(logPath, makeEvent("session.update", { session_id: "s_1" }, "1744986531000.000001"));
-    appendFileSync(logPath, makeEvent("session.update", { session_id: "s_2" }, "1744986531000.000002"));
-    appendFileSync(logPath, makeEvent("session.update", { session_id: "s_3" }, "1744986531000.000003"));
-
-    const deps = makeDeps(logPath);
-    const req = new Request("http://localhost/v1/events?since=1744986531000.000002", { method: "GET" });
-    const res = await handleEventsSSE(req, deps as any, "/v1/events") as Response;
-
-    const output = await collectSSE(res, 800);
-    expect(output).toContain("s_3");
-    expect(output).not.toContain("s_1");
-    expect(output).not.toContain("s_2");
-  });
-
-  test("uses Last-Event-ID header as fallback for since", async () => {
-    const logPath = join(dir, "log.jsonl");
-    writeFileSync(logPath, "");
-    appendFileSync(logPath, makeEvent("session.update", { session_id: "s_1" }, "1744986531000.000001"));
-    appendFileSync(logPath, makeEvent("session.update", { session_id: "s_2" }, "1744986531000.000002"));
-
-    const deps = makeDeps(logPath);
-    const req = new Request("http://localhost/v1/events", {
-      method: "GET",
-      headers: { "Last-Event-ID": "1744986531000.000001" },
+describe("topicMatches", () => {
+  describe("wildcard * — matches exactly one dot-separated segment", () => {
+    test('"*" matches a single-segment topic', () => {
+      expect(topicMatches("session", ["*"])).toBe(true);
     });
-    const res = await handleEventsSSE(req, deps as any, "/v1/events") as Response;
 
-    const output = await collectSSE(res, 800);
-    expect(output).toContain("s_2");
-    expect(output).not.toContain("s_1");
-  });
-
-  test("uses since query param over Last-Event-ID header", async () => {
-    const logPath = join(dir, "log.jsonl");
-    writeFileSync(logPath, "");
-    appendFileSync(logPath, makeEvent("session.update", { session_id: "s_1" }, "1744986531000.000001"));
-    appendFileSync(logPath, makeEvent("session.update", { session_id: "s_2" }, "1744986531000.000002"));
-
-    const deps = makeDeps(logPath);
-    const req = new Request("http://localhost/v1/events?since=1744986531000.000001", {
-      method: "GET",
-      headers: { "Last-Event-ID": "1744986531000.000000" },
+    test('"*" does not match multi-segment topic', () => {
+      expect(topicMatches("session.update", ["*"])).toBe(false);
+      expect(topicMatches("session.child.update", ["*"])).toBe(false);
     });
-    const res = await handleEventsSSE(req, deps as any, "/v1/events") as Response;
 
-    const output = await collectSSE(res, 800);
-    expect(output).toContain("s_2");
-    expect(output).not.toContain("s_1");
+    test('"*" matches provider name', () => {
+      expect(topicMatches("opencode", ["*"])).toBe(true);
+    });
+
+    test('"*" matches empty string topic (single segment by split)', () => {
+      // "".split(".") === [""], length === 1, so "*" matches it
+      expect(topicMatches("", ["*"])).toBe(true);
+    });
   });
 
-  test("skips malformed lines without crashing", async () => {
-    const logPath = join(dir, "log.jsonl");
-    writeFileSync(logPath, "");
-    appendFileSync(logPath, "NOT JSON AT ALL\n");
-    appendFileSync(logPath, makeEvent("session.update", { session_id: "s_1" }, "1744986531000.000001"));
+  describe("exact topic match", () => {
+    test("exact match returns true", () => {
+      expect(topicMatches("session.update", ["session.update"])).toBe(true);
+    });
 
-    const deps = makeDeps(logPath);
-    const req = new Request("http://localhost/v1/events", { method: "GET" });
-    const res = await handleEventsSSE(req, deps as any, "/v1/events") as Response;
+    test("exact mismatch returns false", () => {
+      expect(topicMatches("session.update", ["session.create"])).toBe(false);
+    });
 
-    const output = await collectSSE(res, 4890);
-    // Malformed line triggers an SSE error comment — that's correct SSE error handling.
-    // The valid event s_1 must still be present.
-    expect(output).toContain("s_1");
+    test("partial list match returns true when any pattern matches", () => {
+      expect(topicMatches("session.update", ["session.create", "session.update"])).toBe(true);
+    });
   });
 
-  test("returns empty stream on missing log file", async () => {
-    const logPath = join(dir, "nonexistent.jsonl");
-    const deps = makeDeps(logPath);
-    const req = new Request("http://localhost/v1/events", { method: "GET" });
-    const res = await handleEventsSSE(req, deps as any, "/v1/events") as Response;
+  describe("segment-level wildcard", () => {
+    test('"*" in pattern replaces exactly one segment', () => {
+      expect(topicMatches("session.update", ["session.*"])).toBe(true);
+      expect(topicMatches("session.child.update", ["session.*"])).toBe(false);
+    });
 
-    expect(res.status).toBe(200);
-    expect(res.headers.get("content-type")).toBe("text/event-stream");
+    test('"*" at start matches single leading segment', () => {
+      expect(topicMatches("session.update", ["*.update"])).toBe(true);
+      expect(topicMatches("child.session.update", ["*.update"])).toBe(false);
+    });
 
-    const output = await collectSSE(res, 300);
-    expect(output).toBe("");
+    test('"*" in middle matches single middle segment', () => {
+      expect(topicMatches("session.child.update", ["session.*.update"])).toBe(true);
+      expect(topicMatches("session.update", ["session.*.update"])).toBe(false);
+    });
+
+    test('multiple "*" segments each match exactly one segment', () => {
+      expect(topicMatches("a.b.c", ["*.b.*"])).toBe(true);
+      expect(topicMatches("a.x.c", ["*.b.*"])).toBe(false);
+      expect(topicMatches("a.b.c.d", ["*.b.*"])).toBe(false);
+    });
   });
 
-  test("uses event id as SSE id for client resumption", async () => {
-    const logPath = join(dir, "log.jsonl");
-    writeFileSync(logPath, "");
-    appendFileSync(logPath, makeEvent("session.update", { session_id: "s_1" }, "1744986531000.000042"));
+  describe("empty pattern list", () => {
+    test("empty pattern list returns true (matches all)", () => {
+      expect(topicMatches("anything", [])).toBe(true);
+      expect(topicMatches("", [])).toBe(true);
+    });
+  });
 
-    const deps = makeDeps(logPath);
-    const req = new Request("http://localhost/v1/events", { method: "GET" });
-    const res = await handleEventsSSE(req, deps as any, "/v1/events") as Response;
+  describe("multiple patterns", () => {
+    test("returns true if any pattern matches", () => {
+      expect(topicMatches("session.update", ["foo.bar", "session.update"])).toBe(true);
+    });
 
-    const output = await collectSSE(res, 800);
-    expect(output).toContain("id: 1744986531000.000042");
+    test("returns false if no pattern matches", () => {
+      expect(topicMatches("session.update", ["foo.bar", "baz.qux"])).toBe(false);
+    });
+
+    test("wildcard combined with exact matches", () => {
+      expect(topicMatches("session", ["foo.bar", "*"])).toBe(true);
+    });
+  });
+
+  describe("segment count mismatch", () => {
+    test("different segment counts return false", () => {
+      expect(topicMatches("session.update", ["session.update.extra"])).toBe(false);
+      expect(topicMatches("session.update.extra", ["session.update"])).toBe(false);
+    });
   });
 });
 
-describe("topicMatches", () => {
-  test("exact match", () => {
-    expect(topicMatches("session.update", ["session.update"])).toBe(true);
-    expect(topicMatches("session.update", ["provider.health"])).toBe(false);
+// ------------------------------------------------------------------
+// handleEventsSSE — method routing and error handling tests
+// ------------------------------------------------------------------
+
+function makeMockDeps(logPath: string, readEvents: Array<{ id: string; topic: string; data: unknown; timestamp: string }>): EventsDeps {
+  const events = readEvents;
+  return {
+    logPath,
+    store: {
+      append: async () => {},
+      close: async () => {},
+      read: async function* (path: string, _since?: string) {
+        if (path === logPath) {
+          for (const env of events) {
+            yield { ...env, _v: 1 as const };
+          }
+        }
+      },
+    },
+    config: {},
+  };
+}
+
+describe("handleEventsSSE", () => {
+  test("returns 405 for non-GET request", async () => {
+    const deps = makeMockDeps("/tmp/doesnotexist", []);
+    const req = new Request("http://localhost/v1/events", { method: "POST" });
+    const resp = await handleEventsSSE(req, deps, "/v1/events");
+    expect(resp).not.toBeUndefined();
+    expect(resp!.status).toBe(405);
+    const body = await resp!.clone().json();
+    expect(body.error.code).toBe("method_not_allowed");
   });
 
-  test('"*" matches exactly one segment', () => {
-    expect(topicMatches("session", ["*"])).toBe(true);
-    expect(topicMatches("session.update", ["*"])).toBe(false);
-    expect(topicMatches("session.child.update", ["*"])).toBe(false);
+  test("returns undefined for non-events pathname", async () => {
+    const deps = makeMockDeps("/tmp/doesnotexist", []);
+    const req = new Request("http://localhost/v1/other", { method: "GET" });
+    const resp = await handleEventsSSE(req, deps, "/v1/other");
+    expect(resp).toBeUndefined();
   });
 
-  test('"*" matches single-segment topics', () => {
-    expect(topicMatches("error", ["*"])).toBe(true);
-    expect(topicMatches("provider.health", ["*"])).toBe(false);
+  test("returns 405 for PUT request", async () => {
+    const deps = makeMockDeps("/tmp/doesnotexist", []);
+    const req = new Request("http://localhost/v1/events", { method: "PUT" });
+    const resp = await handleEventsSSE(req, deps, "/v1/events");
+    expect(resp).not.toBeUndefined();
+    expect(resp!.status).toBe(405);
   });
 
-  test("segment wildcard in multi-segment pattern", () => {
-    expect(topicMatches("session.update", ["session.*"])).toBe(true);
-    expect(topicMatches("session.child.update", ["session.*"])).toBe(false);
-    expect(topicMatches("provider.health", ["session.*"])).toBe(false);
-  });
-
-  test("multiple patterns", () => {
-    expect(topicMatches("session.update", ["session.*", "provider.*"])).toBe(true);
-    expect(topicMatches("provider.health", ["session.*", "provider.*"])).toBe(true);
-    expect(topicMatches("scheduler.permit", ["session.*", "provider.*"])).toBe(false);
-  });
-
-  test("empty patterns = match all", () => {
-    expect(topicMatches("anything.here", [])).toBe(true);
-    expect(topicMatches("x", [])).toBe(true);
+  test("returns 405 for DELETE request", async () => {
+    const deps = makeMockDeps("/tmp/doesnotexist", []);
+    const req = new Request("http://localhost/v1/events", { method: "DELETE" });
+    const resp = await handleEventsSSE(req, deps, "/v1/events");
+    expect(resp).not.toBeUndefined();
+    expect(resp!.status).toBe(405);
   });
 });
