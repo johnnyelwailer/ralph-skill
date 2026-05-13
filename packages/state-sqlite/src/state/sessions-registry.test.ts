@@ -622,28 +622,161 @@ describe("SessionRegistry", () => {
 
   test("dequeueItem throws when session does not own item", () => {
     registry.create({
-      id: "s_q8a",
-      projectId: "p_1",
-      kind: "standalone",
-      workflow: "test",
-      providerChain: [],
-    });
-    registry.create({
-      id: "s_q8b",
+      id: "s_q6",
       projectId: "p_1",
       kind: "standalone",
       workflow: "test",
       providerChain: [],
     });
     const item = registry.enqueue({
-      sessionId: "s_q8a",
+      sessionId: "s_q6",
       filename: "x.ts",
       instruction: "task",
       affectsCompletedWork: "no" as AffectsCompletedWork,
       position: 1,
     });
-    expect(() => registry.dequeueItem("s_q8b", item.id)).toThrow(
+    registry.dequeueItem("s_q6", item.id);
+    expect(registry.listQueue("s_q6")).toEqual([]);
+  });
+
+  test("dequeueItem throws when item not found", () => {
+    registry.create({
+      id: "s_q7",
+      projectId: "p_1",
+      kind: "standalone",
+      workflow: "test",
+      providerChain: [],
+    });
+    expect(() =>
+      registry.dequeueItem("s_q7", "nonexistent"),
+    ).toThrow("queue item not found");
+  });
+
+test("dequeueItem throws when session does not own item", () => {
+    registry.create({
+      id: "s_8a",
+      projectId: "p_1",
+      kind: "standalone",
+      workflow: "test",
+      providerChain: [],
+    });
+    registry.create({
+      id: "s_8b",
+      projectId: "p_1",
+      kind: "standalone",
+      workflow: "test",
+      providerChain: [],
+    });
+    const item = registry.enqueue({
+      sessionId: "s_8a",
+      filename: "x.ts",
+      instruction: "task",
+      affectsCompletedWork: "no" as AffectsCompletedWork,
+      position: 1,
+    });
+    expect(() => registry.dequeueItem("s_8b", item.id)).toThrow(
       "queue item not found",
     );
+  });
+
+  // ─── getSessionMetrics ──────────────────────────────────────────────────────
+
+  test("getSessionMetrics returns empty array when no metrics exist", () => {
+    registry.create({
+      id: "s_m1",
+      projectId: "p_1",
+      kind: "standalone",
+      workflow: "test",
+      providerChain: [],
+    });
+    const metrics = registry.getSessionMetrics("s_m1");
+    expect(metrics).toEqual([]);
+  });
+
+  test("getSessionMetrics returns all metrics for session", () => {
+    registry.create({
+      id: "s_m2",
+      projectId: "p_1",
+      kind: "standalone",
+      workflow: "test",
+      providerChain: [],
+    });
+    db.run(
+      `INSERT INTO session_metrics (session_id, metric_name, value, updated_at)
+       VALUES ('s_m2', 'burn_rate.tokens_since_last_commit', 1234.5, '2025-01-01T00:00:00.000Z')`,
+    );
+    db.run(
+      `INSERT INTO session_metrics (session_id, metric_name, value, updated_at)
+       VALUES ('s_m2', 'turn_success_rate', 0.8, '2025-01-01T00:01:00.000Z')`,
+    );
+    db.run(
+      `INSERT INTO session_metrics (session_id, metric_name, value, updated_at)
+       VALUES ('s_m2', 'iteration_stuck_count', 2, '2025-01-01T00:02:00.000Z')`,
+    );
+    const metrics = registry.getSessionMetrics("s_m2");
+    expect(metrics.length).toBe(3);
+    expect(metrics.map((m) => m.name).sort()).toEqual([
+      "burn_rate.tokens_since_last_commit",
+      "iteration_stuck_count",
+      "turn_success_rate",
+    ]);
+    const burnRate = metrics.find((m) => m.name === "burn_rate.tokens_since_last_commit");
+    expect(burnRate?.value).toBe(1234.5);
+    expect(burnRate?.updatedAt).toBe("2025-01-01T00:00:00.000Z");
+  });
+
+  test("getSessionMetrics returns only metrics for that session", () => {
+    registry.create({
+      id: "s_m3a",
+      projectId: "p_1",
+      kind: "standalone",
+      workflow: "test",
+      providerChain: [],
+    });
+    registry.create({
+      id: "s_m3b",
+      projectId: "p_1",
+      kind: "standalone",
+      workflow: "test",
+      providerChain: [],
+    });
+    db.run(
+      `INSERT INTO session_metrics (session_id, metric_name, value, updated_at)
+       VALUES ('s_m3a', 'turn_success_rate', 1.0, '2025-01-01T00:00:00.000Z')`,
+    );
+    db.run(
+      `INSERT INTO session_metrics (session_id, metric_name, value, updated_at)
+       VALUES ('s_m3b', 'turn_success_rate', 0.5, '2025-01-01T00:00:00.000Z')`,
+    );
+    const metricsA = registry.getSessionMetrics("s_m3a");
+    const metricsB = registry.getSessionMetrics("s_m3b");
+    expect(metricsA.length).toBe(1);
+    expect(metricsA[0]!.value).toBe(1.0);
+    expect(metricsB.length).toBe(1);
+    expect(metricsB[0]!.value).toBe(0.5);
+  });
+
+  test("getSessionMetrics returns metrics sorted by name", () => {
+    registry.create({
+      id: "s_m4",
+      projectId: "p_1",
+      kind: "standalone",
+      workflow: "test",
+      providerChain: [],
+    });
+    db.run(
+      `INSERT INTO session_metrics (session_id, metric_name, value, updated_at)
+       VALUES ('s_m4', 'z_metric', 1, '2025-01-01T00:00:00.000Z')`,
+    );
+    db.run(
+      `INSERT INTO session_metrics (session_id, metric_name, value, updated_at)
+       VALUES ('s_m4', 'a_metric', 2, '2025-01-01T00:00:00.000Z')`,
+    );
+    db.run(
+      `INSERT INTO session_metrics (session_id, metric_name, value, updated_at)
+       VALUES ('s_m4', 'm_metric', 3, '2025-01-01T00:00:00.000Z')`,
+    );
+    const metrics = registry.getSessionMetrics("s_m4");
+    expect(metrics.map((m) => m.name)).toEqual(["a_metric", "m_metric", "z_metric"]);
   });
 });

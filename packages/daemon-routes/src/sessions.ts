@@ -7,6 +7,7 @@ import {
   deleteSessionHandler,
   deleteSessionQueueItemHandler,
   getSessionHandler,
+  getSessionMetricsHandler,
   listSessionQueueHandler,
   listSessionsHandler,
   pauseSessionHandler,
@@ -72,6 +73,13 @@ export function handleSessions(req: Request, deps: SessionsDeps, pathname: strin
   if (unpauseMatch) {
     if (req.method !== "POST") return methodNotAllowed();
     return unpauseSessionHandler(unpauseMatch[1]!, deps);
+  }
+
+  // GET /v1/sessions/:id/metrics
+  const metricsMatch = pathname.match(/^\/v1\/sessions\/([^/?#]+)\/metrics$/);
+  if (metricsMatch) {
+    if (req.method !== "GET") return methodNotAllowed();
+    return getSessionMetricsHandler(metricsMatch[1]!, deps);
   }
 
   // GET /v1/sessions/:id

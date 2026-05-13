@@ -259,3 +259,31 @@ export function getQueueItem(
 export function deleteQueueItem(db: Database, itemId: string): void {
   db.run(`DELETE FROM session_queue WHERE id = ?`, [itemId]);
 }
+
+// ── Session Metrics ───────────────────────────────────────────────────────────
+
+export type SessionMetricRow = {
+  session_id: string;
+  metric_name: string;
+  value: number;
+  updated_at: string;
+};
+
+export function getSessionMetrics(
+  db: Database,
+  sessionId: string,
+): Array<{ name: string; value: number; updatedAt: string }> {
+  return db
+    .query<SessionMetricRow, [string]>(
+      `SELECT session_id, metric_name, value, updated_at
+         FROM session_metrics
+        WHERE session_id = ?
+        ORDER BY metric_name`,
+    )
+    .all(sessionId)
+    .map((row) => ({
+      name: row.metric_name,
+      value: row.value,
+      updatedAt: row.updated_at,
+    }));
+}

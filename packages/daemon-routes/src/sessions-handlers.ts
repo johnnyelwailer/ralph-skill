@@ -60,6 +60,25 @@ export function getSessionHandler(id: string, deps: SessionsDeps): Response {
   return jsonResponse(200, sessionResponse(session));
 }
 
+// ── GET /v1/sessions/:id/metrics ───────────────────────────────────────────────
+
+export function getSessionMetricsHandler(id: string, deps: SessionsDeps): Response {
+  const session = deps.sessions.get(id);
+  if (!session) {
+    return errorResponse(404, "session_not_found", `session not found: ${id}`, { id });
+  }
+  const metrics = deps.sessions.getSessionMetrics(id);
+  return jsonResponse(200, {
+    _v: 1,
+    session_id: id,
+    metrics: metrics.map((m) => ({
+      name: m.name,
+      value: m.value,
+      updated_at: m.updatedAt,
+    })),
+  });
+}
+
 // ── POST /v1/sessions ────────────────────────────────────────────────────────
 
 export async function createSessionHandler(req: Request, deps: SessionsDeps): Promise<Response> {

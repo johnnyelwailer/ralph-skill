@@ -7,6 +7,7 @@ import {
   createSessionHandler,
   listSessionsHandler,
   getSessionHandler,
+  getSessionMetricsHandler,
   deleteSessionHandler,
   resumeSessionHandler,
   pauseSessionHandler,
@@ -1064,5 +1065,128 @@ describe("steerSessionHandler", () => {
     expect(res.status).toBe(400);
     const body = await (res as Response).json();
     expect(body.error.code).toBe("bad_request");
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────
+// getSessionMetricsHandler
+// ─────────────────────────────────────────────────────────────────
+
+describe("getSessionMetricsHandler", () => {
+  let dir: string;
+  let deps: SessionsDeps;
+  let sessionId: string;
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), "aloop-session-metrics-"));
+    deps = makeDeps(dir);
+    sessionId = deps.sessions.create({
+      projectId: "proj-1",
+      kind: "standalone",
+      workflow: "test-workflow",
+      providerChain: ["provider-1"],
+    }).id;
+  });
+
+  afterEach(() => {
+    const reg = deps.sessions as unknown as { _db: { close(): void } };
+    reg._db?.close();
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  test("returns 200 with empty metrics array when session has no metrics", async () => {
+    const req = new Request(`http://localhost/v1/sessions/${sessionId}/metrics`);
+    const res = getSessionMetricsHandler(sessionId, deps);
+    expect(res.status).toBe(200);
+    const body = await (res as Response).json();
+    expect(body._v).toBe(1);
+    expect(body.session_id).toBe(sessionId);
+    expect(body.metrics).toEqual([]);
+  });
+
+  test("returns 200 with all session metrics", async () => {
+    const reg = deps.sessions as unknown as { _db: { run(sql: string): void } };
+    reg._db.run(
+      `INSERT INTO session_metrics (session_id, metric_name, value, updated_at)
+       VALUES (?, 'burn_rate.tokens_since_last_commit', 1234.5, '2025-01-01T00:00:00.000Z')`,
+      sessionId,
+    );
+    reg._db.run(
+      `INSERT INTO session_metrics (session_id, metric_name, value, updated_at)
+       VALUES (?, 'turn_success_rate', 0.8, '2025-01-01T00:01:00.000Z')`,
+      sessionId,
+    );
+
+    const req = new Request(`http://localhost/v1/sessions/${sessionId}/metrics`);
+    const res = getSessionMetricsHandler(sessionId, deps);
+    expect(res.status).toBe(200);
+    const body = await (res as Response).json();
+    expect(body.metrics).toHaveLength(2);
+    const names = body.metrics.map((m: { name: string }) => m.name).sort();
+    expect(names).toEqual(["burn_rate.tokens_since_last_commit", "turn_success_rate"]);
+    const burnRate = body.metrics.find((m: { name: string }) => m.name === "burn_rate.tokens_since_last_commit");
+    expect(burnRate?.value).toBe(1234.5);
+    expect(burnRate?.updated_at).toBe("2025-01-01T00:00:00.000Z");
+  });
+
+  test("returns 404 when session does not exist", async () => {
+    const req = new Request("http://localhost/v1/sessions/nonexistent-id/metrics");
+    const res = getSessionMetricsHandler("nonexistent-id", deps);
+    expect(res.status).toBe(404);
+    const body = await (res as Response).json();
+    expect(body.error.code).toBe("session_not_found");
+  });
+
+  test("returns metrics sorted by name", async () => {
+    const reg = deps.sessions as unknown as { _db: { run(sql: string): void } };
+    reg._db.run(
+      `INSERT INTO session_metrics (session_id, metric_name, value, updated_at)
+       VALUES (?, 'z_metric', 1, '2025-01-01T00:00:00.000Z')`,
+      sessionId,
+    );
+    reg._db.run(
+      `INSERT INTO session_metrics (session_id, metric_name, value, updated_at)
+       VALUES (?, 'a_metric', 2, '2025-01-01T00:00:00.000Z')`,
+      sessionId,
+    );
+    reg._db.run(
+      `INSERT INTO session_metrics (session_id, metric_name, value, updated_at)
+       VALUES (?, 'm_metric', 3, '2025-01-01T00:00:00.000Z')`,
+      sessionId,
+    );
+
+    const req = new Request(`http://localhost/v1/sessions/${sessionId}/metrics`);
+    const res = getSessionMetricsHandler(sessionId, deps);
+    expect(res.status).toBe(200);
+    const body = await (res as Response).json();
+    expect(body.metrics.map((m: { name: string }) => m.name)).toEqual(["a_metric", "m_metric", "z_metric"]);
+  });
+
+  test("only returns metrics for that specific session", async () => {
+    const reg = deps.sessions as unknown as { _db: { run(sql: string): void } };
+    const otherSessionId = deps.sessions.create({
+      projectId: "proj-1",
+      kind: "standalone",
+      workflow: "test-workflow",
+      providerChain: ["provider-1"],
+    }).id;
+
+    reg._db.run(
+      `INSERT INTO session_metrics (session_id, metric_name, value, updated_at)
+       VALUES (?, 'turn_success_rate', 1.0, '2025-01-01T00:00:00.000Z')`,
+      sessionId,
+    );
+    reg._db.run(
+      `INSERT INTO session_metrics (session_id, metric_name, value, updated_at)
+       VALUES (?, 'turn_success_rate', 0.5, '2025-01-01T00:00:00.000Z')`,
+      otherSessionId,
+    );
+
+    const req = new Request(`http://localhost/v1/sessions/${sessionId}/metrics`);
+    const res = getSessionMetricsHandler(sessionId, deps);
+    expect(res.status).toBe(200);
+    const body = await (res as Response).json();
+    expect(body.metrics).toHaveLength(1);
+    expect(body.metrics[0]?.value).toBe(1.0);
   });
 });

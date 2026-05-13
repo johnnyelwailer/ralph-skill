@@ -14,6 +14,7 @@ import {
   deleteSession,
   getQueueItem,
   getSessionById,
+  getSessionMetrics,
   insertQueueItem,
   insertSession,
   listQueueItems,
@@ -130,5 +131,9 @@ export class SessionRegistry {
     const item = getQueueItem(this.db, sessionId, itemId);
     if (!item) throw new Error(`queue item not found: ${itemId} in session ${sessionId}`);
     deleteQueueItem(this.db, itemId);
+  }
+
+  getSessionMetrics(sessionId: string): Array<{ name: string; value: number; updatedAt: string }> {
+    return getSessionMetrics(this.db, sessionId);
   }
 }
