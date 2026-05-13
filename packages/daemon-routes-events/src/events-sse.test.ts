@@ -152,3 +152,42 @@ describe("handleEventsSSE", () => {
     expect(resp!.status).toBe(405);
   });
 });
+
+/**
+ * NOTE on SSE stream body tests:
+ * Testing the SSE stream body (events flushed through the ReadableStream) is not
+ * feasible with the current mock because Response.clone().text() never resolves on
+ * an open SSE stream. The stream is intentionally infinite — tailLogFile uses
+ * setInterval to poll the log file and has no natural close condition when reading
+ * from a mock store that yields synchronously then continues polling.
+ *
+ * The critical SSE contract items (SSE headers, 405 routing, URL parsing, filter
+ * logic via shouldSkip) ARE indirectly verified through:
+ *   - "returns 200 with text/event-stream..." test (headers)
+ *   - topicMatches unit tests (filter logic for topics)
+ *
+ * The following behaviors are UNTESTED due to the stream-timeout constraint:
+ *   - SSE body content with filter params applied (topics, session_id, since)
+ *   - SSE envelope format in actual stream output
+ *   - Historical flush ordering in actual stream
+ *
+ * To test these properly, the mock store interface would need a way to signal
+ * "end of historical data" to unblock the ReadableStream reader, or the SSE
+ * handler's streaming part would need to be split into a separate testable unit.
+ */
+async function collectSSEWithTimeout(_resp: Response, _ms: number): Promise<string> {
+  return "";
+}
+
+describe("SSE stream response headers", () => {
+  test("returns 200 with text/event-stream Content-Type and no-cache", async () => {
+    const deps = makeMockDeps("/tmp/doesnotexist", []);
+    const req = new Request("http://localhost/v1/events", { method: "GET" });
+    const resp = await handleEventsSSE(req, deps, "/v1/events");
+    expect(resp).not.toBeUndefined();
+    expect(resp!.status).toBe(200);
+    expect(resp!.headers.get("Content-Type")).toBe("text/event-stream");
+    expect(resp!.headers.get("Cache-Control")).toBe("no-cache");
+    expect(resp!.headers.get("X-Accel-Buffering")).toBe("no");
+  });
+});
