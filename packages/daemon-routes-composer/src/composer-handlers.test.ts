@@ -570,9 +570,6 @@ describe("POST /v1/composer/turns validation edge cases", () => {
     expect(body.error.code).toBe("validation_error");
   });
 
-  // TODO: 2026-05-12T00:00:00Z - Test expects 400 for transcription: null but implementation
-  // treats null as "use default" ({ mode: "auto" }) per validateTranscription() line 210.
-  // This is a semantic design choice - null is valid (means use default) in the implementation.
   test("rejects non-object transcription (number)", async () => {
     const resp = await makeRequest(handler, deps, "POST", "/v1/composer/turns", {
       scope: { kind: "global" },
@@ -806,10 +803,6 @@ describe("Method routing", () => {
     expect(resp.status).toBe(405);
   });
 
-  // TODO: 2026-05-12T00:00:00Z - Test expects 404 for GET /v1/composer/turns/:id, but the
-  // implementation has a GET handler at composer-handlers.ts:410-420 that correctly returns 200.
-  // The test comment says "PATCH handler matches, but only for PATCH method" - however,
-  // GET /v1/composer/turns/:id IS a valid route per the implementation.
   test("GET /v1/composer/turns/:id returns 200", async () => {
     const created = await (await makeRequest(handler, deps, "POST", "/v1/composer/turns", {
       scope: { kind: "global" },
