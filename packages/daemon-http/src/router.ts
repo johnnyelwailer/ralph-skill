@@ -23,6 +23,26 @@ export type RouterDeps = {
     req: Request,
     pathname: string,
   ) => Response | Promise<Response | undefined> | undefined;
+  readonly handleComposer: (
+    req: Request,
+    pathname: string,
+  ) => Response | Promise<Response | undefined> | undefined;
+  readonly handleArtifacts: (
+    req: Request,
+    pathname: string,
+  ) => Response | Promise<Response | undefined> | undefined;
+  readonly handleTriggers: (
+    req: Request,
+    pathname: string,
+  ) => Response | Promise<Response | undefined> | undefined;
+  readonly handleSetup: (
+    req: Request,
+    pathname: string,
+  ) => Response | Promise<Response | undefined> | undefined;
+  readonly handleEvents: (
+    req: Request,
+    pathname: string,
+  ) => Response | Promise<Response | undefined> | undefined;
 };
 
 /**
@@ -65,6 +85,21 @@ export function makeFetchHandler(
 
     const sessionsResponse = await deps.handleSessions(req, pathname);
     if (sessionsResponse) return sessionsResponse;
+
+    const composerResponse = await deps.handleComposer(req, pathname);
+    if (composerResponse) return composerResponse;
+
+    const artifactsResponse = await deps.handleArtifacts(req, pathname);
+    if (artifactsResponse) return artifactsResponse;
+
+    const triggersResponse = await deps.handleTriggers(req, pathname);
+    if (triggersResponse) return triggersResponse;
+
+    const setupResponse = await deps.handleSetup(req, pathname);
+    if (setupResponse) return setupResponse;
+
+    const eventsResponse = await deps.handleEvents(req, pathname);
+    if (eventsResponse) return eventsResponse;
 
     return new Response(
       JSON.stringify({

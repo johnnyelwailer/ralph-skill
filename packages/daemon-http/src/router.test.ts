@@ -21,6 +21,11 @@ function makeDeps() {
     handleScheduler: () => undefined,
     handleWorkspaces: () => undefined,
     handleSessions: () => undefined,
+    handleComposer: () => undefined,
+    handleArtifacts: () => undefined,
+    handleTriggers: () => undefined,
+    handleSetup: () => undefined,
+    handleEvents: () => undefined,
   };
 }
 
@@ -168,6 +173,11 @@ describe("makeFetchHandler dispatch order", () => {
       },
       handleWorkspaces: () => undefined,
       handleSessions: () => undefined,
+      handleComposer: () => undefined,
+      handleArtifacts: () => undefined,
+      handleTriggers: () => undefined,
+      handleSetup: () => undefined,
+      handleEvents: () => undefined,
     };
   }
 
@@ -325,6 +335,11 @@ describe("makeFetchHandler sessions dispatch", () => {
         if (pathname === "/v1/sessions") return new Response("ok");
         return undefined; // different path — not handled
       },
+      handleComposer: () => undefined,
+      handleArtifacts: () => undefined,
+      handleTriggers: () => undefined,
+      handleSetup: () => undefined,
+      handleEvents: () => undefined,
     };
     const fetch = makeFetchHandler(deps);
     const res = await fetch(new Request("http://x/v1/sessions/other", { method: "GET" }));
