@@ -3,7 +3,7 @@ import type { ProviderFailureClass, ProviderHealth } from "./health.ts";
 
 export type ProviderQuotaSnapshot = {
   readonly remaining: number;
-  readonly resetsAt: string | null;
+  readonly resets_at: string | null;
 };
 
 export class InMemoryProviderHealthStore {
@@ -62,7 +62,7 @@ export class InMemoryProviderHealthStore {
     const next: ProviderHealth = {
       ...current,
       quotaRemaining: quota.remaining,
-      quotaResetsAt: quota.resetsAt,
+      quotaResetsAt: quota.resets_at,
       updatedAt: new Date(nowMs).toISOString(),
     };
     this.states.set(providerId, next);

@@ -187,7 +187,7 @@ describe("handleMetrics", () => {
 
   test("emits quota_remaining gauge", async () => {
     const health = new InMemoryProviderHealthStore(["openai"]);
-    health.setQuota("openai", { remaining: 500, resetsAt: null });
+    health.setQuota("openai", { remaining: 500, resets_at: null });
     const deps = makeDeps({ providerHealth: health });
     const req = makeRequest("/v1/metrics");
     const res = await handleMetrics(req, deps, "/v1/metrics");

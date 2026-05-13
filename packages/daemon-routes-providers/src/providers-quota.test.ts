@@ -7,7 +7,7 @@ type MockAdapter = {
   probeQuota?: (authHandle: string) => Promise<{
     remaining: number;
     total: number;
-    resetsAt: string;
+    resets_at: string;
     currency: string;
     probedAt: string;
   }>;
@@ -80,7 +80,7 @@ describe("handleProviderQuota", () => {
   });
 
   test("returns 400 when x-aloop-auth-handle header is missing", async () => {
-    const adapter = makeMockAdapter("opencode", { probeQuota: async () => ({ remaining: 100, total: 1000, resetsAt: "2025-01-01", currency: "USD", probedAt: "2025-01-01" }) });
+    const adapter = makeMockAdapter("opencode", { probeQuota: async () => ({ remaining: 100, total: 1000, resets_at: "2025-01-01", currency: "USD", probedAt: "2025-01-01" }) });
     const deps = makeDeps({ providerRegistry: { get: () => adapter } as any });
     const req = makeRequest("GET", "/v1/providers/opencode/quota", {});
     const result = await handleProviderQuota(req as any, deps, "/v1/providers/opencode/quota");
@@ -93,7 +93,7 @@ describe("handleProviderQuota", () => {
   });
 
   test("returns 400 when x-aloop-auth-handle header is whitespace-only", async () => {
-    const adapter = makeMockAdapter("opencode", { probeQuota: async () => ({ remaining: 100, total: 1000, resetsAt: "2025-01-01", currency: "USD", probedAt: "2025-01-01" }) });
+    const adapter = makeMockAdapter("opencode", { probeQuota: async () => ({ remaining: 100, total: 1000, resets_at: "2025-01-01", currency: "USD", probedAt: "2025-01-01" }) });
     const deps = makeDeps({ providerRegistry: { get: () => adapter } as any });
     const req = makeRequest("GET", "/v1/providers/opencode/quota", { "x-aloop-auth-handle": "   " });
     const result = await handleProviderQuota(req as any, deps, "/v1/providers/opencode/quota");
@@ -103,7 +103,7 @@ describe("handleProviderQuota", () => {
   });
 
   test("returns 200 with quota data on successful probe", async () => {
-    const quotaData = { remaining: 500, total: 10000, resetsAt: "2025-06-01T00:00:00Z", currency: "USD", probedAt: "2025-05-11T12:00:00Z" };
+    const quotaData = { remaining: 500, total: 10000, resets_at: "2025-06-01T00:00:00Z", currency: "USD", probedAt: "2025-05-11T12:00:00Z" };
     const adapter = makeMockAdapter("anthropic", { probeQuota: async () => quotaData });
     let appendedEvents: Array<{ topic: string; data: Record<string, unknown> }> = [];
     const deps = makeDeps({
@@ -127,7 +127,7 @@ describe("handleProviderQuota", () => {
   });
 
   test("appends provider.quota and provider.health events on success", async () => {
-    const quotaData = { remaining: 250, total: 5000, resetsAt: "2025-07-01", currency: "EUR", probedAt: "2025-05-11" };
+    const quotaData = { remaining: 250, total: 5000, resets_at: "2025-07-01", currency: "EUR", probedAt: "2025-05-11" };
     const adapter = makeMockAdapter("cohere", { probeQuota: async () => quotaData });
     let appendedEvents: Array<{ topic: string; data: Record<string, unknown> }> = [];
     const deps = makeDeps({
@@ -195,7 +195,7 @@ describe("handleProviderQuota", () => {
   });
 
   test("URL-decodes provider ID in pathname", async () => {
-    const adapter = makeMockAdapter("provider with spaces", { probeQuota: async () => ({ remaining: 10, total: 100, resetsAt: "2025-01-01", currency: "USD", probedAt: "2025-01-01" }) });
+    const adapter = makeMockAdapter("provider with spaces", { probeQuota: async () => ({ remaining: 10, total: 100, resets_at: "2025-01-01", currency: "USD", probedAt: "2025-01-01" }) });
     let gotProviderId: string | undefined;
     const deps = makeDeps({
       providerRegistry: {

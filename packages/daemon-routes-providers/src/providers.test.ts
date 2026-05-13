@@ -7,7 +7,7 @@ import { handleProviderQuota } from "./providers-quota.ts";
 
 function makeAdapter(id: string, opts: {
   supportsQuotaProbe: boolean;
-  probeQuotaImpl?: () => Promise<{ remaining: number; total: number | null; resetsAt: string | null; probedAt: string }>;
+  probeQuotaImpl?: () => Promise<{ remaining: number; total: number | null; resets_at: string | null; probedAt: string }>;
 }): ProviderAdapter {
   return {
     id,
@@ -79,7 +79,7 @@ function makeQuotaDeps(): ProvidersDeps {
     probeQuotaImpl: async () => ({
       remaining: 1000,
       total: 2000,
-      resetsAt: null,
+      resets_at: null,
       probedAt: new Date().toISOString(),
     }),
   }));

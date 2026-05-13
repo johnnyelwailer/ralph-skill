@@ -352,7 +352,7 @@ describe("refreshProviderHealth", () => {
     const fakeSnapshot = {
       remaining: 1000,
       total: 5000,
-      resetsAt: "2026-06-01T00:00:00.000Z",
+      resets_at: "2026-06-01T00:00:00.000Z",
       currency: "tokens" as const,
       probedAt: new Date().toISOString(),
     };
@@ -364,10 +364,11 @@ describe("refreshProviderHealth", () => {
     const registry = makeFakeProviderRegistry([adapter]);
     let setQuotaCalled = false;
     const healthStore = {
-      setQuota: (id: string, q: { remaining: number; resetsAt: string | null }) => {
+      setQuota: (id: string, q: { remaining: number; resets_at: string | null }) => {
         setQuotaCalled = true;
         expect(id).toBe("opencode");
         expect(q.remaining).toBe(1000);
+        expect(q.resets_at).toBe("2026-06-01T00:00:00.000Z");
         return { id, ...q };
       },
     } as any;
@@ -406,18 +407,18 @@ describe("refreshProviderHealth", () => {
     const a1 = makeFakeProviderAdapter({
       id: "p1",
       quotaProbe: true,
-      probeQuotaFn: async () => ({ remaining: 100, total: 200, resetsAt: null, probedAt: new Date().toISOString() }),
+      probeQuotaFn: async () => ({ remaining: 100, total: 200, resets_at: null, probedAt: new Date().toISOString() }),
     });
     const a2 = makeFakeProviderAdapter({ id: "p2", quotaProbe: false });
     const a3 = makeFakeProviderAdapter({
       id: "p3",
       quotaProbe: true,
-      probeQuotaFn: async () => ({ remaining: 50, total: 100, resetsAt: null, probedAt: new Date().toISOString() }),
+      probeQuotaFn: async () => ({ remaining: 50, total: 100, resets_at: null, probedAt: new Date().toISOString() }),
     });
     const registry = makeFakeProviderRegistry([a1, a2, a3]);
     const called: string[] = [];
     const healthStore = {
-      setQuota: (id: string, q: { remaining: number; resetsAt: string | null }) => {
+      setQuota: (id: string, q: { remaining: number; resets_at: string | null }) => {
         called.push(id);
         return { id, ...q };
       },

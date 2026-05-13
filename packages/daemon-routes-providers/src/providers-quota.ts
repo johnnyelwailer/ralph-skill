@@ -51,7 +51,7 @@ export async function handleProviderQuota(
       provider_id: providerId,
       remaining: quota.remaining,
       total: quota.total,
-      reset_at: quota.resetsAt,
+      reset_at: quota.resets_at,
       currency: quota.currency,
       probed_at: quota.probedAt,
     });

@@ -108,7 +108,7 @@ function makeProviderAdapterWithProbe(opts: { errorMessage?: string } = {}): Pro
       return {
         remaining: 123,
         total: 1000,
-        resetsAt: new Date(1_700_000_000_000).toISOString(),
+        resets_at: new Date(1_700_000_000_000).toISOString(),
         probedAt: new Date(1_700_000_000_000).toISOString(),
         currency: "tokens",
       };

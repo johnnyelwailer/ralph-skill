@@ -25,7 +25,7 @@ describe("InMemoryProviderHealthStore", () => {
     const quota = {
       remaining: 1234,
       total: 5000,
-      resetsAt: "2026-01-01T01:00:00.000Z",
+      resets_at: "2026-01-01T01:00:00.000Z",
       currency: "tokens" as const,
       probedAt: "2026-01-01T00:10:00.000Z",
     };
@@ -74,7 +74,7 @@ describe("InMemoryProviderHealthStore", () => {
     // setQuota should only touch quota fields and updatedAt
     store.setQuota(
       "opencode",
-      { remaining: 500, resetsAt: "2026-01-01T02:00:00.000Z" },
+      { remaining: 500, resets_at: "2026-01-01T02:00:00.000Z" },
       NOW + 5_000,
     );
 
@@ -193,7 +193,7 @@ describe("InMemoryProviderHealthStore", () => {
     const before = store.peek("opencode");
     expect(before?.quotaRemaining).toBeNull();
 
-    store.setQuota("opencode", { remaining: 500, resetsAt: "2026-01-02T00:00:00.000Z" }, NOW + 60_000);
+    store.setQuota("opencode", { remaining: 500, resets_at: "2026-01-02T00:00:00.000Z" }, NOW + 60_000);
     const after = store.peek("opencode");
     expect(after?.quotaRemaining).toBe(500);
     expect(after?.quotaResetsAt).toBe("2026-01-02T00:00:00.000Z");

@@ -25,7 +25,7 @@ export type ResolvedModel = {
 export type QuotaSnapshot = {
   readonly remaining: number;
   readonly total: number | null;
-  readonly resetsAt: string | null;
+  readonly resets_at: string | null;
   readonly currency?: "tokens" | "usd" | "credits";
   readonly probedAt: string;
 };

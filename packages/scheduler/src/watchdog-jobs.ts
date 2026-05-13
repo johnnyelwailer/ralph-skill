@@ -163,13 +163,13 @@ export async function refreshProviderHealth(
       const snapshot = await probeQuota("health-check");
       providerHealth.setQuota(adapter.id, {
         remaining: snapshot.remaining,
-        resetsAt: snapshot.resetsAt,
+        resets_at: snapshot.resets_at,
       });
       await events.append("provider.quota", {
         provider_id: adapter.id,
         remaining: snapshot.remaining,
         total: snapshot.total,
-        resets_at: snapshot.resetsAt,
+        resets_at: snapshot.resets_at,
         currency: snapshot.currency ?? "tokens",
         probed_at: snapshot.probedAt,
       });
