@@ -26,6 +26,18 @@ export {
   type WarningDroppedData,
 } from "./events/types.ts";
 export type {
+  ExecManifest,
+  RuntimeExtensionManifest,
+  Runtime,
+  Platform,
+} from "./runtime-extension/types.ts";
+export {
+  loadManifests,
+  loadExecManifests,
+  loadContextProviderManifests,
+  parseTimeoutMs,
+} from "./runtime-extension/manifest-loader.ts";
+export type {
   AbstractStatus,
   AgentResult,
   BuildResult,

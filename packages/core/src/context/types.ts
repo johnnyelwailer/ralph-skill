@@ -118,7 +118,7 @@ export type ContextProviderManifest = {
   /** Working directory for the subprocess, typically "repo". */
   readonly cwd: string;
   /** OS platforms the provider runs on. */
-  readonly platforms: readonly string[];
+  readonly platforms?: readonly string[];
   /** Env vars the subprocess is allowed to read. */
   readonly envAllowlist?: readonly string[];
   /** Declared capabilities — used for policy checking before execution. */
