@@ -43,6 +43,10 @@ export type ContextRegistry = {
   observe(observation: TurnObservation): void;
 };
 
+// Re-export types so callers (including tests) can import from here without
+// needing to know the internal file layout.
+export type { ContextPlugin, ContextInput, ContextBlock };
+
 export function createContextRegistry(): ContextRegistry {
   const plugins = new Map<string, ContextPlugin>();
 

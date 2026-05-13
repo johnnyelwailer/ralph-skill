@@ -2,6 +2,7 @@ import { realpathSync } from "node:fs";
 import { resolve } from "node:path";
 import type { Database } from "bun:sqlite";
 import type { Project, ProjectFilter, ProjectStatus, ProjectWorkspaceRole } from "./project-types.ts";
+export type { ProjectStatus } from "./project-types.ts";
 
 type ProjectRow = {
   id: string;

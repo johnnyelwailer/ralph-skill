@@ -36,7 +36,7 @@ describe("openDatabase", () => {
     expect(result.migrated.previousVersion).toBe(0);
     expect(result.migrated.applied.length).toBeGreaterThan(0);
     expect(result.migrated.currentVersion).toBe(
-      result.migrated.applied[result.migrated.applied.length - 1],
+      result.migrated.applied[result.migrated.applied.length - 1]!,
     );
     result.db.close();
   });

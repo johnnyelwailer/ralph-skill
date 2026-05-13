@@ -28,6 +28,7 @@ import type {
   AbstractStatus,
   AgentResult,
 } from "./agent-result-types";
+import { commitSha, filePath } from "./agent-result-types";
 
 // ─── plan ─────────────────────────────────────────────────────────────────────
 
@@ -57,8 +58,8 @@ describe("PlanResult", () => {
 describe("BuildResult", () => {
   test("accepts minimal valid shape", () => {
     const r: BuildResult = {
-      commit_shas: ["abc123", "def456"],
-      changed_files: ["src/index.ts", "src/util.ts"],
+      commit_shas: [commitSha("abc123"), commitSha("def456")],
+      changed_files: [filePath("src/index.ts"), filePath("src/util.ts")],
       validation_passed: true,
     };
     expect(r.validation_passed).toBe(true);
@@ -67,8 +68,8 @@ describe("BuildResult", () => {
 
   test("accepts optional usage_summary", () => {
     const r: BuildResult = {
-      commit_shas: ["abc123"],
-      changed_files: ["src/foo.ts"],
+      commit_shas: [commitSha("abc123")],
+      changed_files: [filePath("src/foo.ts")],
       validation_passed: false,
       usage_summary: {
         tokens_in: 1_000,

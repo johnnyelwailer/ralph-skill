@@ -22,6 +22,22 @@ export type CommitSha = string & { readonly __brand: "CommitSha" };
 /** A relative or absolute file path modified or created by a build. */
 export type FilePath = string & { readonly __brand: "FilePath" };
 
+/**
+ * Nominal brand constructor for CommitSha.
+ * Use in tests and when constructing typed values from untyped strings.
+ */
+export function commitSha(s: string): CommitSha {
+  return s as CommitSha;
+}
+
+/**
+ * Nominal brand constructor for FilePath.
+ * Use in tests and when constructing typed values from untyped strings.
+ */
+export function filePath(s: string): FilePath {
+  return s as FilePath;
+}
+
 // ─── plan ─────────────────────────────────────────────────────────────────────
 
 /**

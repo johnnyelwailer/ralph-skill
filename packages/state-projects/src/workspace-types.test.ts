@@ -16,9 +16,11 @@ describe("Workspace", () => {
       name: "Aloop",
       description: "Harness product",
       defaultBudgetUsdPerDay: 25.0,
+      defaultProjectId: null,
       metadata: {},
       createdAt: "2026-05-01T10:00:00Z",
       updatedAt: "2026-05-01T10:00:00Z",
+      archivedAt: null,
     };
     expect(w.id).toBe("w_01");
     expect(w.name).toBe("Aloop");
@@ -35,9 +37,11 @@ describe("Workspace", () => {
       name: "Test",
       description: "",
       defaultBudgetUsdPerDay: 0,
+      defaultProjectId: null,
       metadata: { team: "platform", tags: ["alpha"] },
       createdAt: "2026-05-01T10:00:00Z",
       updatedAt: "2026-05-01T10:00:00Z",
+      archivedAt: null,
     };
     expect(w.metadata.team).toBe("platform");
     expect(w.metadata.tags).toEqual(["alpha"]);
@@ -101,10 +105,11 @@ describe("WorkspaceWithCounts", () => {
       name: "Aloop",
       description: "Harness",
       defaultBudgetUsdPerDay: 25.0,
+      defaultProjectId: "p_01",
       metadata: {},
       createdAt: "2026-05-01T10:00:00Z",
       updatedAt: "2026-05-01T10:00:00Z",
-      defaultProjectId: "p_01",
+      archivedAt: null,
       projectCounts: {
         total: 3,
         primary: 1,
