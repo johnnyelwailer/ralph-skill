@@ -129,4 +129,21 @@ describe("parseProviderRef", () => {
     expect(result.version).toBe("3.0");
     expect(result.canonicalRef).toBe("cohere@3.0");
   });
+
+  test("trailing slash is filtered from track and model segments", () => {
+    // "opencode/sonnet/" — trailing slash after model produces empty model
+    const result = parseProviderRef("opencode/sonnet/");
+    expect(result.providerId).toBe("opencode");
+    expect(result.track).toBe("sonnet");
+    expect(result.model).toBeUndefined(); // trailing slash filtered out
+    expect(result.canonicalRef).toBe("opencode/sonnet");
+  });
+
+  test("throws when path is only slashes", () => {
+    expect(() => parseProviderRef("/")).toThrow("provider id is required");
+  });
+
+  test("throws when ref is only a slash and whitespace", () => {
+    expect(() => parseProviderRef("  /  ")).toThrow("provider id is required");
+  });
 });
