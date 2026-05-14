@@ -73,6 +73,68 @@ describe("ArtifactRegistry", () => {
       const artifact = registry.create(input);
       expect(artifact.id).toBe("a_custom_id");
     });
+
+    test("creates artifact with incubation metadata", () => {
+      const registry = makeRegistry();
+      const input: CreateArtifactInput = {
+        project_id: "p_abc",
+        kind: "screenshot",
+        filename: "capture.png",
+        media_type: "image/png",
+        bytes: 12345,
+        incubation: {
+          lifecycle: "captured",
+          scope: { kind: "project", project_id: "p_abc" },
+          title: "Investigate mobile capture for aloop",
+          labels: ["product"],
+          priority: "normal",
+          source: {
+            client: "mobile-web",
+            captured_at: "2026-05-08T10:00:00.000Z",
+            author: "user_123",
+            url: "https://example.com/capture",
+          },
+          related_artifact_ids: [],
+          promoted_refs: [],
+        },
+      };
+      const artifact = registry.create(input);
+      expect(artifact.incubation).not.toBeNull();
+      expect(artifact.incubation!.lifecycle).toBe("captured");
+      expect(artifact.incubation!.scope.kind).toBe("project");
+      expect(artifact.incubation!.title).toBe("Investigate mobile capture for aloop");
+      expect(artifact.incubation!.labels).toEqual(["product"]);
+      expect(artifact.incubation!.priority).toBe("normal");
+      expect(artifact.incubation!.source!.client).toBe("mobile-web");
+      expect(artifact.incubation!.source!.captured_at).toBe("2026-05-08T10:00:00.000Z");
+    });
+
+    test("creates artifact with null incubation when not provided", () => {
+      const registry = makeRegistry();
+      const input: CreateArtifactInput = {
+        project_id: "p_abc",
+        kind: "other",
+        filename: "data.json",
+        media_type: "application/json",
+        bytes: 100,
+      };
+      const artifact = registry.create(input);
+      expect(artifact.incubation).toBeNull();
+    });
+
+    test("creates artifact with explicit null incubation", () => {
+      const registry = makeRegistry();
+      const input: CreateArtifactInput = {
+        project_id: "p_abc",
+        kind: "other",
+        filename: "data.json",
+        media_type: "application/json",
+        bytes: 100,
+        incubation: null,
+      };
+      const artifact = registry.create(input);
+      expect(artifact.incubation).toBeNull();
+    });
   });
 
   describe("get", () => {
@@ -94,6 +156,32 @@ describe("ArtifactRegistry", () => {
       const registry = makeRegistry();
       const found = registry.get("a_unknown");
       expect(found).toBeUndefined();
+    });
+
+    test("returns artifact with incubation metadata", () => {
+      const registry = makeRegistry();
+      const created = registry.create({
+        project_id: "p_abc",
+        kind: "screenshot",
+        filename: "a.png",
+        media_type: "image/png",
+        bytes: 100,
+        incubation: {
+          lifecycle: "clarifying",
+          scope: { kind: "workspace", workspace_id: "w_xyz" },
+          title: "Test idea",
+          labels: ["research"],
+          priority: "high",
+          source: { client: "cli", captured_at: "2026-05-09T00:00:00.000Z" },
+          related_artifact_ids: ["a_001"],
+          promoted_refs: [],
+        },
+      });
+      const found = registry.get(created.id);
+      expect(found).not.toBeUndefined();
+      expect(found!.incubation).not.toBeNull();
+      expect(found!.incubation!.lifecycle).toBe("clarifying");
+      expect(found!.incubation!.title).toBe("Test idea");
     });
   });
 

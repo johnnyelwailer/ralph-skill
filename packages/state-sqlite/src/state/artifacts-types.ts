@@ -1,5 +1,29 @@
 export type ArtifactKind = "image" | "screenshot" | "mockup" | "diff" | "other";
 
+export type IncubationSource = {
+  readonly client: string;
+  readonly captured_at: string;
+  readonly author?: string;
+  readonly url?: string;
+};
+
+export type IncubationPromotedRef = {
+  readonly target_id: string;
+  readonly promoted_at: string;
+  readonly evidence_artifact_ids: readonly string[];
+};
+
+export type ArtifactIncubation = {
+  readonly lifecycle: "captured" | "clarifying" | "researching" | "synthesized" | "ready_for_promotion" | "promoted" | "discarded" | "archived";
+  readonly scope: { readonly kind: "global" | "workspace" | "project" | "candidate_project"; readonly project_id?: string; readonly workspace_id?: string; readonly abs_path?: string; readonly repo_url?: string };
+  readonly title?: string;
+  readonly labels?: readonly string[];
+  readonly priority?: "normal" | "high" | "low";
+  readonly source?: IncubationSource;
+  readonly related_artifact_ids?: readonly string[];
+  readonly promoted_refs?: readonly IncubationPromotedRef[];
+};
+
 export type ArtifactFilter = {
   readonly project_id?: string;
   readonly session_id?: string;
@@ -28,6 +52,7 @@ export type Artifact = {
   readonly created_at: string;
   readonly composer_turn_id: string | null;
   readonly control_subagent_run_id: string | null;
+  readonly incubation: ArtifactIncubation | null;
 };
 
 export type CreateArtifactInput = {
@@ -45,6 +70,7 @@ export type CreateArtifactInput = {
   readonly now?: string;
   readonly composer_turn_id?: string | null;
   readonly control_subagent_run_id?: string | null;
+  readonly incubation?: ArtifactIncubation | null;
 };
 
 export class ArtifactNotFoundError extends Error {
