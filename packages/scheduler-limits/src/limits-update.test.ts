@@ -265,8 +265,8 @@ describe("updateSchedulerLimits", () => {
     expect(result.ok).toBe(false);
     if (!result.ok && "code" in result) {
       expect(result.code).toBe("tune_out_of_bounds");
-      expect(result.violations[0].field).toBe("concurrencyCap");
-      expect(result.violations[0].requested).toBe(9);
+      expect(result.violations[0]!.field).toBe("concurrencyCap");
+      expect(result.violations[0]!.requested).toBe(9);
     }
   });
 
@@ -392,7 +392,7 @@ describe("updateSchedulerLimits", () => {
     const result = await updateSchedulerLimits(h.config, h.events, { concurrencyCap: 999 });
     expect(result.ok).toBe(false);
     if (!result.ok && "code" in result) {
-      const v = result.violations[0];
+      const v = result.violations[0]!;
       expect(v.field).toBe("concurrencyCap");
       expect(v.requested).toBe(999);
       expect(v.min).toBe(1);

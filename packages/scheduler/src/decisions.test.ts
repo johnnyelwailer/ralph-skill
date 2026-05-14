@@ -311,6 +311,7 @@ describe("SchedulerConfigView", () => {
     const configView: SchedulerConfigView = {
       scheduler: () => DEFAULT_LIMITS,
       overrides: () => DEFAULT_OVERRIDES,
+      projectLimits: (_id: string) => ({}),
       updateLimits: async () => ({ ok: true, limits: DEFAULT_LIMITS }),
     };
     expect(configView.scheduler().concurrencyCap).toBe(3);
@@ -323,6 +324,7 @@ describe("SchedulerConfigView", () => {
     const configView: SchedulerConfigView = {
       scheduler: () => DEFAULT_LIMITS,
       overrides: () => DEFAULT_OVERRIDES,
+      projectLimits: (_id: string) => ({}),
       updateLimits: async (patch) => {
         if (patch["nope"]) return { ok: false, errors: ["unknown field"] };
         return { ok: true, limits: DEFAULT_LIMITS };
@@ -334,7 +336,7 @@ describe("SchedulerConfigView", () => {
 
     const fail = await configView.updateLimits({ nope: true });
     expect(fail.ok).toBe(false);
-    if (!fail.ok) {
+    if (!fail.ok && "errors" in fail) {
       expect(fail.errors[0]).toContain("unknown field");
     }
   });
@@ -343,6 +345,7 @@ describe("SchedulerConfigView", () => {
     const configView: SchedulerConfigView = {
       scheduler: () => ({ ...DEFAULT_LIMITS, concurrencyCap: 99 }),
       overrides: () => DEFAULT_OVERRIDES,
+      projectLimits: (_id: string) => ({}),
       updateLimits: async () => ({ ok: true, limits: DEFAULT_LIMITS }),
     };
     expect(configView.scheduler().concurrencyCap).toBe(99);
@@ -352,6 +355,7 @@ describe("SchedulerConfigView", () => {
     const configView: SchedulerConfigView = {
       scheduler: () => DEFAULT_LIMITS,
       overrides: () => ({ allow: ["codex"], deny: null, force: null }),
+      projectLimits: (_id: string) => ({}),
       updateLimits: async () => ({ ok: true, limits: DEFAULT_LIMITS }),
     };
     expect(configView.overrides().allow).toEqual(["codex"]);

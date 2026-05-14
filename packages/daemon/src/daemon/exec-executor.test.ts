@@ -22,6 +22,8 @@ function makeManifest(overrides: Partial<ExecManifest> = {}): ExecManifest {
     args: ["--version"],
     cwd: "repo",
     timeout: "10s",
+    platforms: ["linux", "darwin", "windows"],
+    envAllowlist: undefined,
     idempotent: false,
     ...overrides,
   };

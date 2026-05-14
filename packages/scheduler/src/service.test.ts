@@ -41,17 +41,15 @@ function makePermit(overrides: Partial<Permit> = {}): Permit {
   return {
     id: "test-permit",
     sessionId: "test-session",
-    providerCandidate: "test-provider",
-    createdAt: "2024-01-01T00:00:00.000Z",
-    expiresAt: "2024-01-01T01:00:00.000Z",
+    providerId: "test-provider",
+    ttlSeconds: 600,
     grantedAt: "2024-01-01T00:00:00.000Z",
+    expiresAt: "2024-01-01T01:00:00.000Z",
     ...overrides,
   };
 }
 
 function makeConfig(overrides: Partial<{
-  max_permits: number;
-  ttl_seconds: number;
   concurrencyCap: number;
   systemLimits: NonNullable<ReturnType<SchedulerConfigView["scheduler"]>["systemLimits"]>;
   burnRate: NonNullable<ReturnType<SchedulerConfigView["scheduler"]>["burnRate"]>;
@@ -60,18 +58,25 @@ function makeConfig(overrides: Partial<{
 }> = {}): SchedulerConfigView {
   return {
     scheduler: () => ({
-      max_permits: overrides.max_permits ?? 10,
-      ttl_seconds: overrides.ttl_seconds ?? 3600,
       concurrencyCap: overrides.concurrencyCap ?? 3,
-      systemLimits: overrides.systemLimits ?? { cpuMaxPct: 80, memMaxPct: 85, loadMax: 4.0 },
-      burnRate: overrides.burnRate ?? { maxTokensSinceCommit: 2_000_000, minCommitsPerHour: 2 },
       permitTtlDefaultSeconds: overrides.permitTtlDefaultSeconds ?? 600,
       permitTtlMaxSeconds: overrides.permitTtlMaxSeconds ?? 3600,
+      systemLimits: overrides.systemLimits ?? { cpuMaxPct: 80, memMaxPct: 85, loadMax: 4.0 },
+      burnRate: overrides.burnRate ?? { maxTokensSinceCommit: 2_000_000, minCommitsPerHour: 2 },
     }),
     overrides: () => ({ allow: null, deny: null, force: null }),
     projectLimits: (_projectId: string) => ({}),
     updateLimits: () =>
-      Promise.resolve({ ok: true, limits: { max_permits: 5, ttl_seconds: 1800 } }),
+      Promise.resolve({
+        ok: true,
+        limits: {
+          concurrencyCap: 3,
+          permitTtlDefaultSeconds: 600,
+          permitTtlMaxSeconds: 3600,
+          systemLimits: { cpuMaxPct: 80, memMaxPct: 85, loadMax: 4.0 },
+          burnRate: { maxTokensSinceCommit: 2_000_000, minCommitsPerHour: 2 },
+        },
+      }),
   };
 }
 
@@ -102,12 +107,11 @@ describe("listPermits", () => {
 describe("currentLimits", () => {
   test("returns config limits", () => {
     const permits = new MockPermitRegistry();
-    const config = makeConfig({ max_permits: 42, ttl_seconds: 7200 });
+    const config = makeConfig({ concurrencyCap: 42 });
     const events = new MockEventWriter();
     const service = new SchedulerService(permits as unknown as PermitRegistry, config, events as unknown as EventWriter);
     const limits = service.currentLimits();
-    expect(limits.max_permits).toBe(42);
-    expect(limits.ttl_seconds).toBe(7200);
+    expect(limits.concurrencyCap).toBe(42);
   });
 });
 
@@ -138,7 +142,7 @@ describe("releasePermit", () => {
   });
 
   test("writes release event with composer_turn_id for composer turn owner", async () => {
-    const p = makePermit({ id: "perm-ct", composerTurnId: "ct_01", sessionId: undefined });
+    const p = makePermit({ id: "perm-ct", composerTurnId: "ct_01", sessionId: null });
     const permits = new MockPermitRegistry();
     permits.setPermits([p]);
     const config = makeConfig();
@@ -156,7 +160,7 @@ describe("releasePermit", () => {
   });
 
   test("writes release event with control_subagent_run_id for control subagent owner", async () => {
-    const p = makePermit({ id: "perm-csar", controlSubagentRunId: "csar_99", sessionId: undefined });
+    const p = makePermit({ id: "perm-csar", controlSubagentRunId: "csar_99", sessionId: null });
     const permits = new MockPermitRegistry();
     permits.setPermits([p]);
     const config = makeConfig();
@@ -217,7 +221,7 @@ describe("expirePermits", () => {
   });
 
   test("writes expire event with composer_turn_id for composer turn owner", async () => {
-    const p = makePermit({ id: "exp-ct", composerTurnId: "ct_exp_01", sessionId: undefined });
+    const p = makePermit({ id: "exp-ct", composerTurnId: "ct_exp_01", sessionId: null });
     const permits = new MockPermitRegistry();
     permits.setExpired([p]);
     const config = makeConfig();
@@ -235,7 +239,7 @@ describe("expirePermits", () => {
   });
 
   test("writes expire event with control_subagent_run_id for control subagent owner", async () => {
-    const p = makePermit({ id: "exp-csar", controlSubagentRunId: "csar_exp_02", sessionId: undefined });
+    const p = makePermit({ id: "exp-csar", controlSubagentRunId: "csar_exp_02", sessionId: null });
     const permits = new MockPermitRegistry();
     permits.setExpired([p]);
     const config = makeConfig();

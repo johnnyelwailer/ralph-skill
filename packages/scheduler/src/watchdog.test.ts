@@ -51,10 +51,10 @@ function makeFakeProviderRegistry(adapters: ReturnType<typeof makeFakeProviderAd
 }
 
 function makeFakeProviderHealthStore(): InMemoryProviderHealthStore {
-  const store = new Map<string, { remaining: number; resets_at: string }>();
+  const store = new Map<string, { remaining: number; resets_at: string | null }>();
   return {
-    getQuota: (id: string) => store.get(id),
-    setQuota: (id: string, quota) => store.set(id, quota),
+    getQuota: (id: string) => store.get(id) ?? undefined,
+    setQuota: (id: string, quota: { remaining: number; resets_at: string | null }) => store.set(id, quota),
     removeQuota: (id: string) => store.delete(id),
   };
 }

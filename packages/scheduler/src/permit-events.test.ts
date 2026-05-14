@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import type { EventEnvelope } from "@aloop/core";
 import {
   appendPermitDeny,
   appendPermitExpired,
@@ -11,9 +12,9 @@ function mockEventWriter() {
   const events: Array<{ topic: string; data: Record<string, unknown> }> = [];
   return {
     events,
-    append: async (topic: string, data: Record<string, unknown>) => {
-      events.push({ topic, data });
-      return { _v: 1 as const, id: "evt_test", timestamp: "2024-01-01T00:00:00.000Z", topic, data };
+    append: async <T>(topic: string, data: T): Promise<EventEnvelope<T>> => {
+      events.push({ topic, data } as { topic: string; data: Record<string, unknown> });
+      return { _v: 1 as const, id: "evt_test", timestamp: "2024-01-01T00:00:00.000Z", topic, data } as EventEnvelope<T>;
     },
   };
 }

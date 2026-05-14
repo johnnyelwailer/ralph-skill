@@ -1,9 +1,14 @@
 import { describe, expect, test } from "bun:test";
 import type { Permit } from "@aloop/state-sqlite";
+import type { PermitDecision, PermitDenied } from "./decisions.ts";
 import type { SchedulerConfigView } from "./decisions.ts";
 import type { EventWriter, PermitRegistry } from "@aloop/state-sqlite";
 import type { SchedulerProbes } from "@aloop/scheduler-gates";
 import { acquirePermitDecision, type AcquirePermitDeps } from "./acquire.ts";
+
+function assertDenied(d: PermitDecision): asserts d is PermitDenied {
+  if (d.granted) throw new Error("expected denied");
+}
 
 // ─── mocks ─────────────────────────────────────────────────────────────────────
 
@@ -14,10 +19,13 @@ class MockEventWriter {
   }
 }
 
+import type { Database } from "bun:sqlite";
+
 class MockPermitRegistry {
   private _permits = new Map<string, Permit>();
   private _countActiveResult = 0;
   private _countByProjectResults: Record<string, number> = {};
+  db: Database | null = null;
 
   get(id: string): Permit | undefined { return this._permits.get(id); }
   list(): Permit[] { return [...this._permits.values()]; }
@@ -57,22 +65,23 @@ function makeProbes(overrides: Partial<{
   burnRate: SchedulerProbes["burnRate"];
   projectDailyCost: SchedulerProbes["projectDailyCost"];
 }> = {}): SchedulerProbes {
-  return {
+  const probes: SchedulerProbes = {
     systemSample: overrides.systemSample ?? (() => ({ cpuPct: 10, memPct: 20, loadAvg: 0.5 })),
-    providerQuota: overrides.providerQuota,
-    burnRate: overrides.burnRate,
-    projectDailyCost: overrides.projectDailyCost,
   };
+  if (overrides.providerQuota !== undefined) probes.providerQuota = overrides.providerQuota;
+  if (overrides.burnRate !== undefined) probes.burnRate = overrides.burnRate;
+  if (overrides.projectDailyCost !== undefined) probes.projectDailyCost = overrides.projectDailyCost;
+  return probes;
 }
 
 function makePermit(overrides: Partial<Permit> = {}): Permit {
   return {
     id: `perm_${Math.random().toString(36).slice(2)}`,
     sessionId: "test-session",
-    providerCandidate: "opencode",
-    createdAt: new Date().toISOString(),
-    expiresAt: new Date(Date.now() + 600_000).toISOString(),
+    providerId: "opencode",
+    ttlSeconds: 600,
     grantedAt: new Date().toISOString(),
+    expiresAt: new Date(Date.now() + 600_000).toISOString(),
     ...overrides,
   };
 }
@@ -109,8 +118,9 @@ describe("override denial", () => {
     const result = await acquirePermitDecision(deps, BASE_INPUT);
 
     expect(result.granted).toBe(false);
+    assertDenied(result);
     expect(result.gate).toBe("overrides");
-    expect((result as { reason: string }).reason).toBe("provider_denied");
+    expect(result.reason).toBe("provider_denied");
   });
 
   test("denies when override allow list does not include the requested provider", async () => {
@@ -124,8 +134,9 @@ describe("override denial", () => {
     const result = await acquirePermitDecision(deps, BASE_INPUT);
 
     expect(result.granted).toBe(false);
+    assertDenied(result);
     expect(result.gate).toBe("overrides");
-    expect((result as { reason: string }).reason).toBe("provider_not_allowed");
+    expect(result.reason).toBe("provider_not_allowed");
   });
 
   test("allows when override force redirects to a different provider", async () => {
@@ -162,10 +173,11 @@ describe("concurrency cap denial", () => {
     const result = await acquirePermitDecision(deps, BASE_INPUT);
 
     expect(result.granted).toBe(false);
+    assertDenied(result);
     expect(result.gate).toBe("concurrency");
-    expect((result as { reason: string }).reason).toBe("concurrency_cap_reached");
-    expect((result as { details: { active_permits: number; concurrency_cap: number } }).details.active_permits).toBe(3);
-    expect((result as { details: { active_permits: number; concurrency_cap: number } }).details.concurrency_cap).toBe(3);
+    expect(result.reason).toBe("concurrency_cap_reached");
+    expect(result.details.active_permits).toBe(3);
+    expect(result.details.concurrency_cap).toBe(3);
   });
 
   test("allows when active permits < concurrencyCap", async () => {
@@ -189,6 +201,7 @@ describe("concurrency cap denial", () => {
     const result = await acquirePermitDecision(deps, BASE_INPUT);
 
     expect(result.granted).toBe(false);
+    assertDenied(result);
     expect(result.gate).toBe("concurrency");
   });
 });
@@ -206,8 +219,9 @@ describe("system gate denial", () => {
     const result = await acquirePermitDecision(deps, BASE_INPUT);
 
     expect(result.granted).toBe(false);
+    assertDenied(result);
     expect(result.gate).toBe("system");
-    expect((result as { reason: string }).reason).toBe("system_limit_exceeded");
+    expect(result.reason).toBe("system_limit_exceeded");
   });
 
   test("denies when systemSample returns mem above limit", async () => {
@@ -220,6 +234,7 @@ describe("system gate denial", () => {
     const result = await acquirePermitDecision(deps, BASE_INPUT);
 
     expect(result.granted).toBe(false);
+    assertDenied(result);
     expect(result.gate).toBe("system");
   });
 
@@ -233,6 +248,7 @@ describe("system gate denial", () => {
     const result = await acquirePermitDecision(deps, BASE_INPUT);
 
     expect(result.granted).toBe(false);
+    assertDenied(result);
     expect(result.gate).toBe("system");
   });
 
@@ -262,9 +278,10 @@ describe("provider quota denial", () => {
     const result = await acquirePermitDecision(deps, BASE_INPUT);
 
     expect(result.granted).toBe(false);
+    assertDenied(result);
     expect(result.gate).toBe("provider");
-    expect((result as { reason: string }).reason).toBe("provider_quota_exceeded");
-    expect((result as { details: { provider_id: string } }).details.provider_id).toBe("opencode");
+    expect(result.reason).toBe("provider_quota_exceeded");
+    expect(result.details.provider_id).toBe("opencode");
   });
 
   test("denies when providerQuota returns ok=false with retryAfterSeconds", async () => {
@@ -277,7 +294,8 @@ describe("provider quota denial", () => {
     const result = await acquirePermitDecision(deps, BASE_INPUT);
 
     expect(result.granted).toBe(false);
-    expect((result as { retryAfterSeconds?: number }).retryAfterSeconds).toBe(120);
+    assertDenied(result);
+    expect(result.retryAfterSeconds).toBe(120);
   });
 
   test("proceeds (not denied at provider gate) when providerQuota returns ok=true", async () => {
@@ -290,6 +308,7 @@ describe("provider quota denial", () => {
     const result = await acquirePermitDecision(deps, BASE_INPUT);
 
     if (!result.granted) {
+      assertDenied(result);
       expect(result.gate).not.toBe("provider");
     }
   });
@@ -302,6 +321,7 @@ describe("provider quota denial", () => {
     const result = await acquirePermitDecision(deps, BASE_INPUT);
 
     if (!result.granted) {
+      assertDenied(result);
       expect(result.gate).not.toBe("provider");
     }
   });
@@ -325,8 +345,9 @@ describe("burn rate denial", () => {
     const result = await acquirePermitDecision(deps, BASE_INPUT);
 
     expect(result.granted).toBe(false);
+    assertDenied(result);
     expect(result.gate).toBe("burn_rate");
-    expect((result as { reason: string }).reason).toBe("burn_rate_exceeded");
+    expect(result.reason).toBe("burn_rate_exceeded");
   });
 
   test("denies when burnRate probe falls below minCommitsPerHour", async () => {
@@ -342,6 +363,7 @@ describe("burn rate denial", () => {
     const result = await acquirePermitDecision(deps, BASE_INPUT);
 
     expect(result.granted).toBe(false);
+    assertDenied(result);
     expect(result.gate).toBe("burn_rate");
   });
 
@@ -358,6 +380,7 @@ describe("burn rate denial", () => {
     const result = await acquirePermitDecision(deps, BASE_INPUT);
 
     if (!result.granted) {
+      assertDenied(result);
       expect(result.gate).not.toBe("burn_rate");
     }
   });
@@ -370,6 +393,7 @@ describe("burn rate denial", () => {
     const result = await acquirePermitDecision(deps, BASE_INPUT);
 
     if (!result.granted) {
+      assertDenied(result);
       expect(result.gate).not.toBe("burn_rate");
     }
   });
@@ -566,11 +590,12 @@ describe("project gate", () => {
     const result = await acquirePermitDecision(deps, PROJECT_INPUT);
 
     expect(result.granted).toBe(false);
+    assertDenied(result);
     expect(result.gate).toBe("project");
-    expect((result as { reason: string }).reason).toBe("project_concurrency_cap_exceeded");
-    expect((result as { details: { project_id: string; active_permits: number; concurrency_cap: number } }).details.project_id).toBe("proj_test_1");
-    expect((result as { details: { active_permits: number; concurrency_cap: number } }).details.active_permits).toBe(5);
-    expect((result as { details: { active_permits: number; concurrency_cap: number } }).details.concurrency_cap).toBe(3);
+    expect(result.reason).toBe("project_concurrency_cap_exceeded");
+    expect(result.details.project_id).toBe("proj_test_1");
+    expect(result.details.active_permits).toBe(5);
+    expect(result.details.concurrency_cap).toBe(3);
   });
 
   test("allows when project concurrency is below cap", async () => {
@@ -622,8 +647,9 @@ describe("project gate", () => {
     const result = await acquirePermitDecision(deps, PROJECT_INPUT);
 
     expect(result.granted).toBe(false);
+    assertDenied(result);
     expect(result.gate).toBe("project");
-    expect((result as { reason: string }).reason).toBe("project_daily_cost_cap_exceeded");
+    expect(result.reason).toBe("project_daily_cost_cap_exceeded");
   });
 
   test("allows when project daily cost is below cap", async () => {

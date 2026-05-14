@@ -421,10 +421,93 @@ describe("purgeProject", () => {
   test("returns 404 when project not found", () => {
     const res = purgeProject("no-such-id", deps);
     expect(res.status).toBe(404);
-    (res as Response).json().then((body) => {
+    const bodyPromise = (res as Response).json();
+    return bodyPromise.then((body) => {
       expect(body.error.code).toBe("project_not_found");
       expect(body.error.details.id).toBe("no-such-id");
     });
+  });
+});
+
+// ─── createProject workspace_ids parsing ─────────────────────────────────────
+
+describe("createProject workspace_ids", () => {
+  let dir: string;
+  let deps: Deps;
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), "aloop-proj-write-"));
+    deps = makeDeps(dir);
+  });
+
+  afterEach(() => {
+    const reg = deps.registry as unknown as { _db: { close(): void } };
+    reg._db?.close();
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  test("returns 400 when workspace_ids is not an array", async () => {
+    const req = makeRequest({
+      abs_path: "/test/project",
+      workspace_ids: "not-an-array",
+    });
+    const res = await createProject(req, deps);
+    expect(res.status).toBe(400);
+    const body = await (res as Response).json();
+    expect(body.error.code).toBe("bad_request");
+    expect(body.error.message).toContain("workspace_ids must be an array");
+  });
+
+  test("returns 400 when a workspace_ids entry is not an object", async () => {
+    const req = makeRequest({
+      abs_path: "/test/project",
+      workspace_ids: ["not-an-object"],
+    });
+    const res = await createProject(req, deps);
+    expect(res.status).toBe(400);
+    const body = await (res as Response).json();
+    expect(body.error.code).toBe("bad_request");
+    expect(body.error.message).toContain("each workspace_ids entry must be an object");
+  });
+
+  test("returns 400 when a workspace_ids entry has missing workspace_id", async () => {
+    const req = makeRequest({
+      abs_path: "/test/project",
+      workspace_ids: [{ role: "primary" }],
+    });
+    const res = await createProject(req, deps);
+    expect(res.status).toBe(400);
+    const body = await (res as Response).json();
+    expect(body.error.code).toBe("bad_request");
+    expect(body.error.message).toContain("workspace_id is required");
+  });
+
+  test("returns 400 when workspace_ids entry has empty string workspace_id", async () => {
+    const req = makeRequest({
+      abs_path: "/test/project",
+      workspace_ids: [{ workspace_id: "" }],
+    });
+    const res = await createProject(req, deps);
+    expect(res.status).toBe(400);
+    const body = await (res as Response).json();
+    expect(body.error.code).toBe("bad_request");
+    expect(body.error.message).toContain("workspace_id is required");
+  });
+
+  test("returns 201 when workspace_ids is absent (field not required)", async () => {
+    const req = makeRequest({ abs_path: "/test/project", name: "no-workspace" });
+    const res = await createProject(req, deps);
+    expect(res.status).toBe(201);
+    const body = await (res as Response).json();
+    expect(body.workspace_ids).toEqual([]);
+  });
+
+  test("returns 201 when workspace_ids is an empty array (allowed)", async () => {
+    const req = makeRequest({ abs_path: "/test/project", workspace_ids: [] });
+    const res = await createProject(req, deps);
+    expect(res.status).toBe(201);
+    const body = await (res as Response).json();
+    expect(body.workspace_ids).toEqual([]);
   });
 });
 
