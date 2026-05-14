@@ -38,15 +38,18 @@ class MockPermitRegistry {
 }
 
 function makePermit(overrides: Partial<Permit> = {}): Permit {
-  return {
+  const base: Permit = {
     id: "test-permit",
-    sessionId: "test-session",
+    sessionId: null,
+    composerTurnId: null,
+    controlSubagentRunId: null,
+    projectId: null,
     providerId: "test-provider",
     ttlSeconds: 600,
     grantedAt: "2024-01-01T00:00:00.000Z",
     expiresAt: "2024-01-01T01:00:00.000Z",
-    ...overrides,
   };
+  return { ...base, ...overrides };
 }
 
 function makeConfig(overrides: Partial<{
@@ -137,8 +140,9 @@ describe("releasePermit", () => {
     const result = await service.releasePermit("my-permit");
     expect(result).toBe(true);
     expect(events.events).toHaveLength(1);
-    expect(events.events[0].topic).toBe("scheduler.permit.release");
-    expect(events.events[0].data).toMatchObject({ permit_id: "my-permit", session_id: "my-session" });
+    const evt = events.events[0]!;
+    expect(evt.topic).toBe("scheduler.permit.release");
+    expect(evt.data).toMatchObject({ permit_id: "my-permit", session_id: "my-session" });
   });
 
   test("writes release event with composer_turn_id for composer turn owner", async () => {
@@ -151,12 +155,13 @@ describe("releasePermit", () => {
     const result = await service.releasePermit("perm-ct");
     expect(result).toBe(true);
     expect(events.events).toHaveLength(1);
-    expect(events.events[0].topic).toBe("scheduler.permit.release");
-    expect(events.events[0].data).toMatchObject({
+    const evt = events.events[0]!;
+    expect(evt.topic).toBe("scheduler.permit.release");
+    expect(evt.data).toMatchObject({
       permit_id: "perm-ct",
       composer_turn_id: "ct_01",
     });
-    expect(events.events[0].data).not.toHaveProperty("session_id");
+    expect(evt.data).not.toHaveProperty("session_id");
   });
 
   test("writes release event with control_subagent_run_id for control subagent owner", async () => {
@@ -169,12 +174,13 @@ describe("releasePermit", () => {
     const result = await service.releasePermit("perm-csar");
     expect(result).toBe(true);
     expect(events.events).toHaveLength(1);
-    expect(events.events[0].topic).toBe("scheduler.permit.release");
-    expect(events.events[0].data).toMatchObject({
+    const evt = events.events[0]!;
+    expect(evt.topic).toBe("scheduler.permit.release");
+    expect(evt.data).toMatchObject({
       permit_id: "perm-csar",
       control_subagent_run_id: "csar_99",
     });
-    expect(events.events[0].data).not.toHaveProperty("session_id");
+    expect(evt.data).not.toHaveProperty("session_id");
   });
 });
 
@@ -203,10 +209,12 @@ describe("expirePermits", () => {
     const result = await service.expirePermits("2025-01-01T00:00:00.000Z");
     expect(result).toBe(2);
     expect(events.events).toHaveLength(2);
-    expect(events.events[0].topic).toBe("scheduler.permit.expired");
-    expect(events.events[0].data).toMatchObject({ permit_id: "expired-1", session_id: "s1" });
-    expect(events.events[1].topic).toBe("scheduler.permit.expired");
-    expect(events.events[1].data).toMatchObject({ permit_id: "expired-2", session_id: "s2" });
+    const evt0 = events.events[0]!;
+    const evt1 = events.events[1]!;
+    expect(evt0.topic).toBe("scheduler.permit.expired");
+    expect(evt0.data).toMatchObject({ permit_id: "expired-1", session_id: "s1" });
+    expect(evt1.topic).toBe("scheduler.permit.expired");
+    expect(evt1.data).toMatchObject({ permit_id: "expired-2", session_id: "s2" });
   });
 
   test("returns 0 and does not crash when no nowIso provided", async () => {
@@ -230,12 +238,13 @@ describe("expirePermits", () => {
     const result = await service.expirePermits("2025-01-01T00:00:00.000Z");
     expect(result).toBe(1);
     expect(events.events).toHaveLength(1);
-    expect(events.events[0].topic).toBe("scheduler.permit.expired");
-    expect(events.events[0].data).toMatchObject({
+    const evt = events.events[0]!;
+    expect(evt.topic).toBe("scheduler.permit.expired");
+    expect(evt.data).toMatchObject({
       permit_id: "exp-ct",
       composer_turn_id: "ct_exp_01",
     });
-    expect(events.events[0].data).not.toHaveProperty("session_id");
+    expect(evt.data).not.toHaveProperty("session_id");
   });
 
   test("writes expire event with control_subagent_run_id for control subagent owner", async () => {
@@ -248,12 +257,13 @@ describe("expirePermits", () => {
     const result = await service.expirePermits("2025-01-01T00:00:00.000Z");
     expect(result).toBe(1);
     expect(events.events).toHaveLength(1);
-    expect(events.events[0].topic).toBe("scheduler.permit.expired");
-    expect(events.events[0].data).toMatchObject({
+    const evt = events.events[0]!;
+    expect(evt.topic).toBe("scheduler.permit.expired");
+    expect(evt.data).toMatchObject({
       permit_id: "exp-csar",
       control_subagent_run_id: "csar_exp_02",
     });
-    expect(events.events[0].data).not.toHaveProperty("session_id");
+    expect(evt.data).not.toHaveProperty("session_id");
   });
 });
 

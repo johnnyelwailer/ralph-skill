@@ -194,6 +194,9 @@ describe("PermitDecision", () => {
       permit: {
         id: "perm_abc123",
         sessionId: "s_1",
+        composerTurnId: null,
+        controlSubagentRunId: null,
+        projectId: null,
         providerId: "opencode",
         ttlSeconds: 600,
         grantedAt: "2026-01-01T00:00:00.000Z",
@@ -201,7 +204,9 @@ describe("PermitDecision", () => {
       },
     };
     expect(granted.granted).toBe(true);
-    expect(granted.permit.id).toBe("perm_abc123");
+    if (granted.granted) {
+      expect(granted.permit.id).toBe("perm_abc123");
+    }
   });
 
   test("PermitDenied variant has granted=false and denial fields", () => {
@@ -234,6 +239,9 @@ describe("PermitDecision", () => {
       permit: {
         id: "perm_x",
         sessionId: "s_1",
+        composerTurnId: null,
+        controlSubagentRunId: null,
+        projectId: null,
         providerId: "opencode",
         ttlSeconds: 600,
         grantedAt: "2026-01-01T00:00:00.000Z",
