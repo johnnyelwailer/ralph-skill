@@ -971,7 +971,7 @@ describe("POST /v1/sessions", () => {
     });
     const res = await handleSessions(req, deps, "/v1/sessions");
     expect(res!.status).toBe(201);
-    const body = await resJson<{ parent_session_id: null; max_iterations: null; notes: null }>(res!);
+    const body = await resJson<{ parent_session_id: null; max_iterations: null; notes: string }>(res!);
     expect(body.parent_session_id).toBeNull();
     expect(body.max_iterations).toBeNull();
     expect(body.notes).toBe("");
@@ -1406,7 +1406,7 @@ function makeMockEventWriter() {
     writer: {
       append: async <T>(topic: string, data: T) => {
         events.push({ topic, data: data as Record<string, unknown> });
-        return { _v: 1, id: "evt_test", timestamp: new Date(0).toISOString(), topic, data };
+        return { _v: 1 as const, id: "evt_test", timestamp: new Date(0).toISOString(), topic, data };
       },
     },
   };
