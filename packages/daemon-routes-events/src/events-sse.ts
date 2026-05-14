@@ -41,11 +41,17 @@ export async function handleEventsSSE(
   const sessionId = url.searchParams.get("session_id") ?? undefined;
   const parentId = url.searchParams.get("parent") ?? undefined;
   const since = url.searchParams.get("since") ?? req.headers.get("Last-Event-ID") ?? undefined;
+  const projectId = url.searchParams.get("project_id") ?? undefined;
+  const composerTurnId = url.searchParams.get("composer_turn_id") ?? undefined;
+  const controlSubagentRunId = url.searchParams.get("control_subagent_run_id") ?? undefined;
   const filter = {
     topics,
     ...(sessionId !== undefined ? { sessionId } : {}),
     ...(parentId !== undefined ? { parentId } : {}),
     ...(since !== undefined ? { since } : {}),
+    ...(projectId !== undefined ? { projectId } : {}),
+    ...(composerTurnId !== undefined ? { composerTurnId } : {}),
+    ...(controlSubagentRunId !== undefined ? { controlSubagentRunId } : {}),
   };
 
   // Collect all historical events from the log file
@@ -184,15 +190,21 @@ interface FilterOptions {
   sessionId?: string;
   parentId?: string;
   since?: string;
+  projectId?: string;
+  composerTurnId?: string;
+  controlSubagentRunId?: string;
 }
 
 /** Returns true when the event should be SKIPPED (not streamed). */
 function shouldSkip(env: EventEnvelope, opts: FilterOptions): boolean {
-  const { topics, sessionId, parentId, since } = opts;
+  const { topics, sessionId, parentId, since, projectId, composerTurnId, controlSubagentRunId } = opts;
 
   if (since && env.id <= since) return true;
   if (sessionId && (env.data as Record<string, unknown>)?.session_id !== sessionId) return true;
   if (parentId && (env.data as Record<string, unknown>)?.parent_session_id !== parentId) return true;
+  if (projectId && (env.data as Record<string, unknown>)?.project_id !== projectId) return true;
+  if (composerTurnId && (env.data as Record<string, unknown>)?.composer_turn_id !== composerTurnId) return true;
+  if (controlSubagentRunId && (env.data as Record<string, unknown>)?.control_subagent_run_id !== controlSubagentRunId) return true;
   if (!topicMatches(env.topic, topics)) return true;
 
   return false;

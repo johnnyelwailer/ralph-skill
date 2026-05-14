@@ -211,13 +211,19 @@ function localShouldSkip(
     sessionId?: string;
     parentId?: string;
     since?: string;
+    projectId?: string;
+    composerTurnId?: string;
+    controlSubagentRunId?: string;
   },
 ): boolean {
-  const { topics, sessionId, parentId, since } = opts;
+  const { topics, sessionId, parentId, since, projectId, composerTurnId, controlSubagentRunId } = opts;
 
   if (since && env.id <= since) return true;
   if (sessionId !== undefined && env.data?.session_id !== sessionId) return true;
   if (parentId !== undefined && env.data?.parent_session_id !== parentId) return true;
+  if (projectId !== undefined && env.data?.project_id !== projectId) return true;
+  if (composerTurnId !== undefined && env.data?.composer_turn_id !== composerTurnId) return true;
+  if (controlSubagentRunId !== undefined && env.data?.control_subagent_run_id !== controlSubagentRunId) return true;
 
   if (topics.length > 0) {
     const topicSegments = env.topic.split(".");
@@ -363,5 +369,95 @@ describe("shouldSkip — combined filters", () => {
   test("since filter applies even when topic matches", () => {
     const env = localEnv("0001", "session.update");
     expect(localShouldSkip(env, { topics: ["session.update"], since: "0002" })).toBe(true);
+  });
+});
+
+describe("shouldSkip — project_id filter", () => {
+  test("skips when project_id does not match", () => {
+    const env = localEnv("0001", "session.update", { project_id: "p_abc" });
+    expect(localShouldSkip(env, { topics: [], projectId: "p_xyz" })).toBe(true);
+  });
+
+  test("does not skip when project_id matches", () => {
+    const env = localEnv("0001", "session.update", { project_id: "p_abc" });
+    expect(localShouldSkip(env, { topics: [], projectId: "p_abc" })).toBe(false);
+  });
+
+  test("skips when project_id is missing", () => {
+    const env = localEnv("0001", "session.update", {});
+    expect(localShouldSkip(env, { topics: [], projectId: "p_abc" })).toBe(true);
+  });
+
+  test("no projectId filter means no skip", () => {
+    const env = localEnv("0001", "session.update", { project_id: "p_abc" });
+    expect(localShouldSkip(env, { topics: [] })).toBe(false);
+  });
+});
+
+describe("shouldSkip — composer_turn_id filter", () => {
+  test("skips when composer_turn_id does not match", () => {
+    const env = localEnv("0001", "provider.chunk", { composer_turn_id: "ct_abc" });
+    expect(localShouldSkip(env, { topics: [], composerTurnId: "ct_xyz" })).toBe(true);
+  });
+
+  test("does not skip when composer_turn_id matches", () => {
+    const env = localEnv("0001", "provider.chunk", { composer_turn_id: "ct_abc" });
+    expect(localShouldSkip(env, { topics: [], composerTurnId: "ct_abc" })).toBe(false);
+  });
+
+  test("skips when composer_turn_id is missing", () => {
+    const env = localEnv("0001", "provider.chunk", {});
+    expect(localShouldSkip(env, { topics: [], composerTurnId: "ct_abc" })).toBe(true);
+  });
+
+  test("no composerTurnId filter means no skip", () => {
+    const env = localEnv("0001", "provider.chunk", { composer_turn_id: "ct_abc" });
+    expect(localShouldSkip(env, { topics: [] })).toBe(false);
+  });
+});
+
+describe("shouldSkip — control_subagent_run_id filter", () => {
+  test("skips when control_subagent_run_id does not match", () => {
+    const env = localEnv("0001", "session.update", { control_subagent_run_id: "csar_abc" });
+    expect(localShouldSkip(env, { topics: [], controlSubagentRunId: "csar_xyz" })).toBe(true);
+  });
+
+  test("does not skip when control_subagent_run_id matches", () => {
+    const env = localEnv("0001", "session.update", { control_subagent_run_id: "csar_abc" });
+    expect(localShouldSkip(env, { topics: [], controlSubagentRunId: "csar_abc" })).toBe(false);
+  });
+
+  test("skips when control_subagent_run_id is missing", () => {
+    const env = localEnv("0001", "session.update", {});
+    expect(localShouldSkip(env, { topics: [], controlSubagentRunId: "csar_abc" })).toBe(true);
+  });
+
+  test("no controlSubagentRunId filter means no skip", () => {
+    const env = localEnv("0001", "session.update", { control_subagent_run_id: "csar_abc" });
+    expect(localShouldSkip(env, { topics: [] })).toBe(false);
+  });
+});
+
+describe("shouldSkip — all new filters combined", () => {
+  test("skips when project_id matches but composer_turn_id does not", () => {
+    const env = localEnv("0001", "provider.chunk", { project_id: "p_abc", composer_turn_id: "ct_abc" });
+    expect(localShouldSkip(env, { topics: [], projectId: "p_abc", composerTurnId: "ct_xyz" })).toBe(true);
+  });
+
+  test("does not skip when all filters match", () => {
+    const env = localEnv("0002", "provider.chunk", {
+      project_id: "p_abc",
+      session_id: "s_abc",
+      composer_turn_id: "ct_abc",
+      control_subagent_run_id: "csar_abc",
+    });
+    expect(localShouldSkip(env, {
+      topics: ["provider.chunk"],
+      sessionId: "s_abc",
+      projectId: "p_abc",
+      composerTurnId: "ct_abc",
+      controlSubagentRunId: "csar_abc",
+      since: "0001",
+    })).toBe(false);
   });
 });
