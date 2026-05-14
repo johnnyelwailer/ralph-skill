@@ -245,11 +245,11 @@ describe("getMetricAggregates", () => {
     expect(body.items[0].stat).toBe("mean");
   });
 
-  test("applies window_hours parameter to filter rows by window duration", async () => {
+  test("window_hours=24 excludes windows older than 24 hours from now", async () => {
     const now = new Date();
     const nowStr = now.toISOString();
-    const recent = new Date(now.getTime() - 6 * 60 * 60 * 1000).toISOString(); // 6h ago
-    const older = new Date(now.getTime() - 25 * 60 * 60 * 1000).toISOString(); // 25h ago
+    const recent = new Date(now.getTime() - 6 * 60 * 60 * 1000).toISOString(); // 6h ago — within 24h
+    const older = new Date(now.getTime() - 25 * 60 * 60 * 1000).toISOString(); // 25h ago — outside 24h
 
     db.exec(`
       INSERT INTO metric_aggregates (metric_name, labels, window_start, window_end, window_kind, stat, value, computed_at)
@@ -261,11 +261,15 @@ describe("getMetricAggregates", () => {
     const res = await getMetricAggregates(req, deps);
     expect(res.status).toBe(200);
     const body = await res.json();
-    // Currently window_hours param is accepted but not used in filtering
-    // Both rows are returned (window_hours filtering is a planned enhancement)
-    expect(body.items).toHaveLength(2);
-    const values = body.items.map((i: { value: number }) => i.value).sort();
-    expect(values).toEqual([38.0, 42.0]);
+    // SPEC MISMATCH: window_hours param is accepted but not applied to the SQL query.
+    // Per metrics.md Exposure and API contract, window_hours should filter rows
+    // to only those within the specified time window from now.
+    // This test asserts the correct spec behavior; the implementation currently
+    // ignores window_hours (both rows are returned).
+    // Expected: only the 6h-ago window (42.0) should be returned.
+    // Actual: both rows are returned (window_hours is parsed but unused).
+    expect(body.items).toHaveLength(1);
+    expect(body.items[0].value).toBe(42.0);
   });
 
   test("applies limit parameter to cap rows returned", async () => {
