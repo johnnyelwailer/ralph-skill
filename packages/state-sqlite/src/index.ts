@@ -74,6 +74,19 @@ export {
   SessionRegistry,
   type SessionQueueItem,
 } from "./state/sessions-registry";
+export {
+  executeRefreshProjection,
+  emitTriggerFired,
+  emitTriggerFailed,
+  parseDurationToMs,
+  getNextFireTime,
+  type TriggerEngineDeps,
+  type RefreshProjectionTarget,
+} from "./state/trigger-engine.ts";
+export {
+  evaluateTriggers,
+  type TriggerEvaluatorDeps,
+} from "./state/trigger-evaluator.ts";
 export type {
   Session,
   SessionKind,

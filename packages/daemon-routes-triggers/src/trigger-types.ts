@@ -49,6 +49,12 @@ export type TriggerAction = {
     readonly reason?: string;
     readonly source_event_id?: string;
     readonly message?: string;
+    /** Projection name to refresh (for refresh_projection action). "*" means all. */
+    readonly projection_name?: string;
+    /** Scope for the projection refresh. */
+    readonly projection_scope_kind?: "project" | "workspace" | "artifact" | "global";
+    /** Scope id for the projection refresh. */
+    readonly projection_scope_id?: string | null;
     // other target fields can be added as needed per kind
   };
 };

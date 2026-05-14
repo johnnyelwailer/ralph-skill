@@ -30,6 +30,10 @@ export type StartSchedulerWatchdogInput = {
     maxTokensSinceCommit: number,
     minCommitsPerHour: number,
   ): Promise<number>;
+  /**
+   * Evaluate time-based and event-based triggers.
+   */
+  evaluateTriggers?(events: EventWriter): Promise<number>;
   sessionsDir?: string;
   stuckThresholdSeconds?: number;
   providerRegistry?: ProviderRegistry;
@@ -96,6 +100,9 @@ export function startSchedulerWatchdog(input: StartSchedulerWatchdogInput): Runn
             input.maxTokensSinceCommit,
             input.minCommitsPerHour,
           );
+        }
+        if (input.evaluateTriggers && input.events) {
+          await input.evaluateTriggers(input.events);
         }
       } catch {
         // errors are swallowed
