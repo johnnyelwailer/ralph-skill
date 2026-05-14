@@ -9,7 +9,8 @@ export type SessionStatus =
   | "stopped"
   | "paused"
   | "completed"
-  | "failed";
+  | "failed"
+  | "archived";
 
 export interface Session {
   readonly id: string;
