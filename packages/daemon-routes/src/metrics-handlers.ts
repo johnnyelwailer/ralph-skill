@@ -114,6 +114,7 @@ export async function getMetricAggregates(
   }
 
   try {
+    const since = new Date(Date.now() - windowHours * 60 * 60 * 1000).toISOString();
     const rows = deps.db
       .query<{
         metric_name: string;
@@ -124,16 +125,17 @@ export async function getMetricAggregates(
         stat: string;
         value: number;
         computed_at: string;
-      }, [string, string, string, number]>(
+      }, [string, string, string, string, number]>(
         `SELECT metric_name, labels, window_start, window_end, window_kind, stat, value, computed_at
          FROM metric_aggregates
          WHERE metric_name = ?
            AND window_kind = ?
            AND stat = ?
+           AND window_start >= ?
          ORDER BY window_start DESC
          LIMIT ?`,
       )
-      .all(metricName, windowKind, stat, limit);
+      .all(metricName, windowKind, stat, since, limit);
 
     const items = rows.map((r) => ({
       metric_name: r.metric_name,
