@@ -209,6 +209,95 @@ describe("POST /v1/triggers", () => {
     const res = await handleTriggers(req, deps, "/v1/triggers");
     expect(res.status).toBe(405);
   });
+
+  test("rejects action without target", async () => {
+    const req = createTriggerReq(deps, {
+      scope: { kind: "global" },
+      source: { kind: "time" },
+      action: { kind: "emit_alert" },
+    });
+    const res = await handleTriggers(req, deps, "/v1/triggers");
+    expect(res.status).toBe(400);
+  });
+
+  test("accepts fire_monitor_profile action kind", async () => {
+    const req = createTriggerReq(deps, {
+      scope: { kind: "global" },
+      source: { kind: "time" },
+      action: { kind: "fire_monitor_profile", target: { artifact_id: "a_monitor_001" } },
+    });
+    const res = await handleTriggers(req, deps, "/v1/triggers");
+    expect(res.status).toBe(201);
+    const body = await res.json();
+    expect(body.action.kind).toBe("fire_monitor_profile");
+    expect(body.action.target.artifact_id).toBe("a_monitor_001");
+  });
+
+  test("accepts create_session action kind", async () => {
+    const req = createTriggerReq(deps, {
+      scope: { kind: "global" },
+      source: { kind: "time" },
+      action: { kind: "create_session", target: { reason: "scheduled check-in" } },
+    });
+    const res = await handleTriggers(req, deps, "/v1/triggers");
+    expect(res.status).toBe(201);
+    const body = await res.json();
+    expect(body.action.kind).toBe("create_session");
+    expect(body.action.target.reason).toBe("scheduled check-in");
+  });
+
+  test("accepts create_artifact action kind", async () => {
+    const req = createTriggerReq(deps, {
+      scope: { kind: "global" },
+      source: { kind: "time" },
+      action: { kind: "create_artifact", target: { reason: "daily summary" } },
+    });
+    const res = await handleTriggers(req, deps, "/v1/triggers");
+    expect(res.status).toBe(201);
+    const body = await res.json();
+    expect(body.action.kind).toBe("create_artifact");
+    expect(body.action.target.reason).toBe("daily summary");
+  });
+
+  test("accepts refresh_projection action kind", async () => {
+    const req = createTriggerReq(deps, {
+      scope: { kind: "project", id: "p_abc" },
+      source: { kind: "event", topic: "session.update" },
+      action: {
+        kind: "refresh_projection",
+        target: { projection_name: "session_summary", projection_scope_kind: "project", projection_scope_id: "p_abc" },
+      },
+    });
+    const res = await handleTriggers(req, deps, "/v1/triggers");
+    expect(res.status).toBe(201);
+    const body = await res.json();
+    expect(body.action.kind).toBe("refresh_projection");
+    expect(body.action.target.projection_name).toBe("session_summary");
+    expect(body.action.target.projection_scope_kind).toBe("project");
+    expect(body.action.target.projection_scope_id).toBe("p_abc");
+  });
+
+  test("rejects negative debounce_seconds", async () => {
+    const req = createTriggerReq(deps, {
+      scope: { kind: "global" },
+      source: { kind: "time" },
+      action: { kind: "emit_alert", target: {} },
+      debounce_seconds: -10,
+    });
+    const res = await handleTriggers(req, deps, "/v1/triggers");
+    expect(res.status).toBe(400);
+  });
+
+  test("rejects non-boolean enabled", async () => {
+    const req = createTriggerReq(deps, {
+      scope: { kind: "global" },
+      source: { kind: "time" },
+      action: { kind: "emit_alert", target: {} },
+      enabled: "yes",
+    });
+    const res = await handleTriggers(req, deps, "/v1/triggers");
+    expect(res.status).toBe(400);
+  });
 });
 
 // ─── GET /v1/triggers ──────────────────────────────────────────────────────────
