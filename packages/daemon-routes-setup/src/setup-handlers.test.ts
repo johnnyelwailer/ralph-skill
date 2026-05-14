@@ -148,6 +148,48 @@ describe("createSetupRun", () => {
     const res = await createSetupRun(req, deps);
     expect(res.status).toBe(400);
   });
+
+  test("returns 201 with flags reflected in response", async () => {
+    const req = new Request("http://localhost/v1/setup/runs", {
+      method: "POST",
+      body: JSON.stringify({
+        abs_path: "/test/project",
+        flags: { theme: "dark", verbose: "true" },
+      }),
+    });
+    const res = await createSetupRun(req, deps);
+    expect(res.status).toBe(201);
+    const body = await res.json();
+    // flags are stored by the store; verify the run was created with them
+    const stored = deps.store.get(body.id);
+    expect(stored.flags).toEqual({ theme: "dark", verbose: "true" });
+  });
+
+  test("returns 201 when both workflow and mode are provided with same value", async () => {
+    const req = new Request("http://localhost/v1/setup/runs", {
+      method: "POST",
+      body: JSON.stringify({
+        abs_path: "/test/project",
+        workflow: "orchestrator",
+        mode: "orchestrator",
+      }),
+    });
+    const res = await createSetupRun(req, deps);
+    expect(res.status).toBe(201);
+    const body = await res.json();
+    expect(body.workflow).toBe("orchestrator");
+  });
+
+  test("returns 201 with mode=standalone (backwards compat)", async () => {
+    const req = new Request("http://localhost/v1/setup/runs", {
+      method: "POST",
+      body: JSON.stringify({ abs_path: "/test/project", mode: "standalone" }),
+    });
+    const res = await createSetupRun(req, deps);
+    expect(res.status).toBe(201);
+    const body = await res.json();
+    expect(body.workflow).toBe("standalone");
+  });
 });
 
 describe("listSetupRuns", () => {
