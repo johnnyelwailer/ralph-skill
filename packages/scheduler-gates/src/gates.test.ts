@@ -1,12 +1,14 @@
 import { describe, expect, test } from "bun:test";
 import { applyOverrides, checkSystemGate, checkBurnRateGate, checkProjectGate } from "./gates.ts";
-import type { SchedulerLimits } from "./decisions.ts";
+import type { SchedulerLimits } from "./types.ts";
 import type { SchedulerProbes, BurnRateSample, ProjectDailyCostSample } from "./probes.ts";
 
 class MockEventWriter {
   readonly events: Array<{ topic: string; data: Record<string, unknown> }> = [];
-  async append(topic: string, data: Record<string, unknown>): Promise<void> {
-    this.events.push({ topic, data });
+  async append<T>(topic: string, data: T): Promise<{ readonly _v: 1; readonly id: string; readonly timestamp: string; readonly topic: string; readonly data: T }> {
+    const envelope = { _v: 1 as const, id: `mock_${this.events.length}`, timestamp: new Date().toISOString(), topic, data };
+    this.events.push({ topic, data: data as Record<string, unknown> });
+    return envelope;
   }
 }
 
