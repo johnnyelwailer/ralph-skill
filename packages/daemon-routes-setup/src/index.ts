@@ -2,6 +2,7 @@ export { handleSetup, type SetupDeps } from "./setup-router.ts";
 export { SetupStore } from "./setup-store.ts";
 export type {
   SetupRun,
+  SetupRunWorkflow,
   SetupRunMode,
   SetupRunStatus,
   SetupPhase,

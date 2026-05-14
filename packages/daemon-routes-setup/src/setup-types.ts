@@ -1,18 +1,19 @@
 /** Setup run types — daemon-owned setup orchestration state. */
 
-// TODO(workflow-topology): The spec now names this setup input `workflow`
-// rather than `mode`. Keep this compatibility field only until the setup route
-// and persisted setup-run schema are migrated together.
-export type SetupRunMode = "standalone" | "orchestrator";
+/** Workflow topology as named in setup.md §Workflow topology. */
+export type SetupRunWorkflow = "standalone" | "orchestrator";
+
+/** @deprecated Use SetupRunWorkflow — kept for compatibility during transition. */
+export type SetupRunMode = SetupRunWorkflow;
 export type SetupRunStatus = "active" | "completed" | "failed" | "abandoned";
 export type ReadinessVerdict = "resolved" | "unresolved" | "needs_deeper_research";
 
 /** Core setup run entity persisted to ~/.aloop/state/setup_runs/<id>/run.json */
 export type SetupRun = {
   readonly id: string;
-  readonly projectId: string | null; // null for greenfield (no project registered yet)
+  readonly projectId: string | null;
   readonly absPath: string;
-  readonly mode: SetupRunMode;
+  readonly workflow: SetupRunWorkflow;
   readonly status: SetupRunStatus;
   readonly phase: SetupPhase;
   readonly createdAt: string;
@@ -164,7 +165,8 @@ export type SetupCommentInput = {
 
 export type CreateSetupRunInput = {
   readonly absPath: string;
-  readonly mode?: SetupRunMode;
+  readonly workflow?: SetupRunWorkflow;
+  readonly mode?: SetupRunWorkflow;
   readonly nonInteractive?: boolean;
   readonly flags?: Record<string, string>;
 };

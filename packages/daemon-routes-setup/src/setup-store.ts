@@ -8,7 +8,7 @@ import type {
   SetupPhase,
   SetupQuestion,
   SetupRun,
-  SetupRunMode,
+  SetupRunWorkflow,
   SetupRunStatus,
   ReadinessVerdict,
 } from "./setup-types.ts";
@@ -57,12 +57,12 @@ export class SetupStore {
   create(input: CreateSetupRunInput): SetupRun {
     const id = `setup_${crypto.randomUUID().slice(0, 12)}`;
     const now = new Date().toISOString();
-    const mode: SetupRunMode = input.mode ?? "standalone";
+    const workflow: SetupRunWorkflow = input.workflow ?? input.mode ?? "standalone";
     const run: SetupRun = {
       id,
       projectId: null,
       absPath: input.absPath,
-      mode,
+      workflow,
       status: "active",
       phase: "discovery",
       createdAt: now,

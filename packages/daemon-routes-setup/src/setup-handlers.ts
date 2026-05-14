@@ -8,6 +8,7 @@ import {
   type SetupAnswerInput,
   type SetupCommentInput,
   type SetupRun,
+  type SetupRunWorkflow,
   type SetupChapter,
   type SetupQuestion,
 } from "./setup-types.ts";
@@ -37,10 +38,9 @@ const VALID_PHASES: readonly string[] = [
 
 /**
  * POST /v1/setup/runs — start a new setup run.
- * Body: { abs_path, mode?, non_interactive?, flags? }
- *
- * TODO(workflow-topology): Accept `workflow` as the canonical request field
- * and translate/remove the old `mode` compatibility path.
+ * Body: { abs_path, workflow?, mode?, non_interactive?, flags? }
+ * Per setup.md §Workflow topology, `workflow` is canonical (`standalone` | `orchestrator`).
+ * `mode` is accepted for backwards compatibility and maps to the same values.
  */
 export async function createSetupRun(req: Request, deps: SetupDeps): Promise<Response> {
   const body = await parseJsonBody(req);
@@ -49,10 +49,24 @@ export async function createSetupRun(req: Request, deps: SetupDeps): Promise<Res
   const absPath = typeof body.data.abs_path === "string" ? body.data.abs_path : undefined;
   if (!absPath) return badRequest("abs_path is required");
 
-  const mode = typeof body.data.mode === "string" ? body.data.mode : undefined;
-  if (mode !== undefined && mode !== "standalone" && mode !== "orchestrator") {
+  const rawWorkflow = typeof body.data.workflow === "string" ? body.data.workflow : undefined;
+  const rawMode = typeof body.data.mode === "string" ? body.data.mode : undefined;
+
+  if (rawWorkflow !== undefined && rawWorkflow !== "standalone" && rawWorkflow !== "orchestrator") {
+    return badRequest("workflow must be 'standalone' or 'orchestrator'");
+  }
+  if (rawMode !== undefined && rawMode !== "standalone" && rawMode !== "orchestrator") {
     return badRequest("mode must be 'standalone' or 'orchestrator'");
   }
+
+  const workflow: SetupRunWorkflow | undefined =
+    rawWorkflow === "standalone" || rawWorkflow === "orchestrator"
+      ? rawWorkflow
+      : undefined;
+  const mode: SetupRunWorkflow | undefined =
+    rawMode === "standalone" || rawMode === "orchestrator"
+      ? rawMode
+      : undefined;
 
   const nonInteractive = body.data.non_interactive === true;
   const flags =
@@ -62,6 +76,7 @@ export async function createSetupRun(req: Request, deps: SetupDeps): Promise<Res
 
   const input: CreateSetupRunInput = {
     absPath,
+    ...(workflow !== undefined ? { workflow } : {}),
     ...(mode !== undefined ? { mode } : {}),
     nonInteractive,
     flags,
@@ -353,7 +368,7 @@ function buildRunResponse(run: SetupRun, deps: SetupDeps): Record<string, unknow
     id: run.id,
     project_id: run.projectId,
     abs_path: run.absPath,
-    mode: run.mode,
+    workflow: run.workflow,
     status: run.status,
     phase: run.phase,
     verdict: run.verdict,

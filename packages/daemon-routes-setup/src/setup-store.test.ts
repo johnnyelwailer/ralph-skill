@@ -40,7 +40,7 @@ describe("SetupStore", () => {
       const run = store.create(input);
       expect(run.id).toMatch(/^setup_[a-f0-9-]+$/);
       expect(run.absPath).toBe("/test/project");
-      expect(run.mode).toBe("standalone");
+      expect(run.workflow).toBe("standalone");
       expect(run.status).toBe("active");
       expect(run.phase).toBe("discovery");
       expect(run.verdict).toBe("unresolved");
@@ -52,10 +52,16 @@ describe("SetupStore", () => {
       expect(run.flags).toEqual({});
     });
 
-    test("creates a run with explicit mode", () => {
+    test("creates a run with explicit workflow", () => {
+      const input: CreateSetupRunInput = { absPath: "/test/project", workflow: "orchestrator" };
+      const run = store.create(input);
+      expect(run.workflow).toBe("orchestrator");
+    });
+
+    test("creates a run with legacy mode field", () => {
       const input: CreateSetupRunInput = { absPath: "/test/project", mode: "orchestrator" };
       const run = store.create(input);
-      expect(run.mode).toBe("orchestrator");
+      expect(run.workflow).toBe("orchestrator");
     });
 
     test("creates a run with nonInteractive and flags", () => {

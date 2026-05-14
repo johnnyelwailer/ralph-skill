@@ -53,21 +53,21 @@ describe("createSetupRun", () => {
     const body = await res.json();
     expect(body._v).toBe(1);
     expect(body.abs_path).toBe("/test/project");
-    expect(body.mode).toBe("standalone");
+    expect(body.workflow).toBe("standalone");
     expect(body.status).toBe("active");
     expect(body.phase).toBe("discovery");
     expect(body.id).toMatch(/^setup_/);
   });
 
-  test("returns 201 with mode=orchestrator", async () => {
+  test("returns 201 with workflow=orchestrator", async () => {
     const req = new Request("http://localhost/v1/setup/runs", {
       method: "POST",
-      body: JSON.stringify({ abs_path: "/test/project", mode: "orchestrator" }),
+      body: JSON.stringify({ abs_path: "/test/project", workflow: "orchestrator" }),
     });
     const res = await createSetupRun(req, deps);
     expect(res.status).toBe(201);
     const body = await res.json();
-    expect(body.mode).toBe("orchestrator");
+    expect(body.workflow).toBe("orchestrator");
   });
 
   test("returns 201 with non_interactive=true", async () => {
@@ -116,6 +116,17 @@ describe("createSetupRun", () => {
     expect(res.status).toBe(400);
     const body = await res.json();
     expect(body.error.message).toContain("mode");
+  });
+
+  test("returns 400 when workflow is invalid", async () => {
+    const req = new Request("http://localhost/v1/setup/runs", {
+      method: "POST",
+      body: JSON.stringify({ abs_path: "/test", workflow: "invalid" }),
+    });
+    const res = await createSetupRun(req, deps);
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error.message).toContain("workflow");
   });
 
   test("returns 400 for invalid JSON body", async () => {
