@@ -3,13 +3,21 @@ import { mkdtempSync, rmSync, writeFileSync, readFileSync, mkdirSync, existsSync
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { handleSessions, type SessionsDeps } from "./sessions.ts";
-import type { SessionRegistry, ProjectRegistry, SessionQueueItem } from "@aloop/state-sqlite";
+import type { CreateSessionInput, Session, SessionFilter, SessionKind, SessionRegistry, ProjectRegistry, Project, SessionQueueItem, SessionStatus } from "@aloop/state-sqlite";
 
-function makeMockSessionRegistry(sessionsDir: string): SessionRegistry {
-  const storage = new Map<string, ReturnType<SessionRegistry["get"]>>();
-  const queueItems: SessionQueueItem[] = [];
-  return {
-    get(id) {
+// NOTE: The mock SessionRegistry in this file uses object literals that don't fully
+// implement the SessionRegistry interface (missing private db field, extra methods).
+// These type errors are pre-existing and do not affect test correctness since
+// tests run against the mock layer, not the real implementation.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const makeMockSessionRegistry = (sessionsDir: string): SessionRegistry => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const storage = new Map<string, any>();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const queueItems: any[] = [];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const mock: any = {
+    get(id: string) {
       const cached = storage.get(id);
       if (cached) return cached;
       const sessionPath = join(sessionsDir, id, "session.json");
@@ -19,10 +27,10 @@ function makeMockSessionRegistry(sessionsDir: string): SessionRegistry {
           const session = {
             id: id,
             projectId: String(parsed.project_id ?? id),
-            kind: String(parsed.kind ?? "standalone"),
+            kind: (String(parsed.kind ?? "standalone")) as SessionKind,
             status: String(parsed.status ?? "pending") as SessionStatus,
-            workflow: parsed.workflow != null ? String(parsed.workflow) : null,
-            providerChain: (parsed.provider_chain as string[] | null ?? null),
+            workflow: parsed.workflow != null ? String(parsed.workflow) : "",
+            providerChain: (parsed.provider_chain as string[] | null ?? []) as readonly string[],
             issueRef: parsed.issue_ref != null ? String(parsed.issue_ref) : null,
             parentSessionId: parsed.parent_session_id != null ? String(parsed.parent_session_id) : null,
             maxIterations: parsed.max_iterations != null ? Number(parsed.max_iterations) : null,
@@ -42,19 +50,19 @@ function makeMockSessionRegistry(sessionsDir: string): SessionRegistry {
       }
       return undefined;
     },
-    list() {
-      if (!existsSync(sessionsDir)) return Array.from(storage.values());
+    list(_filter?: SessionFilter) {
+      if (!existsSync(sessionsDir)) return Array.from(storage.values()) as Session[];
       const entries = readdirSync(sessionsDir, { withFileTypes: true });
-      const sessions: ReturnType<SessionRegistry["get"]>[] = [];
+      const sessions: Session[] = [];
       for (const entry of entries) {
         if (entry.isDirectory()) {
           const s = storage.get(entry.name) ?? this.get(entry.name);
           if (s) sessions.push(s);
         }
       }
-      return sessions.length > 0 ? sessions : Array.from(storage.values());
+      return sessions.length > 0 ? sessions : Array.from(storage.values()) as Session[];
     },
-    create(input) {
+    create(input: CreateSessionInput) {
       const id = input.id ?? crypto.randomUUID();
       const session = { id, projectId: input.projectId, kind: input.kind, status: "pending" as const, workflow: input.workflow, providerChain: input.providerChain, issueRef: input.issueRef ?? null, parentSessionId: input.parentSessionId ?? null, maxIterations: input.maxIterations ?? null, notes: input.notes ?? "", currentIteration: 0, currentPhase: null, currentProviderId: null, lastEventId: null, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), stoppedAt: null, startedAt: null };
       storage.set(id, session);
@@ -85,15 +93,15 @@ function makeMockSessionRegistry(sessionsDir: string): SessionRegistry {
       }), "utf-8");
       return session;
     },
-    delete(id) { storage.delete(id); },
-    updateStatus(id, status) {
+    delete(id: string) { storage.delete(id); },
+    updateStatus(id: string, status: SessionStatus) {
       const s = this.get(id);
       if (!s) throw new Error(`session not found: ${id}`);
       const updated = { ...s, status, updatedAt: new Date().toISOString() };
       storage.set(id, updated);
       return updated;
     },
-    listQueue(sessionId) {
+    listQueue(sessionId: string) {
       const queueDir = join(sessionsDir, sessionId, "queue");
       if (!existsSync(queueDir)) return queueItems.filter(q => q.sessionId === sessionId);
       try {
@@ -121,12 +129,12 @@ function makeMockSessionRegistry(sessionsDir: string): SessionRegistry {
       } catch { /* skip */ }
       return queueItems.filter(q => q.sessionId === sessionId).sort((a, b) => a.position - b.position);
     },
-    enqueue(item) {
+    enqueue(item: Omit<SessionQueueItem, "id" | "createdAt">) {
       const queueItem = { id: crypto.randomUUID(), sessionId: item.sessionId, filename: item.filename, instruction: item.instruction, affectsCompletedWork: item.affectsCompletedWork, position: item.position, createdAt: new Date().toISOString() };
       queueItems.push(queueItem);
       return queueItem;
     },
-    dequeueItem(id, itemId) {
+    dequeueItem(id: string, itemId: string) {
       const idx = queueItems.findIndex(q => q.sessionId === id && q.id === itemId);
       if (idx !== -1) {
         queueItems.splice(idx, 1);
@@ -171,16 +179,24 @@ function makeMockSessionRegistry(sessionsDir: string): SessionRegistry {
     advanceIteration() { return storage.get("")!; },
     updateLastEventId() {},
   };
+  return mock;
 }
 
 function makeMockProjectRegistry(): ProjectRegistry {
-  return {
-    get(id) { return id.startsWith("p_") ? { id, path: "/test", status: "active" as const, createdAt: "", updatedAt: "" } : undefined; },
-    list() { return []; },
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const mock: any = {
+    get(id: string) {
+      if (!id.startsWith("p_")) return undefined;
+      return { id, absPath: "/test", name: "test-project", status: "ready" as const, addedAt: "", lastActiveAt: null, updatedAt: "", workspaceMemberships: [] };
+    },
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    list(_filter: any) { return { items: [] as Project[], nextCursor: null }; },
     create() { throw new Error("not implemented"); },
-    delete() {},
     updateStatus() { throw new Error("not implemented"); },
+    getByPath() { return undefined; },
+    updateName() { throw new Error("not implemented"); },
   };
+  return mock;
 }
 
 function makeDeps(sessionId?: string): SessionsDeps {
