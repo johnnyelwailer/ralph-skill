@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import type { Database } from "bun:sqlite";
 import type { Permit } from "@aloop/state-sqlite";
 import type { PermitDecision, PermitDenied } from "./decisions.ts";
 import type { SchedulerConfigView } from "./decisions.ts";
@@ -18,8 +19,6 @@ class MockEventWriter {
     this.events.push({ topic, data });
   }
 }
-
-import type { Database } from "bun:sqlite";
 
 class MockPermitRegistry {
   private _permits = new Map<string, Permit>();
@@ -75,15 +74,19 @@ function makeProbes(overrides: Partial<{
 }
 
 function makePermit(overrides: Partial<Permit> = {}): Permit {
-  return {
+  const permit: Permit = {
     id: `perm_${Math.random().toString(36).slice(2)}`,
-    sessionId: "test-session",
+    sessionId: null,
+    composerTurnId: null,
+    controlSubagentRunId: null,
+    projectId: null,
     providerId: "opencode",
     ttlSeconds: 600,
     grantedAt: new Date().toISOString(),
     expiresAt: new Date(Date.now() + 600_000).toISOString(),
     ...overrides,
   };
+  return permit;
 }
 
 function makeDeps(

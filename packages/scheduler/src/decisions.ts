@@ -38,13 +38,15 @@ type PermitGranted = {
   readonly permit: Permit;
 };
 
-type PermitDenied = {
+export type PermitDenied = {
   readonly granted: false;
   readonly reason: string;
   readonly gate: string;
   readonly details: Record<string, unknown>;
   readonly retryAfterSeconds?: number;
 };
+
+export type { PermitGranted };
 
 export type PermitDecision = PermitGranted | PermitDenied;
 

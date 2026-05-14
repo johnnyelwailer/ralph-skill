@@ -132,7 +132,7 @@ describe("updateSchedulerLimits", () => {
   test("returns ok=false when patch has unknown top-level field", async () => {
     const result = await updateSchedulerLimits(h.config, h.events, { nope: 1 });
     expect(result.ok).toBe(false);
-    if (!result.ok) {
+    if (!result.ok && "errors" in result) {
       expect(result.errors[0]).toContain("unknown scheduler limits field");
     }
   });
@@ -142,7 +142,7 @@ describe("updateSchedulerLimits", () => {
       system_limits: { nope: 1 },
     });
     expect(result.ok).toBe(false);
-    if (!result.ok) {
+    if (!result.ok && "errors" in result) {
       expect(result.errors[0]).toContain("unknown scheduler.system_limits field");
     }
   });
@@ -152,7 +152,7 @@ describe("updateSchedulerLimits", () => {
       burn_rate: { nope: 1 },
     });
     expect(result.ok).toBe(false);
-    if (!result.ok) {
+    if (!result.ok && "errors" in result) {
       expect(result.errors[0]).toContain("unknown scheduler.burn_rate field");
     }
   });
@@ -162,7 +162,7 @@ describe("updateSchedulerLimits", () => {
       system_limits: "not-a-map",
     });
     expect(result.ok).toBe(false);
-    if (!result.ok) {
+    if (!result.ok && "errors" in result) {
       expect(result.errors[0]).toContain("scheduler.system_limits: must be a mapping");
     }
   });
@@ -172,7 +172,7 @@ describe("updateSchedulerLimits", () => {
       burn_rate: 42,
     });
     expect(result.ok).toBe(false);
-    if (!result.ok) {
+    if (!result.ok && "errors" in result) {
       expect(result.errors[0]).toContain("scheduler.burn_rate: must be a mapping");
     }
   });
@@ -193,7 +193,7 @@ describe("updateSchedulerLimits", () => {
       permit_ttl_max_seconds: 1800,
     });
     expect(result.ok).toBe(false);
-    if (!result.ok) {
+    if (!result.ok && "errors" in result) {
       expect(result.errors[0]).toContain("permit_ttl_default_seconds must be <= permit_ttl_max_seconds");
     }
   });
@@ -235,7 +235,7 @@ describe("updateSchedulerLimits", () => {
       burn_rate: 42 as unknown as Record<string, unknown>,
     });
     expect(result.ok).toBe(false);
-    if (!result.ok) {
+    if (!result.ok && "errors" in result) {
       expect(result.errors[0]).toContain("scheduler.burn_rate: must be a mapping");
     }
   });
@@ -255,8 +255,9 @@ describe("updateSchedulerLimits", () => {
     expect(result.ok).toBe(false);
     if (!result.ok && "code" in result) {
       expect(result.code).toBe("tune_out_of_bounds");
-      expect(result.violations[0].field).toBe("concurrencyCap");
-      expect(result.violations[0].requested).toBe(0);
+      const v0 = result.violations[0];
+      expect(v0?.field).toBe("concurrencyCap");
+      expect(v0?.requested).toBe(0);
     }
   });
 
