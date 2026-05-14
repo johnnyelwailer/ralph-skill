@@ -8,6 +8,10 @@
  * - All generic data shapes (WorkItem, ChangeSet, Comment, etc.)
  * - Capability and health types
  */
+export {
+  createBuiltinAdapter,
+  type CreateBuiltinAdapterOptions,
+} from "./builtin-adapter.ts";
 export type {
   TrackerId,
   WorkItemRef,
