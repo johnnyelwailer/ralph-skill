@@ -482,3 +482,92 @@ describe("createBuiltinAdapter", () => {
     });
   });
 });
+  describe("reorderChild", () => {
+    test("is a no-op — does not throw", async () => {
+      const adapter = makeAdapter();
+      const parentRef = await adapter.createWorkItem({ kind: "epic", title: "E1", body: "..." });
+      const childRef = await adapter.createWorkItem({ kind: "story", title: "S1", body: "...", parent: parentRef });
+      // Must not throw — reorderChild is not yet implemented in the builtin adapter
+      await adapter.reorderChild(parentRef, childRef);
+      // Verify child is still linked
+      const parent = await adapter.getParent(childRef);
+      expect(parent?.key).toBe("0001");
+    });
+
+    test("accepts after and before references without throwing", async () => {
+      const adapter = makeAdapter();
+      const epicRef = await adapter.createWorkItem({ kind: "epic", title: "Epic", body: "..." });
+      const s1 = await adapter.createWorkItem({ kind: "story", title: "S1", body: "...", parent: epicRef });
+      const s2 = await adapter.createWorkItem({ kind: "story", title: "S2", body: "...", parent: epicRef });
+      // Must not throw even with after/before hints
+      await adapter.reorderChild(epicRef, s2, s1);
+    });
+  });
+
+  describe("mirrorTasks", () => {
+    test("is a no-op — does not throw", async () => {
+      const adapter = makeAdapter();
+      const epicRef = await adapter.createWorkItem({ kind: "epic", title: "E1", body: "..." });
+      const storyRef = await adapter.createWorkItem({ kind: "story", title: "Story", body: "...", parent: epicRef });
+      // mirrorTasks is a stub — must not throw
+      await adapter.mirrorTasks(storyRef, [
+        { id: "t1", title: "Task 1", completed: false },
+        { id: "t2", title: "Task 2", completed: true },
+      ]);
+    });
+
+    test("accepts empty task array without throwing", async () => {
+      const adapter = makeAdapter();
+      const storyRef = await adapter.createWorkItem({ kind: "story", title: "Story", body: "..." });
+      await adapter.mirrorTasks(storyRef, []);
+    });
+  });
+
+  describe("addComment", () => {
+    test("returns a CommentRef without persisting the comment", async () => {
+      const adapter = makeAdapter();
+      const ref = await adapter.createWorkItem({ kind: "epic", title: "E1", body: "..." });
+      const commentRef = await adapter.addComment(ref, "This is a comment body");
+      expect(commentRef.id).toBeDefined();
+      expect(typeof commentRef.id).toBe("string");
+    });
+
+    test("returns CommentRef with id that is a valid string and changes across multiple calls", async () => {
+      const adapter = makeAdapter();
+      const ref = await adapter.createWorkItem({ kind: "epic", title: "E1", body: "..." });
+      const id1 = (await adapter.addComment(ref, "First")).id;
+      const id2 = (await adapter.addComment(ref, "Second")).id;
+      const id3 = (await adapter.addComment(ref, "Third")).id;
+      // All IDs must be non-empty strings
+      expect(typeof id1).toBe("string");
+      expect(id1.length).toBeGreaterThan(0);
+      // Across three calls with deliberate delay, IDs should differ
+      // (If called within same ms, Date.now() may collide — use delay to avoid flakiness)
+      await new Promise((r) => setTimeout(r, 2));
+      const id4 = (await adapter.addComment(ref, "Fourth")).id;
+      expect(id4).not.toBe(id1);
+    });
+
+    test("accepts artifact_refs option without throwing", async () => {
+      const adapter = makeAdapter();
+      const ref = await adapter.createWorkItem({ kind: "epic", title: "E1", body: "..." });
+      const commentRef = await adapter.addComment(ref, "Comment with screenshot", {
+        artifact_refs: [{ artifact_id: "art_123", presentation: "inline_image", alt: "Screenshot" }],
+      });
+      expect(commentRef.id).toBeDefined();
+    });
+  });
+
+  describe("listComments", () => {
+    test("returns empty iterable — comments are not stored in builtin adapter", async () => {
+      const adapter = makeAdapter();
+      const ref = await adapter.createWorkItem({ kind: "epic", title: "E1", body: "..." });
+      // addComment creates a comment ref but does not persist it
+      await adapter.addComment(ref, "A comment that is not stored");
+      const comments = [];
+      for await (const _ of adapter.listComments(ref)) {
+        comments.push(_);
+      }
+      expect(comments).toHaveLength(0);
+    });
+  });
