@@ -9,6 +9,7 @@ import {
   removeProjectFromWorkspace,
   updateWorkspace,
   addProjectToWorkspace,
+  getProjectCounts,
   getProjectRole,
   listWorkspaceProjectsWithDetails,
   updateWorkspaceName,
@@ -337,6 +338,61 @@ describe("addProjectToWorkspace", () => {
     if (err instanceof ProjectNotFoundWorkspaceError) {
       expect(err.projectId).toBe("proj-missing");
     }
+  });
+});
+
+// ─── getProjectCounts ───────────────────────────────────────────────────────────
+
+describe("getProjectCounts", () => {
+  test("returns zero counts when workspace has no memberships", () => {
+    const w = createWorkspace(db, { name: "Empty W" });
+    const counts = getProjectCounts(db, w.id);
+    expect(counts.total).toBe(0);
+    expect(counts.primary).toBe(0);
+    expect(counts.supporting).toBe(0);
+    expect(counts.dependency).toBe(0);
+    expect(counts.experiment).toBe(0);
+    expect(counts.defaultProjectId).toBeNull();
+  });
+
+  test("counts all role types correctly", () => {
+    const w = createWorkspace(db, { name: "W" });
+    seedProject("p1", "P1");
+    seedProject("p2", "P2");
+    seedProject("p3", "P3");
+    seedProject("p4", "P4");
+    seedProject("p5", "P5");
+    addProjectToWorkspace(db, w.id, "p1", "primary");
+    addProjectToWorkspace(db, w.id, "p2", "supporting");
+    addProjectToWorkspace(db, w.id, "p3", "dependency");
+    addProjectToWorkspace(db, w.id, "p4", "experiment");
+    addProjectToWorkspace(db, w.id, "p5", "primary");
+
+    const counts = getProjectCounts(db, w.id);
+    expect(counts.total).toBe(5);
+    expect(counts.primary).toBe(2);
+    expect(counts.supporting).toBe(1);
+    expect(counts.dependency).toBe(1);
+    expect(counts.experiment).toBe(1);
+  });
+
+  test("defaultProjectId is the earliest-added primary project", () => {
+    const w = createWorkspace(db, { name: "W" });
+    seedProject("early", "Early");
+    seedProject("late", "Late");
+    addProjectToWorkspace(db, w.id, "early", "primary", "2026-01-01T00:00:00Z");
+    addProjectToWorkspace(db, w.id, "late", "primary", "2026-02-01T00:00:00Z");
+
+    const counts = getProjectCounts(db, w.id);
+    expect(counts.defaultProjectId).toBe("early");
+    expect(counts.primary).toBe(2);
+  });
+
+  test("returns zero counts when workspace does not exist", () => {
+    const counts = getProjectCounts(db, "nonexistent-ws");
+    expect(counts.total).toBe(0);
+    expect(counts.primary).toBe(0);
+    expect(counts.defaultProjectId).toBeNull();
   });
 });
 
