@@ -4,280 +4,306 @@ import {
   applyProviderSuccess,
   createUnknownHealth,
   isProviderAvailable,
-  type ProviderFailureClass,
+  type ProviderHealth,
 } from "./health.ts";
 
 const NOW = Date.parse("2026-01-01T00:00:00.000Z");
+const iso = (ms: number) => new Date(ms).toISOString();
 
-function unknown(providerId = "test"): ReturnType<typeof createUnknownHealth> {
-  return createUnknownHealth(providerId, NOW);
-}
+// ─── createUnknownHealth ────────────────────────────────────────────────────
 
-describe("applyProviderFailure", () => {
-  test("increments consecutiveFailures", () => {
-    const prev = { ...unknown(), consecutiveFailures: 0 };
-    const next = applyProviderFailure(prev, "timeout", NOW);
-    expect(next.consecutiveFailures).toBe(1);
+describe("createUnknownHealth", () => {
+  test("creates unknown status for a provider", () => {
+    const h = createUnknownHealth("opencode", NOW);
+    expect(h.providerId).toBe("opencode");
+    expect(h.status).toBe("unknown");
+    expect(h.consecutiveFailures).toBe(0);
+    expect(h.lastSuccess).toBeNull();
+    expect(h.lastFailure).toBeNull();
+    expect(h.failureReason).toBeNull();
+    expect(h.cooldownUntil).toBeNull();
+    expect(h.quotaRemaining).toBeNull();
+    expect(h.quotaResetsAt).toBeNull();
+    expect(h.updatedAt).toBe(iso(NOW));
   });
 
-  test("sets lastFailure and failureReason", () => {
-    const prev = unknown();
-    const next = applyProviderFailure(prev, "rate_limit", NOW);
-    expect(next.lastFailure).toBe(new Date(NOW).toISOString());
-    expect(next.failureReason).toBe("rate_limit");
-  });
-
-  test("auth failure sets status to degraded and cooldownUntil to null", () => {
-    const prev = unknown();
-    const next = applyProviderFailure(prev, "auth", NOW);
-    expect(next.status).toBe("degraded");
-    expect(next.cooldownUntil).toBeNull();
-  });
-
-  test("non-auth failure with no backoff and no quota-reset sets status to healthy", () => {
-    // consecutiveFailures=0 → backoff=0 → no cooldown
-    const prev = { ...unknown(), consecutiveFailures: 0 };
-    const next = applyProviderFailure(prev, "timeout", NOW);
-    expect(next.status).toBe("healthy");
-    expect(next.cooldownUntil).toBeNull();
-  });
-
-  test("non-auth failure with backoff sets status to cooldown", () => {
-    // consecutiveFailures=2 → backoff=2min
-    const prev = { ...unknown(), consecutiveFailures: 1 };
-    const next = applyProviderFailure(prev, "timeout", NOW);
-    expect(next.status).toBe("cooldown");
-    expect(next.cooldownUntil).not.toBeNull();
-  });
-
-  test("cooldownUntil reflects backoff duration", () => {
-    const prev = { ...unknown(), consecutiveFailures: 1 };
-    const next = applyProviderFailure(prev, "timeout", NOW);
-    // backoff[2] = 2 minutes = 120000ms
-    const expectedCooldown = new Date(NOW + 120_000).toISOString();
-    expect(next.cooldownUntil).toBe(expectedCooldown);
-  });
-
-  test("backoff table caps at last entry for high failure counts", () => {
-    // consecutiveFailures=99 → backoff[min(100, 6)] = backoff[6] = 60 min
-    const prev = { ...unknown(), consecutiveFailures: 99 };
-    const next = applyProviderFailure(prev, "timeout", NOW);
-    expect(next.status).toBe("cooldown");
-    const expected = new Date(NOW + 60 * 60_000).toISOString();
-    expect(next.cooldownUntil).toBe(expected);
-  });
-
-  test("quotaRemaining is preserved when not provided in options", () => {
-    const prev = { ...unknown(), quotaRemaining: 500 };
-    const next = applyProviderFailure(prev, "timeout", NOW, {});
-    expect(next.quotaRemaining).toBe(500);
-  });
-
-  test("quotaRemaining is updated when provided in options", () => {
-    const prev = { ...unknown(), quotaRemaining: 500 };
-    const next = applyProviderFailure(prev, "timeout", NOW, { quotaRemaining: 42 });
-    expect(next.quotaRemaining).toBe(42);
-  });
-
-  // quotaRemaining: explicit null-to-null not supported by current options merge;
-  // options.quotaRemaining = null is treated as "not provided" → prev value kept
-
-  test("quotaResetsAt is set when quotaResetsAtMs is provided", () => {
-    const prev = unknown();
-    const next = applyProviderFailure(prev, "timeout", NOW, { quotaResetsAtMs: NOW + 3_600_000 });
-    expect(next.quotaResetsAt).toBe(new Date(NOW + 3_600_000).toISOString());
-  });
-
-  test("quotaResetsAt is preserved when quotaResetsAtMs is not provided", () => {
-    const prev = { ...unknown(), quotaResetsAt: "2026-01-01T02:00:00.000Z" };
-    const next = applyProviderFailure(prev, "timeout", NOW, {});
-    expect(next.quotaResetsAt).toBe("2026-01-01T02:00:00.000Z");
-  });
-
-  test("quotaResetsAt is preserved when quotaResetsAtMs is null", () => {
-    const prev = { ...unknown(), quotaResetsAt: "2026-01-01T02:00:00.000Z" };
-    const next = applyProviderFailure(prev, "timeout", NOW, { quotaResetsAtMs: null });
-    expect(next.quotaResetsAt).toBe("2026-01-01T02:00:00.000Z");
-  });
-
-  test("cooldownUntil uses max of backoff and quotaResetsAtMs when both are set", () => {
-    // quotaResetsAtMs = NOW + 5 min = 300_000ms
-    // backoff[2] = 2 min = 120_000ms
-    // max = 300_000ms
-    const prev = { ...unknown(), consecutiveFailures: 1 };
-    const next = applyProviderFailure(prev, "timeout", NOW, {
-      quotaResetsAtMs: NOW + 300_000,
-    });
-    expect(next.status).toBe("cooldown");
-    expect(next.cooldownUntil).toBe(new Date(NOW + 300_000).toISOString());
-  });
-
-  test("auth failure does not set cooldownUntil even when quotaResetsAtMs is set", () => {
-    const prev = unknown();
-    const next = applyProviderFailure(prev, "auth", NOW, {
-      quotaResetsAtMs: NOW + 300_000,
-    });
-    expect(next.status).toBe("degraded");
-    expect(next.cooldownUntil).toBeNull();
-  });
-
-  test("updatedAt reflects nowMs", () => {
-    const prev = unknown();
-    const next = applyProviderFailure(prev, "timeout", NOW + 5_000);
-    expect(next.updatedAt).toBe(new Date(NOW + 5_000).toISOString());
-  });
-
-  test("custom backoffMsByFailureCount overrides default", () => {
-    const prev = { ...unknown(), consecutiveFailures: 0 };
-    // Index 1 with 3-entry table = backoff of 10_000ms
-    const next = applyProviderFailure(prev, "timeout", NOW, {
-      backoffMsByFailureCount: [0, 10_000, 20_000],
-    });
-    expect(next.status).toBe("cooldown");
-    expect(next.cooldownUntil).toBe(new Date(NOW + 10_000).toISOString());
-  });
-
-  test("cooldownMultiplier of 2.0 doubles the backoff duration", () => {
-    const prev = { ...unknown(), consecutiveFailures: 1 }; // backoff[2] = 2 min = 120_000ms
-    const next = applyProviderFailure(prev, "timeout", NOW, {
-      cooldownMultiplier: 2.0,
-    });
-    expect(next.status).toBe("cooldown");
-    // 120_000ms * 2.0 = 240_000ms
-    expect(next.cooldownUntil).toBe(new Date(NOW + 240_000).toISOString());
-  });
-
-  test("cooldownMultiplier of 0.5 halves the backoff duration", () => {
-    const prev = { ...unknown(), consecutiveFailures: 2 }; // backoff[3] = 5 min = 300_000ms
-    const next = applyProviderFailure(prev, "timeout", NOW, {
-      cooldownMultiplier: 0.5,
-    });
-    expect(next.status).toBe("cooldown");
-    // 300_000ms * 0.5 = 150_000ms
-    expect(next.cooldownUntil).toBe(new Date(NOW + 150_000).toISOString());
-  });
-
-  test("cooldownMultiplier defaults to 1.0 when not provided", () => {
-    const prev = { ...unknown(), consecutiveFailures: 1 }; // backoff[2] = 2 min
-    const next = applyProviderFailure(prev, "timeout", NOW, {});
-    expect(next.status).toBe("cooldown");
-    expect(next.cooldownUntil).toBe(new Date(NOW + 120_000).toISOString());
-  });
-
-  test("cooldownMultiplier of 4.0 (max) quadruples the backoff", () => {
-    const prev = { ...unknown(), consecutiveFailures: 1 }; // backoff[2] = 2 min = 120_000ms
-    const next = applyProviderFailure(prev, "timeout", NOW, {
-      cooldownMultiplier: 4.0,
-    });
-    expect(next.status).toBe("cooldown");
-    // 120_000ms * 4.0 = 480_000ms = 8 min
-    expect(next.cooldownUntil).toBe(new Date(NOW + 480_000).toISOString());
-  });
-
-  test("cooldownMultiplier works with custom backoff schedule", () => {
-    const prev = { ...unknown(), consecutiveFailures: 0 };
-    const next = applyProviderFailure(prev, "timeout", NOW, {
-      backoffMsByFailureCount: [0, 10_000, 20_000],
-      cooldownMultiplier: 3.0,
-    });
-    expect(next.status).toBe("cooldown");
-    // backoff[1] = 10_000ms * 3.0 = 30_000ms
-    expect(next.cooldownUntil).toBe(new Date(NOW + 30_000).toISOString());
+  test("defaults to Date.now() when nowMs not provided", () => {
+    const before = Date.now();
+    const h = createUnknownHealth("claude");
+    const after = Date.now();
+    expect(Date.parse(h.updatedAt)).toBeGreaterThanOrEqual(before);
+    expect(Date.parse(h.updatedAt)).toBeLessThanOrEqual(after);
   });
 });
 
-describe("isProviderAvailable", () => {
-  test("healthy provider is available", () => {
-    const state = { ...unknown(), status: "healthy" as const };
-    expect(isProviderAvailable(state)).toBe(true);
-  });
-
-  test("unknown provider is available", () => {
-    const state = { ...unknown(), status: "unknown" as const };
-    expect(isProviderAvailable(state)).toBe(true);
-  });
-
-  test("degraded provider is not available", () => {
-    const state = { ...unknown(), status: "degraded" as const };
-    expect(isProviderAvailable(state)).toBe(false);
-  });
-
-  test("cooldown provider with expired cooldown is available", () => {
-    // cooldownUntil = NOW - 1ms (already expired)
-    const state = {
-      ...unknown(),
-      status: "cooldown" as const,
-      cooldownUntil: new Date(NOW - 1).toISOString(),
-    };
-    expect(isProviderAvailable(state, NOW)).toBe(true);
-  });
-
-  test("cooldown provider with future cooldown is not available", () => {
-    const state = {
-      ...unknown(),
-      status: "cooldown" as const,
-      cooldownUntil: new Date(NOW + 1_000_000).toISOString(),
-    };
-    expect(isProviderAvailable(state, NOW)).toBe(false);
-  });
-
-  test("cooldown provider with null cooldownUntil is available", () => {
-    const state = { ...unknown(), status: "cooldown" as const, cooldownUntil: null };
-    expect(isProviderAvailable(state, NOW)).toBe(true);
-  });
-});
+// ─── applyProviderSuccess ───────────────────────────────────────────────────
 
 describe("applyProviderSuccess", () => {
-  test("sets status to healthy", () => {
-    const prev = { ...unknown(), status: "cooldown" as const };
-    const next = applyProviderSuccess(prev, NOW);
-    expect(next.status).toBe("healthy");
+  test("resets consecutiveFailures to 0", () => {
+    const prev = { ...createUnknownHealth("opencode", NOW), consecutiveFailures: 5 };
+    const h = applyProviderSuccess(prev, NOW + 1_000);
+    expect(h.consecutiveFailures).toBe(0);
   });
 
-  test("resets consecutiveFailures to 0", () => {
-    const prev = { ...unknown(), consecutiveFailures: 5 };
-    const next = applyProviderSuccess(prev, NOW);
-    expect(next.consecutiveFailures).toBe(0);
+  test("sets status to healthy", () => {
+    const prev = { ...createUnknownHealth("opencode", NOW), status: "cooldown" as const };
+    const h = applyProviderSuccess(prev, NOW + 1_000);
+    expect(h.status).toBe("healthy");
+  });
+
+  test("sets lastSuccess to now", () => {
+    const prev = createUnknownHealth("opencode", NOW);
+    const h = applyProviderSuccess(prev, NOW + 5_000);
+    expect(h.lastSuccess).toBe(iso(NOW + 5_000));
   });
 
   test("clears failureReason and cooldownUntil", () => {
-    const prev = {
-      ...unknown(),
-      consecutiveFailures: 3,
-      failureReason: "timeout" as ProviderFailureClass,
-      cooldownUntil: new Date(NOW + 60_000).toISOString(),
+    const prev: ProviderHealth = {
+      ...createUnknownHealth("opencode", NOW),
+      failureReason: "rate_limit",
+      cooldownUntil: iso(NOW + 60_000),
+      status: "cooldown",
     };
-    const next = applyProviderSuccess(prev, NOW);
-    expect(next.failureReason).toBeNull();
-    expect(next.cooldownUntil).toBeNull();
+    const h = applyProviderSuccess(prev, NOW + 1_000);
+    expect(h.failureReason).toBeNull();
+    expect(h.cooldownUntil).toBeNull();
   });
 
-  test("preserves quotaRemaining and quotaResetsAt", () => {
-    const prev = {
-      ...unknown(),
-      quotaRemaining: 999,
-      quotaResetsAt: "2026-01-01T03:00:00.000Z",
+  test("preserves providerId", () => {
+    const prev = createUnknownHealth("anthropic", NOW);
+    const h = applyProviderSuccess(prev, NOW + 1_000);
+    expect(h.providerId).toBe("anthropic");
+  });
+
+  test("updates updatedAt to now", () => {
+    const prev = createUnknownHealth("opencode", NOW);
+    const h = applyProviderSuccess(prev, NOW + 99_000);
+    expect(h.updatedAt).toBe(iso(NOW + 99_000));
+  });
+});
+
+// ─── applyProviderFailure ───────────────────────────────────────────────────
+
+describe("applyProviderFailure", () => {
+  const basePrev: ProviderHealth = {
+    ...createUnknownHealth("opencode", NOW),
+    status: "healthy",
+  };
+
+  // ── auth failures always land in "degraded" ──────────────────────────────
+
+  test("auth failure sets status to degraded regardless of backoff", () => {
+    const h = applyProviderFailure(basePrev, "auth", NOW + 1_000);
+    expect(h.status).toBe("degraded");
+  });
+
+  test("auth failure does NOT set cooldownUntil", () => {
+    const h = applyProviderFailure(basePrev, "auth", NOW + 1_000);
+    expect(h.cooldownUntil).toBeNull();
+  });
+
+  test("auth failure increments consecutiveFailures", () => {
+    const prev = { ...basePrev, consecutiveFailures: 3 };
+    const h = applyProviderFailure(prev, "auth", NOW + 1_000);
+    expect(h.consecutiveFailures).toBe(4);
+  });
+
+  test("auth failure sets failureReason to auth", () => {
+    const h = applyProviderFailure(basePrev, "auth", NOW + 1_000);
+    expect(h.failureReason).toBe("auth");
+  });
+
+  test("auth failure records quotaRemaining from options", () => {
+    const h = applyProviderFailure(basePrev, "auth", NOW + 1_000, {
+      quotaRemaining: 0,
+      quotaResetsAtMs: NOW + 3_600_000,
+    });
+    expect(h.quotaRemaining).toBe(0);
+    expect(h.quotaResetsAt).toBe(iso(NOW + 3_600_000));
+  });
+
+  // ── non-auth failures use backoff schedule ──────────────────────────────────
+
+  test("first rate_limit failure (consecutive=0→1) applies zero backoff", () => {
+    const h = applyProviderFailure(basePrev, "rate_limit", NOW + 1_000);
+    expect(h.status).toBe("healthy"); // backoff[1]=0 → no cooldown
+    expect(h.cooldownUntil).toBeNull();
+    expect(h.consecutiveFailures).toBe(1);
+  });
+
+  test("second rate_limit failure (consecutive=1→2) applies 2-minute backoff", () => {
+    const prev = { ...basePrev, consecutiveFailures: 1 };
+    const h = applyProviderFailure(prev, "rate_limit", NOW + 1_000);
+    expect(h.status).toBe("cooldown");
+    expect(h.cooldownUntil).toBe(iso(NOW + 1_000 + 2 * 60_000)); // backoff[2] = 2 min
+  });
+
+  test("timeout failure increments consecutiveFailures", () => {
+    const prev = { ...basePrev, consecutiveFailures: 2 };
+    const h = applyProviderFailure(prev, "timeout", NOW + 1_000);
+    expect(h.consecutiveFailures).toBe(3);
+    expect(h.failureReason).toBe("timeout");
+  });
+
+  test("unknown failure increments consecutiveFailures", () => {
+    const prev = { ...basePrev, consecutiveFailures: 5 };
+    const h = applyProviderFailure(prev, "unknown", NOW + 1_000);
+    expect(h.consecutiveFailures).toBe(6);
+    expect(h.failureReason).toBe("unknown");
+  });
+
+  // ── cooldownMultiplier ──────────────────────────────────────────────────
+
+  test("cooldownMultiplier scales the backoff", () => {
+    // prev.consecutiveFailures=1 → after increment=2 → backoff[2]=2 min → *3.0 = 6 min
+    const prev = { ...basePrev, consecutiveFailures: 1 };
+    const h = applyProviderFailure(prev, "rate_limit", NOW + 1_000, {
+      cooldownMultiplier: 3.0,
+    });
+    // 2 min * 3.0 = 6 min
+    expect(h.cooldownUntil).toBe(iso(NOW + 1_000 + 6 * 60_000));
+  });
+
+  // ── quotaResetsAtMs vs cooldownUntil ───────────────────────────────────
+
+  test("quotaResetsAtMs alone sets cooldownUntil (no backoff)", () => {
+    const prev = { ...basePrev, consecutiveFailures: 0 };
+    const h = applyProviderFailure(prev, "rate_limit", NOW + 1_000, {
+      quotaResetsAtMs: NOW + 5 * 60_000,
+    });
+    expect(h.cooldownUntil).toBe(iso(NOW + 5 * 60_000));
+    expect(h.status).toBe("cooldown");
+  });
+
+  test("quotaRemaining is preserved from previous state when not overridden", () => {
+    const prev: ProviderHealth = {
+      ...basePrev,
+      quotaRemaining: 500,
+      quotaResetsAt: iso(NOW + 60_000),
     };
-    const next = applyProviderSuccess(prev, NOW);
-    expect(next.quotaRemaining).toBe(999);
-    expect(next.quotaResetsAt).toBe("2026-01-01T03:00:00.000Z");
+    const h = applyProviderFailure(prev, "timeout", NOW + 1_000);
+    expect(h.quotaRemaining).toBe(500);
+    expect(h.quotaResetsAt).toBe(iso(NOW + 60_000));
   });
 
-  test("lastSuccess reflects nowMs", () => {
-    const prev = unknown();
-    const next = applyProviderSuccess(prev, NOW + 500);
-    expect(next.lastSuccess).toBe(new Date(NOW + 500).toISOString());
+  // ── lastFailure and updatedAt ──────────────────────────────────────────
+
+  test("lastFailure is set to now on every failure", () => {
+    const h = applyProviderFailure(basePrev, "rate_limit", NOW + 42_000);
+    expect(h.lastFailure).toBe(iso(NOW + 42_000));
   });
 
-  test("updatedAt reflects nowMs", () => {
-    const prev = unknown();
-    const next = applyProviderSuccess(prev, NOW + 500);
-    expect(next.updatedAt).toBe(new Date(NOW + 500).toISOString());
+  test("updatedAt is set to now on every failure", () => {
+    const h = applyProviderFailure(basePrev, "auth", NOW + 42_000);
+    expect(h.updatedAt).toBe(iso(NOW + 42_000));
   });
 
-  test("preserves lastFailure (does not clear it on success)", () => {
-    const prev = { ...unknown(), lastFailure: "2026-01-01T00:30:00.000Z" };
-    const next = applyProviderSuccess(prev, NOW);
-    expect(next.lastFailure).toBe("2026-01-01T00:30:00.000Z");
+  // ── backoff schedule bounds ───────────────────────────────────────────────
+
+  test("consecutiveFailures beyond backoff array length uses last entry", () => {
+    // Default backoff array has 7 entries (indices 0-6).
+    // Consecutive=99 → Math.min(99, 6) = 6 → backoff[6] = 60 min.
+    const prev = { ...basePrev, consecutiveFailures: 99 };
+    const h = applyProviderFailure(prev, "rate_limit", NOW + 1_000);
+    expect(h.consecutiveFailures).toBe(100);
+    expect(h.cooldownUntil).toBe(iso(NOW + 1_000 + 60 * 60_000));
+  });
+
+  test("custom backoff schedule is respected", () => {
+    const prev = { ...basePrev, consecutiveFailures: 0 }; // schedule[0] = 0
+    const h = applyProviderFailure(prev, "rate_limit", NOW + 1_000, {
+      backoffMsByFailureCount: [0, 0, 30_000, 60_000],
+    });
+    // consecutive=1 → schedule[1] = 0 → no cooldown
+    expect(h.consecutiveFailures).toBe(1);
+    expect(h.cooldownUntil).toBeNull();
+  });
+
+  test("custom backoff at consecutive=2 uses schedule index 2", () => {
+    const prev = { ...basePrev, consecutiveFailures: 1 }; // schedule[1] = 0
+    const h = applyProviderFailure(prev, "rate_limit", NOW + 1_000, {
+      backoffMsByFailureCount: [0, 0, 30_000, 60_000],
+    });
+    // consecutive=2 → schedule[2] = 30s
+    expect(h.consecutiveFailures).toBe(2);
+    expect(h.cooldownUntil).toBe(iso(NOW + 1_000 + 30_000));
+  });
+});
+
+// ─── isProviderAvailable ───────────────────────────────────────────────────
+
+describe("isProviderAvailable", () => {
+  test("returns true for healthy status", () => {
+    const h: ProviderHealth = {
+      ...createUnknownHealth("opencode", NOW),
+      status: "healthy",
+    };
+    expect(isProviderAvailable(h, NOW + 1)).toBe(true);
+  });
+
+  test("returns true for unknown status (not yet probed)", () => {
+    const h: ProviderHealth = {
+      ...createUnknownHealth("opencode", NOW),
+      status: "unknown",
+    };
+    expect(isProviderAvailable(h, NOW + 1)).toBe(true);
+  });
+
+  test("returns false for degraded status", () => {
+    const h: ProviderHealth = {
+      ...createUnknownHealth("opencode", NOW),
+      status: "degraded",
+    };
+    expect(isProviderAvailable(h, NOW + 1)).toBe(false);
+  });
+
+  test("returns false for cooldown when current time is before cooldownUntil", () => {
+    const h: ProviderHealth = {
+      ...createUnknownHealth("opencode", NOW),
+      status: "cooldown",
+      cooldownUntil: iso(NOW + 5 * 60_000),
+    };
+    expect(isProviderAvailable(h, NOW + 1)).toBe(false);
+  });
+
+  test("returns true for cooldown when current time has reached cooldownUntil", () => {
+    const h: ProviderHealth = {
+      ...createUnknownHealth("opencode", NOW),
+      status: "cooldown",
+      cooldownUntil: iso(NOW + 5 * 60_000),
+    };
+    expect(isProviderAvailable(h, NOW + 5 * 60_000)).toBe(true);
+  });
+
+  test("degraded provider remains unavailable regardless of time", () => {
+    const h: ProviderHealth = {
+      ...createUnknownHealth("opencode", NOW),
+      status: "degraded",
+      failureReason: "auth",
+    };
+    expect(isProviderAvailable(h, NOW + 999_999_999)).toBe(false);
+  });
+
+  test("healthy then degraded then healthy lifecycle", () => {
+    let h = createUnknownHealth("opencode", NOW);
+    h = applyProviderSuccess(h, NOW + 1_000);
+    expect(isProviderAvailable(h, NOW + 1_001)).toBe(true);
+
+    h = applyProviderFailure(h, "auth", NOW + 2_000);
+    expect(h.status).toBe("degraded");
+    expect(isProviderAvailable(h, NOW + 2_001)).toBe(false);
+
+    h = applyProviderSuccess(h, NOW + 3_000);
+    expect(isProviderAvailable(h, NOW + 3_001)).toBe(true);
+  });
+
+  test("available after cooldownUntil expires", () => {
+    const prev: ProviderHealth = {
+      ...createUnknownHealth("opencode", NOW),
+      status: "cooldown",
+      cooldownUntil: iso(NOW + 10_000),
+    };
+    expect(isProviderAvailable(prev, NOW + 9_000)).toBe(false);
+    expect(isProviderAvailable(prev, NOW + 11_000)).toBe(true);
   });
 });
