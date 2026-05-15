@@ -64,7 +64,7 @@ export async function executeRefreshProjection(
   });
 
   if (matchingProjectors.length === 0) {
-    return { refreshed: 0 };
+    throw new Error(`No projector found for projection_name="${target.projection_name}"`);
   }
 
   const scopeFilter = target.scope_kind
@@ -139,7 +139,9 @@ export function getNextFireTime(schedule: string, lastFiredAt: string | null): D
   }
 
   const elapsed = now - last;
-  const fireCount = Math.floor(elapsed / intervalMs);
-  const nextFire = last + ((fireCount + 1) * intervalMs);
+  if (elapsed >= intervalMs) {
+    return new Date(now);
+  }
+  const nextFire = last + intervalMs;
   return new Date(nextFire);
 }

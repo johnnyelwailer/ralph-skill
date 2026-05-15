@@ -51,9 +51,10 @@ describe("executeRefreshProjection", () => {
     rmSync(tmp, { recursive: true, force: true });
   });
 
-  test("returns 0 when no projectors match", async () => {
-    const result = await executeRefreshProjection(deps, { projection_name: "nonexistent" });
-    expect(result.refreshed).toBe(0);
+  test("throws when no projectors match", async () => {
+    await expect(executeRefreshProjection(deps, { projection_name: "nonexistent" })).rejects.toThrow(
+      'No projector found for projection_name="nonexistent"',
+    );
   });
 
   test("refreshes all projectors when name is '*'", async () => {
@@ -176,11 +177,11 @@ describe("getNextFireTime", () => {
     expect(result!.getTime()).toBeGreaterThan(Date.now());
   });
 
-  test("returns next interval after lastFiredAt", () => {
+  test("returns now when elapsed time >= schedule interval", () => {
     const past = new Date(Date.now() - 7200000).toISOString();
     const result = getNextFireTime("PT1H", past);
     expect(result).toBeInstanceOf(Date);
-    expect(result!.getTime()).toBeGreaterThan(Date.now());
+    expect(result!.getTime()).toBeLessThanOrEqual(Date.now());
   });
 
   test("returns null for invalid schedule", () => {
