@@ -106,6 +106,36 @@ describe("createGitHubAdapter", () => {
       });
       expect(adapter.id).toBe("github");
     });
+
+    test("rejects repo format without a slash", () => {
+      expect(() => createGitHubAdapter({ config: { repo: "just-one-component" } })).toThrow(
+        /Invalid repo format/,
+      );
+    });
+
+    test("rejects repo format with too many slashes", () => {
+      expect(() => createGitHubAdapter({ config: { repo: "a/b/c" } })).toThrow(
+        /Invalid repo format/,
+      );
+    });
+
+    test("rejects empty repo string", () => {
+      expect(() => createGitHubAdapter({ config: { repo: "" } })).toThrow(
+        /Invalid repo format/,
+      );
+    });
+
+    test("rejects repo with empty owner component", () => {
+      expect(() => createGitHubAdapter({ config: { repo: "/repo" } })).toThrow(
+        /Invalid repo format/,
+      );
+    });
+
+    test("rejects repo with empty repo-name component", () => {
+      expect(() => createGitHubAdapter({ config: { repo: "owner/" } })).toThrow(
+        /Invalid repo format/,
+      );
+    });
   });
 
   describe("implements TrackerAdapter interface", () => {
