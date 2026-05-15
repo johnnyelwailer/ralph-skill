@@ -107,6 +107,10 @@ export class SessionRegistry {
     deleteSession(this.db, id);
   }
 
+  archive(id: string): Session {
+    return this.updateStatus(id, "archived");
+  }
+
   // ── Queue ────────────────────────────────────────────────────────────────
 
   enqueue(item: Omit<SessionQueueItem, "id" | "createdAt">): SessionQueueItem {

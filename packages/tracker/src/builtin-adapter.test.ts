@@ -422,7 +422,7 @@ describe("createBuiltinAdapter", () => {
       const t2 = await adapter.createWorkItem({ kind: "task_mirror", title: "Task 2", body: "...", parent: storyRef });
       await adapter.closeWorkItem(t1, "completed");
       const tasks = [];
-      for await (const task of adapter.readMirroredTasks(storyRef)) {
+      for await (const task of adapter.readMirroredTasks?.(storyRef) ?? []) {
         tasks.push(task);
       }
       expect(tasks).toHaveLength(2);
@@ -436,7 +436,7 @@ describe("createBuiltinAdapter", () => {
       const adapter = makeAdapter();
       const epicRef = await adapter.createWorkItem({ kind: "epic", title: "E1", body: "..." });
       const tasks = [];
-      for await (const task of adapter.readMirroredTasks(epicRef)) {
+      for await (const task of adapter.readMirroredTasks?.(epicRef) ?? []) {
         tasks.push(task);
       }
       expect(tasks).toHaveLength(0);
@@ -510,7 +510,7 @@ describe("createBuiltinAdapter", () => {
       const epicRef = await adapter.createWorkItem({ kind: "epic", title: "E1", body: "..." });
       const storyRef = await adapter.createWorkItem({ kind: "story", title: "Story", body: "...", parent: epicRef });
       // mirrorTasks is a stub — must not throw
-      await adapter.mirrorTasks(storyRef, [
+      await adapter.mirrorTasks?.(storyRef, [
         { id: "t1", title: "Task 1", completed: false },
         { id: "t2", title: "Task 2", completed: true },
       ]);
@@ -519,7 +519,7 @@ describe("createBuiltinAdapter", () => {
     test("accepts empty task array without throwing", async () => {
       const adapter = makeAdapter();
       const storyRef = await adapter.createWorkItem({ kind: "story", title: "Story", body: "..." });
-      await adapter.mirrorTasks(storyRef, []);
+      await adapter.mirrorTasks?.(storyRef, []);
     });
   });
 

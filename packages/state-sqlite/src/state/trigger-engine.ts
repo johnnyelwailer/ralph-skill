@@ -14,7 +14,7 @@ export type TriggerEngineDeps = {
 export type RefreshProjectionTarget = {
   readonly projection_name: string;
   readonly scope_kind?: "project" | "workspace" | "artifact" | "global";
-  readonly scope_id?: string | null;
+  readonly scope_id?: string | null | undefined;
 };
 
 function scopeMatchesEventScope(

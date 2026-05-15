@@ -129,4 +129,5 @@ export {
   type SandboxRunOptions,
   type ProjectAdapter,
   type ProjectAdapterTarget,
+  type StateStore,
 } from "./adapters/index.ts";

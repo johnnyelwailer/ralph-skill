@@ -7,12 +7,12 @@ import { loadBundledMigrations } from "@aloop/sqlite-db";
 import { ProjectRegistry } from "./projects.ts";
 import { WorkspaceRegistry } from "./workspaces.ts";
 import { PermitRegistry, projectGrantedPermit } from "./permits.ts";
-import { SessionRegistry } from "./sessions-registry.ts";
-import type { StateStore } from "@aloop/core/src/adapters/state.ts";
+import { SessionRegistry } from "./sessions.ts";
+import type { StateStore } from "@aloop/core";
 
 function createSqliteStateStore(dbPath: string): StateStore {
   const { db } = openDatabase(dbPath);
-  loadBundledMigrations(db);
+  loadBundledMigrations();
 
   const projectRegistry = new ProjectRegistry(db);
   const workspaceRegistry = new WorkspaceRegistry(db);
