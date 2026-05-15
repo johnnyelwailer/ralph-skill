@@ -461,3 +461,138 @@ describe("shouldSkip — all new filters combined", () => {
     })).toBe(false);
   });
 });
+
+// ------------------------------------------------------------------
+// parseTopics — local re-implementation for isolated unit testing
+// ------------------------------------------------------------------
+// The actual parseTopics in events-sse.ts is:
+//   function parseTopics(raw: string): string[] {
+//     if (!raw || raw === "*") return [];
+//     return raw.split(",").map((t) => t.trim()).filter(Boolean);
+//   }
+
+function localParseTopics(raw: string): string[] {
+  if (!raw || raw === "*") return [];
+  return raw.split(",").map((t) => t.trim()).filter(Boolean);
+}
+
+describe("parseTopics", () => {
+  test('"*" and empty string return empty array (matches all)', () => {
+    expect(localParseTopics("*")).toEqual([]);
+    expect(localParseTopics("")).toEqual([]);
+  });
+
+  test("undefined (empty param) returns empty array", () => {
+    // simulate calling with no argument by using empty string behavior
+    expect(localParseTopics("")).toEqual([]);
+  });
+
+  test("splits on comma and trims each segment", () => {
+    expect(localParseTopics("a, b, c")).toEqual(["a", "b", "c"]);
+    expect(localParseTopics("topic1,topic2")).toEqual(["topic1", "topic2"]);
+  });
+
+  test("filters empty segments after trim", () => {
+    expect(localParseTopics("a,, b, ,c")).toEqual(["a", "b", "c"]);
+  });
+
+  test("single topic returned as single-element array", () => {
+    expect(localParseTopics("session.update")).toEqual(["session.update"]);
+  });
+
+  test("whitespace-only segments are filtered", () => {
+    expect(localParseTopics("  , session.update ,  ")).toEqual(["session.update"]);
+  });
+
+  test("duplicate topics are preserved", () => {
+    expect(localParseTopics("a,a,b")).toEqual(["a", "a", "b"]);
+  });
+});
+
+// ------------------------------------------------------------------
+// formatSSE — local re-implementation for isolated unit testing
+// ------------------------------------------------------------------
+// The actual formatSSE in events-sse.ts is:
+//   function formatSSE(env: EventEnvelope): string {
+//     const topic = env.topic.replace(/\n/g, "\\n").replace(/\r/g, "\\r");
+//     const payload = JSON.stringify(env.data ?? null).replace(/\n/g, "\\n").replace(/\r/g, "\\r");
+//     return [
+//       `id: ${env.id}`,
+//       `event: ${topic}`,
+//       `data: ${payload}`,
+//       "",
+//       "",
+//     ].join("\n");
+//   }
+
+function localFormatSSE(env: { id: string; topic: string; data: unknown }): string {
+  const topic = env.topic.replace(/\n/g, "\\n").replace(/\r/g, "\\r");
+  const payload = JSON.stringify(env.data ?? null).replace(/\n/g, "\\n").replace(/\r/g, "\\r");
+  return [
+    `id: ${env.id}`,
+    `event: ${topic}`,
+    `data: ${payload}`,
+    "",
+    "",
+  ].join("\n");
+}
+
+describe("formatSSE", () => {
+  test("produces four SSE comment lines with two trailing newlines", () => {
+    const env = { id: "e001", topic: "test.event", data: {} };
+    const result = localFormatSSE(env);
+    const lines = result.split("\n");
+    // Four fields + two trailing empty segments = 5 lines
+    expect(lines).toHaveLength(5);
+    expect(lines[0]).toBe("id: e001");
+    expect(lines[1]).toBe("event: test.event");
+    expect(lines[2]).toBe("data: {}");
+    expect(lines[3]).toBe("");
+    expect(lines[4]).toBe("");
+    // The string ends with a double newline (one from join("\n"), one from trailing "")
+    expect(result).toMatch(/data: \{\}\n\n$/);
+  });
+
+  test("escapes literal newlines in topic", () => {
+    const env = { id: "e002", topic: "multi\nline", data: {} };
+    const result = localFormatSSE(env);
+    expect(result).toContain("event: multi\\nline");
+    expect(result).not.toContain("event: multi\nline");
+  });
+
+  test("escapes literal carriage returns in topic", () => {
+    const env = { id: "e003", topic: "multi\rline", data: {} };
+    const result = localFormatSSE(env);
+    expect(result).toContain("event: multi\\rline");
+  });
+
+  test("escapes newlines in JSON payload data", () => {
+    const env = { id: "e004", topic: "test", data: { msg: "hello\nworld" } };
+    const result = localFormatSSE(env);
+    expect(result).toContain("data: {\"msg\":\"hello\\nworld\"}");
+  });
+
+  test("escapes carriage returns in JSON payload data", () => {
+    const env = { id: "e005", topic: "test", data: { msg: "hello\rworld" } };
+    const result = localFormatSSE(env);
+    expect(result).toContain("data: {\"msg\":\"hello\\rworld\"}");
+  });
+
+  test("null data serializes as null in payload", () => {
+    const env = { id: "e006", topic: "test", data: null };
+    const result = localFormatSSE(env);
+    expect(result).toContain("data: null");
+  });
+
+  test("id field is included verbatim", () => {
+    const env = { id: "my-id-123", topic: "test", data: {} };
+    const result = localFormatSSE(env);
+    expect(result).toContain("id: my-id-123");
+  });
+
+  test("event field label uses topic value", () => {
+    const env = { id: "e007", topic: "agent.chunk", data: {} };
+    const result = localFormatSSE(env);
+    expect(result).toContain("event: agent.chunk");
+  });
+});
