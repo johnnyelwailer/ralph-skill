@@ -63,6 +63,7 @@ describe("appendPermitGrant", () => {
     await appendPermitGrant(mockEvents, {
       permitId: "perm_abc",
       owner: { sessionId: "sess_123" },
+      projectId: null,
       providerId: "opencode",
       ttlSeconds: 600,
       grantedAt: "2024-01-01T00:00:00.000Z",
@@ -110,6 +111,7 @@ describe("appendPermitGrant", () => {
     const result = await appendPermitGrant({ append }, {
       permitId: "p1",
       owner: { sessionId: "s1" },
+      projectId: null,
       providerId: "prov",
       ttlSeconds: 300,
       grantedAt: "t1",
@@ -123,6 +125,7 @@ describe("appendPermitGrant", () => {
     await appendPermitGrant({ append }, {
       permitId: "perm_c",
       owner: { composerTurnId: "ct_01" },
+      projectId: null,
       providerId: "opencode",
       ttlSeconds: 300,
       grantedAt: "t1",
@@ -143,6 +146,7 @@ describe("appendPermitGrant", () => {
     await appendPermitGrant({ append }, {
       permitId: "perm_cs",
       owner: { controlSubagentRunId: "csar_01" },
+      projectId: null,
       providerId: "opencode",
       ttlSeconds: 300,
       grantedAt: "t1",
@@ -325,7 +329,7 @@ describe("appendPermitDeny", () => {
   test("returns denial even when events.append throws", async () => {
     // Audit log failure must not prevent the denial response from being returned.
     // The permit decision is authoritative; event logging is best-effort.
-    const failingAppend = async (_topic: string, _data: Record<string, unknown>) => {
+    const failingAppend = async <T>(_topic: string, _data: T) => {
       throw new Error("disk full");
     };
     const result = await appendPermitDeny({ append: failingAppend }, {
@@ -343,7 +347,7 @@ describe("appendPermitDeny", () => {
   });
 
   test("returns denial with retryAfterSeconds even when events.append throws", async () => {
-    const failingAppend = async (_topic: string, _data: Record<string, unknown>) => {
+    const failingAppend = async <T>(_topic: string, _data: T) => {
       throw new Error("disk full");
     };
     const result = await appendPermitDeny({ append: failingAppend }, {

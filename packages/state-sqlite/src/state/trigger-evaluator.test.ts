@@ -21,7 +21,7 @@ import type { Trigger } from "@aloop/daemon-routes-triggers";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-function makeDeps(tmp: string): TriggerEvaluatorDeps {
+function makeDeps(tmp: string, triggerStore?: TriggerStore): TriggerEvaluatorDeps {
   const dbPath = join(tmp, "db.sqlite");
   const logPath = join(tmp, "log.jsonl");
   const { db } = openDatabase(dbPath);
@@ -33,7 +33,7 @@ function makeDeps(tmp: string): TriggerEvaluatorDeps {
     projectors,
     nextId: () => `evt_${Math.random().toString(36).slice(2, 10)}`,
   });
-  return { db, store, events, projectors, triggerStore: null as unknown as TriggerStore };
+  return { db, store, events, projectors, triggerStore: triggerStore ?? null as unknown as TriggerStore };
 }
 
 function makeTmp() {
@@ -77,7 +77,7 @@ describe("evaluateTriggers", () => {
   });
 
   test("returns 0 when no triggers exist", async () => {
-    deps.triggerStore = mockTriggerStore([]);
+    deps = makeDeps(tmp, mockTriggerStore([]));
     const result = await evaluateTriggers(deps);
     expect(result).toBe(0);
   });
@@ -97,7 +97,7 @@ describe("evaluateTriggers", () => {
       debounce_seconds: 0,
       budget_policy: null,
     };
-    deps.triggerStore = mockTriggerStore([eventTrigger]);
+    deps = makeDeps(tmp, mockTriggerStore([eventTrigger]));
     const result = await evaluateTriggers(deps);
     expect(result).toBe(0);
   });
@@ -117,7 +117,7 @@ describe("evaluateTriggers", () => {
       debounce_seconds: 0,
       budget_policy: null,
     };
-    deps.triggerStore = mockTriggerStore([futureTrigger]);
+    deps = makeDeps(tmp, mockTriggerStore([futureTrigger]));
     const result = await evaluateTriggers(deps);
     expect(result).toBe(0);
   });
@@ -138,7 +138,7 @@ describe("evaluateTriggers", () => {
       debounce_seconds: 0,
       budget_policy: null,
     };
-    deps.triggerStore = mockTriggerStore([disabledTrigger]);
+    deps = makeDeps(tmp, mockTriggerStore([disabledTrigger]));
     const result = await evaluateTriggers(deps);
     expect(result).toBe(0);
   });
@@ -160,7 +160,7 @@ describe("evaluateTriggers", () => {
       debounce_seconds: 0,
       budget_policy: null,
     };
-    deps.triggerStore = mockTriggerStore([timeTrigger]);
+    deps = makeDeps(tmp, mockTriggerStore([timeTrigger]));
 
     const result = await evaluateTriggers(deps);
 
@@ -208,7 +208,7 @@ describe("evaluateTriggers", () => {
       debounce_seconds: 0,
       budget_policy: null,
     };
-    deps.triggerStore = mockTriggerStore([trigger1, trigger2]);
+    deps = makeDeps(tmp, mockTriggerStore([trigger1, trigger2]));
 
     const result = await evaluateTriggers(deps);
 
@@ -240,7 +240,7 @@ describe("evaluateTriggers", () => {
       debounce_seconds: 0,
       budget_policy: null,
     };
-    deps.triggerStore = mockTriggerStore([failingTrigger]);
+    deps = makeDeps(tmp, mockTriggerStore([failingTrigger]));
 
     const result = await evaluateTriggers(deps);
 
@@ -277,7 +277,7 @@ describe("evaluateTriggers", () => {
       debounce_seconds: 0,
       budget_policy: null,
     };
-    deps.triggerStore = mockTriggerStore([trigger]);
+    deps = makeDeps(tmp, mockTriggerStore([trigger]));
 
     const result = await evaluateTriggers(deps);
 
@@ -312,7 +312,7 @@ describe("evaluateTriggers", () => {
       debounce_seconds: 0,
       budget_policy: null,
     };
-    deps.triggerStore = mockTriggerStore([trigger]);
+    deps = makeDeps(tmp, mockTriggerStore([trigger]));
 
     const result = await evaluateTriggers(deps);
     expect(result).toBe(1);

@@ -9,6 +9,7 @@ import { WorkspaceRegistry } from "./workspaces.ts";
 import { PermitRegistry, projectGrantedPermit } from "./permits.ts";
 import { SessionRegistry } from "./sessions.ts";
 import type { StateStore } from "@aloop/core";
+import type { ProjectStatus } from "@aloop/state-projects";
 
 function createSqliteStateStore(dbPath: string): StateStore {
   const { db } = openDatabase(dbPath);
@@ -19,72 +20,72 @@ function createSqliteStateStore(dbPath: string): StateStore {
   const permitRegistry = new PermitRegistry(db);
   const sessionRegistry = new SessionRegistry(db);
 
-  const store: StateStore = {
+  const store = {
     workspace: {
-      create: async (input) => {
+      create: async (input: { name: string; description?: string }) => {
         return workspaceRegistry.create(input);
       },
-      get: async (id) => {
+      get: async (id: string) => {
         return workspaceRegistry.get(id) ?? undefined;
       },
-      list: async (filter) => {
+      list: async (filter: { archived?: boolean; limit?: number; cursor?: string } | undefined) => {
         return workspaceRegistry.list(filter ?? {});
       },
-      archive: async (id) => {
+      archive: async (id: string) => {
         workspaceRegistry.archive(id);
       },
     },
     project: {
-      create: async (input) => {
+      create: async (input: { absPath: string; name?: string; workspaceMemberships?: readonly { readonly workspaceId: string; readonly role?: "primary" | "supporting" | "dependency" | "experiment" }[] }) => {
         return projectRegistry.create(input);
       },
-      get: async (id) => {
+      get: async (id: string) => {
         return projectRegistry.get(id) ?? undefined;
       },
-      getByPath: async (absPath) => {
+      getByPath: async (absPath: string) => {
         return projectRegistry.getByPath(absPath) ?? undefined;
       },
-      list: async (filter) => {
-        return projectRegistry.list(filter ?? {});
+      list: async (filter: { workspaceId?: string; status?: ProjectStatus; limit?: number; cursor?: string } | undefined) => {
+        return projectRegistry.list(filter as any);
       },
-      updateStatus: async (id, status) => {
-        projectRegistry.updateStatus(id, status);
+      updateStatus: async (id: string, status: string) => {
+        projectRegistry.updateStatus(id, status as any);
       },
-      touchActivity: async (id) => {
+      touchActivity: async (id: string) => {
         projectRegistry.touchActivity(id);
       },
-      archive: async (id) => {
+      archive: async (id: string) => {
         projectRegistry.archive(id);
       },
-      purge: async (id) => {
+      purge: async (id: string) => {
         projectRegistry.purge(id);
       },
-      addWorkspace: async (projectId, workspaceId, role) => {
+      addWorkspace: async (projectId: string, workspaceId: string, role: any) => {
         projectRegistry.addWorkspace(projectId, workspaceId, role);
       },
-      removeWorkspace: async (projectId, workspaceId) => {
+      removeWorkspace: async (projectId: string, workspaceId: string) => {
         projectRegistry.removeWorkspace(projectId, workspaceId);
       },
     },
     session: {
-      create: async (input) => {
-        return sessionRegistry.create(input);
+      create: async (input: { projectId: string; kind: string; workflow: string; providerChain: readonly string[]; issueRef?: string | null; parentSessionId?: string | null; maxIterations?: number | null; notes?: string }) => {
+        return sessionRegistry.create(input as any);
       },
-      get: async (id) => {
+      get: async (id: string) => {
         return sessionRegistry.get(id) ?? undefined;
       },
-      list: async (filter) => {
-        return sessionRegistry.list(filter ?? {});
+      list: async (filter: { projectId?: string; status?: readonly string[]; kind?: readonly string[]; parentSessionId?: string; limit?: number; cursor?: string } | undefined) => {
+        return sessionRegistry.list(filter as any);
       },
-      updateStatus: async (id, status) => {
-        sessionRegistry.updateStatus(id, status);
+      updateStatus: async (id: string, status: string) => {
+        sessionRegistry.updateStatus(id, status as any);
       },
-      archive: async (id) => {
+      archive: async (id: string) => {
         sessionRegistry.archive(id);
       },
     },
     permit: {
-      grant: async (input) => {
+      grant: async (input: { permitId: string; sessionId?: string | null; composerTurnId?: string | null; controlSubagentRunId?: string | null; projectId?: string | null; providerId: string; ttlSeconds: number; estimatedCostUsdCents?: number }) => {
         const now = new Date().toISOString();
         const expiresAt = new Date(Date.now() + input.ttlSeconds * 1000).toISOString();
         projectGrantedPermit(db, {
@@ -99,19 +100,19 @@ function createSqliteStateStore(dbPath: string): StateStore {
           expiresAt,
         });
       },
-      revoke: async (permitId) => {
+      revoke: async (permitId: string) => {
         db.run(`DELETE FROM permits WHERE id = ?`, [permitId]);
       },
       listActive: async () => {
         return permitRegistry.list();
       },
-      listExpired: async (nowIso) => {
+      listExpired: async (nowIso: string) => {
         return permitRegistry.listExpired(nowIso);
       },
       countActive: async () => {
         return permitRegistry.countActive();
       },
-      countByProject: async (projectId) => {
+      countByProject: async (projectId: string) => {
         return permitRegistry.countByProject(projectId);
       },
     },
@@ -139,7 +140,7 @@ function createSqliteStateStore(dbPath: string): StateStore {
     },
   };
 
-  return store;
+  return store as unknown as StateStore;
 }
 
 describe("StateStore SQLite implementation", () => {

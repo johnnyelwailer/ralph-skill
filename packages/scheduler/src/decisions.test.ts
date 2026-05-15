@@ -181,7 +181,7 @@ describe("PermitOwner", () => {
     // const bad: PermitOwner = { sessionId: "s", composerTurnId: "ct" };
     const session: PermitOwner = { sessionId: "s_only" };
     expect(session.sessionId).toBe("s_only");
-    expect((session as { composerTurnId?: string }).composerTurnId).toBeUndefined();
+    expect((session as unknown as { composerTurnId?: string }).composerTurnId).toBeUndefined();
   });
 });
 

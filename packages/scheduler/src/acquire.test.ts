@@ -102,7 +102,7 @@ function makeDeps(
     config: opts.config ?? makeConfig(),
     events: opts.events ?? new MockEventWriter(),
     probes: opts.probes ?? makeProbes(),
-  } as AcquirePermitDeps;
+  } as unknown as AcquirePermitDeps;
 }
 
 const BASE_INPUT = { sessionId: "s_test_01", providerCandidate: "opencode", projectId: null };
@@ -160,7 +160,7 @@ describe("override denial", () => {
     // Verify the grant event carries the redirected providerId (not the original)
     const grantEvent = events.events.find(e => e.topic === "scheduler.permit.grant");
     expect(grantEvent).toBeDefined();
-    expect((grantEvent as { data: { provider_id: string } }).data.provider_id).toBe("anthropic/claude-3.5");
+    expect((grantEvent as unknown as { data: { provider_id: string } }).data.provider_id).toBe("anthropic/claude-3.5");
   });
 });
 
@@ -195,11 +195,12 @@ describe("concurrency cap denial", () => {
   });
 
   test("denies when concurrencyCap is 1 and 1 permit is already active", async () => {
+    const permits = new MockPermitRegistry();
+    permits.setCountActive(1);
     const deps = makeDeps({
       config: makeConfig({ concurrencyCap: 1 }),
-      permits: new MockPermitRegistry(),
+      permits,
     });
-    deps.permits.setCountActive(1);
 
     const result = await acquirePermitDecision(deps, BASE_INPUT);
 
@@ -426,7 +427,7 @@ describe("successful grant", () => {
     expect(result.granted).toBe(true);
     const grantEvent = events.events.find(e => e.topic === "scheduler.permit.grant");
     expect(grantEvent).toBeDefined();
-    expect((grantEvent as { data: { ttl_seconds: number } }).data.ttl_seconds).toBe(300);
+    expect((grantEvent as unknown as { data: { ttl_seconds: number } }).data.ttl_seconds).toBe(300);
   });
 
   test("grants permit with default TTL when ttlSeconds is undefined", async () => {
@@ -441,7 +442,7 @@ describe("successful grant", () => {
     expect(result.granted).toBe(true);
     const grantEvent = events.events.find(e => e.topic === "scheduler.permit.grant");
     expect(grantEvent).toBeDefined();
-    expect((grantEvent as { data: { ttl_seconds: number } }).data.ttl_seconds).toBe(900);
+    expect((grantEvent as unknown as { data: { ttl_seconds: number } }).data.ttl_seconds).toBe(900);
   });
 
   test("caps requested ttlSeconds at permitTtlMaxSeconds", async () => {
@@ -459,7 +460,7 @@ describe("successful grant", () => {
     expect(result.granted).toBe(true);
     const grantEvent = events.events.find(e => e.topic === "scheduler.permit.grant");
     expect(grantEvent).toBeDefined();
-    expect((grantEvent as { data: { ttl_seconds: number } }).data.ttl_seconds).toBe(1800);
+    expect((grantEvent as unknown as { data: { ttl_seconds: number } }).data.ttl_seconds).toBe(1800);
   });
 
   test("appends scheduler.permit.grant event on success", async () => {
@@ -470,7 +471,7 @@ describe("successful grant", () => {
 
     const grantEvent = events.events.find(e => e.topic === "scheduler.permit.grant");
     expect(grantEvent).toBeDefined();
-    expect((grantEvent as { data: { session_id: string; provider_id: string } }).data.session_id).toBe(BASE_INPUT.sessionId);
+    expect((grantEvent as unknown as { data: { session_id: string; provider_id: string } }).data.session_id).toBe(BASE_INPUT.sessionId);
   });
 
   test("appends scheduler.permit.deny event on override denial", async () => {
@@ -487,7 +488,7 @@ describe("successful grant", () => {
 
     const denyEvent = events.events.find(e => e.topic === "scheduler.permit.deny");
     expect(denyEvent).toBeDefined();
-    expect((denyEvent as { data: { reason: string } }).data.reason).toBe("provider_denied");
+    expect((denyEvent as unknown as { data: { reason: string } }).data.reason).toBe("provider_denied");
   });
 
   test("appendPermitGrant appends grant event with correct fields", async () => {
@@ -498,7 +499,7 @@ describe("successful grant", () => {
 
     const grantEvent = events.events.find(e => e.topic === "scheduler.permit.grant");
     expect(grantEvent).toBeDefined();
-    expect((grantEvent as { data: { session_id: string; provider_id: string } }).data.session_id).toBe(BASE_INPUT.sessionId);
+    expect((grantEvent as unknown as { data: { session_id: string; provider_id: string } }).data.session_id).toBe(BASE_INPUT.sessionId);
   });
 });
 
@@ -516,7 +517,7 @@ describe("TTL resolution", () => {
 
     expect(result.granted).toBe(true);
     const grantEvent = events.events.find(e => e.topic === "scheduler.permit.grant");
-    expect((grantEvent as { data: { ttl_seconds: number } }).data.ttl_seconds).toBe(720);
+    expect((grantEvent as unknown as { data: { ttl_seconds: number } }).data.ttl_seconds).toBe(720);
   });
 
   test("caps requested ttlSeconds at permitTtlMaxSeconds", async () => {
@@ -533,7 +534,7 @@ describe("TTL resolution", () => {
 
     expect(result.granted).toBe(true);
     const grantEvent = events.events.find(e => e.topic === "scheduler.permit.grant");
-    expect((grantEvent as { data: { ttl_seconds: number } }).data.ttl_seconds).toBe(900);
+    expect((grantEvent as unknown as { data: { ttl_seconds: number } }).data.ttl_seconds).toBe(900);
   });
 
   test("uses requested ttlSeconds when below both default and max", async () => {
@@ -547,7 +548,7 @@ describe("TTL resolution", () => {
 
     expect(result.granted).toBe(true);
     const grantEvent = events.events.find(e => e.topic === "scheduler.permit.grant");
-    expect((grantEvent as { data: { ttl_seconds: number } }).data.ttl_seconds).toBe(300);
+    expect((grantEvent as unknown as { data: { ttl_seconds: number } }).data.ttl_seconds).toBe(300);
   });
 });
 
@@ -627,7 +628,7 @@ describe("project gate", () => {
       config: makeConfig(),
     });
     // projectLimits returns empty config — no caps enforced
-    (deps.config as { projectLimits: (id: string) => Record<string, never> }).projectLimits = () => ({});
+    (deps.config as unknown as { projectLimits: (id: string) => Record<string, never> }).projectLimits = () => ({});
 
     const result = await acquirePermitDecision(deps, PROJECT_INPUT);
 

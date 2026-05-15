@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { startSchedulerWatchdog, type RunningWatchdog } from "./watchdog.ts";
 import type { EventWriter } from "@aloop/state-sqlite";
-import type { InMemoryProviderHealthStore, ProviderRegistry } from "@aloop/provider";
+import type { ProviderRegistry } from "@aloop/provider";
+import { InMemoryProviderHealthStore } from "@aloop/provider";
 import type { BurnRateSample } from "@aloop/scheduler-gates";
 
 // ─── mock factories shared across tests ───────────────────────────────────────
@@ -53,10 +54,37 @@ function makeFakeProviderRegistry(adapters: ReturnType<typeof makeFakeProviderAd
 function makeFakeProviderHealthStore(): InMemoryProviderHealthStore {
   const store = new Map<string, { remaining: number; resets_at: string | null }>();
   return {
-    getQuota: (id: string) => store.get(id) ?? undefined,
-    setQuota: (id: string, quota: { remaining: number; resets_at: string | null }) => store.set(id, quota),
-    removeQuota: (id: string) => store.delete(id),
-  };
+    get: (id: string) => {
+      const quota = store.get(id);
+      return {
+        providerId: id,
+        status: "healthy" as const,
+        consecutiveFailures: 0,
+        lastSuccess: null,
+        lastFailure: null,
+        failureReason: null,
+        cooldownUntil: null,
+        quotaRemaining: quota?.remaining ?? null,
+        quotaResetsAt: quota?.resets_at ?? null,
+        updatedAt: new Date().toISOString(),
+      };
+    },
+    setQuota: (id: string, quota: { remaining: number; resets_at: string | null }, _nowMs?: number) => {
+      store.set(id, quota);
+      return {
+        providerId: id,
+        status: "healthy" as const,
+        consecutiveFailures: 0,
+        lastSuccess: null,
+        lastFailure: null,
+        failureReason: null,
+        cooldownUntil: null,
+        quotaRemaining: quota.remaining,
+        quotaResetsAt: quota.resets_at,
+        updatedAt: new Date().toISOString(),
+      };
+    },
+  } as unknown as InMemoryProviderHealthStore;
 }
 
 describe("startSchedulerWatchdog", () => {
