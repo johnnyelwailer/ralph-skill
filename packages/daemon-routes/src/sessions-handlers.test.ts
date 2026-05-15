@@ -18,13 +18,16 @@ import {
 } from "./sessions-handlers.ts";
 import type { SessionsDeps } from "./sessions-handlers.ts";
 
+async function resJson<T>(res: Response): Promise<T> {
+  return JSON.parse(await res.text()) as T;
+}
+
 function makeDeps(dir: string): SessionsDeps {
   const { db } = openDatabase(join(dir, "db.sqlite"));
   const sessions = new SessionRegistry(db);
   const projects = new ProjectRegistry(db);
-  // Close db when deps is torn down — stored on registry via closure
   (sessions as unknown as { _db: ReturnType<typeof openDatabase>["db"] })._db = db;
-  return { sessions, projects };
+  return { sessions, projects, sessionsDir: () => dir };
 }
 
 // ─────────────────────────────────────────────────────────────────
@@ -57,7 +60,7 @@ describe("getSessionHandler", () => {
     const req = new Request(`http://localhost/v1/sessions/${sessionId}`);
     const res = getSessionHandler(sessionId, deps);
     expect(res.status).toBe(200);
-    const body = await (res as Response).json();
+    const body = await resJson<{ _v: number; id: string; kind: string; status: string; workflow: string; provider_chain: readonly string[] }>(res);
     expect(body.id).toBe(sessionId);
     expect(body.kind).toBe("standalone");
     expect(body.status).toBe("pending");
@@ -69,7 +72,7 @@ describe("getSessionHandler", () => {
     const req = new Request("http://localhost/v1/sessions/nonexistent-id");
     const res = getSessionHandler("nonexistent-id", deps);
     expect(res.status).toBe(404);
-    const body = await (res as Response).json();
+    const body = await resJson<{ error: { code: string } }>(res);
     expect(body.error).toBeDefined();
     expect(body.error.code).toBe("session_not_found");
   });
