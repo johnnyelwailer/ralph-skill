@@ -113,6 +113,20 @@ export async function emitTriggerFailed(
   });
 }
 
+export async function emitTriggerSkipped(
+  events: EventWriter,
+  trigger_id: string,
+  reason: string,
+  details?: Record<string, unknown>,
+): Promise<void> {
+  await events.append("trigger.skipped", {
+    trigger_id,
+    reason,
+    details,
+    skipped_at: new Date().toISOString(),
+  });
+}
+
 export function parseDurationToMs(duration: string): number | null {
   const match = duration.match(/^P(?:(\d+)D)?T?(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?$/);
   if (!match) return null;

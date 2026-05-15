@@ -1,4 +1,5 @@
 import type { Database } from "bun:sqlite";
+import type { EventWriter } from "../events/append-and-project.ts";
 import {
   type Artifact,
   type ArtifactFilter,
@@ -152,6 +153,26 @@ export class ArtifactRegistry {
     if (!a) throw new ArtifactNotFoundError(id);
     return a;
   }
+}
+
+export function emitArtifactChanged(
+  events: EventWriter | undefined,
+  artifact: Artifact,
+  change_kind: "created" | "updated" | "deleted",
+): void {
+  if (!events) return;
+  void events.append("artifact.changed", {
+    artifact_id: artifact.id,
+    project_id: artifact.project_id,
+    session_id: artifact.session_id,
+    composer_turn_id: artifact.composer_turn_id,
+    control_subagent_run_id: artifact.control_subagent_run_id,
+    kind: artifact.kind,
+    phase: artifact.phase,
+    label: artifact.label,
+    change_kind,
+    updated_at: artifact.created_at,
+  });
 }
 
 function toArtifact(row: {

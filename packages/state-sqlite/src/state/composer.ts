@@ -3,6 +3,7 @@
  * See docs/spec/api.md §Composer.
  */
 import type { Database } from "bun:sqlite";
+import type { EventWriter } from "../events/append-and-project.ts";
 import type {
   ComposerActionClass,
   ComposerApprovalPolicy,
@@ -328,5 +329,46 @@ export class ComposerTurnRegistry {
       .query<{ changes: number }, [string]>(`DELETE FROM composer_turns WHERE id = ?`)
       .run(id);
     if (result.changes === 0) throw new ComposerTurnNotFoundError(id);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Event emission helpers
+// ---------------------------------------------------------------------------
+
+export function emitComposerSubagentChanged(
+  events: EventWriter | undefined,
+  turn: ComposerTurn,
+  subagentId: string,
+  status: string,
+): void {
+  if (!events) return;
+  const subagent = turn.delegated_refs.find((r) => r.id === subagentId);
+  void events.append("composer.subagent.changed", {
+    composer_turn_id: turn.id,
+    subagent_run_id: subagentId,
+    role: subagent?.role ?? null,
+    scope: subagent?.scope ?? null,
+    status,
+    updated_at: turn.updated_at,
+  });
+}
+
+export function emitComposerActionPreviewed(
+  events: EventWriter | undefined,
+  turn: ComposerTurn,
+): void {
+  if (!events || turn.proposed_actions.length === 0) return;
+  for (const action of turn.proposed_actions) {
+    void events.append("composer.action.previewed", {
+      composer_turn_id: turn.id,
+      action_id: action.id,
+      action_class: action.class,
+      method: action.method,
+      path: action.path,
+      summary: action.summary,
+      risk: action.risk,
+      requires_approval: action.requires_approval,
+    });
   }
 }

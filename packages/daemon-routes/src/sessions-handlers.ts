@@ -178,7 +178,7 @@ export function deleteSessionHandler(id: string, req: Request, deps: SessionsDep
 
   const previousStatus = session.status;
   if (mode === "force") {
-    deps.sessions.updateStatus(id, "stopped");
+    const updated = deps.sessions.updateStatus(id, "stopped");
     if (deps.events) {
       void deps.events.append("session.forced", {
         session_id: id,
@@ -192,6 +192,7 @@ export function deleteSessionHandler(id: string, req: Request, deps: SessionsDep
         workflow: session.workflow,
         project_id: session.projectId,
       });
+      emitSessionUpdate(deps.events, updated);
     }
     return jsonResponse(200, { id, status: "stopped" });
   } else {
@@ -205,6 +206,7 @@ export function deleteSessionHandler(id: string, req: Request, deps: SessionsDep
         workflow: session.workflow,
         project_id: session.projectId,
       });
+      emitSessionUpdate(deps.events, updated);
     }
     return jsonResponse(200, sessionResponse(updated));
   }
@@ -235,6 +237,7 @@ export function resumeSessionHandler(id: string, deps: SessionsDeps): Response {
       workflow: session.workflow,
       project_id: session.projectId,
     });
+    emitSessionUpdate(deps.events, updated);
   }
   return jsonResponse(200, sessionResponse(updated));
 }
@@ -266,6 +269,7 @@ export function pauseSessionHandler(id: string, deps: SessionsDeps): Response {
       workflow: session.workflow,
       project_id: session.projectId,
     });
+    emitSessionUpdate(deps.events, updated);
   }
   return jsonResponse(200, sessionResponse(updated));
 }
@@ -291,6 +295,7 @@ export function unpauseSessionHandler(id: string, deps: SessionsDeps): Response 
       workflow: session.workflow,
       project_id: session.projectId,
     });
+    emitSessionUpdate(deps.events, updated);
   }
   return jsonResponse(200, sessionResponse(updated));
 }
@@ -418,4 +423,27 @@ function sessionResponse(s: {
     stopped_at: s.stoppedAt,
     started_at: s.startedAt,
   };
+}
+
+function emitSessionUpdate(events: EventWriter | undefined, s: {
+  id: string;
+  status: string;
+  currentPhase: string | null;
+  currentIteration: number;
+  currentProviderId: string | null;
+  kind: string;
+  workflow: string;
+  projectId: string;
+}): void {
+  if (!events) return;
+  void events.append("session.update", {
+    session_id: s.id,
+    status: s.status,
+    phase: s.currentPhase,
+    iteration: s.currentIteration,
+    provider: s.currentProviderId,
+    kind: s.kind,
+    workflow: s.workflow,
+    project_id: s.projectId,
+  });
 }

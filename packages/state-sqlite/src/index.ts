@@ -48,6 +48,7 @@ export {
 export {
   ArtifactRegistry,
   ArtifactNotFoundError,
+  emitArtifactChanged,
   type Artifact,
   type ArtifactFilter,
   type ArtifactKind,
@@ -56,6 +57,8 @@ export {
 export {
   ComposerTurnRegistry,
   ComposerTurnNotFoundError,
+  emitComposerSubagentChanged,
+  emitComposerActionPreviewed,
 } from "./state/composer.ts";
 export type {
   ComposerTurn,
@@ -78,6 +81,7 @@ export {
   executeRefreshProjection,
   emitTriggerFired,
   emitTriggerFailed,
+  emitTriggerSkipped,
   parseDurationToMs,
   getNextFireTime,
   type TriggerEngineDeps,
