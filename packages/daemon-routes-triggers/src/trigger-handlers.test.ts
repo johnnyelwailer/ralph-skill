@@ -277,6 +277,58 @@ describe("POST /v1/triggers", () => {
     expect(body.action.target.projection_scope_id).toBe("p_abc");
   });
 
+  test("accepts workspace scope kind", async () => {
+    const req = createTriggerReq(deps, {
+      scope: { kind: "workspace", id: "ws_abc123" },
+      source: { kind: "time", schedule: "P1D" },
+      action: { kind: "emit_alert", target: { message: "daily workspace check" } },
+    });
+    const res = await handleTriggers(req, deps, "/v1/triggers");
+    expect(res.status).toBe(201);
+    const body = await res.json();
+    expect(body.scope.kind).toBe("workspace");
+    expect(body.scope.id).toBe("ws_abc123");
+  });
+
+  test("accepts artifact scope kind", async () => {
+    const req = createTriggerReq(deps, {
+      scope: { kind: "artifact", id: "a_artifact_001" },
+      source: { kind: "event", topic: "artifact.updated" },
+      action: { kind: "fire_monitor_profile", target: { artifact_id: "a_artifact_001" } },
+    });
+    const res = await handleTriggers(req, deps, "/v1/triggers");
+    expect(res.status).toBe(201);
+    const body = await res.json();
+    expect(body.scope.kind).toBe("artifact");
+    expect(body.scope.id).toBe("a_artifact_001");
+  });
+
+  test("accepts event source with filters (topics, labels, thresholds)", async () => {
+    const req = createTriggerReq(deps, {
+      scope: { kind: "global" },
+      source: {
+        kind: "event",
+        topic: "session.*",
+        filters: {
+          topics: ["session.started", "session.completed"],
+          labels: { env: "production" },
+          thresholds: [{ metric: "error_rate", op: ">=", value: 0.05 }],
+        },
+      },
+      action: { kind: "emit_alert", target: { message: "threshold breach" } },
+    });
+    const res = await handleTriggers(req, deps, "/v1/triggers");
+    expect(res.status).toBe(201);
+    const body = await res.json();
+    expect(body.source.kind).toBe("event");
+    expect(body.source.topic).toBe("session.*");
+    expect(body.source.filters).toEqual({
+      topics: ["session.started", "session.completed"],
+      labels: { env: "production" },
+      thresholds: [{ metric: "error_rate", op: ">=", value: 0.05 }],
+    });
+  });
+
   test("rejects negative debounce_seconds", async () => {
     const req = createTriggerReq(deps, {
       scope: { kind: "global" },
