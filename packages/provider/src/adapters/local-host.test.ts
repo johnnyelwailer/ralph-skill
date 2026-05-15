@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { createLocalHostSandbox, type LocalHostSandboxOptions } from "./local-host.ts";
-import type { AgentChunk, ProviderAdapter } from "./types.ts";
+import type { AgentChunk, ProviderAdapter, TurnInput } from "../types.ts";
 
 const mockProvider: ProviderAdapter = {
   id: "mock",
@@ -15,7 +15,7 @@ const mockProvider: ProviderAdapter = {
     maxContextTokens: null,
   },
   resolveModel: () => ({ providerId: "mock", modelId: "mock-model" }),
-  async *sendTurn(input) {
+  async *sendTurn(input: TurnInput) {
     yield { type: "text", content: { delta: `hello ${input.prompt}` } };
     yield {
       type: "usage",
@@ -90,8 +90,8 @@ describe("createLocalHostSandbox", () => {
   test("runTurn delegates to provider with overridden cwd", async () => {
     const provider = {
       ...mockProvider,
-      async *sendTurn(input) {
-        yield { type: "text", content: { delta: `cwd=${input.cwd}` } };
+      async *sendTurn(input: TurnInput) {
+        yield { type: "text" as const, content: { delta: `cwd=${input.cwd}` } };
       },
     };
     const sandbox = createLocalHostSandbox({ provider });
@@ -119,7 +119,7 @@ describe("createLocalHostSandbox", () => {
     }
     const textChunk = chunks.find((c) => c.type === "text");
     expect(textChunk?.type).toBe("text");
-    expect((textChunk as { type: "text" }).content.delta).toBe("cwd=/override/root");
+    expect(textChunk?.content.delta).toBe("cwd=/override/root");
   });
 
   test("dispose clears all sessions", async () => {
@@ -132,7 +132,7 @@ describe("createLocalHostSandbox", () => {
     };
     await sandbox.acquireSession({ sessionId: "s1", environment });
     await sandbox.acquireSession({ sessionId: "s2", environment });
-    await sandbox.dispose();
+    if (sandbox.dispose) await sandbox.dispose();
     await expect(async () => {
       for await (const _ of sandbox.runTurn({
         sessionId: "s1",
