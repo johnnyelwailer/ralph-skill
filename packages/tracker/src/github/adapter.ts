@@ -99,7 +99,7 @@ async function ghREST<T>(method: string, path: string, body?: unknown): Promise<
 
 function parseRepo(config: GitHubConfig): { owner: string; repo: string } {
   const parts = config.repo.split("/");
-  if (parts.length !== 2) throw new Error(`Invalid repo format: ${config.repo}`);
+  if (parts.length !== 2 || !parts[0] || !parts[1]) throw new Error(`Invalid repo format: ${config.repo}`);
   return { owner: parts[0]!, repo: parts[1]! };
 }
 
