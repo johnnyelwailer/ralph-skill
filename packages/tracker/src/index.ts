@@ -12,6 +12,13 @@ export {
   createBuiltinAdapter,
   type CreateBuiltinAdapterOptions,
 } from "./builtin-adapter.ts";
+export {
+  createGitHubAdapter,
+  type CreateGitHubAdapterOptions,
+} from "./github/adapter.ts";
+export type {
+  GitHubConfig,
+} from "./github/types.js";
 export type {
   TrackerId,
   WorkItemRef,
