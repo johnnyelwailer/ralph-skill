@@ -25,6 +25,10 @@ export {
   ProviderRegistry,
   type ResolvedProvider,
 } from "./registry.ts";
+export {
+  createLocalHostSandbox,
+  type LocalHostSandboxOptions,
+} from "./adapters/local-host.ts";
 export type {
   ProviderRef,
   ReasoningEffort,

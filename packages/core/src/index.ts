@@ -122,3 +122,11 @@ export {
   welfordUpdate,
   type WelfordState,
 } from "./stats/welford.ts";
+export {
+  type SandboxAdapter,
+  type SandboxTarget,
+  type SandboxSessionEnvironment,
+  type SandboxRunOptions,
+  type ProjectAdapter,
+  type ProjectAdapterTarget,
+} from "./adapters/index.ts";
