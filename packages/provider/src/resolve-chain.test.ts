@@ -4,16 +4,14 @@ import {
   resolveProviderChain,
   type ProviderOverrides,
 } from "./resolve-chain.ts";
-import { type InMemoryProviderHealthStore, type ProviderHealth } from "@aloop/provider-health";
+import { InMemoryProviderHealthStore, createUnknownHealth, type ProviderHealth } from "@aloop/provider-health";
 
 function makeHealthStore(initial: Record<string, ProviderHealth> = {}): InMemoryProviderHealthStore {
-  const store: Map<string, ProviderHealth> = new Map(Object.entries(initial));
-  return {
-    peek(id) { return store.get(id) ?? undefined; },
-    recordSuccess() {},
-    recordFailure() {},
-    clear() {},
-  };
+  const store = new InMemoryProviderHealthStore();
+  for (const [id, health] of Object.entries(initial)) {
+    (store as unknown as { states: Map<string, ProviderHealth> }).states.set(id, health);
+  }
+  return store;
 }
 
 function healthy(id: string): ProviderHealth {
