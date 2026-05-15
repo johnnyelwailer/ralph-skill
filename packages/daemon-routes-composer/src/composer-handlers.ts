@@ -32,6 +32,9 @@ import {
   ComposerTurnNotFoundError,
   ComposerTurnRegistry,
 } from "@aloop/state-sqlite";
+import type { EventEnvelope } from "@aloop/core";
+import { createReadStream, existsSync } from "node:fs";
+import { createInterface } from "node:readline";
 import type { Database } from "bun:sqlite";
 import type { EventWriter } from "@aloop/state-sqlite";
 
@@ -43,6 +46,7 @@ export type ComposerDeps = {
   readonly registry?: ComposerTurnRegistry;
   readonly db?: Database;
   readonly events?: EventWriter;
+  readonly logFile: () => string;
 };
 
 // ---------------------------------------------------------------------------
@@ -474,12 +478,9 @@ export async function handleComposer(
   }
 
   // GET /v1/composer/turns/:id/chunks
-  const chunksMatch = pathname.match(/^\/v1\/composer\/turns\/([^/]+)\/chunks$/);
+  const chunksMatch = cleanPathname.match(/^\/v1\/composer\/turns\/([^/]+)\/chunks$/);
   if (chunksMatch) {
     if (req.method !== "GET") return methodNotAllowed();
-    // Composer's own turn chunks are stored in its own turn event stream.
-    // For now, return an empty replay stream — real-time streaming would need
-    // a persistent subscription to the global event bus, same as session turns.
     const id = chunksMatch[1]!;
     try {
       registry.getById(id); // verify it exists
@@ -490,16 +491,64 @@ export async function handleComposer(
       return errorResponse(500, "internal_error", String(err));
     }
 
+    const url = new URL(req.url);
+    const replay = url.searchParams.get("replay") === "true";
+
     const encoder = new TextEncoder();
     const stream = new ReadableStream<Uint8Array>({
       start(controller) {
-        const write = (data: unknown): void => {
+        const writeSSEChunk = (data: unknown): void => {
           const line = `data: ${JSON.stringify(data)}\n\n`;
           controller.enqueue(encoder.encode(line));
         };
-        write({ composer_turn_id: id, type: "start" });
-        write({ composer_turn_id: id, type: "end" });
-        controller.close();
+
+        writeSSEChunk({ composer_turn_id: id, type: "start" });
+
+        if (!deps.logFile) {
+          writeSSEChunk({ composer_turn_id: id, type: "end" });
+          controller.close();
+          return;
+        }
+
+        const logPath = deps.logFile();
+        if (!existsSync(logPath)) {
+          writeSSEChunk({ composer_turn_id: id, type: "end" });
+          controller.close();
+          return;
+        }
+
+        if (replay) {
+          const fileStream = createReadStream(logPath, { encoding: "utf-8" });
+          const rl = createInterface({ input: fileStream, crlfDelay: Infinity });
+
+          rl.on("line", (line) => {
+            if (line.length === 0) return;
+            try {
+              const envelope = JSON.parse(line) as EventEnvelope;
+              if (
+                envelope.topic === "agent.chunk" &&
+                (envelope.data as Record<string, unknown>).composer_turn_id === id
+              ) {
+                writeSSEChunk(envelope.data);
+              }
+            } catch {
+              // skip malformed lines
+            }
+          });
+
+          rl.on("close", () => {
+            writeSSEChunk({ composer_turn_id: id, type: "end" });
+            controller.close();
+          });
+
+          rl.on("error", () => {
+            writeSSEChunk({ composer_turn_id: id, type: "end" });
+            controller.close();
+          });
+        } else {
+          writeSSEChunk({ composer_turn_id: id, type: "end" });
+          controller.close();
+        }
       },
     });
 

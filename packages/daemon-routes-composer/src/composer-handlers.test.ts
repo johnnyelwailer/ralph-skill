@@ -3,7 +3,7 @@
  */
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { Database } from "bun:sqlite";
-import { mkdirSync, rmSync } from "node:fs";
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { handleComposer, type ComposerDeps } from "./composer-handlers.ts";
 import { migrate, loadBundledMigrations } from "@aloop/sqlite-db";
@@ -59,7 +59,8 @@ beforeEach(() => {
   const setup = createTestDb();
   db = setup.db;
   dir = setup.dir;
-  deps = { db };
+  const logFile = join(dir, "daemon.log.jsonl");
+  deps = { db, logFile: () => logFile };
   handler = handleComposer;
 });
 
@@ -482,6 +483,73 @@ describe("GET /v1/composer/turns/:id/chunks", () => {
   test("returns 404 for unknown id", async () => {
     const resp = await makeRequest(handler, deps, "GET", "/v1/composer/turns/ct_unknown/chunks");
     expect(resp.status).toBe(404);
+  });
+
+  test("returns empty stream when log file does not exist", async () => {
+    const created = await (await makeRequest(handler, deps, "POST", "/v1/composer/turns", {
+      scope: { kind: "global" }, message: "Stream me",
+    })).json() as { id: string };
+
+    const resp = await makeRequest(handler, deps, "GET", `/v1/composer/turns/${created.id}/chunks`);
+    expect(resp.status).toBe(200);
+    const text = await resp.text();
+    expect(text).toContain('"type":"start"');
+    expect(text).toContain('"type":"end"');
+  });
+
+  test("returns 404 for unknown id", async () => {
+    const resp = await makeRequest(handler, deps, "GET", "/v1/composer/turns/ct_unknown/chunks");
+    expect(resp.status).toBe(404);
+  });
+
+  test("returns empty stream when log file does not exist", async () => {
+    const created = await (await makeRequest(handler, deps, "POST", "/v1/composer/turns", {
+      scope: { kind: "global" }, message: "Stream me",
+    })).json() as { id: string };
+
+    const resp = await makeRequest(handler, deps, "GET", `/v1/composer/turns/${created.id}/chunks`);
+    expect(resp.status).toBe(200);
+    const text = await resp.text();
+    expect(text).toContain('"type":"start"');
+    expect(text).toContain('"type":"end"');
+  });
+
+  test("replay=true streams matching agent.chunk events from log", async () => {
+    const created = await (await makeRequest(handler, deps, "POST", "/v1/composer/turns", {
+      scope: { kind: "global" }, message: "Stream me",
+    })).json() as { id: string };
+
+    const logFile = deps.logFile();
+    writeFileSync(logFile, [
+      { _v: 1, id: "1", topic: "agent.chunk", data: { composer_turn_id: created.id, session_id: "s_1", turn_id: "t_1", sequence: 0, type: "text", content: { delta: "hello" }, final: false } },
+      { _v: 1, id: "2", topic: "agent.chunk", data: { composer_turn_id: created.id, session_id: "s_1", turn_id: "t_1", sequence: 1, type: "usage", content: { tokens: 100 }, final: true } },
+      { _v: 1, id: "3", topic: "agent.chunk", data: { composer_turn_id: "other_turn", session_id: "s_1", turn_id: "t_1", sequence: 0, type: "text", content: { delta: "should be filtered" }, final: false } },
+    ].map((r) => JSON.stringify(r)).join("\n") + "\n", "utf-8");
+
+    const resp = await makeRequest(handler, deps, "GET", `/v1/composer/turns/${created.id}/chunks?replay=true`);
+    expect(resp.status).toBe(200);
+    const text = await resp.text();
+    expect(text).toContain("\"hello\"");
+    expect(text).toContain("\"tokens\":100");
+    expect(text).not.toContain("should be filtered");
+  });
+
+  test("replay=false streams only start and end", async () => {
+    const created = await (await makeRequest(handler, deps, "POST", "/v1/composer/turns", {
+      scope: { kind: "global" }, message: "Stream me",
+    })).json() as { id: string };
+
+    const logFile = deps.logFile();
+    writeFileSync(logFile, [
+      { _v: 1, id: "1", topic: "agent.chunk", data: { composer_turn_id: created.id, session_id: "s_1", turn_id: "t_1", sequence: 0, type: "text", content: { delta: "hello" }, final: false } },
+    ].map((r) => JSON.stringify(r)).join("\n") + "\n", "utf-8");
+
+    const resp = await makeRequest(handler, deps, "GET", `/v1/composer/turns/${created.id}/chunks?replay=false`);
+    expect(resp.status).toBe(200);
+    const text = await resp.text();
+    expect(text).toContain('"type":"start"');
+    expect(text).toContain('"type":"end"');
+    expect(text).not.toContain("hello");
   });
 });
 

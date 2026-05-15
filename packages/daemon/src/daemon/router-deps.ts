@@ -89,7 +89,7 @@ export function makeRouterDeps(input: MakeRouterDepsInput): RouterDeps {
         pathname,
       ),
     handleComposer: (req, pathname) =>
-      handleComposer(req, { registry: input.composerRegistry, events: input.events }, pathname),
+      handleComposer(req, { registry: input.composerRegistry, events: input.events, logFile: () => input.config.paths().logFile }, pathname),
     handleArtifacts: (req, pathname) =>
       handleArtifacts(req, { registry: input.artifactRegistry, artifactsDir }, pathname),
     handleTriggers: (req, pathname) =>
