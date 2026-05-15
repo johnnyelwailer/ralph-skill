@@ -97,6 +97,33 @@ describe("MetricsProjector", () => {
     expect(row?.value).toBe(2);
   });
 
+  test("session.created kind=standalone does NOT increment concurrency_in_flight", () => {
+    const { db, projector } = makeProjector();
+    projector.apply(db, makeEnv("session.created", { session_id: "s1", kind: "standalone" }));
+    projector.apply(db, makeEnv("session.created", { session_id: "s2", kind: "standalone" }));
+
+    const row = db
+      .query<{ value: number }, [string]>(
+        `SELECT value FROM scheduler_metrics WHERE metric_name = ?`,
+      )
+      .get("concurrency_in_flight");
+    // concurrency_in_flight only tracks child sessions; standalone sessions do not affect it
+    expect(row).toBeNull();
+  });
+
+  test("session.created kind=orchestrator does NOT increment concurrency_in_flight", () => {
+    const { db, projector } = makeProjector();
+    projector.apply(db, makeEnv("session.created", { session_id: "s1", kind: "orchestrator" }));
+
+    const row = db
+      .query<{ value: number }, [string]>(
+        `SELECT value FROM scheduler_metrics WHERE metric_name = ?`,
+      )
+      .get("concurrency_in_flight");
+    // concurrency_in_flight only tracks child sessions; orchestrator sessions do not affect it
+    expect(row).toBeNull();
+  });
+
   test("session.created initialises session metric rows", () => {
     const { db, projector } = makeProjector();
     projector.apply(db, makeEnv("session.created", { session_id: "s1", kind: "orchestrator" }));
