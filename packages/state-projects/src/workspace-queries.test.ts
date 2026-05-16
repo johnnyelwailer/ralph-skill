@@ -291,6 +291,21 @@ describe("workspace project membership", () => {
     removeProjectFromWorkspace(db, w.id, "p1");
     expect(listWorkspaceProjects(db, w.id)).toHaveLength(0);
   });
+
+  test("removeProjectFromWorkspace throws WorkspaceProjectNotFoundError when project is not a member", () => {
+    const w = createWorkspace(db, { name: "W" });
+    seedProject("p1", "P1");
+    expect(() => removeProjectFromWorkspace(db, w.id, "p1")).toThrow(
+      WorkspaceProjectNotFoundError,
+    );
+  });
+
+  test("removeProjectFromWorkspace throws WorkspaceProjectNotFoundError for non-existent workspace", () => {
+    seedProject("p1", "P1");
+    expect(() => removeProjectFromWorkspace(db, "nonexistent-ws", "p1")).toThrow(
+      WorkspaceProjectNotFoundError,
+    );
+  });
 });
 
 describe("addProjectToWorkspace", () => {
