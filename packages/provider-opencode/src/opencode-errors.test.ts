@@ -63,8 +63,8 @@ describe("extractErrorMessage", () => {
 
   test("prefers Error.message over record fields", () => {
     const err = new Error("error message");
-    (err as Record<string, unknown>).stderr = "should not be used";
-    (err as Record<string, unknown>).stdout = "should not be used";
+    (err as unknown as Record<string, unknown>).stderr = "should not be used";
+    (err as unknown as Record<string, unknown>).stdout = "should not be used";
     expect(extractErrorMessage(err)).toBe("error message");
   });
 

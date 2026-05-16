@@ -94,7 +94,7 @@ describe("QaResult", () => {
       coverage_delta_pct: 2.5,
       bugs_filed: ["bug-42"],
     };
-    expect(r.features[2].status).toBe("fail");
+    expect(r.features[2]!.status).toBe("fail");
     expect(r.bugs_filed).toHaveLength(1);
   });
 
@@ -103,7 +103,7 @@ describe("QaResult", () => {
       features: [{ feature: "legacy endpoint", status: "skip", notes: "removed in v2" }],
       bugs_filed: [],
     };
-    expect(r.features[0].status).toBe("skip");
+    expect(r.features[0]!.status).toBe("skip");
   });
 });
 
@@ -147,14 +147,17 @@ describe("ReviewResult", () => {
           gate: "code_quality",
           status: "fail",
           summary: "High complexity in utils.ts",
-          findings: { "src/utils.ts": [12, 15, 18] },
+          findings: { [filePath("src/utils.ts")]: [12, 15, 18] },
         },
         { gate: "coverage", status: "not_applicable", summary: "No tests required for this module" },
       ],
       summary: "Request changes to utils.ts",
     };
     expect(r.verdict).toBe("changes_requested");
-    expect(r.gates[0].findings?.["src/utils.ts"]).toEqual([12, 15, 18]);
+    const gate0Findings = r.gates[0]?.findings;
+    if (gate0Findings) {
+      expect(gate0Findings[filePath("src/utils.ts")]).toEqual([12, 15, 18]);
+    }
   });
 
   test("reject verdict", () => {
@@ -184,7 +187,7 @@ describe("ProofResult", () => {
       skipped: [],
       baselines_updated: [],
     };
-    expect(r.artifacts[0].type).toBe("deployment_preview");
+    expect(r.artifacts[0]!.type).toBe("deployment_preview");
   });
 
   test("accepts screenshot artifact", () => {
@@ -205,7 +208,7 @@ describe("ProofResult", () => {
       skipped: [],
       baselines_updated: [],
     };
-    expect(r.artifacts[0].type).toBe("screenshot");
+    expect(r.artifacts[0]!.type).toBe("screenshot");
   });
 
   test("accepts skipped tasks", () => {
@@ -266,7 +269,7 @@ describe("SpecGapResult", () => {
         },
       ],
     };
-    expect(r.findings[0].category).toBe("spec_code_alignment");
+    expect(r.findings[0]!.category).toBe("spec_code_alignment");
   });
 
   test("empty findings is valid", () => {
@@ -289,7 +292,7 @@ describe("SpecGapResult", () => {
 describe("DocsResult", () => {
   test("accepts valid shape", () => {
     const r: DocsResult = {
-      files_modified: ["README.md", "docs/API.md"],
+      files_modified: [filePath("README.md"), filePath("docs/API.md")],
       summary: "Updated README with new installation steps",
     };
     expect(r.files_modified).toHaveLength(2);
@@ -322,7 +325,7 @@ describe("SpecReviewResult", () => {
       summary: "Gap found in error handling",
     };
     expect(r.variant).toBe("B");
-    expect(r.findings[0].task_ids).toContain("task-5");
+    expect(r.findings[0]!.task_ids).toContain("task-5");
   });
 });
 
@@ -372,7 +375,7 @@ describe("DecomposeResult", () => {
       ],
     };
     expect(r.epics).toHaveLength(2);
-    expect(r.epics[1].dependencies).toContain("auth-overhaul");
+    expect(r.epics[1]!.dependencies).toContain("auth-overhaul");
   });
 });
 
@@ -390,7 +393,7 @@ describe("SubDecomposeResult", () => {
       ],
     };
     expect(r.epic_slug).toBe("auth-overhaul");
-    expect(r.stories[0].estimated_complexity).toBe("lg");
+    expect(r.stories[0]!.estimated_complexity).toBe("lg");
   });
 });
 
@@ -459,7 +462,7 @@ describe("EstimateResult", () => {
       ],
     };
     expect(r.complexity_tier).toBe("lg");
-    expect(r.dependency_changes?.[0].action).toBe("add");
+    expect(r.dependency_changes?.[0]!.action).toBe("add");
   });
 });
 
@@ -486,7 +489,7 @@ describe("ConsistencyResult", () => {
       stories_checked: ["auth-oauth2-implementation"],
     };
     expect(r.verdict).toBe("stale");
-    expect(r.drift_reasons?.[0].code).toBe("spec_newer");
+    expect(r.drift_reasons?.[0]!.code).toBe("spec_newer");
   });
 
   test("blocked verdict", () => {
@@ -514,7 +517,7 @@ describe("DispatchResult", () => {
         },
       ],
     };
-    expect(r.stories[0].provider_chain).toHaveLength(2);
+    expect(r.stories[0]!.provider_chain).toHaveLength(2);
   });
 });
 
@@ -553,7 +556,9 @@ describe("DiagnoseResult", () => {
       rationale: "Session failed 3 times",
     };
     expect(r.action.type).toBe("stop_session");
-    expect(r.action.reason).toBe("repeated failures");
+    if (r.action.type === "stop_session") {
+      expect(r.action.reason).toBe("repeated failures");
+    }
   });
 
   test("raise_threshold", () => {
@@ -562,7 +567,9 @@ describe("DiagnoseResult", () => {
       rationale: "Current threshold too conservative for this project",
     };
     expect(r.action.type).toBe("raise_threshold");
-    expect(r.action.value).toBe(20);
+    if (r.action.type === "raise_threshold") {
+      expect(r.action.value).toBe(20);
+    }
   });
 
   test("redispatch", () => {
@@ -587,7 +594,9 @@ describe("DiagnoseResult", () => {
       rationale: "Systemic issue needs tracking",
     };
     expect(r.action.type).toBe("file_followup_issue");
-    expect(r.action.draft.labels).toContain("bug");
+    if (r.action.type === "file_followup_issue") {
+      expect(r.action.draft.labels).toContain("bug");
+    }
   });
 });
 
@@ -618,7 +627,9 @@ describe("ConversationResult", () => {
       rationale: "Updating labels based on human request",
     };
     expect(r.action.type).toBe("edit_work_item");
-    expect(r.action.patch.labels).toContain("deferred");
+    if (r.action.type === "edit_work_item") {
+      expect(r.action.patch.labels).toContain("deferred");
+    }
   });
 
   test("refine_again", () => {
@@ -681,7 +692,9 @@ describe("ConversationResult", () => {
       rationale: "Human requested follow-up epic",
     };
     expect(r.action.type).toBe("file_followup");
-    expect(r.action.draft.kind).toBe("epic");
+    if (r.action.type === "file_followup") {
+      expect(r.action.draft.kind).toBe("epic");
+    }
   });
 
   test("no_action", () => {
@@ -707,7 +720,7 @@ describe("SetupDiscoveryResult", () => {
       ],
       summary: "3 findings",
     };
-    expect(r.findings[2].severity).toBe("error");
+    expect(r.findings[2]!.severity).toBe("error");
   });
 });
 
@@ -727,8 +740,8 @@ describe("SetupQuestionBatch", () => {
       ],
       summary: "2 questions staged",
     };
-    expect(r.questions[0].required).toBe(true);
-    expect(r.questions[1].context).toBe("Optional, for docs agent");
+    expect(r.questions[0]!.required).toBe(true);
+    expect(r.questions[1]!.context).toBe("Optional, for docs agent");
   });
 });
 
@@ -747,7 +760,7 @@ describe("SetupChapterUpdate", () => {
         ],
       },
     };
-    expect(r.changes.sections?.[0].action).toBe("add");
+    expect(r.changes.sections?.[0]!.action).toBe("add");
   });
 
   test("accepts new_content for wholesale replacement", () => {

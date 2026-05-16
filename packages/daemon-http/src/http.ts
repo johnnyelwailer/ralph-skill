@@ -25,7 +25,7 @@ export function startHttp(opts: StartHttpOptions): RunningHttp {
 
   return {
     server,
-    port: server.port,
+    port: server.port as number,
     hostname,
     async stop() {
       server.stop(true);

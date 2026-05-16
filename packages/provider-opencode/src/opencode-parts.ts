@@ -1,4 +1,4 @@
-import type { AgentChunk } from "@aloop/provider";
+import type { AgentChunk, UsageChunk } from "@aloop/provider";
 import type { PromptInfo } from "./opencode-types.ts";
 
 export function translateParts(parts: readonly unknown[]): AgentChunk[] {
@@ -19,7 +19,7 @@ export function translateParts(parts: readonly unknown[]): AgentChunk[] {
   return chunks;
 }
 
-export function buildUsageChunk(providerId: string, modelId: string, info: PromptInfo): AgentChunk {
+export function buildUsageChunk(providerId: string, modelId: string, info: PromptInfo): UsageChunk {
   return {
     type: "usage",
     final: true,

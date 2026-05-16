@@ -341,17 +341,17 @@ describe("opencode-input-parts", () => {
 
   describe("toSdkPromptParts", () => {
     test("translates text part", () => {
-      const parts = [{ type: "text", text: "hello" }];
+      const parts = [{ type: "text" as const, text: "hello" }];
       expect(toSdkPromptParts(parts)).toEqual([{ type: "text", text: "hello" }]);
     });
 
     test("translates file part with filename", () => {
-      const parts = [{ type: "file", mime: "image/png", url: "https://example.com/img.png", filename: "img.png" }];
+      const parts = [{ type: "file" as const, mime: "image/png", url: "https://example.com/img.png", filename: "img.png" }];
       expect(toSdkPromptParts(parts)).toEqual([{ type: "file", mime: "image/png", url: "https://example.com/img.png", filename: "img.png" }]);
     });
 
     test("translates file part without optional filename", () => {
-      const parts = [{ type: "file", mime: "image/png", url: "https://example.com/img.png" }];
+      const parts = [{ type: "file" as const, mime: "image/png", url: "https://example.com/img.png" }];
       const result = toSdkPromptParts(parts);
       expect(result[0]).toEqual({ type: "file", mime: "image/png", url: "https://example.com/img.png" });
       expect(result[0]).not.toHaveProperty("filename");

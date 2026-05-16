@@ -113,7 +113,8 @@ describe("runOpencodeCli", () => {
     setSpawnResponses({ exited: 0, stdout: "hello from opencode" });
     const result = await runOk({});
     expect(result.ok).toBe(true);
-    expect((result as { ok: true }).text).toBe("hello from opencode");
+    const okResult = result as Extract<typeof result, { ok: true }>;
+    expect(okResult.text).toBe("hello from opencode");
   });
 
   test("exports the opencode session to recover final text and usage", async () => {
@@ -169,9 +170,10 @@ describe("runOpencodeCli", () => {
     setSpawnResponses({ exited: 1, stdout: "some output", stderr: "error message" });
     const result = await runOk({});
     expect(result.ok).toBe(false);
-    expect((result as { ok: false }).exitCode).toBe(1);
-    expect((result as { ok: false }).stdout).toBe("some output");
-    expect((result as { ok: false }).stderr).toBe("error message");
+    const failResult = result as Extract<typeof result, { ok: false }>;
+    expect(failResult.exitCode).toBe(1);
+    expect(failResult.stdout).toBe("some output");
+    expect(failResult.stderr).toBe("error message");
   });
 
   test("calls proc.kill() and returns timedOut:true when timeout expires", async () => {

@@ -290,6 +290,11 @@ describe("makeFetchHandler sessions dispatch", () => {
         }
         return undefined;
       },
+      handleComposer: () => undefined,
+      handleArtifacts: () => undefined,
+      handleTriggers: () => undefined,
+      handleSetup: () => undefined,
+      handleEvents: () => undefined,
     };
     const fetch = makeFetchHandler(deps);
     const res = await fetch(new Request("http://x/v1/sessions"));
@@ -315,6 +320,11 @@ describe("makeFetchHandler sessions dispatch", () => {
         }
         return undefined;
       },
+      handleComposer: () => undefined,
+      handleArtifacts: () => undefined,
+      handleTriggers: () => undefined,
+      handleSetup: () => undefined,
+      handleEvents: () => undefined,
     };
     const fetch = makeFetchHandler(deps);
     const res = await fetch(new Request("http://x/v1/sessions", { method: "POST" }));

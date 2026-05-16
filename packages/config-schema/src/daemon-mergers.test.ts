@@ -490,7 +490,7 @@ describe("mergeContexts", () => {
       },
       errors,
     );
-    expect(result["test_ctx"].includeSources).toBe(false);
+    expect(result["test_ctx"]!.includeSources).toBe(false);
     expect(errors).toHaveLength(0);
   });
 
@@ -505,7 +505,7 @@ describe("mergeContexts", () => {
       },
       errors,
     );
-    expect(result["test_ctx"].includeSources).toBe(true);
+    expect(result["test_ctx"]!.includeSources).toBe(true);
     expect(errors).toHaveLength(0);
   });
 

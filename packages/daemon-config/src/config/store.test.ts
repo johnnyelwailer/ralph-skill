@@ -293,7 +293,7 @@ describe("createConfigStore", () => {
       // Point the daemon config file at an actual directory — writeFileSync will throw.
       const badPaths = {
         ...paths,
-        daemonConfigFile: paths.configDir, // configDir is a directory, not a file
+        daemonConfigFile: paths.stateDir, // stateDir is a directory, not a file
       };
       const badStore = createConfigStore({
         daemon: DAEMON_DEFAULTS,
@@ -313,7 +313,7 @@ describe("createConfigStore", () => {
       });
       const badPaths = {
         ...paths,
-        overridesFile: paths.configDir, // configDir is a directory, not a file
+        overridesFile: paths.stateDir, // stateDir is a directory, not a file
       };
       const badStore = createConfigStore({
         daemon: DAEMON_DEFAULTS,

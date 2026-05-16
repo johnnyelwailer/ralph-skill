@@ -1,53 +1,68 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { isParseResultOk } from "@aloop/core";
 import { parseYamlString, loadYamlFile, isMapping } from "./yaml.ts";
 
 describe("parseYamlString", () => {
   test("parses valid YAML and returns ok:true", () => {
     const result = parseYamlString("key: value");
     expect(result.ok).toBe(true);
-    expect(result.value).toEqual({ key: "value" });
+    if (isParseResultOk(result)) {
+      expect(result.value).toEqual({ key: "value" });
+    }
   });
 
   test("parses YAML with nested objects", () => {
     const result = parseYamlString("a:\n  b:\n    c: 1");
     expect(result.ok).toBe(true);
-    expect(result.value).toEqual({ a: { b: { c: 1 } } });
+    if (isParseResultOk(result)) {
+      expect(result.value).toEqual({ a: { b: { c: 1 } } });
+    }
   });
 
   test("parses YAML with arrays", () => {
     const result = parseYamlString("items:\n  - one\n  - two");
     expect(result.ok).toBe(true);
-    expect(result.value).toEqual({ items: ["one", "two"] });
+    if (isParseResultOk(result)) {
+      expect(result.value).toEqual({ items: ["one", "two"] });
+    }
   });
 
   test("parses YAML with null values", () => {
     const result = parseYamlString("key: null");
     expect(result.ok).toBe(true);
-    expect((result.value as any).key).toBeNull();
+    if (isParseResultOk(result)) {
+      expect((result.value as any).key).toBeNull();
+    }
   });
 
   test("parses YAML with numbers, booleans", () => {
     const result = parseYamlString("n: 42\nflag: true");
     expect(result.ok).toBe(true);
-    expect((result.value as any).n).toBe(42);
-    expect((result.value as any).flag).toBe(true);
+    if (isParseResultOk(result)) {
+      expect((result.value as any).n).toBe(42);
+      expect((result.value as any).flag).toBe(true);
+    }
   });
 
   test("returns ok:false with error for invalid YAML syntax", () => {
     const result = parseYamlString("key: [unclosed");
     expect(result.ok).toBe(false);
-    expect(result.errors).toContainEqual(
-      expect.stringContaining("yaml parse error:"),
-    );
+    if (result.ok === false) {
+      expect(result.errors).toContainEqual(
+        expect.stringContaining("yaml parse error:"),
+      );
+    }
   });
 
   test("returns ok:false with error for YAML with unexpected tab", () => {
     // Tabs are not valid YAML indentation
     const result = parseYamlString("key:\t: value");
     expect(result.ok).toBe(false);
-    expect(result.errors[0]).toContain("yaml parse error:");
+    if (result.ok === false) {
+      expect(result.errors[0]).toContain("yaml parse error:");
+    }
   });
 
   test("returns ok:false for document marker with invalid content", () => {
@@ -74,16 +89,20 @@ describe("loadYamlFile", () => {
     writeFileSync(filePath, "name: test\nvalue: 42");
     const result = loadYamlFile(filePath);
     expect(result.ok).toBe(true);
-    expect((result.value as any).name).toBe("test");
-    expect((result.value as any).value).toBe(42);
+    if (isParseResultOk(result)) {
+      expect((result.value as any).name).toBe("test");
+      expect((result.value as any).value).toBe(42);
+    }
   });
 
   test("returns ok:false with file-not-found error for missing file", () => {
     const result = loadYamlFile(join(tmpDir, "does-not-exist.yaml"));
     expect(result.ok).toBe(false);
-    expect(result.errors).toContainEqual(
-      `file not found: ${join(tmpDir, "does-not-exist.yaml")}`,
-    );
+    if (result.ok === false) {
+      expect(result.errors).toContainEqual(
+        `file not found: ${join(tmpDir, "does-not-exist.yaml")}`,
+      );
+    }
   });
 
   test("returns ok:false with read error when file is unreadable", () => {
@@ -101,7 +120,9 @@ describe("loadYamlFile", () => {
     writeFileSync(filePath, "broken: [");
     const result = loadYamlFile(filePath);
     expect(result.ok).toBe(false);
-    expect(result.errors[0]).toContain("yaml parse error:");
+    if (result.ok === false) {
+      expect(result.errors[0]).toContain("yaml parse error:");
+    }
   });
 });
 

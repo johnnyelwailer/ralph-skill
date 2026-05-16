@@ -11,7 +11,7 @@ export type OpencodeSdkPromptPart =
 
 export function resolvePromptParts(input: {
   prompt: string;
-  promptParts?: readonly PromptPart[];
+  promptParts?: readonly PromptPart[] | undefined;
 }): readonly PromptPart[] {
   return input.promptParts && input.promptParts.length > 0
     ? input.promptParts

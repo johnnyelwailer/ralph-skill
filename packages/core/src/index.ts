@@ -1,4 +1,5 @@
 export type { ParseResult } from "./parse-result.ts";
+export { isParseResultOk } from "./parse-result.ts";
 export type {
   ContextBlock,
   ContextCapabilities,

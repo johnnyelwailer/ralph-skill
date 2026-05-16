@@ -274,13 +274,13 @@ describe("ProviderHealthData", () => {
   });
 
   test("accepts all failure_class variants", () => {
-    const classes: ProviderHealthData["failure_class"][] = [
+    const classes = [
       "rate_limit",
       "auth",
       "network",
       "server_error",
       "unknown",
-    ];
+    ] as const;
     for (const cls of classes) {
       const h: ProviderHealthData = { provider_id: "p", status: "unavailable", failure_class: cls };
       expect(h.failure_class).toBe(cls);

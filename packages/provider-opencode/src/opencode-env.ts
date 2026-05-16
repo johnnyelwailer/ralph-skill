@@ -1,6 +1,6 @@
 import type { ReasoningEffort } from "@aloop/provider";
 
-export function sanitizeProviderEnvironment(extra: Readonly<Record<string, string>> | undefined): Record<string, string> {
+export function sanitizeProviderEnvironment(extra?: Readonly<Record<string, string>>): Record<string, string> {
   const env: Record<string, string> = {};
   for (const [key, value] of Object.entries(process.env)) {
     if (typeof value === "string") env[key] = value;

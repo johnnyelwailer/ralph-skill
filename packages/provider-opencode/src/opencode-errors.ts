@@ -1,7 +1,7 @@
-import type { AgentChunk } from "@aloop/provider";
+import type { ErrorChunk } from "@aloop/provider";
 import { classifyOpencodeFailure } from "./opencode-classify.ts";
 
-export function createErrorChunk(error: unknown, timedOut: boolean): AgentChunk {
+export function createErrorChunk(error: unknown, timedOut: boolean): ErrorChunk {
   const message = extractErrorMessage(error);
   const failure = classifyOpencodeFailure({ stderr: message, timedOut });
   return { type: "error", content: { classification: failure.classification, message, retriable: failure.retriable } };

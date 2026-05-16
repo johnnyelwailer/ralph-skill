@@ -1,8 +1,4 @@
 {
   "extends": "../../tsconfig.json",
-  "include": ["src/**/*"],
-  "references": [
-    { "path": "../core" },
-    { "path": "../daemon-config" }
-  ]
+  "include": ["src/**/*"]
 }

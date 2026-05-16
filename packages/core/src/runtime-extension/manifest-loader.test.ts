@@ -76,9 +76,9 @@ idempotent: false
     const result = loadExecManifests({ templatesDir: tmpDir });
     expect(result.errors).toHaveLength(0);
     expect(result.manifests).toHaveLength(1);
-    expect(result.manifests[0].platforms).toBeUndefined();
-    expect(result.manifests[0].args).toBeUndefined();
-    expect(result.manifests[0].envAllowlist).toBeUndefined();
+    expect(result.manifests[0]!.platforms).toBeUndefined();
+    expect(result.manifests[0]!.args).toBeUndefined();
+    expect(result.manifests[0]!.envAllowlist).toBeUndefined();
   });
 
   test("rejects wrong kind in exec file", () => {
@@ -98,7 +98,7 @@ capabilities:
 
     const result = loadExecManifests({ templatesDir: tmpDir });
     expect(result.errors).toHaveLength(1);
-    expect(result.errors[0].error).toContain("kind=context-provider");
+    expect(result.errors[0]!.error).toContain("kind=context-provider");
   });
 
   test("rejects missing required fields", () => {
@@ -110,7 +110,7 @@ file: script.ts
 
     const result = loadExecManifests({ templatesDir: tmpDir });
     expect(result.errors).toHaveLength(1);
-    expect(result.errors[0].error).toContain("missing required field");
+    expect(result.errors[0]!.error).toContain("missing required field");
   });
 
   test("rejects invalid runtime", () => {
@@ -125,7 +125,7 @@ idempotent: true
 
     const result = loadExecManifests({ templatesDir: tmpDir });
     expect(result.errors).toHaveLength(1);
-    expect(result.errors[0].error).toContain("Invalid runtime");
+    expect(result.errors[0]!.error).toContain("Invalid runtime");
   });
 
   test("rejects invalid platform", () => {
@@ -141,7 +141,7 @@ idempotent: true
 
     const result = loadExecManifests({ templatesDir: tmpDir });
     expect(result.errors).toHaveLength(1);
-    expect(result.errors[0].error).toContain("Invalid platform");
+    expect(result.errors[0]!.error).toContain("Invalid platform");
   });
 
   test("rejects invalid timeout format", () => {
@@ -156,7 +156,7 @@ idempotent: true
 
     const result = loadExecManifests({ templatesDir: tmpDir });
     expect(result.errors).toHaveLength(1);
-    expect(result.errors[0].error).toContain("Invalid timeout format");
+    expect(result.errors[0]!.error).toContain("Invalid timeout format");
   });
 
   test("rejects absolute path cwd", () => {
@@ -171,7 +171,7 @@ idempotent: true
 
     const result = loadExecManifests({ templatesDir: tmpDir });
     expect(result.errors).toHaveLength(1);
-    expect(result.errors[0].error).toContain("must not be an absolute path");
+    expect(result.errors[0]!.error).toContain("must not be an absolute path");
   });
 
   test("skips non-yml files", () => {
@@ -193,7 +193,7 @@ idempotent: true
   test("returns error for non-existent directory", () => {
     const result = loadExecManifests({ templatesDir: "/non/existent/dir" });
     expect(result.errors).toHaveLength(1);
-    expect(result.errors[0].error).toContain("does not exist");
+    expect(result.errors[0]!.error).toContain("does not exist");
   });
 
   test("loads single exec manifest", () => {
@@ -268,7 +268,7 @@ idempotent: true
 
     const result = loadContextProviderManifests({ templatesDir: tmpDir });
     expect(result.errors).toHaveLength(1);
-    expect(result.errors[0].error).toContain("context-provider");
+    expect(result.errors[0]!.error).toContain("context-provider");
   });
 
   test("rejects missing capabilities", () => {
@@ -283,7 +283,7 @@ cwd: repo
 
     const result = loadContextProviderManifests({ templatesDir: tmpDir });
     expect(result.errors).toHaveLength(1);
-    expect(result.errors[0].error).toContain("capabilities");
+    expect(result.errors[0]!.error).toContain("capabilities");
   });
 });
 
@@ -335,7 +335,7 @@ idempotent: true
 
     const result = loadManifests({ templatesDir: tmpDir });
     expect(result.errors).toHaveLength(1);
-    expect(result.errors[0].file).toBe("NOTE.yml");
-    expect(result.errors[0].error).toContain("Unknown manifest kind");
+    expect(result.errors[0]!.file).toBe("NOTE.yml");
+    expect(result.errors[0]!.error).toContain("Unknown manifest kind");
   });
 });
