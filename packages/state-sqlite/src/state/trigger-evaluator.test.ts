@@ -325,4 +325,103 @@ describe("evaluateTriggers", () => {
     const fired = events.find((e: unknown) => (e as { topic: string }).topic === "trigger.fired");
     expect(fired).toBeDefined();
   });
+
+  test("fires time trigger with create_session action and emits session.create_request event", async () => {
+    const past = new Date(Date.now() - 7200000).toISOString();
+    const trigger: Trigger = {
+      id: "tr_create_session",
+      scope: { kind: "project", id: "p_test" },
+      source: { kind: "time", schedule: "PT1H" },
+      action: {
+        kind: "create_session",
+        target: {
+          project_id: "proj_abc",
+          workflow: "research",
+          provider_chain: ["opencode"],
+          reason: "scheduled research session",
+        },
+      },
+      enabled: true,
+      fire_count: 0,
+      last_fired_at: past,
+      last_error: null,
+      created_at: past,
+      updated_at: past,
+      debounce_seconds: 0,
+      budget_policy: null,
+    };
+    deps = makeDeps(tmp, mockTriggerStore([trigger]));
+
+    const result = await evaluateTriggers(deps);
+    expect(result).toBe(1);
+
+    const events: unknown[] = [];
+    for await (const e of deps.store.read()) {
+      events.push(e);
+    }
+
+    const fired = events.find((e: unknown) => (e as { topic: string }).topic === "trigger.fired");
+    expect(fired).toBeDefined();
+    const firedEnv = fired as { topic: string; data: { trigger_id: string; action_kind: string } };
+    expect(firedEnv.data.trigger_id).toBe("tr_create_session");
+    expect(firedEnv.data.action_kind).toBe("create_session");
+
+    const createRequest = events.find((e: unknown) => (e as { topic: string }).topic === "session.create_request");
+    expect(createRequest).toBeDefined();
+    const reqEnv = createRequest as { topic: string; data: { trigger_id: string; project_id: string; workflow: string; reason: string } };
+    expect(reqEnv.data.trigger_id).toBe("tr_create_session");
+    expect(reqEnv.data.project_id).toBe("proj_abc");
+    expect(reqEnv.data.workflow).toBe("research");
+    expect(reqEnv.data.reason).toBe("scheduled research session");
+  });
+
+  test("fires time trigger with create_artifact action and emits artifact.create_request event", async () => {
+    const past = new Date(Date.now() - 7200000).toISOString();
+    const trigger: Trigger = {
+      id: "tr_create_artifact",
+      scope: { kind: "project", id: "p_test" },
+      source: { kind: "time", schedule: "PT1H" },
+      action: {
+        kind: "create_artifact",
+        target: {
+          project_id: "proj_xyz",
+          session_id: "sess_123",
+          kind: "report",
+          filename: "weekly-summary.md",
+          media_type: "text/markdown",
+          bytes: 1234,
+          metadata: { author: "aloopd" },
+          reason: "scheduled report generation",
+        },
+      },
+      enabled: true,
+      fire_count: 0,
+      last_fired_at: past,
+      last_error: null,
+      created_at: past,
+      updated_at: past,
+      debounce_seconds: 0,
+      budget_policy: null,
+    };
+    deps = makeDeps(tmp, mockTriggerStore([trigger]));
+
+    const result = await evaluateTriggers(deps);
+    expect(result).toBe(1);
+
+    const events: unknown[] = [];
+    for await (const e of deps.store.read()) {
+      events.push(e);
+    }
+
+    const fired = events.find((e: unknown) => (e as { topic: string }).topic === "trigger.fired");
+    expect(fired).toBeDefined();
+
+    const createRequest = events.find((e: unknown) => (e as { topic: string }).topic === "artifact.create_request");
+    expect(createRequest).toBeDefined();
+    const reqEnv = createRequest as { topic: string; data: { trigger_id: string; project_id: string; kind: string; filename: string } };
+    expect(reqEnv.data.trigger_id).toBe("tr_create_artifact");
+    expect(reqEnv.data.project_id).toBe("proj_xyz");
+    expect(reqEnv.data.kind).toBe("report");
+    expect(reqEnv.data.filename).toBe("weekly-summary.md");
+  });
 });

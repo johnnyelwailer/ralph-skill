@@ -14,6 +14,64 @@ export type TriggerEvaluatorDeps = {
   readonly triggerStore: TriggerStore;
 };
 
+async function executeCreateSession(
+  deps: TriggerEvaluatorDeps,
+  triggerId: string,
+  target: {
+    readonly project_id?: string;
+    readonly workflow?: string;
+    readonly provider_chain?: readonly string[];
+    readonly parent_session_id?: string;
+    readonly max_iterations?: number;
+    readonly issue?: number | null;
+    readonly reason?: string;
+    readonly source_event_id?: string;
+  },
+): Promise<void> {
+  await deps.events.append("session.create_request", {
+    trigger_id: triggerId,
+    project_id: target.project_id ?? null,
+    workflow: target.workflow ?? null,
+    provider_chain: target.provider_chain ?? null,
+    parent_session_id: target.parent_session_id ?? null,
+    max_iterations: target.max_iterations ?? null,
+    issue: target.issue ?? null,
+    reason: target.reason ?? null,
+    source_event_id: target.source_event_id ?? null,
+    requested_at: new Date().toISOString(),
+  });
+}
+
+async function executeCreateArtifact(
+  deps: TriggerEvaluatorDeps,
+  triggerId: string,
+  target: {
+    readonly project_id?: string;
+    readonly session_id?: string;
+    readonly kind?: string;
+    readonly filename?: string;
+    readonly media_type?: string;
+    readonly bytes?: number;
+    readonly metadata?: Record<string, unknown>;
+    readonly reason?: string;
+    readonly source_event_id?: string;
+  },
+): Promise<void> {
+  await deps.events.append("artifact.create_request", {
+    trigger_id: triggerId,
+    project_id: target.project_id ?? null,
+    session_id: target.session_id ?? null,
+    kind: target.kind ?? "unknown",
+    filename: target.filename ?? null,
+    media_type: target.media_type ?? "application/octet-stream",
+    bytes: target.bytes ?? 0,
+    metadata: target.metadata ?? null,
+    reason: target.reason ?? null,
+    source_event_id: target.source_event_id ?? null,
+    requested_at: new Date().toISOString(),
+  });
+}
+
 export async function evaluateTriggers(deps: TriggerEvaluatorDeps): Promise<number> {
   const { triggerStore, events, db, store, projectors } = deps;
 
@@ -41,6 +99,31 @@ export async function evaluateTriggers(deps: TriggerEvaluatorDeps): Promise<numb
 
           const engineDeps: TriggerEngineDeps = { db, store, events, projectors };
           await executeRefreshProjection(engineDeps, target);
+        } else if (trigger.action.kind === "create_session") {
+          const target = trigger.action.target;
+          await executeCreateSession(deps, trigger.id, {
+            ...(target.project_id !== undefined && { project_id: target.project_id }),
+            ...(target.workflow !== undefined && { workflow: target.workflow }),
+            ...(target.provider_chain !== undefined && { provider_chain: target.provider_chain }),
+            ...(target.parent_session_id !== undefined && { parent_session_id: target.parent_session_id }),
+            ...(target.max_iterations !== undefined && { max_iterations: target.max_iterations }),
+            ...(target.issue !== undefined && { issue: target.issue }),
+            ...(target.reason !== undefined && { reason: target.reason }),
+            ...(target.source_event_id !== undefined && { source_event_id: target.source_event_id }),
+          });
+        } else if (trigger.action.kind === "create_artifact") {
+          const target = trigger.action.target;
+          await executeCreateArtifact(deps, trigger.id, {
+            ...(target.project_id !== undefined && { project_id: target.project_id }),
+            ...(target.session_id !== undefined && { session_id: target.session_id }),
+            ...(target.kind !== undefined && { kind: target.kind }),
+            ...(target.filename !== undefined && { filename: target.filename }),
+            ...(target.media_type !== undefined && { media_type: target.media_type }),
+            ...(target.bytes !== undefined && { bytes: target.bytes }),
+            ...(target.metadata !== undefined && { metadata: target.metadata }),
+            ...(target.reason !== undefined && { reason: target.reason }),
+            ...(target.source_event_id !== undefined && { source_event_id: target.source_event_id }),
+          });
         }
 
         triggerStore.recordFired(trigger.id);

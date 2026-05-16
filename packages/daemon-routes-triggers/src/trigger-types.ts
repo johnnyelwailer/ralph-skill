@@ -55,6 +55,19 @@ export type TriggerAction = {
     readonly projection_scope_kind?: "project" | "workspace" | "artifact" | "global";
     /** Scope id for the projection refresh. */
     readonly projection_scope_id?: string | null;
+    // Fields for create_session action
+    readonly project_id?: string;
+    readonly workflow?: string;
+    readonly provider_chain?: readonly string[];
+    readonly parent_session_id?: string;
+    readonly max_iterations?: number;
+    readonly issue?: number | null;
+    // Fields for create_artifact action
+    readonly kind?: string;
+    readonly filename?: string;
+    readonly media_type?: string;
+    readonly bytes?: number;
+    readonly metadata?: Record<string, unknown>;
     // other target fields can be added as needed per kind
   };
 };
