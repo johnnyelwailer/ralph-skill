@@ -300,6 +300,53 @@ export function unpauseSessionHandler(id: string, deps: SessionsDeps): Response 
   return jsonResponse(200, sessionResponse(updated));
 }
 
+// ── POST /v1/sessions/:id/recompile ──────────────────────────────────────────
+
+export function recompileSessionHandler(id: string, deps: SessionsDeps): Response {
+  const session = deps.sessions.get(id);
+  if (!session) {
+    return errorResponse(404, "session_not_found", `session not found: ${id}`, { id });
+  }
+
+  const sessionsDir = typeof deps.sessionsDir === "function" ? deps.sessionsDir() : deps.sessionsDir;
+  const sessionDir = `${sessionsDir}/${session.id}`;
+
+  const plan = {
+    version: 1,
+    workflow: session.workflow,
+    compiled_at: new Date().toISOString(),
+    note: "Full compile step (workflow YAML → workflow-plan.json) is pending implementation. See docs/spec/pipeline.md §Compile step.",
+  };
+
+  const planPath = `${sessionDir}/workflow-plan.json`;
+  try {
+    const { writeFileSync, mkdirSync } = require("node:fs");
+    mkdirSync(sessionDir, { recursive: true });
+    writeFileSync(planPath, JSON.stringify(plan, null, 2), "utf-8");
+  } catch {
+    return errorResponse(500, "recompile_failed", `failed to write workflow-plan.json for session: ${id}`, { id });
+  }
+
+  if (deps.events) {
+    void deps.events.append("session.workflow_plan.updated", {
+      session_id: id,
+      version: plan.version,
+      workflow: session.workflow,
+    });
+    void deps.events.append("session.event", {
+      session_id: id,
+      previous_status: session.status,
+      status: session.status,
+      kind: session.kind,
+      workflow: session.workflow,
+      project_id: session.projectId,
+    });
+    emitSessionUpdate(deps.events, deps.sessions.get(id)!);
+  }
+
+  return jsonResponse(200, { _v: 1, session_id: id, workflow_plan_version: plan.version, workflow: session.workflow });
+}
+
 // ── POST /v1/sessions/:id/steer ──────────────────────────────────────────────
 
 export async function steerSessionHandler(id: string, req: Request, deps: SessionsDeps): Promise<Response> {

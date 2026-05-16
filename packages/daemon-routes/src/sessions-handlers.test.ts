@@ -15,6 +15,7 @@ import {
   listSessionQueueHandler,
   deleteSessionQueueItemHandler,
   steerSessionHandler,
+  recompileSessionHandler,
 } from "./sessions-handlers.ts";
 import type { SessionsDeps } from "./sessions-handlers.ts";
 
@@ -1068,6 +1069,84 @@ describe("steerSessionHandler", () => {
     expect(res.status).toBe(400);
     const body = await (res as Response).json();
     expect(body.error.code).toBe("bad_request");
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────
+// recompileSessionHandler
+// ─────────────────────────────────────────────────────────────────
+
+describe("recompileSessionHandler", () => {
+  let dir: string;
+  let deps: SessionsDeps;
+  let sessionId: string;
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), "aloop-session-recompile-"));
+    deps = makeDeps(dir);
+    sessionId = deps.sessions.create({
+      projectId: "proj-1",
+      kind: "standalone",
+      workflow: "test-workflow",
+      providerChain: ["provider-1"],
+    }).id;
+  });
+
+  afterEach(() => {
+    const reg = deps.sessions as unknown as { _db: { close(): void } };
+    reg._db?.close();
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  test("returns 200 and writes workflow-plan.json", async () => {
+    const res = recompileSessionHandler(sessionId, deps);
+    expect(res.status).toBe(200);
+    const body = await (res as Response).json();
+    expect(body._v).toBe(1);
+    expect(body.session_id).toBe(sessionId);
+    expect(body.workflow_plan_version).toBe(1);
+    expect(body.workflow).toBe("test-workflow");
+  });
+
+  test("workflow-plan.json is written to session dir", async () => {
+    recompileSessionHandler(sessionId, deps);
+    const sessionDir = `${dir}/${sessionId}`;
+    const { existsSync, readFileSync } = require("node:fs");
+    expect(existsSync(`${sessionDir}/workflow-plan.json`)).toBe(true);
+    const plan = JSON.parse(readFileSync(`${sessionDir}/workflow-plan.json`, "utf-8"));
+    expect(plan.version).toBe(1);
+    expect(plan.workflow).toBe("test-workflow");
+    expect(plan.compiled_at).toBeTruthy();
+  });
+
+  test("returns 404 when session does not exist", async () => {
+    const res = recompileSessionHandler("nonexistent-id", deps);
+    expect(res.status).toBe(404);
+    const body = await (res as Response).json();
+    expect(body.error.code).toBe("session_not_found");
+  });
+
+  test("returns 200 for session in any status (pending, running, stopped)", async () => {
+    const runningId = deps.sessions.create({
+      projectId: "proj-1",
+      kind: "orchestrator",
+      workflow: "orch-workflow",
+      providerChain: ["provider-1"],
+    }).id;
+    deps.sessions.updateStatus(runningId, "running");
+
+    const stoppedId = deps.sessions.create({
+      projectId: "proj-1",
+      kind: "child",
+      workflow: "child-workflow",
+      providerChain: ["provider-1"],
+    }).id;
+    deps.sessions.updateStatus(stoppedId, "stopped");
+
+    const resRunning = recompileSessionHandler(runningId, deps);
+    expect(resRunning.status).toBe(200);
+    const resStopped = recompileSessionHandler(stoppedId, deps);
+    expect(resStopped.status).toBe(200);
   });
 });
 

@@ -11,6 +11,7 @@ import {
   listSessionQueueHandler,
   listSessionsHandler,
   pauseSessionHandler,
+  recompileSessionHandler,
   resumeSessionHandler,
   steerSessionHandler,
   unpauseSessionHandler,
@@ -73,6 +74,13 @@ export function handleSessions(req: Request, deps: SessionsDeps, pathname: strin
   if (unpauseMatch) {
     if (req.method !== "POST") return methodNotAllowed();
     return unpauseSessionHandler(unpauseMatch[1]!, deps);
+  }
+
+  // POST /v1/sessions/:id/recompile
+  const recompileMatch = pathname.match(/^\/v1\/sessions\/([^/?#]+)\/recompile$/);
+  if (recompileMatch) {
+    if (req.method !== "POST") return methodNotAllowed();
+    return recompileSessionHandler(recompileMatch[1]!, deps);
   }
 
   // GET /v1/sessions/:id/metrics
