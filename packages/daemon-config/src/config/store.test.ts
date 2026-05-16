@@ -295,6 +295,7 @@ describe("createConfigStore", () => {
         ...paths,
         daemonConfigFile: paths.stateDir, // stateDir is a directory, not a file
       };
+      mkdirSync(badPaths.stateDir, { recursive: true });
       const badStore = createConfigStore({
         daemon: DAEMON_DEFAULTS,
         overrides: OVERRIDES_DEFAULT,
@@ -315,6 +316,7 @@ describe("createConfigStore", () => {
         ...paths,
         overridesFile: paths.stateDir, // stateDir is a directory, not a file
       };
+      mkdirSync(badPaths.stateDir, { recursive: true });
       const badStore = createConfigStore({
         daemon: DAEMON_DEFAULTS,
         overrides: OVERRIDES_DEFAULT,
