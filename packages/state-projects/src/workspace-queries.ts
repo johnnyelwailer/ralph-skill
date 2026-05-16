@@ -3,6 +3,7 @@ import {
   DuplicateWorkspaceProjectError,
   ProjectNotFoundWorkspaceError,
   WorkspaceNotFoundError,
+  WorkspaceProjectNotFoundError,
   type CreateWorkspaceInput,
   type Workspace,
   type WorkspaceFilter,
@@ -360,6 +361,22 @@ export function removeProjectFromWorkspace(
   workspaceId: string,
   projectId: string,
 ): void {
+  const workspace = db
+    .query<{ id: string }, [string]>(`SELECT id FROM workspaces WHERE id = ?`)
+    .get(workspaceId);
+  if (!workspace) {
+    throw new WorkspaceProjectNotFoundError(workspaceId, projectId);
+  }
+
+  const membership = db
+    .query<{ workspace_id: string }, [string, string]>(
+      `SELECT workspace_id FROM workspace_projects WHERE workspace_id = ? AND project_id = ?`,
+    )
+    .get(workspaceId, projectId);
+  if (!membership) {
+    throw new WorkspaceProjectNotFoundError(workspaceId, projectId);
+  }
+
   db.run(
     `DELETE FROM workspace_projects WHERE workspace_id = ? AND project_id = ?`,
     [workspaceId, projectId],

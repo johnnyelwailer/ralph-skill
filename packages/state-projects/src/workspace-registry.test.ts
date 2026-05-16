@@ -251,11 +251,6 @@ describe("removeProject", () => {
     registry.removeProject(ws.id, "proj-rm");
     expect(registry.listProjects(ws.id)).toEqual([]);
   });
-
-  test("removing non-linked project is silent", () => {
-    const ws = registry.create({ name: "Remove Non-linked" });
-    expect(() => registry.removeProject(ws.id, "nonexistent-proj")).not.toThrow();
-  });
 });
 
 // ─── getProjectCounts ─────────────────────────────────────────────────────────
