@@ -241,6 +241,12 @@ export class ComposerTurnRegistry {
       conditions.push(`status = ?`);
       params.push(filter.status);
     }
+    if (filter.control_subagent_run_id) {
+      conditions.push(
+        `delegated_refs LIKE '%' || ? || '%'`,
+      );
+      params.push(`"id":"${filter.control_subagent_run_id}"`);
+    }
 
     const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
     const limit = Math.min(filter.limit ?? 20, 100);

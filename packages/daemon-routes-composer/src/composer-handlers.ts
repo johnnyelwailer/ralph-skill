@@ -385,6 +385,7 @@ export async function handleComposer(
       scope_kind?: ComposerTurnScopeKind;
       scope_id?: string;
       status?: ComposerTurnStatus;
+      control_subagent_run_id?: string;
       limit?: number;
       cursor?: string;
     } = {};
@@ -394,6 +395,8 @@ export async function handleComposer(
     if (scopeId !== null) filter.scope_id = scopeId;
     const status = url.searchParams.get("status");
     if (status !== null) filter.status = status as ComposerTurnStatus;
+    const controlSubagentRunId = url.searchParams.get("control_subagent_run_id");
+    if (controlSubagentRunId !== null) filter.control_subagent_run_id = controlSubagentRunId;
     const limitStr = url.searchParams.get("limit");
     if (limitStr !== null) filter.limit = Number.parseInt(limitStr, 10);
     const cursor = url.searchParams.get("cursor");

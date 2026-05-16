@@ -6,6 +6,7 @@ import { Database } from "bun:sqlite";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { handleComposer, type ComposerDeps } from "./composer-handlers.ts";
+import { ComposerTurnRegistry } from "@aloop/state-sqlite";
 import { migrate, loadBundledMigrations } from "@aloop/sqlite-db";
 
 // ---------------------------------------------------------------------------
@@ -60,7 +61,8 @@ beforeEach(() => {
   db = setup.db;
   dir = setup.dir;
   const logFile = join(dir, "daemon.log.jsonl");
-  deps = { db, logFile: () => logFile };
+  const registry = new ComposerTurnRegistry(db);
+  deps = { db, registry, logFile: () => logFile };
   handler = handleComposer;
 });
 
@@ -391,6 +393,27 @@ describe("GET /v1/composer/turns", () => {
     const resp = await makeRequest(handler, deps, "GET", "/v1/composer/turns?limit=200");
     const body = await resp.clone().json();
     expect(body.items).toHaveLength(5);
+  });
+
+  test("filters by control_subagent_run_id", async () => {
+    const { registry } = deps;
+    const now = new Date().toISOString();
+    const turn = registry.create({
+      scope: { kind: "global" },
+      message: "Turn with subagent csr_abc",
+      now,
+    });
+    registry.updateResponse(turn.id, {
+      delegated_refs: [
+        { kind: "control_subagent_run", id: "csr_abc", role: "editor", scope: { kind: "global" }, status: "running" },
+      ],
+      now,
+    });
+    const resp = await makeRequest(handler, deps, "GET", "/v1/composer/turns?control_subagent_run_id=csr_abc");
+    const body = await resp.clone().json();
+    expect(body.items).toHaveLength(1);
+    expect(body.items[0]!.message).toBe("Turn with subagent csr_abc");
+    expect(body.items[0]!.delegated_refs[0]!.id).toBe("csr_abc");
   });
 });
 

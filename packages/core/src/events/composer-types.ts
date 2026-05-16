@@ -261,6 +261,7 @@ export type ComposerTurnFilter = {
   readonly scope_kind?: ComposerTurnScopeKind;
   readonly scope_id?: string;
   readonly status?: ComposerTurnStatus;
+  readonly control_subagent_run_id?: string;
   readonly limit?: number;
   readonly cursor?: string;
 };
