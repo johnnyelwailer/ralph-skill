@@ -488,24 +488,55 @@ describe("createBuiltinAdapter", () => {
   });
 });
   describe("reorderChild", () => {
-    test("is a no-op — does not throw", async () => {
+    test("stores sequence metadata when reordering without after/before", async () => {
       const adapter = makeAdapter();
       const parentRef = await adapter.createWorkItem({ kind: "epic", title: "E1", body: "..." });
       const childRef = await adapter.createWorkItem({ kind: "story", title: "S1", body: "...", parent: parentRef });
-      // Must not throw — reorderChild is not yet implemented in the builtin adapter
       await adapter.reorderChild(parentRef, childRef);
-      // Verify child is still linked
-      const parent = await adapter.getParent(childRef);
-      expect(parent?.key).toBe("0001");
+      const updated = await adapter.getWorkItem(childRef);
+      const seq = (updated.metadata as Record<string, unknown>)?.sequence;
+      expect(typeof seq).toBe("number");
     });
 
-    test("accepts after and before references without throwing", async () => {
+    test("places child after target when after hint is given", async () => {
       const adapter = makeAdapter();
       const epicRef = await adapter.createWorkItem({ kind: "epic", title: "Epic", body: "..." });
       const s1 = await adapter.createWorkItem({ kind: "story", title: "S1", body: "...", parent: epicRef });
       const s2 = await adapter.createWorkItem({ kind: "story", title: "S2", body: "...", parent: epicRef });
-      // Must not throw even with after/before hints
-      await adapter.reorderChild(epicRef, s2, s1);
+      const s3 = await adapter.createWorkItem({ kind: "story", title: "S3", body: "...", parent: epicRef });
+      await adapter.reorderChild(epicRef, s3, s1);
+      const s3Item = await adapter.getWorkItem(s3);
+      const s3Seq = (s3Item.metadata as Record<string, unknown>)?.sequence as number;
+      expect(typeof s3Seq).toBe("number");
+      expect(s3Seq).toBeGreaterThan(1);
+    });
+
+    test("places child before target when before hint is given", async () => {
+      const adapter = makeAdapter();
+      const epicRef = await adapter.createWorkItem({ kind: "epic", title: "Epic", body: "..." });
+      const s1 = await adapter.createWorkItem({ kind: "story", title: "S1", body: "...", parent: epicRef });
+      const s2 = await adapter.createWorkItem({ kind: "story", title: "S2", body: "...", parent: epicRef });
+      await adapter.reorderChild(epicRef, s1, undefined, s2);
+      const s1Item = await adapter.getWorkItem(s1);
+      const s1Seq = (s1Item.metadata as Record<string, unknown>)?.sequence as number;
+      expect(typeof s1Seq).toBe("number");
+      expect(s1Seq).toBeLessThan(2);
+    });
+
+    test("emits hierarchy.child_reordered event", async () => {
+      const adapter = makeAdapter();
+      const epicRef = await adapter.createWorkItem({ kind: "epic", title: "E1", body: "..." });
+      const childRef = await adapter.createWorkItem({ kind: "story", title: "S1", body: "...", parent: epicRef });
+      const beforeEvents = fs.readFileSync(path.join(TMP, "events.jsonl"), "utf-8").trim().split("\n").filter(Boolean).length;
+      await adapter.reorderChild(epicRef, childRef);
+      const afterEventsRaw = fs.readFileSync(path.join(TMP, "events.jsonl"), "utf-8");
+      const afterEvents = afterEventsRaw.trim().split("\n").filter(Boolean);
+      const newEvents = afterEvents.slice(beforeEvents);
+      const reorderEvents = newEvents.filter((l) => JSON.parse(l).topic === "hierarchy.child_reordered");
+      expect(reorderEvents.length).toBe(1);
+      const event = JSON.parse(reorderEvents[0]);
+      expect(event.data.child_key).toBe(childRef.key);
+      expect(event.data.parent_key).toBe(epicRef.key);
     });
   });
 
