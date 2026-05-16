@@ -558,17 +558,29 @@ export type SetupQuestionBatch = {
  * Result schema for `setup_spec_writer` and `setup_constitution_drafter`.
  * Spec: docs/spec/agents.md §Setup-side agents.
  */
+/**
+ * Result schema for the `orch_tune` agent.
+ * Spec: docs/spec/metrics.md §Self-tuning.
+ * Spec: docs/spec/self-improvement.md §Level 2 — Self-tuning.
+ */
+export type TuneSchedulerLimitsResult = {
+  readonly adjustments: readonly {
+    readonly knob: string;
+    readonly proposed: number;
+    readonly accepted: boolean;
+    readonly rationale: string;
+  }[];
+};
+
 export type SetupChapterUpdate = {
   readonly chapter_path: string;
   readonly summary: string;
   readonly changes: {
-    /** Specific sections added, modified, or removed. */
     readonly sections?: readonly {
       readonly action: "add" | "modify" | "remove";
       readonly heading: string;
       readonly content?: string;
     }[];
-    /** Full new content if a section was replaced wholesale. */
     readonly new_content?: string;
   };
 };
@@ -603,4 +615,5 @@ export type AgentResult =
   | { readonly type: "setup_discovery_result"; readonly result: SetupDiscoveryResult }
   | { readonly type: "setup_research_result"; readonly result: SetupResearchResult }
   | { readonly type: "setup_question_batch"; readonly result: SetupQuestionBatch }
-  | { readonly type: "setup_chapter_update"; readonly result: SetupChapterUpdate };
+  | { readonly type: "setup_chapter_update"; readonly result: SetupChapterUpdate }
+  | { readonly type: "tune_scheduler_limits_result"; readonly result: TuneSchedulerLimitsResult };

@@ -27,6 +27,7 @@ import type {
   ComplexityTier,
   AbstractStatus,
   AgentResult,
+  TuneSchedulerLimitsResult,
 } from "./agent-result-types";
 import { commitSha, filePath } from "./agent-result-types";
 
@@ -775,6 +776,25 @@ describe("SetupChapterUpdate", () => {
   });
 });
 
+describe("TuneSchedulerLimitsResult", () => {
+  test("accepts adjustments with mix of accepted and rejected", () => {
+    const r: TuneSchedulerLimitsResult = {
+      adjustments: [
+        { knob: "concurrency_cap", proposed: 6, accepted: true, rationale: "load is low" },
+        { knob: "burn_rate.max_tokens_since_commit", proposed: 15_000_000, accepted: false, rationale: "would exceed hard max" },
+      ],
+    };
+    expect(r.adjustments).toHaveLength(2);
+    expect(r.adjustments[0]!.accepted).toBe(true);
+    expect(r.adjustments[1]!.accepted).toBe(false);
+  });
+
+  test("empty adjustments is valid", () => {
+    const r: TuneSchedulerLimitsResult = { adjustments: [] };
+    expect(r.adjustments).toHaveLength(0);
+  });
+});
+
 // ─── AgentResult discriminated union ──────────────────────────────────────────
 
 describe("AgentResult discriminated union", () => {
@@ -821,5 +841,17 @@ describe("AgentResult discriminated union", () => {
       result: { chapter_path: "x", summary: "y", changes: { sections: [] } },
     };
     expect(r.type).toBe("setup_chapter_update");
+  });
+
+  test("tune_scheduler_limits_result", () => {
+    const r: AgentResult = {
+      type: "tune_scheduler_limits_result",
+      result: {
+        adjustments: [
+          { knob: "concurrency_cap", proposed: 5, accepted: true, rationale: "system load low" },
+        ],
+      },
+    };
+    expect(r.type).toBe("tune_scheduler_limits_result");
   });
 });
