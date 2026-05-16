@@ -190,6 +190,29 @@ describe("appendPermitRelease", () => {
     expect(result).toBeUndefined();
   });
 
+  test("serialises composer_turn_id owner to event", async () => {
+    const { events, append } = mockEventWriter();
+    await appendPermitRelease({ append }, {
+      permitId: "perm_rel_ct",
+      owner: { composerTurnId: "ct_release_01" },
+    });
+    expect(events[0]!.data).toEqual({
+      permit_id: "perm_rel_ct",
+      composer_turn_id: "ct_release_01",
+    });
+  });
+
+  test("serialises control_subagent_run_id owner to event", async () => {
+    const { events, append } = mockEventWriter();
+    await appendPermitRelease({ append }, {
+      permitId: "perm_rel_csar",
+      owner: { controlSubagentRunId: "csar_release_01" },
+    });
+    expect(events[0]!.data).toEqual({
+      permit_id: "perm_rel_csar",
+      control_subagent_run_id: "csar_release_01",
+    });
+  });
 });
 
 // ─── appendPermitExpired ──────────────────────────────────────────────────────
