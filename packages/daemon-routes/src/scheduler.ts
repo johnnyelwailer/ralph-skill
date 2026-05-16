@@ -1,4 +1,5 @@
 import type { SchedulerService } from "@aloop/scheduler";
+import { SCHEDULER_KNOB_BOUNDS } from "@aloop/scheduler-limits";
 
 export type SchedulerDeps = {
   readonly scheduler: SchedulerService;
@@ -62,6 +63,95 @@ export async function handleScheduler(
           min_commits_per_hour: updated.limits.burnRate.minCommitsPerHour,
         },
       });
+  }
+
+  if (pathname === "/v1/scheduler/tune") {
+    if (req.method !== "POST") return methodNotAllowed();
+
+    const parsed = await parseJsonBody(req);
+    if ("error" in parsed) return parsed.error;
+
+    const body = parsed.data as {
+      result?: unknown;
+    };
+
+    if (typeof body.result !== "object" || body.result === null) {
+      return badRequest("result field is required and must be an object");
+    }
+
+    const result = body.result as Record<string, unknown>;
+    const adjustments = result.adjustments;
+
+    if (!Array.isArray(adjustments)) {
+      return badRequest("result.adjustments must be an array");
+    }
+
+    const patch: Record<string, unknown> = {};
+    const accepted: string[] = [];
+    const rejected: string[] = [];
+
+    for (const adj of adjustments as unknown[]) {
+      if (typeof adj !== "object" || adj === null) continue;
+      const a = adj as Record<string, unknown>;
+      const knob = typeof a.knob === "string" ? a.knob : null;
+      const proposed = typeof a.proposed === "number" ? a.proposed : null;
+      const acceptedFlag = a.accepted === true;
+
+      if (!knob || proposed === null) continue;
+
+      const bound = knobBoundFor(knob);
+      if (bound === undefined) continue;
+
+      if (proposed < bound.min || proposed > bound.max) {
+        rejected.push(knob);
+        continue;
+      }
+
+      if (acceptedFlag) {
+        const patchKey = knobToPatchKey(knob);
+        if (patchKey !== null) {
+          patch[patchKey] = proposed;
+          accepted.push(knob);
+        }
+      }
+    }
+
+    if (Object.keys(patch).length === 0) {
+      return jsonResponse(200, {
+        _v: 1,
+        adjustments: accepted.map((knob) => ({
+          knob,
+          proposed: null as unknown,
+          accepted: false,
+          rationale: "no valid adjustments to apply",
+        })),
+      });
+    }
+
+    const updated = await deps.scheduler.updateLimits(patch);
+    if (!updated.ok) {
+      if ("errors" in updated) {
+        return badRequest("invalid scheduler limits", { errors: updated.errors });
+      }
+      return jsonResponse(422, {
+        _v: 1,
+        error: {
+          code: "tune_out_of_bounds",
+          message: "scheduler tuning request violates hard bounds",
+          details: { violations: updated.violations },
+        },
+      });
+    }
+
+    return jsonResponse(200, {
+      _v: 1,
+      adjustments: accepted.map((knob) => ({
+        knob,
+        proposed: patch[knobToPatchKey(knob)!],
+        accepted: true,
+        rationale: "applied via orch_tune agent",
+      })),
+    });
   }
 
   if (pathname === "/v1/scheduler/permits") {
@@ -128,6 +218,36 @@ function asNonNegativeNumber(value: unknown): number | "invalid" | undefined {
   if (value === undefined) return undefined;
   if (typeof value !== "number" || !Number.isFinite(value) || value < 0) return "invalid";
   return value;
+}
+
+function knobBoundFor(knob: string): { min: number; max: number } | undefined {
+  switch (knob) {
+    case "scheduler.concurrency.cap": return SCHEDULER_KNOB_BOUNDS.concurrencyCap;
+    case "scheduler.burn_rate.max_tokens_since_commit": return SCHEDULER_KNOB_BOUNDS.maxTokensSinceCommit;
+    case "scheduler.burn_rate.min_commits_per_hour": return SCHEDULER_KNOB_BOUNDS.minCommitsPerHour;
+    case "scheduler.system.cpu_max_pct": return SCHEDULER_KNOB_BOUNDS.cpuMaxPct;
+    case "scheduler.system.mem_max_pct": return SCHEDULER_KNOB_BOUNDS.memMaxPct;
+    case "scheduler.permit_ttl_default_seconds": return SCHEDULER_KNOB_BOUNDS.permitTtlDefaultSeconds;
+    case "scheduler.permit_ttl_max_seconds": return SCHEDULER_KNOB_BOUNDS.permitTtlDefaultSeconds;
+    case "watchdog.stuck_threshold_seconds": return SCHEDULER_KNOB_BOUNDS.watchdogStuckThresholdSeconds;
+    case "scheduler.system.load_max": return SCHEDULER_KNOB_BOUNDS.loadMax;
+    default: return undefined;
+  }
+}
+
+function knobToPatchKey(knob: string): string | null {
+  switch (knob) {
+    case "scheduler.concurrency.cap": return "max_permits";
+    case "scheduler.burn_rate.max_tokens_since_commit": return "max_tokens_since_commit";
+    case "scheduler.burn_rate.min_commits_per_hour": return "min_commits_per_hour";
+    case "scheduler.system.cpu_max_pct": return "cpu_max_pct";
+    case "scheduler.system.mem_max_pct": return "mem_max_pct";
+    case "scheduler.permit_ttl_default_seconds": return "permit_ttl_default_seconds";
+    case "scheduler.permit_ttl_max_seconds": return "permit_ttl_max_seconds";
+    case "watchdog.stuck_threshold_seconds": return "watchdog_stuck_threshold_seconds";
+    case "scheduler.system.load_max": return "load_max";
+    default: return null;
+  }
 }
 
 function jsonResponse(status: number, body: unknown): Response {

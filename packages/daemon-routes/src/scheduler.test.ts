@@ -549,6 +549,188 @@ describe("asPositiveInt", () => {
   });
 });
 
+// ─── POST /v1/scheduler/tune ───────────────────────────────────────────────────
+
+describe("POST /v1/scheduler/tune", () => {
+  test("returns 400 when result field is missing", async () => {
+    const deps = makeDeps();
+    const req = new Request("http://x/v1/scheduler/tune", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({}),
+    });
+    const res = await handleScheduler(req, deps, "/v1/scheduler/tune");
+    expect(res!.status).toBe(400);
+    const body = await resJson<{ error: { code: string } }>(res!);
+    expect(body.error.code).toBe("bad_request");
+  });
+
+  test("returns 400 when result.adjustments is not an array", async () => {
+    const deps = makeDeps();
+    const req = new Request("http://x/v1/scheduler/tune", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ result: { adjustments: "not-array" } }),
+    });
+    const res = await handleScheduler(req, deps, "/v1/scheduler/tune");
+    expect(res!.status).toBe(400);
+    const body = await resJson<{ error: { code: string } }>(res!);
+    expect(body.error.code).toBe("bad_request");
+  });
+
+  test("returns 400 for non-POST methods", async () => {
+    const deps = makeDeps();
+    const req = new Request("http://x/v1/scheduler/tune", { method: "GET" });
+    const res = await handleScheduler(req, deps, "/v1/scheduler/tune");
+    expect(res!.status).toBe(405);
+    const body = await resJson<{ error: { code: string } }>(res!);
+    expect(body.error.code).toBe("method_not_allowed");
+  });
+
+  test("returns 200 with empty adjustments when nothing is valid", async () => {
+    const deps = makeDeps();
+    deps.scheduler.updateLimits = () =>
+      Promise.resolve({
+        ok: true,
+        limits: {
+          concurrencyCap: 3,
+          permitTtlDefaultSeconds: 600,
+          permitTtlMaxSeconds: 3600,
+          systemLimits: { cpuMaxPct: 80, memMaxPct: 85, loadMax: 4.0 },
+          burnRate: { maxTokensSinceCommit: 1_000_000, minCommitsPerHour: 1 },
+        },
+      });
+    const req = new Request("http://x/v1/scheduler/tune", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        result: {
+          adjustments: [
+            { knob: "scheduler.concurrency.cap", proposed: 20, accepted: true },
+            { knob: "scheduler.burn_rate.max_tokens_since_commit", proposed: 50_000, accepted: true },
+          ],
+        },
+      }),
+    });
+    const res = await handleScheduler(req, deps, "/v1/scheduler/tune");
+    expect(res!.status).toBe(200);
+    const body = await resJson<{ _v: number; adjustments: unknown[] }>(res!);
+    expect(body.adjustments).toHaveLength(0);
+  });
+
+  test("applies valid accepted adjustments and returns them", async () => {
+    const deps = makeDeps();
+    deps.scheduler.updateLimits = () =>
+      Promise.resolve({
+        ok: true,
+        limits: {
+          concurrencyCap: 5,
+          permitTtlDefaultSeconds: 600,
+          permitTtlMaxSeconds: 3600,
+          systemLimits: { cpuMaxPct: 80, memMaxPct: 85, loadMax: 4.0 },
+          burnRate: { maxTokensSinceCommit: 1_000_000, minCommitsPerHour: 1 },
+        },
+      });
+    const req = new Request("http://x/v1/scheduler/tune", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        result: {
+          adjustments: [
+            { knob: "scheduler.concurrency.cap", proposed: 5, accepted: true },
+            { knob: "scheduler.burn_rate.max_tokens_since_commit", proposed: 500_000, accepted: false },
+          ],
+        },
+      }),
+    });
+    const res = await handleScheduler(req, deps, "/v1/scheduler/tune");
+    expect(res!.status).toBe(200);
+    const body = await resJson<{ _v: number; adjustments: unknown[] }>(res!);
+    expect(body.adjustments).toHaveLength(1);
+    const adj = body.adjustments[0] as { knob: string; accepted: boolean; proposed: unknown };
+    expect(adj.knob).toBe("scheduler.concurrency.cap");
+    expect(adj.accepted).toBe(true);
+    expect(adj.proposed).toBe(5);
+  });
+
+  test("rejects adjustments outside bounds", async () => {
+    const deps = makeDeps();
+    const req = new Request("http://x/v1/scheduler/tune", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        result: {
+          adjustments: [
+            { knob: "scheduler.concurrency.cap", proposed: 100, accepted: true },
+          ],
+        },
+      }),
+    });
+    const res = await handleScheduler(req, deps, "/v1/scheduler/tune");
+    expect(res!.status).toBe(200);
+    const body = await resJson<{ _v: number; adjustments: unknown[] }>(res!);
+    expect(body.adjustments).toHaveLength(0);
+  });
+
+  test("returns 400 when updateLimits violates internal consistency constraints", async () => {
+    const deps = makeDeps();
+    deps.scheduler.updateLimits = () =>
+      Promise.resolve({
+        ok: false,
+        errors: ["permit_ttl_default_seconds must be <= permit_ttl_max_seconds"],
+      });
+    const req = new Request("http://x/v1/scheduler/tune", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        result: {
+          adjustments: [
+            { knob: "scheduler.permit_ttl_max_seconds", proposed: 3600, accepted: true },
+            { knob: "scheduler.permit_ttl_default_seconds", proposed: 3600, accepted: true },
+          ],
+        },
+      }),
+    });
+    const res = await handleScheduler(req, deps, "/v1/scheduler/tune");
+    expect(res!.status).toBe(400);
+    const body = await resJson<{ error: { code: string } }>(res!);
+    expect(body.error.code).toBe("bad_request");
+  });
+
+  test("maps known knob names to patch keys correctly", async () => {
+    const deps = makeDeps();
+    const capturedPatch: Record<string, unknown> = {};
+    deps.scheduler.updateLimits = (patch: Record<string, unknown>) => {
+      Object.assign(capturedPatch, patch);
+      return Promise.resolve({
+        ok: true,
+        limits: {
+          concurrencyCap: 4,
+          permitTtlDefaultSeconds: 300,
+          permitTtlMaxSeconds: 3600,
+          systemLimits: { cpuMaxPct: 85, memMaxPct: 90, loadMax: 4.0 },
+          burnRate: { maxTokensSinceCommit: 2_000_000, minCommitsPerHour: 2 },
+        },
+      });
+    };
+    const req = new Request("http://x/v1/scheduler/tune", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        result: {
+          adjustments: [
+            { knob: "scheduler.concurrency.cap", proposed: 4, accepted: true },
+            { knob: "scheduler.system.cpu_max_pct", proposed: 85, accepted: true },
+          ],
+        },
+      }),
+    });
+    const res = await handleScheduler(req, deps, "/v1/scheduler/tune");
+    expect(res!.status).toBe(200);
+    expect(capturedPatch).toEqual({ max_permits: 4, cpu_max_pct: 85 });
+  });
+});
+
 // ─── asNonNegativeFloat ──────────────────────────────────────────────────────
 
 function asNonNegativeFloat(value: unknown): number | "invalid" | undefined {
