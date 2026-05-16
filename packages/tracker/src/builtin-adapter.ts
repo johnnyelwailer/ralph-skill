@@ -15,10 +15,13 @@ import type {
   LinkChildOptions,
   WorkItemChildrenSummary,
   TrackerCapabilities,
+  TrackerEventFilter,
+  TrackerEvent,
 } from "./types.js";
 
 export interface CreateBuiltinAdapterOptions {
   root?: string;
+  projectId?: string;
 }
 
 function builtinCapabilities(): TrackerCapabilities {
@@ -29,7 +32,7 @@ function builtinCapabilities(): TrackerCapabilities {
     assignees: false,
     change_sets: false,
     change_set_reviews: false,
-    subscribe_events: false,
+    subscribe_events: true,
     hierarchy: {
       native: true,
       max_depth: 8,
@@ -93,6 +96,7 @@ export function createBuiltinAdapter(
   options: CreateBuiltinAdapterOptions = {},
 ): TrackerAdapter {
   const root = options.root ?? ".aloop/tracker";
+  const projectId = options.projectId ?? "builtin";
 
   function ensureRoot(): void {
     try {
@@ -367,6 +371,60 @@ export function createBuiltinAdapter(
             completed: child.state === "closed",
           };
         }
+      }
+    },
+
+    async *subscribe(filter: TrackerEventFilter): AsyncGenerator<TrackerEvent> {
+      ensureRoot();
+      const eventsPath = path.join(root, "events.jsonl");
+      let lastSize = 0;
+
+      const watcher = fs.watch(root, { persistent: false }, (eventType, filename) => {
+        if (eventType === "rename" && filename === "events.jsonl") {
+        }
+      });
+
+      try {
+        while (true) {
+          try {
+            const stat = fs.statSync(eventsPath);
+            if (stat.size > lastSize) {
+              const fd = fs.openSync(eventsPath, "r");
+              try {
+                fs.readSync(fd, Buffer.alloc(stat.size - lastSize), 0, stat.size - lastSize, lastSize);
+              } finally {
+                fs.closeSync(fd);
+              }
+              const stream = fs.createReadStream(eventsPath, {
+                start: lastSize,
+                encoding: "utf-8",
+              });
+              const rl = (await import("node:readline")).createInterface({ input: stream });
+              for await (const line of rl) {
+                if (!line.trim()) continue;
+                try {
+                  const env = JSON.parse(line) as { topic: string; data: Record<string, unknown>; timestamp: string };
+                  if (filter.topics !== undefined && !filter.topics.includes(env.topic)) continue;
+                  yield {
+                    topic: env.topic,
+                    data: {
+                      adapter: "builtin" as TrackerId,
+                      project_id: projectId,
+                      kind: env.topic as TrackerEvent["data"]["kind"],
+                      received_at: env.timestamp,
+                    },
+                  };
+                } catch {
+                }
+              }
+              lastSize = stat.size;
+            }
+          } catch {
+          }
+          await new Promise((resolve) => setTimeout(resolve, 250));
+        }
+      } finally {
+        watcher.close();
       }
     },
   };

@@ -21,6 +21,8 @@ import type {
   LinePosition,
   MergeMode,
   MergeResult,
+  TrackerEventFilter,
+  TrackerEvent,
 } from "../types.js";
 import type {
   GitHubConfig,
@@ -34,6 +36,7 @@ export interface CreateGitHubAdapterOptions {
   config: GitHubConfig;
   statusMap?: Record<string, { state: string; metadata?: Record<string, unknown>; requireAssignee?: boolean; requireLinkedChangeSet?: boolean }>;
   labelMap?: Record<string, string>;
+  projectId?: string;
 }
 
 function ghCapabilities(): TrackerCapabilities {
@@ -159,6 +162,8 @@ export function createGitHubAdapter(options: CreateGitHubAdapterOptions): Tracke
   const { config } = options;
   const { owner, repo } = parseRepo(config);
   const repoSlug = `${owner}/${repo}`;
+  const projectId = options.projectId ?? `github:${owner}/${repo}`;
+  const pollIntervalMs = (config.polling?.intervalSeconds ?? 30) * 1000;
 
   async function fetchIssue(number: number): Promise<GitHubIssue> {
     const query = `
@@ -433,5 +438,75 @@ export function createGitHubAdapter(options: CreateGitHubAdapterOptions): Tracke
 
     async *readMirroredTasks(_story: WorkItemRef): AsyncIterable<TaskSnapshot> {
     },
+
+    async *subscribe(filter: TrackerEventFilter): AsyncGenerator<TrackerEvent> {
+      const topicKindMap: Record<string, TrackerEvent["data"]["kind"]> = {
+        "issues": "work_item.updated",
+        "issue_comment": "comment.created",
+        "pull_request": "change_set.opened",
+        "pull_request_review": "change_set.review_submitted",
+        "pull_request_review_thread": "change_set.review_thread_resolved",
+        "merge": "change_set.merged",
+      };
+
+      const lastEventPath = `/tmp/gh-adapter-last-event-${owner}-${repo}`;
+      let lastTimestamp = "";
+      try {
+        lastTimestamp = await Bun.file(lastEventPath).text();
+      } catch {
+        lastTimestamp = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+      }
+
+      const seen = new Set<string>();
+
+      while (true) {
+        try {
+          const result = await gh(["event", "list", "--limit", "30", "--repo", repoSlug]);
+          const lines = result.split("\n").filter((l) => l.trim());
+          for (const line of lines) {
+            const match = line.match(/^(\w+)\s+(.+?)\s+(\d+\s+\w+\s+ago)\s*$/);
+            if (!match || !match[1] || !match[2] || !match[3]) continue;
+            const eventType = match[1];
+            void match[2];
+            const ageStr = match[3];
+            if (seen.has(line)) continue;
+            seen.add(line);
+            const eventTime = parseGitHubAge(ageStr);
+            if (eventTime <= lastTimestamp) continue;
+            const kind = topicKindMap[eventType] ?? "work_item.updated";
+            if (filter.topics !== undefined && !filter.topics.includes(kind)) continue;
+            yield {
+              topic: kind,
+              data: {
+                adapter: "github" as TrackerId,
+                project_id: projectId,
+                kind,
+                received_at: new Date().toISOString(),
+              },
+            };
+            if (eventTime > lastTimestamp) lastTimestamp = eventTime;
+          }
+        } catch {
+        }
+        await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
+      }
+    },
   };
+}
+
+function parseGitHubAge(ageStr: string): string {
+  const match = ageStr.match(/(\d+)\s+(\w+)\s+ago/);
+  if (!match || !match[1] || !match[2]) return new Date(0).toISOString();
+  const value = parseInt(match[1], 10);
+  const unit = match[2].replace(/s$/, "");
+  const msTable: Record<string, number> = {
+    minute: 60_000,
+    hour: 3_600_000,
+    day: 86_400_000,
+    week: 604_800_000,
+    month: 2_629_746_000,
+    year: 31_556_952_000,
+  };
+  const ms = msTable[unit] ?? 60_000;
+  return new Date(Date.now() - value * ms).toISOString();
 }

@@ -465,6 +465,11 @@ describe("createBuiltinAdapter", () => {
       expect(adapter.capabilities.tracks_tasks.mirror_supported).toBe(true);
       expect(adapter.capabilities.tracks_tasks.mirror_shape).toBe("sub_children");
     });
+
+    test("subscribe_events is supported", async () => {
+      const adapter = makeAdapter();
+      expect(adapter.capabilities.subscribe_events).toBe(true);
+    });
   });
 
   describe("listLinkedChangeSets", () => {
