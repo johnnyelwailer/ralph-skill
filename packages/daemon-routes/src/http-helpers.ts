@@ -50,6 +50,12 @@ export function methodNotAllowed(): Response {
  * shape is what internal handlers expect. This function normalizes both to the
  * same flat data object so route handlers don't need to know which shape was used.
  */
+export function isParseJsonBodySuccess(
+  result: { data: Record<string, unknown> } | { error: Response },
+): result is { data: Record<string, unknown> } {
+  return "data" in result;
+}
+
 export async function parseJsonBody(
   req: Request,
 ): Promise<{ data: Record<string, unknown> } | { error: Response }> {
