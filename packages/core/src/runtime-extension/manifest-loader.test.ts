@@ -174,6 +174,66 @@ idempotent: true
     expect(result.errors[0]!.error).toContain("must not be an absolute path");
   });
 
+  test("rejects invalid cwd value", () => {
+    writeFileSync(join(tmpDir, "EXEC_invalid-cwd.yml"), `
+kind: exec
+runtime: bun
+file: script.ts
+timeout: 10s
+cwd: unknown
+idempotent: true
+`.trim());
+
+    const result = loadExecManifests({ templatesDir: tmpDir });
+    expect(result.errors).toHaveLength(1);
+    expect(result.errors[0]!.error).toContain("cwd must be");
+  });
+
+  test("rejects missing file field", () => {
+    writeFileSync(join(tmpDir, "EXEC_no-file.yml"), `
+kind: exec
+runtime: bun
+timeout: 10s
+cwd: repo
+idempotent: true
+`.trim());
+
+    const result = loadExecManifests({ templatesDir: tmpDir });
+    expect(result.errors).toHaveLength(1);
+    expect(result.errors[0]!.error).toContain("missing required field");
+    expect(result.errors[0]!.error).toContain("file");
+  });
+
+  test("rejects missing cwd field", () => {
+    writeFileSync(join(tmpDir, "EXEC_no-cwd.yml"), `
+kind: exec
+runtime: bun
+file: script.ts
+timeout: 10s
+idempotent: true
+`.trim());
+
+    const result = loadExecManifests({ templatesDir: tmpDir });
+    expect(result.errors).toHaveLength(1);
+    expect(result.errors[0]!.error).toContain("missing required field");
+    expect(result.errors[0]!.error).toContain("cwd");
+  });
+
+  test("rejects missing idempotent field", () => {
+    writeFileSync(join(tmpDir, "EXEC_no-idempotent.yml"), `
+kind: exec
+runtime: bun
+file: script.ts
+timeout: 10s
+cwd: repo
+`.trim());
+
+    const result = loadExecManifests({ templatesDir: tmpDir });
+    expect(result.errors).toHaveLength(1);
+    expect(result.errors[0]!.error).toContain("missing required field");
+    expect(result.errors[0]!.error).toContain("idempotent");
+  });
+
   test("skips non-yml files", () => {
     writeFileSync(join(tmpDir, "README.md"), "some readme");
     writeFileSync(join(tmpDir, "EXEC_valid.yml"), `
@@ -285,6 +345,106 @@ cwd: repo
     expect(result.errors).toHaveLength(1);
     expect(result.errors[0]!.error).toContain("capabilities");
   });
+
+  test("rejects missing id field", () => {
+    writeFileSync(join(tmpDir, "CONTEXT_no-id.yml"), `
+kind: context-provider
+runtime: bun
+file: script.ts
+timeout: 10s
+cwd: repo
+capabilities:
+  read_events: true
+  read_tracker: false
+  read_metrics: false
+  network: false
+`.trim());
+
+    const result = loadContextProviderManifests({ templatesDir: tmpDir });
+    expect(result.errors).toHaveLength(1);
+    expect(result.errors[0]!.error).toContain("missing required field");
+    expect(result.errors[0]!.error).toContain("id");
+  });
+
+  test("rejects missing runtime field", () => {
+    writeFileSync(join(tmpDir, "CONTEXT_no-runtime.yml"), `
+kind: context-provider
+id: test_ctx
+file: script.ts
+timeout: 10s
+cwd: repo
+capabilities:
+  read_events: true
+  read_tracker: false
+  read_metrics: false
+  network: false
+`.trim());
+
+    const result = loadContextProviderManifests({ templatesDir: tmpDir });
+    expect(result.errors).toHaveLength(1);
+    expect(result.errors[0]!.error).toContain("missing required field");
+    expect(result.errors[0]!.error).toContain("runtime");
+  });
+
+  test("rejects missing file field", () => {
+    writeFileSync(join(tmpDir, "CONTEXT_no-file.yml"), `
+kind: context-provider
+id: test_ctx
+runtime: bun
+timeout: 10s
+cwd: repo
+capabilities:
+  read_events: true
+  read_tracker: false
+  read_metrics: false
+  network: false
+`.trim());
+
+    const result = loadContextProviderManifests({ templatesDir: tmpDir });
+    expect(result.errors).toHaveLength(1);
+    expect(result.errors[0]!.error).toContain("missing required field");
+    expect(result.errors[0]!.error).toContain("file");
+  });
+
+  test("rejects missing timeout field", () => {
+    writeFileSync(join(tmpDir, "CONTEXT_no-timeout.yml"), `
+kind: context-provider
+id: test_ctx
+runtime: bun
+file: script.ts
+cwd: repo
+capabilities:
+  read_events: true
+  read_tracker: false
+  read_metrics: false
+  network: false
+`.trim());
+
+    const result = loadContextProviderManifests({ templatesDir: tmpDir });
+    expect(result.errors).toHaveLength(1);
+    expect(result.errors[0]!.error).toContain("missing required field");
+    expect(result.errors[0]!.error).toContain("timeout");
+  });
+
+  test("rejects missing cwd field", () => {
+    writeFileSync(join(tmpDir, "CONTEXT_no-cwd.yml"), `
+kind: context-provider
+id: test_ctx
+runtime: bun
+file: script.ts
+timeout: 10s
+capabilities:
+  read_events: true
+  read_tracker: false
+  read_metrics: false
+  network: false
+`.trim());
+
+    const result = loadContextProviderManifests({ templatesDir: tmpDir });
+    expect(result.errors).toHaveLength(1);
+    expect(result.errors[0]!.error).toContain("missing required field");
+    expect(result.errors[0]!.error).toContain("cwd");
+  });
 });
 
 describe("loadManifests", () => {
@@ -337,5 +497,21 @@ idempotent: true
     expect(result.errors).toHaveLength(1);
     expect(result.errors[0]!.file).toBe("NOTE.yml");
     expect(result.errors[0]!.error).toContain("Unknown manifest kind");
+  });
+
+  test("returns error for invalid YAML in file", () => {
+    writeFileSync(join(tmpDir, "EXEC_bad-yaml.yml"), `
+kind: exec
+runtime: bun
+file: script.ts
+  timeout: this is not valid YAML indentation
+cwd: repo
+idempotent: true
+`.trim());
+
+    const result = loadManifests({ templatesDir: tmpDir });
+    expect(result.errors).toHaveLength(1);
+    expect(result.errors[0]!.file).toBe("EXEC_bad-yaml.yml");
+    expect(result.errors[0]!.error).toContain("YAML");
   });
 });
