@@ -76,13 +76,13 @@ function writeItem(root: string, item: WorkItem): void {
   fs.writeFileSync(itemPath(root, item.ref.key), JSON.stringify(item, null, 2), "utf-8");
 }
 
-function appendEvent(root: string, topic: string, data: unknown): void {
+function appendEvent(root: string, topic: string, data: unknown, projectId: string): void {
   const env = {
     _v: 1,
     id: `${Date.now()}.${String(Math.random()).slice(2, 8)}`,
     timestamp: new Date().toISOString(),
     topic,
-    data,
+    data: { ...((data as Record<string, unknown>) ?? {}), project_id: projectId },
   };
   const line = JSON.stringify(env) + "\n";
   fs.appendFileSync(path.join(root, "events.jsonl"), line, "utf-8");
@@ -201,7 +201,7 @@ export function createBuiltinAdapter(
         adapter: "builtin",
         parent_key: parent.key,
         child_key: child.key,
-      });
+      }, projectId);
     },
 
     async unlinkChild(_parent: WorkItemRef, child: WorkItemRef): Promise<void> {
@@ -216,7 +216,7 @@ export function createBuiltinAdapter(
       appendEvent(root, "hierarchy.child_removed", {
         adapter: "builtin",
         child_key: child.key,
-      });
+      }, projectId);
     },
 
     async reorderChild(_parent: WorkItemRef, _child: WorkItemRef, _after?: WorkItemRef, _before?: WorkItemRef): Promise<void> {
@@ -265,7 +265,7 @@ export function createBuiltinAdapter(
         metadata: { ...(draft.metadata ?? {}) },
       };
       writeItem(root, item);
-      appendEvent(root, "work_item.created", { adapter: "builtin", key, kind: draft.kind });
+      appendEvent(root, "work_item.created", { adapter: "builtin", key, kind: draft.kind }, projectId);
       return item.ref;
     },
 
@@ -282,7 +282,7 @@ export function createBuiltinAdapter(
         updated_at: new Date().toISOString(),
       };
       writeItem(root, updated);
-      appendEvent(root, "work_item.updated", { adapter: "builtin", key: ref.key });
+      appendEvent(root, "work_item.updated", { adapter: "builtin", key: ref.key }, projectId);
     },
 
     async addComment(_ref: WorkItemRef, _body: string, _opts?: { artifact_refs?: readonly import("./types.js").CommentArtifactRef[] }): Promise<CommentRef> {
@@ -297,7 +297,7 @@ export function createBuiltinAdapter(
         updated_at: new Date().toISOString(),
       };
       writeItem(root, updated);
-      appendEvent(root, "work_item.updated", { adapter: "builtin", key: ref.key, action: "addLabel" });
+      appendEvent(root, "work_item.updated", { adapter: "builtin", key: ref.key, action: "addLabel" }, projectId);
     },
 
     async removeLabel(ref: WorkItemRef, label: string): Promise<void> {
@@ -308,7 +308,7 @@ export function createBuiltinAdapter(
         updated_at: new Date().toISOString(),
       };
       writeItem(root, updated);
-      appendEvent(root, "work_item.updated", { adapter: "builtin", key: ref.key, action: "removeLabel" });
+      appendEvent(root, "work_item.updated", { adapter: "builtin", key: ref.key, action: "removeLabel" }, projectId);
     },
 
     async setAssignees(ref: WorkItemRef, assignees: readonly string[]): Promise<void> {
@@ -319,7 +319,7 @@ export function createBuiltinAdapter(
         updated_at: new Date().toISOString(),
       };
       writeItem(root, updated);
-      appendEvent(root, "work_item.updated", { adapter: "builtin", key: ref.key, action: "setAssignees" });
+      appendEvent(root, "work_item.updated", { adapter: "builtin", key: ref.key, action: "setAssignees" }, projectId);
     },
 
     async closeWorkItem(
@@ -335,7 +335,7 @@ export function createBuiltinAdapter(
         metadata: { ...item.metadata, close_reason: reason ?? "completed" },
       };
       writeItem(root, updated);
-      appendEvent(root, "work_item.closed", { adapter: "builtin", key: ref.key, reason });
+      appendEvent(root, "work_item.closed", { adapter: "builtin", key: ref.key, reason }, projectId);
     },
 
     async reopenWorkItem(ref: WorkItemRef): Promise<void> {
@@ -346,7 +346,7 @@ export function createBuiltinAdapter(
         updated_at: new Date().toISOString(),
       };
       writeItem(root, updated);
-      appendEvent(root, "work_item.reopened", { adapter: "builtin", key: ref.key });
+      appendEvent(root, "work_item.reopened", { adapter: "builtin", key: ref.key }, projectId);
     },
 
     async mirrorTasks(_story: WorkItemRef, _tasks: readonly TaskSnapshot[]): Promise<void> {
