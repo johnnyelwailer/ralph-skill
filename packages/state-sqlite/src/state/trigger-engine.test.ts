@@ -11,6 +11,7 @@ import {
   executeRefreshProjection,
   emitTriggerFired,
   emitTriggerFailed,
+  emitTriggerSkipped,
   parseDurationToMs,
   getNextFireTime,
   type TriggerEngineDeps,
@@ -141,6 +142,64 @@ describe("emitTriggerFailed", () => {
     expect(env.data.action_kind).toBe("refresh_projection");
     expect(env.data.error).toBe("projection not found");
     expect(env.data.failed_at).toBeString();
+  });
+});
+
+describe("emitTriggerSkipped", () => {
+  let tmp: string;
+  let deps: TriggerEngineDeps;
+
+  beforeEach(() => {
+    tmp = makeTmp();
+    deps = makeDeps(tmp);
+  });
+
+  afterEach(() => {
+    deps.store.close();
+    deps.db.close();
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  test("emits trigger.skipped event with reason and details", async () => {
+    await emitTriggerSkipped(deps.events, "tr_abc123", "debounce_active", {
+      next_fire_at: "2025-01-01T00:00:00.000Z",
+    });
+
+    const events: unknown[] = [];
+    for await (const e of deps.store.read()) {
+      events.push(e);
+    }
+
+    const skipped = events.find((e: unknown) => (e as { topic: string }).topic === "trigger.skipped");
+    expect(skipped).toBeDefined();
+    const env = skipped as {
+      topic: string;
+      data: { trigger_id: string; reason: string; details: Record<string, unknown>; skipped_at: string };
+    };
+    expect(env.data.trigger_id).toBe("tr_abc123");
+    expect(env.data.reason).toBe("debounce_active");
+    expect(env.data.details).toEqual({ next_fire_at: "2025-01-01T00:00:00.000Z" });
+    expect(env.data.skipped_at).toBeString();
+  });
+
+  test("emits trigger.skipped event without details", async () => {
+    await emitTriggerSkipped(deps.events, "tr_xyz789", "disabled");
+
+    const events: unknown[] = [];
+    for await (const e of deps.store.read()) {
+      events.push(e);
+    }
+
+    const skipped = events.find((e: unknown) => (e as { topic: string }).topic === "trigger.skipped");
+    expect(skipped).toBeDefined();
+    const env = skipped as {
+      topic: string;
+      data: { trigger_id: string; reason: string; details?: Record<string, unknown>; skipped_at: string };
+    };
+    expect(env.data.trigger_id).toBe("tr_xyz789");
+    expect(env.data.reason).toBe("disabled");
+    expect(env.data.details).toBeUndefined();
+    expect(env.data.skipped_at).toBeString();
   });
 });
 
