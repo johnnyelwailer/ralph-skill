@@ -242,6 +242,76 @@ function validateTranscription(t: unknown): ComposerTranscription | null {
   };
 }
 
+type PatchTurnInput = Parameters<ComposerTurnRegistry["updateResponse"]>[1];
+
+function validatePatchInput(data: unknown): { ok: true; patch: PatchTurnInput } | { ok: false; error: string } {
+  if (data === null || data === undefined || typeof data !== "object") {
+    return { ok: false, error: "request body must be a non-null object" };
+  }
+  const d = data as Record<string, unknown>;
+
+  const status = d.status;
+  if (status !== undefined) {
+    if (typeof status !== "string" || !VALID_STATUSES.has(status)) {
+      return { ok: false, error: "status must be a valid turn status" };
+    }
+  }
+
+  const media_mode = d.media_mode;
+  if (media_mode !== undefined) {
+    if (media_mode !== "native" && media_mode !== "derived" && media_mode !== "none") {
+      return { ok: false, error: "media_mode must be 'native', 'derived', or 'none'" };
+    }
+  }
+
+  const voice_mode = d.voice_mode;
+  if (voice_mode !== undefined) {
+    if (voice_mode !== "native" && voice_mode !== "transcribed" && voice_mode !== "client_transcribed" && voice_mode !== "none") {
+      return { ok: false, error: "voice_mode must be 'native', 'transcribed', 'client_transcribed', or 'none'" };
+    }
+  }
+
+  const delegated_refs = d.delegated_refs;
+  if (delegated_refs !== undefined && !Array.isArray(delegated_refs)) {
+    return { ok: false, error: "delegated_refs must be an array" };
+  }
+
+  const launched_refs = d.launched_refs;
+  if (launched_refs !== undefined && !Array.isArray(launched_refs)) {
+    return { ok: false, error: "launched_refs must be an array" };
+  }
+
+  const proposed_actions = d.proposed_actions;
+  if (proposed_actions !== undefined && !Array.isArray(proposed_actions)) {
+    return { ok: false, error: "proposed_actions must be an array" };
+  }
+
+  const usage = d.usage;
+  if (usage !== undefined) {
+    if (typeof usage !== "object" || usage === null) {
+      return { ok: false, error: "usage must be an object" };
+    }
+    const u = usage as Record<string, unknown>;
+    if (typeof u.tokens_in !== "number") return { ok: false, error: "usage.tokens_in must be a number" };
+    if (typeof u.tokens_out !== "number") return { ok: false, error: "usage.tokens_out must be a number" };
+    if (typeof u.cost_usd !== "number") return { ok: false, error: "usage.cost_usd must be a number" };
+  }
+
+  const patch: PatchTurnInput = {};
+  if (status !== undefined) patch.status = status as ComposerTurnStatus;
+  if (media_mode !== undefined) patch.media_mode = media_mode as "native" | "derived" | "none";
+  if (voice_mode !== undefined) patch.voice_mode = voice_mode as "native" | "transcribed" | "client_transcribed" | "none";
+  if (delegated_refs !== undefined) patch.delegated_refs = delegated_refs as never;
+  if (launched_refs !== undefined) patch.launched_refs = launched_refs as never;
+  if (proposed_actions !== undefined) patch.proposed_actions = proposed_actions as never;
+  if (usage !== undefined) {
+    const u = usage as { tokens_in: number; tokens_out: number; cost_usd: number };
+    patch.usage = { tokens_in: u.tokens_in, tokens_out: u.tokens_out, cost_usd: u.cost_usd };
+  }
+
+  return { ok: true, patch };
+}
+
 function validateCreateInput(data: unknown): {
   ok: true;
   input: CreateComposerTurnInput;
@@ -477,6 +547,23 @@ export async function handleComposer(
       }
     }
 
+    if (req.method === "PATCH") {
+      const parsed = await parseJsonBody(req);
+      if ("error" in parsed) return parsed.error;
+      const validated = validatePatchInput(parsed.data);
+      if (!validated.ok) return errorResponse(400, "validation_error", validated.error);
+      try {
+        const turn = registry.updateResponse(id, validated.patch);
+        emitTurnChanged(deps, turn);
+        return jsonResponse(200, turnResponse(turn));
+      } catch (err) {
+        if (err instanceof ComposerTurnNotFoundError) {
+          return errorResponse(404, "composer_turn_not_found", err.message);
+        }
+        return errorResponse(500, "internal_error", String(err));
+      }
+    }
+
     return methodNotAllowed();
   }
 
@@ -573,6 +660,80 @@ export async function handleComposer(
     try {
       const turn = registry.getById(id);
       return jsonResponse(200, { _v: 1, launched_refs: turn.launched_refs });
+    } catch (err) {
+      if (err instanceof ComposerTurnNotFoundError) {
+        return errorResponse(404, "composer_turn_not_found", err.message);
+      }
+      return errorResponse(500, "internal_error", String(err));
+    }
+  }
+
+  // POST /v1/composer/turns/:id/approve
+  const approveMatch = pathname.match(/^\/v1\/composer\/turns\/([^/]+)\/approve$/);
+  if (approveMatch) {
+    if (req.method !== "POST") return methodNotAllowed();
+    const id = approveMatch[1]!;
+    try {
+      const turn = registry.getById(id);
+      if (turn.status !== "waiting_for_approval") {
+        return errorResponse(409, "invalid_state", `turn is ${turn.status}, not waiting_for_approval`);
+      }
+      const updated = registry.updateResponse(id, { status: "running" });
+      emitTurnChanged(deps, updated);
+      return jsonResponse(200, turnResponse(updated));
+    } catch (err) {
+      if (err instanceof ComposerTurnNotFoundError) {
+        return errorResponse(404, "composer_turn_not_found", err.message);
+      }
+      return errorResponse(500, "internal_error", String(err));
+    }
+  }
+
+  // GET /v1/composer/turns/:id/actions
+  const actionsMatch = pathname.match(/^\/v1\/composer\/turns\/([^/]+)\/actions$/);
+  if (actionsMatch && req.method === "GET") {
+    const id = actionsMatch[1]!;
+    try {
+      const turn = registry.getById(id);
+      return jsonResponse(200, { _v: 1, proposed_actions: turn.proposed_actions });
+    } catch (err) {
+      if (err instanceof ComposerTurnNotFoundError) {
+        return errorResponse(404, "composer_turn_not_found", err.message);
+      }
+      return errorResponse(500, "internal_error", String(err));
+    }
+  }
+
+  // POST /v1/composer/turns/:id/actions/:action_id/apply
+  // POST /v1/composer/turns/:id/actions/:action_id/reject
+  const actionMethodMatch = pathname.match(
+    /^\/v1\/composer\/turns\/([^/]+)\/actions\/([^/]+)\/(apply|reject)$/,
+  );
+  if (actionMethodMatch) {
+    if (req.method !== "POST") return methodNotAllowed();
+    const [, turnId, actionId, verb] = actionMethodMatch;
+    if (!turnId || !actionId) return methodNotAllowed();
+    try {
+      const turn = registry.getById(turnId);
+      const action = turn.proposed_actions.find((a) => a.id === actionId);
+      if (!action) {
+        return errorResponse(404, "action_not_found", `action ${actionId} not found on turn ${turnId}`);
+      }
+      if (action.requires_approval && verb === "apply") {
+        const updated = registry.updateResponse(turnId, { status: "running" });
+        emitTurnChanged(deps, updated);
+        return jsonResponse(200, {
+          _v: 1,
+          action_id: actionId,
+          status: "applied",
+          turn_status: updated.status,
+        });
+      }
+      return jsonResponse(200, {
+        _v: 1,
+        action_id: actionId,
+        status: verb === "reject" ? "rejected" : "applied",
+      });
     } catch (err) {
       if (err instanceof ComposerTurnNotFoundError) {
         return errorResponse(404, "composer_turn_not_found", err.message);

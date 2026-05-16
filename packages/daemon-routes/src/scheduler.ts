@@ -228,7 +228,6 @@ function knobBoundFor(knob: string): { min: number; max: number } | undefined {
     case "scheduler.system.cpu_max_pct": return SCHEDULER_KNOB_BOUNDS.cpuMaxPct;
     case "scheduler.system.mem_max_pct": return SCHEDULER_KNOB_BOUNDS.memMaxPct;
     case "scheduler.permit_ttl_default_seconds": return SCHEDULER_KNOB_BOUNDS.permitTtlDefaultSeconds;
-    case "scheduler.permit_ttl_max_seconds": return SCHEDULER_KNOB_BOUNDS.permitTtlDefaultSeconds;
     case "watchdog.stuck_threshold_seconds": return SCHEDULER_KNOB_BOUNDS.watchdogStuckThresholdSeconds;
     case "scheduler.system.load_max": return SCHEDULER_KNOB_BOUNDS.loadMax;
     default: return undefined;

@@ -980,6 +980,371 @@ describe("Method routing", () => {
 });
 
 // ---------------------------------------------------------------------------
+// POST /v1/composer/turns/:id/approve
+// ---------------------------------------------------------------------------
+
+describe("POST /v1/composer/turns/:id/approve", () => {
+  test("approves a turn in waiting_for_approval state", async () => {
+    const created = await (await makeRequest(handler, deps, "POST", "/v1/composer/turns", {
+      scope: { kind: "global" }, message: "Approve me",
+    })).json() as { id: string };
+    const { registry } = deps;
+    registry.updateResponse(created.id, { status: "waiting_for_approval" });
+
+    const resp = await makeRequest(handler, deps, "POST", `/v1/composer/turns/${created.id}/approve`);
+    expect(resp.status).toBe(200);
+    const body = await resp.clone().json();
+    expect(body.status).toBe("running");
+  });
+
+  test("returns 409 for turn not in waiting_for_approval state", async () => {
+    const created = await (await makeRequest(handler, deps, "POST", "/v1/composer/turns", {
+      scope: { kind: "global" }, message: "Not waiting",
+    })).json() as { id: string };
+
+    const resp = await makeRequest(handler, deps, "POST", `/v1/composer/turns/${created.id}/approve`);
+    expect(resp.status).toBe(409);
+    const body = await resp.clone().json();
+    expect(body.error.code).toBe("invalid_state");
+  });
+
+  test("returns 404 for unknown id", async () => {
+    const resp = await makeRequest(handler, deps, "POST", "/v1/composer/turns/ct_unknown/approve");
+    expect(resp.status).toBe(404);
+  });
+
+  test("returns 405 for GET", async () => {
+    const created = await (await makeRequest(handler, deps, "POST", "/v1/composer/turns", {
+      scope: { kind: "global" }, message: "Find me",
+    })).json() as { id: string };
+    const resp = await makeRequest(handler, deps, "GET", `/v1/composer/turns/${created.id}/approve`);
+    expect(resp.status).toBe(405);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// GET /v1/composer/turns/:id/actions
+// ---------------------------------------------------------------------------
+
+describe("GET /v1/composer/turns/:id/actions", () => {
+  test("returns proposed_actions for existing turn", async () => {
+    const created = await (await makeRequest(handler, deps, "POST", "/v1/composer/turns", {
+      scope: { kind: "global" }, message: "List actions",
+    })).json() as { id: string };
+    const { registry } = deps;
+    registry.updateResponse(created.id, {
+      proposed_actions: [
+        {
+          id: "act_abc",
+          class: "config",
+          method: "PUT",
+          path: "/v1/providers/overrides",
+          summary: "Prefer codex",
+          produced_by: { kind: "control_subagent_run", id: "csr_1" },
+          risk: "medium" as const,
+          requires_approval: true,
+        },
+      ],
+    });
+
+    const resp = await makeRequest(handler, deps, "GET", `/v1/composer/turns/${created.id}/actions`);
+    expect(resp.status).toBe(200);
+    const body = await resp.clone().json();
+    expect(body._v).toBe(1);
+    expect(body.proposed_actions).toHaveLength(1);
+    expect(body.proposed_actions[0].id).toBe("act_abc");
+  });
+
+  test("returns 404 for unknown id", async () => {
+    const resp = await makeRequest(handler, deps, "GET", "/v1/composer/turns/ct_unknown/actions");
+    expect(resp.status).toBe(404);
+  });
+
+  test("POST returns 404 (route not defined)", async () => {
+    const created = await (await makeRequest(handler, deps, "POST", "/v1/composer/turns", {
+      scope: { kind: "global" }, message: "Find me",
+    })).json() as { id: string };
+    const resp = await makeRequest(handler, deps, "POST", `/v1/composer/turns/${created.id}/actions`);
+    expect(resp.status).toBe(404);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// POST /v1/composer/turns/:id/actions/:action_id/apply
+// POST /v1/composer/turns/:id/actions/:action_id/reject
+// ---------------------------------------------------------------------------
+
+describe("POST /v1/composer/turns/:id/actions/:action_id/apply", () => {
+  test("applies an action and transitions turn to running if requires_approval", async () => {
+    const created = await (await makeRequest(handler, deps, "POST", "/v1/composer/turns", {
+      scope: { kind: "global" }, message: "Apply action",
+    })).json() as { id: string };
+    const { registry } = deps;
+    registry.updateResponse(created.id, {
+      status: "waiting_for_approval",
+      proposed_actions: [
+        {
+          id: "act_abc",
+          class: "config",
+          method: "PUT",
+          path: "/v1/providers/overrides",
+          summary: "Prefer codex",
+          produced_by: { kind: "control_subagent_run", id: "csr_1" },
+          risk: "medium" as const,
+          requires_approval: true,
+        },
+      ],
+    });
+
+    const resp = await makeRequest(handler, deps, "POST", `/v1/composer/turns/${created.id}/actions/act_abc/apply`);
+    expect(resp.status).toBe(200);
+    const body = await resp.clone().json();
+    expect(body.action_id).toBe("act_abc");
+    expect(body.status).toBe("applied");
+    expect(body.turn_status).toBe("running");
+  });
+
+  test("applies an action without state transition if not requires_approval", async () => {
+    const created = await (await makeRequest(handler, deps, "POST", "/v1/composer/turns", {
+      scope: { kind: "global" }, message: "Apply no-approval action",
+    })).json() as { id: string };
+    const { registry } = deps;
+    registry.updateResponse(created.id, {
+      status: "running",
+      proposed_actions: [
+        {
+          id: "act_xyz",
+          class: "read",
+          method: "GET",
+          path: "/v1/projects",
+          summary: "List projects",
+          produced_by: { kind: "control_subagent_run", id: "csr_1" },
+          risk: "low" as const,
+          requires_approval: false,
+        },
+      ],
+    });
+
+    const resp = await makeRequest(handler, deps, "POST", `/v1/composer/turns/${created.id}/actions/act_xyz/apply`);
+    expect(resp.status).toBe(200);
+    const body = await resp.clone().json();
+    expect(body.action_id).toBe("act_xyz");
+    expect(body.status).toBe("applied");
+  });
+
+  test("returns 404 for unknown action id", async () => {
+    const created = await (await makeRequest(handler, deps, "POST", "/v1/composer/turns", {
+      scope: { kind: "global" }, message: "Find action",
+    })).json() as { id: string };
+
+    const resp = await makeRequest(handler, deps, "POST", `/v1/composer/turns/${created.id}/actions/act_unknown/apply`);
+    expect(resp.status).toBe(404);
+    const body = await resp.clone().json();
+    expect(body.error.code).toBe("action_not_found");
+  });
+
+  test("returns 404 for unknown turn id", async () => {
+    const resp = await makeRequest(handler, deps, "POST", "/v1/composer/turns/ct_unknown/actions/act_1/apply");
+    expect(resp.status).toBe(404);
+  });
+});
+
+describe("POST /v1/composer/turns/:id/actions/:action_id/reject", () => {
+  test("rejects an action", async () => {
+    const created = await (await makeRequest(handler, deps, "POST", "/v1/composer/turns", {
+      scope: { kind: "global" }, message: "Reject action",
+    })).json() as { id: string };
+    const { registry } = deps;
+    registry.updateResponse(created.id, {
+      proposed_actions: [
+        {
+          id: "act_abc",
+          class: "config",
+          method: "PUT",
+          path: "/v1/providers/overrides",
+          summary: "Prefer codex",
+          produced_by: { kind: "control_subagent_run", id: "csr_1" },
+          risk: "high" as const,
+          requires_approval: true,
+        },
+      ],
+    });
+
+    const resp = await makeRequest(handler, deps, "POST", `/v1/composer/turns/${created.id}/actions/act_abc/reject`);
+    expect(resp.status).toBe(200);
+    const body = await resp.clone().json();
+    expect(body.action_id).toBe("act_abc");
+    expect(body.status).toBe("rejected");
+  });
+
+  test("returns 404 for unknown action id", async () => {
+    const created = await (await makeRequest(handler, deps, "POST", "/v1/composer/turns", {
+      scope: { kind: "global" }, message: "Find action",
+    })).json() as { id: string };
+
+    const resp = await makeRequest(handler, deps, "POST", `/v1/composer/turns/${created.id}/actions/act_unknown/reject`);
+    expect(resp.status).toBe(404);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// PATCH /v1/composer/turns/:id
+// ---------------------------------------------------------------------------
+
+describe("PATCH /v1/composer/turns/:id", () => {
+  test("updates status via PATCH", async () => {
+    const created = await (await makeRequest(handler, deps, "POST", "/v1/composer/turns", {
+      scope: { kind: "global" }, message: "Patch me",
+    })).json() as { id: string };
+
+    const resp = await makeRequest(handler, deps, "PATCH", `/v1/composer/turns/${created.id}`, {
+      status: "running",
+    });
+    expect(resp.status).toBe(200);
+    const body = await resp.clone().json();
+    expect(body.status).toBe("running");
+  });
+
+  test("updates media_mode via PATCH", async () => {
+    const created = await (await makeRequest(handler, deps, "POST", "/v1/composer/turns", {
+      scope: { kind: "global" }, message: "Patch media",
+    })).json() as { id: string };
+
+    const resp = await makeRequest(handler, deps, "PATCH", `/v1/composer/turns/${created.id}`, {
+      media_mode: "derived",
+    });
+    expect(resp.status).toBe(200);
+    const body = await resp.clone().json();
+    expect(body.media_mode).toBe("derived");
+  });
+
+  test("updates usage via PATCH", async () => {
+    const created = await (await makeRequest(handler, deps, "POST", "/v1/composer/turns", {
+      scope: { kind: "global" }, message: "Patch usage",
+    })).json() as { id: string };
+
+    const resp = await makeRequest(handler, deps, "PATCH", `/v1/composer/turns/${created.id}`, {
+      usage: { tokens_in: 1000, tokens_out: 500, cost_usd: 0.05 },
+    });
+    expect(resp.status).toBe(200);
+    const body = await resp.clone().json();
+    expect(body.usage.tokens_in).toBe(1000);
+    expect(body.usage.tokens_out).toBe(500);
+    expect(body.usage.cost_usd).toBe(0.05);
+  });
+
+  test("updates delegated_refs via PATCH", async () => {
+    const created = await (await makeRequest(handler, deps, "POST", "/v1/composer/turns", {
+      scope: { kind: "global" }, message: "Patch delegated",
+    })).json() as { id: string };
+
+    const resp = await makeRequest(handler, deps, "PATCH", `/v1/composer/turns/${created.id}`, {
+      delegated_refs: [
+        { kind: "control_subagent_run", id: "csr_abc", role: "editor", scope: { kind: "global" }, status: "running" },
+      ],
+    });
+    expect(resp.status).toBe(200);
+    const body = await resp.clone().json();
+    expect(body.delegated_refs).toHaveLength(1);
+    expect(body.delegated_refs[0].id).toBe("csr_abc");
+  });
+
+  test("updates proposed_actions via PATCH", async () => {
+    const created = await (await makeRequest(handler, deps, "POST", "/v1/composer/turns", {
+      scope: { kind: "global" }, message: "Patch actions",
+    })).json() as { id: string };
+
+    const resp = await makeRequest(handler, deps, "PATCH", `/v1/composer/turns/${created.id}`, {
+      proposed_actions: [
+        {
+          id: "act_1",
+          class: "config",
+          method: "PUT",
+          path: "/v1/providers/overrides",
+          summary: "Change override",
+          produced_by: { kind: "control_subagent_run", id: "csr_1" },
+          risk: "medium" as const,
+          requires_approval: true,
+        },
+      ],
+    });
+    expect(resp.status).toBe(200);
+    const body = await resp.clone().json();
+    expect(body.proposed_actions).toHaveLength(1);
+    expect(body.proposed_actions[0].id).toBe("act_1");
+  });
+
+  test("returns 404 for unknown id", async () => {
+    const resp = await makeRequest(handler, deps, "PATCH", "/v1/composer/turns/ct_unknown", {
+      status: "running",
+    });
+    expect(resp.status).toBe(404);
+  });
+
+  test("returns 400 for invalid status value", async () => {
+    const created = await (await makeRequest(handler, deps, "POST", "/v1/composer/turns", {
+      scope: { kind: "global" }, message: "Patch invalid",
+    })).json() as { id: string };
+
+    const resp = await makeRequest(handler, deps, "PATCH", `/v1/composer/turns/${created.id}`, {
+      status: "not_a_status",
+    });
+    expect(resp.status).toBe(400);
+    const body = await resp.clone().json();
+    expect(body.error.code).toBe("validation_error");
+  });
+
+  test("returns 400 for invalid media_mode value", async () => {
+    const created = await (await makeRequest(handler, deps, "POST", "/v1/composer/turns", {
+      scope: { kind: "global" }, message: "Patch invalid media",
+    })).json() as { id: string };
+
+    const resp = await makeRequest(handler, deps, "PATCH", `/v1/composer/turns/${created.id}`, {
+      media_mode: "invalid",
+    });
+    expect(resp.status).toBe(400);
+  });
+
+  test("returns 400 for non-object usage", async () => {
+    const created = await (await makeRequest(handler, deps, "POST", "/v1/composer/turns", {
+      scope: { kind: "global" }, message: "Patch invalid usage",
+    })).json() as { id: string };
+
+    const resp = await makeRequest(handler, deps, "PATCH", `/v1/composer/turns/${created.id}`, {
+      usage: "not an object",
+    });
+    expect(resp.status).toBe(400);
+  });
+
+  test("returns 400 for missing usage.tokens_in", async () => {
+    const created = await (await makeRequest(handler, deps, "POST", "/v1/composer/turns", {
+      scope: { kind: "global" }, message: "Patch invalid usage 2",
+    })).json() as { id: string };
+
+    const resp = await makeRequest(handler, deps, "PATCH", `/v1/composer/turns/${created.id}`, {
+      usage: { tokens_in: "not a number", tokens_out: 500, cost_usd: 0.05 },
+    });
+    expect(resp.status).toBe(400);
+  });
+
+  test("returns 405 for GET", async () => {
+    const created = await (await makeRequest(handler, deps, "POST", "/v1/composer/turns", {
+      scope: { kind: "global" }, message: "Find me",
+    })).json() as { id: string };
+    const resp = await makeRequest(handler, deps, "GET", `/v1/composer/turns/${created.id}`);
+    expect(resp.status).toBe(200);
+  });
+
+  test("returns 405 for DELETE", async () => {
+    const created = await (await makeRequest(handler, deps, "POST", "/v1/composer/turns", {
+      scope: { kind: "global" }, message: "Find me",
+    })).json() as { id: string };
+    const resp = await makeRequest(handler, deps, "DELETE", `/v1/composer/turns/${created.id}`);
+    expect(resp.status).toBe(204);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // composer.turn.changed events
 // ---------------------------------------------------------------------------
 
@@ -1028,6 +1393,53 @@ describe("composer.turn.changed events", () => {
     const evt = appendedEvents.find(e => e.topic === "composer.turn.changed")!;
     expect(evt.data.composer_turn_id).toBe(created.id);
     expect(evt.data.status).toBe("cancelled");
+  });
+
+  test("emits event on PATCH /v1/composer/turns/:id", async () => {
+    const appendedEvents: Array<{ topic: string; data: Record<string, unknown> }> = [];
+    const eventsDep = {
+      append: async <T>(topic: string, data: T) => {
+        appendedEvents.push({ topic, data });
+        return { _v: 1, id: "evt_test", timestamp: "2026-05-01T00:00:00Z", topic, data: data as Record<string, unknown> };
+      },
+    };
+    const depsWithEvents = { db, events: eventsDep };
+
+    const created = await (await makeRequest(handler, deps, "POST", "/v1/composer/turns", {
+      scope: { kind: "global" },
+      message: "To patch",
+    })).json() as { id: string };
+
+    appendedEvents.length = 0;
+
+    await makeRequest(handler, depsWithEvents, "PATCH", `/v1/composer/turns/${created.id}`, {
+      status: "running",
+    });
+
+    expect(appendedEvents.some(e => e.topic === "composer.turn.changed")).toBe(true);
+  });
+
+  test("emits event on POST /v1/composer/turns/:id/approve", async () => {
+    const appendedEvents: Array<{ topic: string; data: Record<string, unknown> }> = [];
+    const eventsDep = {
+      append: async <T>(topic: string, data: T) => {
+        appendedEvents.push({ topic, data });
+        return { _v: 1, id: "evt_test", timestamp: "2026-05-01T00:00:00Z", topic, data: data as Record<string, unknown> };
+      },
+    };
+    const depsWithEvents = { db, events: eventsDep };
+
+    const created = await (await makeRequest(handler, deps, "POST", "/v1/composer/turns", {
+      scope: { kind: "global" },
+      message: "To approve",
+    })).json() as { id: string };
+    deps.registry!.updateResponse(created.id, { status: "waiting_for_approval" });
+
+    appendedEvents.length = 0;
+
+    await makeRequest(handler, depsWithEvents, "POST", `/v1/composer/turns/${created.id}/approve`, {});
+
+    expect(appendedEvents.some(e => e.topic === "composer.turn.changed")).toBe(true);
   });
 
   test("does not emit event when events is not provided", async () => {

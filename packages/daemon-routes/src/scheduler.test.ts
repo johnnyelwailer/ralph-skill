@@ -672,6 +672,36 @@ describe("POST /v1/scheduler/tune", () => {
     expect(body.adjustments).toHaveLength(0);
   });
 
+  test("permit_ttl_max_seconds is not in tune endpoint — returns no adjustments", async () => {
+    const deps = makeDeps();
+    deps.scheduler.updateLimits = () =>
+      Promise.resolve({
+        ok: true,
+        limits: {
+          concurrencyCap: 5,
+          permitTtlDefaultSeconds: 600,
+          permitTtlMaxSeconds: 3600,
+          systemLimits: { cpuMaxPct: 80, memMaxPct: 85, loadMax: 4.0 },
+          burnRate: { maxTokensSinceCommit: 1_000_000, minCommitsPerHour: 1 },
+        },
+      });
+    const req = new Request("http://x/v1/scheduler/tune", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        result: {
+          adjustments: [
+            { knob: "scheduler.permit_ttl_max_seconds", proposed: 7200, accepted: true },
+          ],
+        },
+      }),
+    });
+    const res = await handleScheduler(req, deps, "/v1/scheduler/tune");
+    expect(res!.status).toBe(200);
+    const body = await resJson<{ _v: number; adjustments: unknown[] }>(res!);
+    expect(body.adjustments).toHaveLength(0);
+  });
+
   test("returns 400 when updateLimits violates internal consistency constraints", async () => {
     const deps = makeDeps();
     deps.scheduler.updateLimits = () =>
