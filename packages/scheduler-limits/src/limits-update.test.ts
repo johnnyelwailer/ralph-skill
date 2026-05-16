@@ -278,6 +278,51 @@ describe("updateSchedulerLimits", () => {
     expect(r2.ok).toBe(true);
   });
 
+  test("accepts maxTokensSinceCommit at min boundary (100_000)", async () => {
+    const result = await updateSchedulerLimits(h.config, h.events, {
+      maxTokensSinceCommit: 100_000,
+    });
+    expect(result.ok).toBe(true);
+  });
+
+  test("accepts minCommitsPerHour at max boundary (10)", async () => {
+    const result = await updateSchedulerLimits(h.config, h.events, { minCommitsPerHour: 10 });
+    expect(result.ok).toBe(true);
+  });
+
+  test("accepts minCommitsPerHour at min boundary (0)", async () => {
+    const result = await updateSchedulerLimits(h.config, h.events, { minCommitsPerHour: 0 });
+    expect(result.ok).toBe(true);
+  });
+
+  test("accepts cpuMaxPct at min boundary (50) and max boundary (95)", async () => {
+    const r1 = await updateSchedulerLimits(h.config, h.events, { cpuMaxPct: 50 });
+    expect(r1.ok).toBe(true);
+
+    const r2 = await updateSchedulerLimits(h.config, h.events, { cpuMaxPct: 95 });
+    expect(r2.ok).toBe(true);
+  });
+
+  test("accepts memMaxPct at min boundary (50) and max boundary (95)", async () => {
+    const r1 = await updateSchedulerLimits(h.config, h.events, { memMaxPct: 50 });
+    expect(r1.ok).toBe(true);
+
+    const r2 = await updateSchedulerLimits(h.config, h.events, { memMaxPct: 95 });
+    expect(r2.ok).toBe(true);
+  });
+
+  test("accepts permitTtlDefaultSeconds at min boundary (120) and max boundary (3600)", async () => {
+    const r1 = await updateSchedulerLimits(h.config, h.events, {
+      permitTtlDefaultSeconds: 120,
+    });
+    expect(r1.ok).toBe(true);
+
+    const r2 = await updateSchedulerLimits(h.config, h.events, {
+      permitTtlDefaultSeconds: 3600,
+    });
+    expect(r2.ok).toBe(true);
+  });
+
   test("rejects maxTokensSinceCommit below min (100_000)", async () => {
     const result = await updateSchedulerLimits(h.config, h.events, {
       maxTokensSinceCommit: 99_999,
