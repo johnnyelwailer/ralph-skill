@@ -219,7 +219,55 @@ export function createBuiltinAdapter(
       }, projectId);
     },
 
-    async reorderChild(_parent: WorkItemRef, _child: WorkItemRef, _after?: WorkItemRef, _before?: WorkItemRef): Promise<void> {
+    async reorderChild(parent: WorkItemRef, child: WorkItemRef, after?: WorkItemRef, before?: WorkItemRef): Promise<void> {
+      const parentItem = readItem(root, parent.key);
+      const childItem = readItem(root, child.key);
+      const children: WorkItem[] = [];
+      for (const entry of fs.readdirSync(root).filter((e) => {
+        const stat = fs.statSync(path.join(root, e));
+        return stat.isFile() && e.endsWith(".json") && e !== "events.jsonl" && !e.startsWith("changesets");
+      })) {
+        const raw = fs.readFileSync(path.join(root, entry), "utf-8");
+        const item = JSON.parse(raw) as WorkItem;
+        if (item.links.parent?.key === parent.key) {
+          children.push(item);
+        }
+      }
+
+      const existingSeq = (childItem.metadata?.sequence as number) ?? null;
+      const afterItem = after ? readItem(root, after.key) : null;
+      const beforeItem = before ? readItem(root, before.key) : null;
+      const afterSeq = afterItem ? ((afterItem.metadata?.sequence as number) ?? null) : null;
+      const beforeSeq = beforeItem ? ((beforeItem.metadata?.sequence as number) ?? null) : null;
+
+      let newSeq: number;
+      if (after && afterSeq !== null) {
+        newSeq = afterSeq + 0.5;
+      } else if (before && beforeSeq !== null) {
+        newSeq = beforeSeq - 0.5;
+      } else if (!after && !before) {
+        newSeq = existingSeq ?? (children.length > 0 ? children.length : 0);
+      } else if (after) {
+        newSeq = afterSeq === null ? (children.length > 0 ? children.length : 0) + 0.5 : afterSeq + 0.5;
+      } else {
+        newSeq = (beforeSeq ?? 0) - 0.5;
+      }
+
+      const updatedChild: WorkItem = {
+        ...childItem,
+        metadata: { ...childItem.metadata, sequence: newSeq },
+        updated_at: new Date().toISOString(),
+      };
+      writeItem(root, updatedChild);
+      appendEvent(root, "hierarchy.child_reordered", {
+        adapter: "builtin",
+        parent_key: parent.key,
+        child_key: child.key,
+        after_key: after?.key,
+        before_key: before?.key,
+        sequence: newSeq,
+      }, projectId);
+      void parentItem;
     },
 
     async childrenSummary(ref: WorkItemRef): Promise<WorkItemChildrenSummary> {
