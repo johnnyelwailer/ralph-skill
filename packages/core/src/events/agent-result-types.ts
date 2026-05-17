@@ -555,9 +555,45 @@ export type SetupQuestionBatch = {
 };
 
 /**
+ * Readability verdict from the setup judge agent.
+ * Spec: docs/spec/agents.md §Setup-side agents.
+ * Spec: docs/spec/setup.md §Readiness gate.
+ */
+export type SetupReadinessVerdict = {
+  readonly status: "resolved" | "unresolved" | "needs_deeper_research";
+  readonly rationale: string;
+  readonly blocking_ambiguities?: readonly {
+    readonly kind: string;
+    readonly fields: readonly string[];
+    readonly next_action: string;
+  }[];
+};
+
+/**
+ * Result schema for `setup_judge`.
+ * Spec: docs/spec/agents.md §Setup-side agents.
+ */
+export type SetupReadinessVerdictResult = {
+  readonly verdict: SetupReadinessVerdict;
+};
+
+/**
  * Result schema for `setup_spec_writer` and `setup_constitution_drafter`.
  * Spec: docs/spec/agents.md §Setup-side agents.
  */
+export type SetupChapterUpdate = {
+  readonly chapter_path: string;
+  readonly summary: string;
+  readonly changes: {
+    readonly sections?: readonly {
+      readonly action: "add" | "modify" | "remove";
+      readonly heading: string;
+      readonly content?: string;
+    }[];
+    readonly new_content?: string;
+  };
+};
+
 /**
  * Result schema for the `orch_tune` agent.
  * Spec: docs/spec/metrics.md §Self-tuning.
@@ -572,17 +608,37 @@ export type TuneSchedulerLimitsResult = {
   }[];
 };
 
-export type SetupChapterUpdate = {
-  readonly chapter_path: string;
-  readonly summary: string;
-  readonly changes: {
-    readonly sections?: readonly {
-      readonly action: "add" | "modify" | "remove";
-      readonly heading: string;
-      readonly content?: string;
-    }[];
-    readonly new_content?: string;
+// ─── merge_request ────────────────────────────────────────────────────────────
+
+/**
+ * Merge mode used when merging a change set.
+ * Spec: docs/spec/orchestrator.md §Monitor + gate + merge — Policy enforcement.
+ */
+export type MergeMode = "squash" | "merge" | "rebase";
+
+/**
+ * Outcome of a merge operation.
+ * Spec: docs/spec/work-tracker.md §Change set operations.
+ */
+export type MergeResult = {
+  readonly merged: boolean;
+  readonly sha?: string;
+  readonly url?: string;
+  readonly message?: string;
+};
+
+/**
+ * Result schema for `merge_request`.
+ * Spec: docs/spec/orchestrator.md §Orchestrator prompt outputs — `merge_request`.
+ * Spec: docs/spec/orchestrator.md §Monitor + gate + merge — Policy enforcement.
+ */
+export type MergeRequestResult = {
+  readonly change_set_ref: {
+    readonly adapter: string;
+    readonly id: string;
   };
+  readonly merge_mode: MergeMode;
+  readonly merge_result: MergeResult;
 };
 
 // ─── Union of all agent result types ─────────────────────────────────────────
@@ -616,4 +672,6 @@ export type AgentResult =
   | { readonly type: "setup_research_result"; readonly result: SetupResearchResult }
   | { readonly type: "setup_question_batch"; readonly result: SetupQuestionBatch }
   | { readonly type: "setup_chapter_update"; readonly result: SetupChapterUpdate }
-  | { readonly type: "tune_scheduler_limits_result"; readonly result: TuneSchedulerLimitsResult };
+  | { readonly type: "setup_readiness_verdict_result"; readonly result: SetupReadinessVerdictResult }
+  | { readonly type: "tune_scheduler_limits_result"; readonly result: TuneSchedulerLimitsResult }
+  | { readonly type: "merge_request_result"; readonly result: MergeRequestResult };

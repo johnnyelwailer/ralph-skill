@@ -28,6 +28,11 @@ import type {
   AbstractStatus,
   AgentResult,
   TuneSchedulerLimitsResult,
+  SetupReadinessVerdict,
+  SetupReadinessVerdictResult,
+  MergeMode,
+  MergeResult,
+  MergeRequestResult,
 } from "./agent-result-types";
 import { commitSha, filePath } from "./agent-result-types";
 
@@ -795,6 +800,149 @@ describe("TuneSchedulerLimitsResult", () => {
   });
 });
 
+// ─── Setup readiness verdict ──────────────────────────────────────────────────
+
+describe("SetupReadinessVerdict", () => {
+  test("resolved status", () => {
+    const r: SetupReadinessVerdict = {
+      status: "resolved",
+      rationale: "All blocking ambiguities addressed",
+    };
+    expect(r.status).toBe("resolved");
+  });
+
+  test("unresolved status with blocking ambiguities", () => {
+    const r: SetupReadinessVerdict = {
+      status: "unresolved",
+      rationale: "Two ambiguities remain",
+      blocking_ambiguities: [
+        {
+          kind: "missing_required",
+          fields: ["tracker", "merge_target"],
+          next_action: "ask user to choose tracker",
+        },
+      ],
+    };
+    expect(r.status).toBe("unresolved");
+    expect(r.blocking_ambiguities).toHaveLength(1);
+    expect(r.blocking_ambiguities[0]!.kind).toBe("missing_required");
+  });
+
+  test("needs_deeper_research status", () => {
+    const r: SetupReadinessVerdict = {
+      status: "needs_deeper_research",
+      rationale: "Cannot determine validation commands without further analysis",
+    };
+    expect(r.status).toBe("needs_deeper_research");
+  });
+
+  test("resolved with no blocking ambiguities", () => {
+    const r: SetupReadinessVerdict = {
+      status: "resolved",
+      rationale: "Project ready for scaffold",
+      blocking_ambiguities: [],
+    };
+    expect(r.blocking_ambiguities).toHaveLength(0);
+  });
+});
+
+describe("SetupReadinessVerdictResult", () => {
+  test("accepts resolved verdict", () => {
+    const r: SetupReadinessVerdictResult = {
+      verdict: { status: "resolved", rationale: "All checks passed" },
+    };
+    expect(r.verdict.status).toBe("resolved");
+  });
+
+  test("accepts unresolved verdict with ambiguities", () => {
+    const r: SetupReadinessVerdictResult = {
+      verdict: {
+        status: "unresolved",
+        rationale: "Tracker not configured",
+        blocking_ambiguities: [
+          { kind: "missing_required", fields: ["tracker"], next_action: "set tracker" },
+        ],
+      },
+    };
+    expect(r.verdict.status).toBe("unresolved");
+    expect(r.verdict.blocking_ambiguities?.[0]!.fields).toContain("tracker");
+  });
+});
+
+// ─── merge_request ─────────────────────────────────────────────────────────────
+
+describe("MergeMode", () => {
+  test("accepts all merge modes", () => {
+    const modes: MergeMode[] = ["squash", "merge", "rebase"];
+    expect(modes).toHaveLength(3);
+  });
+});
+
+describe("MergeResult", () => {
+  test("successful merge", () => {
+    const r: MergeResult = {
+      merged: true,
+      sha: "abc123def456",
+      url: "https://github.com/example/repo/pull/123",
+      message: "Squash merge from agent/trunk",
+    };
+    expect(r.merged).toBe(true);
+    expect(r.sha).toBe("abc123def456");
+    expect(r.url).toContain("pull/123");
+  });
+
+  test("failed merge", () => {
+    const r: MergeResult = {
+      merged: false,
+      message: "Merge conflict detected",
+    };
+    expect(r.merged).toBe(false);
+  });
+});
+
+describe("MergeRequestResult", () => {
+  test("accepted merge request with squash mode", () => {
+    const r: MergeRequestResult = {
+      change_set_ref: { adapter: "github", id: "PR-456" },
+      merge_mode: "squash",
+      merge_result: {
+        merged: true,
+        sha: "def789",
+        url: "https://github.com/example/repo/pull/456",
+        message: "Squash merge",
+      },
+    };
+    expect(r.change_set_ref.adapter).toBe("github");
+    expect(r.merge_mode).toBe("squash");
+    expect(r.merge_result.merged).toBe(true);
+  });
+
+  test("merge request with merge mode", () => {
+    const r: MergeRequestResult = {
+      change_set_ref: { adapter: "builtin", id: "branch-789" },
+      merge_mode: "merge",
+      merge_result: {
+        merged: true,
+        sha: "abc123",
+        url: "https://tracker.example.com/branch/789",
+      },
+    };
+    expect(r.merge_mode).toBe("merge");
+  });
+
+  test("rejected merge request", () => {
+    const r: MergeRequestResult = {
+      change_set_ref: { adapter: "github", id: "PR-789" },
+      merge_mode: "rebase",
+      merge_result: {
+        merged: false,
+        message: "Merge check failed: CI not green",
+      },
+    };
+    expect(r.merge_result.merged).toBe(false);
+  });
+});
+
 // ─── AgentResult discriminated union ──────────────────────────────────────────
 
 describe("AgentResult discriminated union", () => {
@@ -853,5 +1001,27 @@ describe("AgentResult discriminated union", () => {
       },
     };
     expect(r.type).toBe("tune_scheduler_limits_result");
+  });
+
+  test("setup_readiness_verdict_result", () => {
+    const r: AgentResult = {
+      type: "setup_readiness_verdict_result",
+      result: {
+        verdict: { status: "resolved", rationale: "All checks passed" },
+      },
+    };
+    expect(r.type).toBe("setup_readiness_verdict_result");
+  });
+
+  test("merge_request_result", () => {
+    const r: AgentResult = {
+      type: "merge_request_result",
+      result: {
+        change_set_ref: { adapter: "github", id: "PR-123" },
+        merge_mode: "squash",
+        merge_result: { merged: true, sha: "abc123" },
+      },
+    };
+    expect(r.type).toBe("merge_request_result");
   });
 });
