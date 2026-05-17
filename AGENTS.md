@@ -32,6 +32,8 @@ Prefer one thin vertical slice over five broad half-built systems.
 
 ## Constitution Enforcement
 
+Hard rule: autonomous agents MUST NOT modify `docs/`. They may read docs, cite docs, and file code TODOs that say a docs decision is needed, but they must not edit, create, delete, format, or move files under `docs/`. Docs changes require an explicit human request in an attended session.
+
 Every PR should ask:
 
 - Does this enforce a constitution rule, or only document it?
@@ -46,7 +48,7 @@ TDD is mandatory. Write the failing test for the product behavior first, then im
 
 Autonomous agents should not stall waiting for a human answer. If a requirement is unclear:
 
-- Record the ambiguity in code or docs with a concrete `TODO(decision): ...` that names the decision still needed.
+- Record the ambiguity in code with a concrete `TODO(decision): ...` that names the decision still needed.
 - Keep moving with the smallest reversible implementation.
 - When two or more variants are plausible and cheap to support, build the variants behind explicit config/feature toggles.
 - Prefer data-driven toggles over branching code paths hidden in the runtime.
