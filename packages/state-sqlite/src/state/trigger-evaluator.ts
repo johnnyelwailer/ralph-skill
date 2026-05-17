@@ -72,6 +72,50 @@ async function executeCreateArtifact(
   });
 }
 
+async function executeEmitAlert(
+  deps: TriggerEvaluatorDeps,
+  triggerId: string,
+  target: { readonly message?: string },
+): Promise<void> {
+  await deps.events.append("trigger.alert_emit_request", {
+    trigger_id: triggerId,
+    message: target.message ?? null,
+    emitted_at: new Date().toISOString(),
+  });
+}
+
+async function executeQueueWorkflowHandler(
+  deps: TriggerEvaluatorDeps,
+  triggerId: string,
+  target: {
+    readonly session_id?: string;
+    readonly handler?: string;
+    readonly reason?: string;
+    readonly source_event_id?: string;
+  },
+): Promise<void> {
+  await deps.events.append("workflow_handler.queued", {
+    trigger_id: triggerId,
+    session_id: target.session_id ?? null,
+    handler: target.handler ?? null,
+    reason: target.reason ?? null,
+    source_event_id: target.source_event_id ?? null,
+    queued_at: new Date().toISOString(),
+  });
+}
+
+async function executeFireMonitorProfile(
+  deps: TriggerEvaluatorDeps,
+  triggerId: string,
+  target: { readonly artifact_id?: string },
+): Promise<void> {
+  await deps.events.append("trigger.monitor_fire_request", {
+    trigger_id: triggerId,
+    artifact_id: target.artifact_id ?? null,
+    fired_at: new Date().toISOString(),
+  });
+}
+
 export async function evaluateTriggers(deps: TriggerEvaluatorDeps): Promise<number> {
   const { triggerStore, events, db, store, projectors } = deps;
 
@@ -123,6 +167,24 @@ export async function evaluateTriggers(deps: TriggerEvaluatorDeps): Promise<numb
             ...(target.metadata !== undefined && { metadata: target.metadata }),
             ...(target.reason !== undefined && { reason: target.reason }),
             ...(target.source_event_id !== undefined && { source_event_id: target.source_event_id }),
+          });
+        } else if (trigger.action.kind === "emit_alert") {
+          const target = trigger.action.target;
+          await executeEmitAlert(deps, trigger.id, {
+            ...(target.message !== undefined && { message: target.message }),
+          });
+        } else if (trigger.action.kind === "queue_workflow_handler") {
+          const target = trigger.action.target;
+          await executeQueueWorkflowHandler(deps, trigger.id, {
+            ...(target.session_id !== undefined && { session_id: target.session_id }),
+            ...(target.handler !== undefined && { handler: target.handler }),
+            ...(target.reason !== undefined && { reason: target.reason }),
+            ...(target.source_event_id !== undefined && { source_event_id: target.source_event_id }),
+          });
+        } else if (trigger.action.kind === "fire_monitor_profile") {
+          const target = trigger.action.target;
+          await executeFireMonitorProfile(deps, trigger.id, {
+            ...(target.artifact_id !== undefined && { artifact_id: target.artifact_id }),
           });
         }
 

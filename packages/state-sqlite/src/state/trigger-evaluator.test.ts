@@ -424,4 +424,127 @@ describe("evaluateTriggers", () => {
     expect(reqEnv.data.kind).toBe("report");
     expect(reqEnv.data.filename).toBe("weekly-summary.md");
   });
+
+  test("fires time trigger with emit_alert action and emits trigger.alert_emit_request event", async () => {
+    const past = new Date(Date.now() - 7200000).toISOString();
+    const trigger: Trigger = {
+      id: "tr_emit_alert",
+      scope: { kind: "project", id: "p_test" },
+      source: { kind: "time", schedule: "PT1H" },
+      action: {
+        kind: "emit_alert",
+        target: { message: "Alert: disk usage high" },
+      },
+      enabled: true,
+      fire_count: 0,
+      last_fired_at: past,
+      last_error: null,
+      created_at: past,
+      updated_at: past,
+      debounce_seconds: 0,
+      budget_policy: null,
+    };
+    deps = makeDeps(tmp, mockTriggerStore([trigger]));
+
+    const result = await evaluateTriggers(deps);
+    expect(result).toBe(1);
+
+    const events: unknown[] = [];
+    for await (const e of deps.store.read()) {
+      events.push(e);
+    }
+
+    const fired = events.find((e: unknown) => (e as { topic: string }).topic === "trigger.fired");
+    expect(fired).toBeDefined();
+
+    const alertRequest = events.find((e: unknown) => (e as { topic: string }).topic === "trigger.alert_emit_request");
+    expect(alertRequest).toBeDefined();
+    const env = alertRequest as { topic: string; data: { trigger_id: string; message: string } };
+    expect(env.data.trigger_id).toBe("tr_emit_alert");
+    expect(env.data.message).toBe("Alert: disk usage high");
+  });
+
+  test("fires time trigger with queue_workflow_handler action and emits workflow_handler.queued event", async () => {
+    const past = new Date(Date.now() - 7200000).toISOString();
+    const trigger: Trigger = {
+      id: "tr_queue_handler",
+      scope: { kind: "project", id: "p_test" },
+      source: { kind: "time", schedule: "PT1H" },
+      action: {
+        kind: "queue_workflow_handler",
+        target: {
+          session_id: "s_orch_123",
+          handler: "dependency_signal",
+          reason: "external dependency tool opened a change set",
+        },
+      },
+      enabled: true,
+      fire_count: 0,
+      last_fired_at: past,
+      last_error: null,
+      created_at: past,
+      updated_at: past,
+      debounce_seconds: 0,
+      budget_policy: null,
+    };
+    deps = makeDeps(tmp, mockTriggerStore([trigger]));
+
+    const result = await evaluateTriggers(deps);
+    expect(result).toBe(1);
+
+    const events: unknown[] = [];
+    for await (const e of deps.store.read()) {
+      events.push(e);
+    }
+
+    const fired = events.find((e: unknown) => (e as { topic: string }).topic === "trigger.fired");
+    expect(fired).toBeDefined();
+
+    const queued = events.find((e: unknown) => (e as { topic: string }).topic === "workflow_handler.queued");
+    expect(queued).toBeDefined();
+    const env = queued as { topic: string; data: { trigger_id: string; session_id: string; handler: string; reason: string } };
+    expect(env.data.trigger_id).toBe("tr_queue_handler");
+    expect(env.data.session_id).toBe("s_orch_123");
+    expect(env.data.handler).toBe("dependency_signal");
+    expect(env.data.reason).toBe("external dependency tool opened a change set");
+  });
+
+  test("fires time trigger with fire_monitor_profile action and emits trigger.monitor_fire_request event", async () => {
+    const past = new Date(Date.now() - 7200000).toISOString();
+    const trigger: Trigger = {
+      id: "tr_fire_monitor",
+      scope: { kind: "project", id: "p_test" },
+      source: { kind: "time", schedule: "PT1H" },
+      action: {
+        kind: "fire_monitor_profile",
+        target: { artifact_id: "a_monitor_profile_abc123" },
+      },
+      enabled: true,
+      fire_count: 0,
+      last_fired_at: past,
+      last_error: null,
+      created_at: past,
+      updated_at: past,
+      debounce_seconds: 0,
+      budget_policy: null,
+    };
+    deps = makeDeps(tmp, mockTriggerStore([trigger]));
+
+    const result = await evaluateTriggers(deps);
+    expect(result).toBe(1);
+
+    const events: unknown[] = [];
+    for await (const e of deps.store.read()) {
+      events.push(e);
+    }
+
+    const fired = events.find((e: unknown) => (e as { topic: string }).topic === "trigger.fired");
+    expect(fired).toBeDefined();
+
+    const monitorFire = events.find((e: unknown) => (e as { topic: string }).topic === "trigger.monitor_fire_request");
+    expect(monitorFire).toBeDefined();
+    const env = monitorFire as { topic: string; data: { trigger_id: string; artifact_id: string } };
+    expect(env.data.trigger_id).toBe("tr_fire_monitor");
+    expect(env.data.artifact_id).toBe("a_monitor_profile_abc123");
+  });
 });
