@@ -32,7 +32,7 @@ Prefer one thin vertical slice over five broad half-built systems.
 
 ## Constitution Enforcement
 
-Hard rule: autonomous agents MUST NOT modify `docs/`. They may read docs, cite docs, and file code TODOs that say a docs decision is needed, but they must not edit, create, delete, format, or move files under `docs/`. Docs changes require an explicit human request in an attended session.
+Hard rule for you, the coding agent working in this repo: you MUST NOT modify `docs/`. You may read docs, cite docs, and file code TODOs that say a docs decision is needed, but you must not edit, create, delete, format, or move files under `docs/`. Docs changes require an explicit human request in an attended session.
 
 Every PR should ask:
 
@@ -46,7 +46,7 @@ TDD is mandatory. Write the failing test for the product behavior first, then im
 
 ## Ambiguity
 
-Autonomous agents should not stall waiting for a human answer. If a requirement is unclear:
+You should not stall waiting for a human answer. If a requirement is unclear:
 
 - Record the ambiguity in code with a concrete `TODO(decision): ...` that names the decision still needed.
 - Keep moving with the smallest reversible implementation.
