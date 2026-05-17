@@ -44,4 +44,13 @@ TDD is mandatory. Write the failing test for the product behavior first, then im
 
 ## Ambiguity
 
-If a requirement is unclear and the wrong choice would shape product behavior, stop and ask. If the choice is local and reversible, choose the simplest option and document the assumption in the PR.
+Autonomous agents should not stall waiting for a human answer. If a requirement is unclear:
+
+- Record the ambiguity in code or docs with a concrete `TODO(decision): ...` that names the decision still needed.
+- Keep moving with the smallest reversible implementation.
+- When two or more variants are plausible and cheap to support, build the variants behind explicit config/feature toggles.
+- Prefer data-driven toggles over branching code paths hidden in the runtime.
+- Add tests for each supported variant and for the default.
+- Push final product choice to a later Story or human decision, but leave the system runnable.
+
+Example: if the open question is `local sandbox` vs `hosted sandbox`, do not block the session runner. Build the `SandboxAdapter` seam, ship one default fake/local adapter for the vertical slice, and leave the hosted adapter as a toggled implementation path or follow-up TODO.
