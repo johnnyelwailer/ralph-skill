@@ -1,12 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import { handleScheduler, type SchedulerDeps } from "./scheduler.ts";
-import type { AcquirePermitInput } from "@aloop/scheduler";
+import type { AcquirePermitInput, LimitsUpdateResult, PermitDecision } from "@aloop/scheduler";
 
 function mockPermit(overrides: Partial<{
   id: string; sessionId: string | null; composerTurnId: string | null;
   controlSubagentRunId: string | null; projectId: string | null;
   providerId: string; ttlSeconds: number;
-}> = {}): ReturnType<SchedulerDeps["scheduler"]["acquirePermit"]> extends Promise<infer R> ? R : never {
+}> = {}): PermitDecision {
   return {
     granted: true,
     permit: {
@@ -36,10 +36,10 @@ function makeDeps(overrides: Partial<SchedulerDeps["scheduler"]["currentLimits"]
     scheduler: {
       currentLimits() { return { ...defaults, ...overrides }; },
       listPermits() { return []; },
-      updateLimits(): Promise<{ ok: true; limits: typeof defaults; errors: never[] } | { ok: false; limits?: never; errors: { path: string; message: string }[] }> {
+      updateLimits(): Promise<LimitsUpdateResult> {
         return Promise.resolve({ ok: true, limits: { ...defaults, concurrencyCap: 5 }, errors: [] });
       },
-      acquirePermit(_input: AcquirePermitInput): Promise<{ granted: true; permit: { id: string; sessionId: string | null; composerTurnId: string | null; controlSubagentRunId: string | null; projectId: string | null; providerId: string; ttlSeconds: number; grantedAt: string; expiresAt: string; } }> {
+      acquirePermit(_input: AcquirePermitInput): Promise<PermitDecision> {
         return Promise.resolve(mockPermit());
       },
       releasePermit() { throw new Error("not stubbed"); },
@@ -94,10 +94,9 @@ describe("PUT /v1/scheduler/limits", () => {
 
   test("returns 400 when limits are invalid", async () => {
     const deps = makeDeps();
-    deps.scheduler.updateLimits = (): Promise<{ ok: false; limits?: never; errors: { path: string; message: string }[] }> => Promise.resolve({
+    deps.scheduler.updateLimits = (): Promise<LimitsUpdateResult> => Promise.resolve({
       ok: false,
-      limits: undefined,
-      errors: [{ path: "max_permits", message: "must be positive" }],
+      errors: ["max_permits must be positive"],
     });
     const req = new Request("http://x/v1/scheduler/limits", {
       method: "PUT",
@@ -175,7 +174,7 @@ describe("POST /v1/scheduler/permits", () => {
   test("returns 200 with granted=true when permit is granted", async () => {
     const deps = makeDeps();
     deps.scheduler.acquirePermit = () =>
-      Promise.resolve({ granted: true, permit: mockPermit({ id: "new-permit", sessionId: "s1" }) });
+      Promise.resolve(mockPermit({ id: "new-permit", sessionId: "s1" }));
     const req = new Request("http://x/v1/scheduler/permits", {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -224,7 +223,7 @@ describe("POST /v1/scheduler/permits", () => {
   test("returns 200 with ttl_seconds passed through", async () => {
     const deps = makeDeps();
     deps.scheduler.acquirePermit = (_input: AcquirePermitInput) =>
-      Promise.resolve({ granted: true, permit: mockPermit({ id: "p", sessionId: "s" }) });
+      Promise.resolve(mockPermit({ id: "p", sessionId: "s" }));
     const req = new Request("http://x/v1/scheduler/permits", {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -238,7 +237,7 @@ describe("POST /v1/scheduler/permits", () => {
     const deps = makeDeps();
     deps.scheduler.acquirePermit = (input: AcquirePermitInput) => {
       expect(input.estimatedCostUsd).toBe(0.05);
-      return Promise.resolve({ granted: true, permit: mockPermit({ id: "p", sessionId: "s" }) });
+      return Promise.resolve(mockPermit({ id: "p", sessionId: "s" }));
     };
     const req = new Request("http://x/v1/scheduler/permits", {
       method: "POST",
@@ -254,7 +253,7 @@ describe("POST /v1/scheduler/permits", () => {
     deps.scheduler.acquirePermit = (input: AcquirePermitInput) => {
       expect(input.ttlSeconds).toBe(1200);
       expect(input.estimatedCostUsd).toBe(1.5);
-      return Promise.resolve({ granted: true, permit: mockPermit({ id: "p", sessionId: "s" }) });
+      return Promise.resolve(mockPermit({ id: "p", sessionId: "s" }));
     };
     const req = new Request("http://x/v1/scheduler/permits", {
       method: "POST",
@@ -304,7 +303,7 @@ describe("POST /v1/scheduler/permits", () => {
     // Zero is a valid non-negative float — a provider could estimate $0
     const deps = makeDeps();
     deps.scheduler.acquirePermit = () =>
-      Promise.resolve({ granted: true, permit: mockPermit({ id: "p", sessionId: "s" }) });
+      Promise.resolve(mockPermit({ id: "p", sessionId: "s" }));
     const req = new Request("http://x/v1/scheduler/permits", {
       method: "POST",
       headers: { "content-type": "application/json" },
