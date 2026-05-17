@@ -125,7 +125,7 @@ export async function getMetricAggregates(
         stat: string;
         value: number;
         computed_at: string;
-      }, [string, string, string, string, number]>(
+      }, [string, string, string, string, string, number]>(
         `SELECT metric_name, labels, window_start, window_end, window_kind, stat, value, computed_at
          FROM metric_aggregates
          WHERE metric_name = ?
