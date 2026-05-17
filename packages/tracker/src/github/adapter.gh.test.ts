@@ -15,47 +15,45 @@ describe("parseGitHubAge parsing", () => {
 
   test("singular minute (no trailing s) normalizes to 'minute'", () => {
     const ageStr = "1 minute ago";
-    const match = ageStr.match(/(\d+)\s+(\w+)\s+ago/);
+    const match = ageStr.match(/(\d+)\s+(\w+)\s+ago/) as RegExpMatchArray;
     expect(match).toBeTruthy();
-    const unit = match![2].replace(/s$/, "");
-    expect(unit).toBe("minute");
+    expect(match[2]!).toBe("minute");
   });
 
   test("plural hours normalizes to 'hour' after s-stripping", () => {
     const ageStr = "5 hours ago";
-    const match = ageStr.match(/(\d+)\s+(\w+)\s+ago/);
+    const match = ageStr.match(/(\d+)\s+(\w+)\s+ago/) as RegExpMatchArray;
     expect(match).toBeTruthy();
-    const unit = match![2].replace(/s$/, "");
-    expect(unit).toBe("hour");
+    expect(match[2]!).toBe("hour");
   });
 
   test("parses days ago correctly", () => {
     const ageStr = "14 days ago";
-    const match = ageStr.match(/(\d+)\s+(\w+)\s+ago/);
+    const match = ageStr.match(/(\d+)\s+(\w+)\s+ago/) as RegExpMatchArray;
     expect(match).toBeTruthy();
-    expect(match![1]).toBe("14");
-    expect(match![2]).toBe("days");
+    expect(match[1]!).toBe("14");
+    expect(match[2]!).toBe("days");
   });
 
   test("parses weeks ago correctly", () => {
     const ageStr = "2 weeks ago";
-    const match = ageStr.match(/(\d+)\s+(\w+)\s+ago/);
+    const match = ageStr.match(/(\d+)\s+(\w+)\s+ago/) as RegExpMatchArray;
     expect(match).toBeTruthy();
-    expect(match![1]).toBe("2");
+    expect(match[1]!).toBe("2");
   });
 
   test("parses months ago correctly", () => {
     const ageStr = "3 months ago";
-    const match = ageStr.match(/(\d+)\s+(\w+)\s+ago/);
+    const match = ageStr.match(/(\d+)\s+(\w+)\s+ago/) as RegExpMatchArray;
     expect(match).toBeTruthy();
-    expect(match![1]).toBe("3");
+    expect(match[1]!).toBe("3");
   });
 
   test("parses years ago correctly", () => {
     const ageStr = "1 year ago";
-    const match = ageStr.match(/(\d+)\s+(\w+)\s+ago/);
+    const match = ageStr.match(/(\d+)\s+(\w+)\s+ago/) as RegExpMatchArray;
     expect(match).toBeTruthy();
-    expect(match![1]).toBe("1");
+    expect(match[1]!).toBe("1");
   });
 
   test("returns null when format does not match", () => {

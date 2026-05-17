@@ -572,11 +572,11 @@ describe("parseJsonBody handles text() failure", () => {
     // A Request whose body throws on text() access
     const badReq = new Request("http://x", {
       method: "POST",
-      body: {
-        async text() {
-          throw new Error("read error");
+      body: new ReadableStream({
+        start(controller) {
+          controller.error(new Error("simulated read failure"));
         },
-      } as Body,
+      }),
     });
     const result = await parseJsonBody(badReq);
     expect(result).toEqual({ error: expect.any(Response) });

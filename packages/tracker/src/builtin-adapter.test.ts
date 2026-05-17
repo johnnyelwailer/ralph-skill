@@ -1,5 +1,6 @@
 import { describe, expect, test, beforeEach, afterEach } from "bun:test";
 import { createBuiltinAdapter, type CreateBuiltinAdapterOptions } from "./builtin-adapter.js";
+import type { TrackerEvent } from "./types.js";
 import fs from "node:fs";
 import path from "node:path";
 
@@ -534,7 +535,7 @@ describe("createBuiltinAdapter", () => {
       const newEvents = afterEvents.slice(beforeEvents);
       const reorderEvents = newEvents.filter((l) => JSON.parse(l).topic === "hierarchy.child_reordered");
       expect(reorderEvents.length).toBe(1);
-      const event = JSON.parse(reorderEvents[0]);
+      const event = JSON.parse(reorderEvents[0]!);
       expect(event.data.child_key).toBe(childRef.key);
       expect(event.data.parent_key).toBe(epicRef.key);
     });
@@ -611,10 +612,11 @@ describe("createBuiltinAdapter", () => {
   describe("subscribe", () => {
     test("returns an async generator", async () => {
       const adapter = makeAdapter();
-      const subscription = adapter.subscribe({ topics: ["work_item.created"] });
+      const subscription = adapter.subscribe!({ topics: ["work_item.created"] });
       expect(typeof subscription[Symbol.asyncIterator]).toBe("function");
       // Clean up
-      subscription.return?.();
+      const sub = subscription as AsyncGenerator<TrackerEvent>;
+      await sub.return(undefined);
     });
 
     test("subscribe method is present on adapter", () => {

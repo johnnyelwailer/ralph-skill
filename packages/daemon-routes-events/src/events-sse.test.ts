@@ -125,7 +125,7 @@ describe("handleEventsSSE", () => {
     const resp = await handleEventsSSE(req, deps, "/v1/events");
     expect(resp).not.toBeUndefined();
     expect(resp!.status).toBe(405);
-    const body = await resp!.clone().json();
+    const body = await resp!.clone().json() as { error: { code: string } };
     expect(body.error.code).toBe("method_not_allowed");
   });
 

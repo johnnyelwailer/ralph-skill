@@ -203,11 +203,11 @@ describe("parseJsonBody", () => {
   }
 
   function assertError(
-    result: ReturnType<typeof parseJsonBody>,
+    result: { data: Record<string, unknown> } | { error: Response },
   ): Response {
     expect(result).toBeInstanceOf(Object);
     expect("error" in result).toBe(true);
-    const res = result.error;
+    const res = (result as { error: Response }).error;
     expect(res).toBeInstanceOf(Response);
     return res;
   }
@@ -295,7 +295,7 @@ describe("parseJsonBody", () => {
     const result = await parseJsonBody(badReq);
     const res = assertError(result);
     expect(res.status).toBe(400);
-    const body = await res.json() as { error: { code: string } };
+    const body = await res.json() as { error: { code: string; message?: string } };
     expect(body.error.code).toBe("bad_request");
     expect(body.error.message).toBe("request body must be valid UTF-8 text");
   });

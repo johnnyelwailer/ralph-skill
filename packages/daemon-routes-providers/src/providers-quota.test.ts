@@ -63,19 +63,19 @@ describe("handleProviderQuota", () => {
     expect(result).not.toBeUndefined();
     const resp = result as Response;
     expect(resp.status).toBe(404);
-    const body = await (result as Response).json();
+    const body = await (result as Response).json() as { error: { code: string } };
     expect(body.error.code).toBe("not_found");
   });
 
   test("returns 501 when provider does not support quota probes", async () => {
-    const adapter = makeMockAdapter("opencode", { probeQuota: undefined });
+    const adapter = makeMockAdapter("opencode", { probeQuota: undefined as unknown as (authHandle: string) => Promise<{ remaining: number; total: number; resets_at: string; currency: string; probedAt: string; }> });
     const deps = makeDeps({ providerRegistry: { get: () => adapter } as any });
     const req = makeRequest("GET", "/v1/providers/opencode/quota");
     const result = await handleProviderQuota(req as any, deps, "/v1/providers/opencode/quota");
     expect(result).not.toBeUndefined();
     const resp = result as Response;
     expect(resp.status).toBe(501);
-    const body = await (result as Response).json();
+    const body = await (result as Response).json() as { error: { code: string } };
     expect(body.error.code).toBe("quota_probe_unavailable");
   });
 
@@ -87,7 +87,7 @@ describe("handleProviderQuota", () => {
     expect(result).not.toBeUndefined();
     const resp = result as Response;
     expect(resp.status).toBe(400);
-    const body = await (result as Response).json();
+    const body = await (result as Response).json() as { error: { code: string; message?: string; details?: Record<string, unknown> } };
     expect(body.error.code).toBe("bad_request");
     expect(body.error.message).toContain("x-aloop-auth-handle");
   });
@@ -121,7 +121,7 @@ describe("handleProviderQuota", () => {
     expect(result).not.toBeUndefined();
     const resp = result as Response;
     expect(resp.status).toBe(200);
-    const body = await (result as Response).json();
+    const body = await (result as Response).json() as { provider_id: string; quota: Record<string, unknown> };
     expect(body.provider_id).toBe("anthropic");
     expect(body.quota).toEqual(quotaData);
   });
@@ -170,7 +170,7 @@ describe("handleProviderQuota", () => {
     const resp = result as Response;
     // classification of a generic Error is "unknown" → 503 Service Unavailable
     expect(resp.status).toBeGreaterThanOrEqual(400);
-    const body = await (result as Response).json();
+    const body = await (result as Response).json() as { error: { code: string; details: { provider_id: string; classification: string } } };
     expect(body.error.details.provider_id).toBe("opencode");
     expect(body.error.details.classification).toBeDefined();
   });

@@ -102,6 +102,6 @@ describe("startHttp", () => {
     running = startHttp(opts);
 
     // With port 0, the OS assigns an available port. Bun exposes it via server.port.
-    expect(running.port).toBe(running.server.port);
+    expect(running.port).toBe(running.server.port as number);
   });
 });
