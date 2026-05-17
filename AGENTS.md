@@ -50,7 +50,7 @@ Autonomous agents should not stall waiting for a human answer. If a requirement 
 
 - Record the ambiguity in code with a concrete `TODO(decision): ...` that names the decision still needed.
 - Keep moving with the smallest reversible implementation.
-- When two or more variants are plausible and cheap to support, build the variants behind explicit config/feature toggles.
+- When two or more variants are plausible, build all variants fully behind explicit config/feature toggles.
 - Prefer data-driven toggles over branching code paths hidden in the runtime.
 - Add tests for each supported variant and for the default.
 - Push final product choice to a later Story or human decision, but leave the system runnable.
