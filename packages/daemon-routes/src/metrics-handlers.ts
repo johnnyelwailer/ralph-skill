@@ -132,10 +132,11 @@ export async function getMetricAggregates(
            AND window_kind = ?
            AND stat = ?
            AND window_start >= ?
+           AND window_end >= ?
          ORDER BY window_start DESC
          LIMIT ?`,
       )
-      .all(metricName, windowKind, stat, since, limit);
+      .all(metricName, windowKind, stat, since, since, limit);
 
     const items = rows.map((r) => ({
       metric_name: r.metric_name,

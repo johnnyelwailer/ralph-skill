@@ -261,13 +261,6 @@ describe("getMetricAggregates", () => {
     const res = await getMetricAggregates(req, deps);
     expect(res.status).toBe(200);
     const body = await res.json();
-    // SPEC MISMATCH: window_hours param is accepted but not applied to the SQL query.
-    // Per metrics.md Exposure and API contract, window_hours should filter rows
-    // to only those within the specified time window from now.
-    // This test asserts the correct spec behavior; the implementation currently
-    // ignores window_hours (both rows are returned).
-    // Expected: only the 6h-ago window (42.0) should be returned.
-    // Actual: both rows are returned (window_hours is parsed but unused).
     expect(body.items).toHaveLength(1);
     expect(body.items[0].value).toBe(42.0);
   });
