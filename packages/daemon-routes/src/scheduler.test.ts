@@ -759,6 +759,135 @@ describe("POST /v1/scheduler/tune", () => {
     expect(res!.status).toBe(200);
     expect(capturedPatch).toEqual({ max_permits: 4, cpu_max_pct: 85 });
   });
+
+  test("accepts watchdog.stuck_threshold_seconds within bounds [120, 3600]", async () => {
+    const deps = makeDeps();
+    const capturedPatch: Record<string, unknown> = {};
+    deps.scheduler.updateLimits = (patch: Record<string, unknown>) => {
+      Object.assign(capturedPatch, patch);
+      return Promise.resolve({
+        ok: true,
+        limits: {
+          concurrencyCap: 10,
+          permitTtlDefaultSeconds: 600,
+          permitTtlMaxSeconds: 3600,
+          systemLimits: { cpuMaxPct: 80, memMaxPct: 85, loadMax: 4.0 },
+          burnRate: { maxTokensSinceCommit: 1_000_000, minCommitsPerHour: 1 },
+          watchdogStuckThresholdSeconds: 600,
+        },
+      });
+    };
+    const req = new Request("http://x/v1/scheduler/tune", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        result: {
+          adjustments: [
+            { knob: "watchdog.stuck_threshold_seconds", proposed: 600, accepted: true },
+          ],
+        },
+      }),
+    });
+    const res = await handleScheduler(req, deps, "/v1/scheduler/tune");
+    expect(res!.status).toBe(200);
+    const body = await resJson<{ _v: number; adjustments: unknown[] }>(res!);
+    expect(body.adjustments).toHaveLength(1);
+    const adj = body.adjustments[0] as { knob: string; accepted: boolean; proposed: unknown };
+    expect(adj.knob).toBe("watchdog.stuck_threshold_seconds");
+    expect(adj.accepted).toBe(true);
+    expect(capturedPatch).toEqual({ watchdog_stuck_threshold_seconds: 600 });
+  });
+
+  test("rejects watchdog.stuck_threshold_seconds below min (119)", async () => {
+    const deps = makeDeps();
+    const req = new Request("http://x/v1/scheduler/tune", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        result: {
+          adjustments: [
+            { knob: "watchdog.stuck_threshold_seconds", proposed: 119, accepted: true },
+          ],
+        },
+      }),
+    });
+    const res = await handleScheduler(req, deps, "/v1/scheduler/tune");
+    expect(res!.status).toBe(200);
+    const body = await resJson<{ _v: number; adjustments: unknown[] }>(res!);
+    expect(body.adjustments).toHaveLength(0);
+  });
+
+  test("accepts scheduler.system.load_max within bounds", async () => {
+    const deps = makeDeps();
+    const capturedPatch: Record<string, unknown> = {};
+    deps.scheduler.updateLimits = (patch: Record<string, unknown>) => {
+      Object.assign(capturedPatch, patch);
+      return Promise.resolve({
+        ok: true,
+        limits: {
+          concurrencyCap: 10,
+          permitTtlDefaultSeconds: 600,
+          permitTtlMaxSeconds: 3600,
+          systemLimits: { cpuMaxPct: 80, memMaxPct: 85, loadMax: 8.0 },
+          burnRate: { maxTokensSinceCommit: 1_000_000, minCommitsPerHour: 1 },
+        },
+      });
+    };
+    const req = new Request("http://x/v1/scheduler/tune", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        result: {
+          adjustments: [
+            { knob: "scheduler.system.load_max", proposed: 8.0, accepted: true },
+          ],
+        },
+      }),
+    });
+    const res = await handleScheduler(req, deps, "/v1/scheduler/tune");
+    expect(res!.status).toBe(200);
+    const body = await resJson<{ _v: number; adjustments: unknown[] }>(res!);
+    expect(body.adjustments).toHaveLength(1);
+    expect(capturedPatch).toEqual({ load_max: 8.0 });
+  });
+
+  test("rejects scheduler.system.load_max above max (100.1 > 100)", async () => {
+    const deps = makeDeps();
+    const req = new Request("http://x/v1/scheduler/tune", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        result: {
+          adjustments: [
+            { knob: "scheduler.system.load_max", proposed: 100.1, accepted: true },
+          ],
+        },
+      }),
+    });
+    const res = await handleScheduler(req, deps, "/v1/scheduler/tune");
+    expect(res!.status).toBe(200);
+    const body = await resJson<{ _v: number; adjustments: unknown[] }>(res!);
+    expect(body.adjustments).toHaveLength(0);
+  });
+
+  test("rejects unknown knob names", async () => {
+    const deps = makeDeps();
+    const req = new Request("http://x/v1/scheduler/tune", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        result: {
+          adjustments: [
+            { knob: "scheduler.fake.knob", proposed: 999, accepted: true },
+          ],
+        },
+      }),
+    });
+    const res = await handleScheduler(req, deps, "/v1/scheduler/tune");
+    expect(res!.status).toBe(200);
+    const body = await resJson<{ _v: number; adjustments: unknown[] }>(res!);
+    expect(body.adjustments).toHaveLength(0);
+  });
 });
 
 // ─── asNonNegativeFloat ──────────────────────────────────────────────────────
