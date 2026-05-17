@@ -26,6 +26,10 @@ function createTestDb(): { db: Database; dir: string } {
 // Request helpers
 // ---------------------------------------------------------------------------
 
+async function resJson(res: Response): Promise<any> {
+  return JSON.parse(await res.text());
+}
+
 async function makeRequest(
   handler: typeof handleComposer,
   deps: ComposerDeps,
@@ -82,7 +86,7 @@ describe("POST /v1/composer/turns", () => {
       message: "Hello, composer",
     });
     expect(resp.status).toBe(201);
-    const body = await resp.clone().json();
+    const body = JSON.parse(await (await resp.clone()).text());
     expect(body.id).toMatch(/^[0-9a-f-]{36}$/);
     expect(body.scope).toEqual({ kind: "global" });
     expect(body.status).toBe("queued");
@@ -120,7 +124,7 @@ describe("POST /v1/composer/turns", () => {
       approval_policy: "auto_approved",
     });
     expect(resp.status).toBe(201);
-    const body = await resp.clone().json();
+    const body = JSON.parse(await (await resp.clone()).text());
     expect(body.id).toBe("ct_fixed_id");
     expect(body.scope).toEqual({ kind: "project", id: "p_abc" });
     expect(body.status).toBe("queued");
@@ -141,7 +145,7 @@ describe("POST /v1/composer/turns", () => {
       message: "Hello",
     });
     expect(resp.status).toBe(400);
-    const body = await resp.clone().json();
+    const body = JSON.parse(await (await resp.clone()).text());
     expect(body.error.code).toBe("validation_error");
   });
 
@@ -150,7 +154,7 @@ describe("POST /v1/composer/turns", () => {
       scope: { kind: "global" },
     });
     expect(resp.status).toBe(400);
-    const body = await resp.clone().json();
+    const body = JSON.parse(await (await resp.clone()).text());
     expect(body.error.code).toBe("validation_error");
   });
 
@@ -277,7 +281,7 @@ describe("GET /v1/composer/turns", () => {
   test("returns empty list when no turns", async () => {
     const resp = await makeRequest(handler, deps, "GET", "/v1/composer/turns");
     expect(resp.status).toBe(200);
-    const body = await resp.clone().json();
+    const body = JSON.parse(await (await resp.clone()).text());
     expect(body.items).toEqual([]);
     expect(body.next_cursor).toBeUndefined();
   });
@@ -290,7 +294,7 @@ describe("GET /v1/composer/turns", () => {
       scope: { kind: "global" }, message: "Second",
     });
     const resp = await makeRequest(handler, deps, "GET", "/v1/composer/turns");
-    const body = await resp.clone().json();
+    const body = JSON.parse(await (await resp.clone()).text());
     expect(body.items).toHaveLength(2);
     // Most recent first
     expect(body.items[0]!.message).toBe("Second");
@@ -305,7 +309,7 @@ describe("GET /v1/composer/turns", () => {
       scope: { kind: "project", id: "p_abc" }, message: "Project",
     });
     const resp = await makeRequest(handler, deps, "GET", "/v1/composer/turns?scope_kind=project");
-    const body = await resp.clone().json();
+    const body = JSON.parse(await (await resp.clone()).text());
     expect(body.items).toHaveLength(1);
     expect(body.items[0]!.message).toBe("Project");
     expect(body.items[0]!.scope.kind).toBe("project");
@@ -323,7 +327,7 @@ describe("GET /v1/composer/turns", () => {
     await makeRequest(handler, deps, "POST", `/v1/composer/turns/${id2}/cancel`);
 
     const resp = await makeRequest(handler, deps, "GET", "/v1/composer/turns?status=cancelled");
-    const body = await resp.clone().json();
+    const body = JSON.parse(await (await resp.clone()).text());
     expect(body.items).toHaveLength(1);
     expect(body.items[0]!.status).toBe("cancelled");
   });
@@ -335,7 +339,7 @@ describe("GET /v1/composer/turns", () => {
       });
     }
     const resp = await makeRequest(handler, deps, "GET", "/v1/composer/turns?limit=3");
-    const body = await resp.clone().json();
+    const body = JSON.parse(await (await resp.clone()).text());
     expect(body.items).toHaveLength(3);
     expect(body.next_cursor).toBeDefined();
   });
@@ -352,12 +356,12 @@ describe("GET /v1/composer/turns", () => {
       await new Promise<void>((resolve) => setTimeout(resolve, 1));
     }
     // First page
-    const page1 = await (await makeRequest(handler, deps, "GET", "/v1/composer/turns?limit=2")).json();
+    const page1 = JSON.parse(await (await makeRequest(handler, deps, "GET", "/v1/composer/turns?limit=2")).text());
     expect(page1.items).toHaveLength(2);
     expect(page1.next_cursor).toBeDefined();
 
     // Second page using cursor
-    const page2 = await (await makeRequest(handler, deps, "GET", `/v1/composer/turns?limit=2&cursor=${page1.next_cursor}`)).json();
+    const page2 = JSON.parse(await (await makeRequest(handler, deps, "GET", `/v1/composer/turns?limit=2&cursor=${page1.next_cursor}`)).text());
     expect(page2.items).toHaveLength(2);
     // No overlap between pages
     const page1Ids = page1.items.map((t: { id: string }) => t.id);
@@ -378,7 +382,7 @@ describe("GET /v1/composer/turns", () => {
       scope: { kind: "project", id: "p_xyz" }, message: "Project XYZ",
     });
     const resp = await makeRequest(handler, deps, "GET", "/v1/composer/turns?scope_kind=project&scope_id=p_abc");
-    const body = await resp.clone().json();
+    const body = JSON.parse(await (await resp.clone()).text());
     expect(body.items).toHaveLength(1);
     expect(body.items[0]!.message).toBe("Project ABC");
     expect(body.items[0]!.scope.id).toBe("p_abc");
@@ -391,12 +395,12 @@ describe("GET /v1/composer/turns", () => {
       });
     }
     const resp = await makeRequest(handler, deps, "GET", "/v1/composer/turns?limit=200");
-    const body = await resp.clone().json();
+    const body = JSON.parse(await (await resp.clone()).text());
     expect(body.items).toHaveLength(5);
   });
 
   test("filters by control_subagent_run_id", async () => {
-    const { registry } = deps;
+    const registry = deps.registry!;
     const now = new Date().toISOString();
     const turn = registry.create({
       scope: { kind: "global" },
@@ -410,7 +414,7 @@ describe("GET /v1/composer/turns", () => {
       now,
     });
     const resp = await makeRequest(handler, deps, "GET", "/v1/composer/turns?control_subagent_run_id=csr_abc");
-    const body = await resp.clone().json();
+    const body = JSON.parse(await (await resp.clone()).text());
     expect(body.items).toHaveLength(1);
     expect(body.items[0]!.message).toBe("Turn with subagent csr_abc");
     expect(body.items[0]!.delegated_refs[0]!.id).toBe("csr_abc");
@@ -430,7 +434,7 @@ describe("GET /v1/composer/turns/:id", () => {
 
     const resp = await makeRequest(handler, deps, "GET", `/v1/composer/turns/${created.id}`);
     expect(resp.status).toBe(200);
-    const body = await resp.clone().json();
+    const body = JSON.parse(await (await resp.clone()).text());
     expect(body.id).toBe(created.id);
     expect(body.message).toBe("Find me");
   });
@@ -438,7 +442,7 @@ describe("GET /v1/composer/turns/:id", () => {
   test("returns 404 for unknown id", async () => {
     const resp = await makeRequest(handler, deps, "GET", "/v1/composer/turns/ct_unknown");
     expect(resp.status).toBe(404);
-    const body = await resp.clone().json();
+    const body = JSON.parse(await (await resp.clone()).text());
     expect(body.error.code).toBe("composer_turn_not_found");
   });
 });
@@ -478,7 +482,7 @@ describe("POST /v1/composer/turns/:id/cancel", () => {
 
     const resp = await makeRequest(handler, deps, "POST", `/v1/composer/turns/${created.id}/cancel`);
     expect(resp.status).toBe(200);
-    const body = await resp.clone().json();
+    const body = JSON.parse(await (await resp.clone()).text());
     expect(body.status).toBe("cancelled");
   });
 
@@ -588,7 +592,7 @@ describe("GET /v1/composer/turns/:id/launched", () => {
 
     const resp = await makeRequest(handler, deps, "GET", `/v1/composer/turns/${created.id}/launched`);
     expect(resp.status).toBe(200);
-    const body = await resp.clone().json();
+    const body = JSON.parse(await (await resp.clone()).text());
     expect(body._v).toBe(1);
     expect(body.launched_refs).toEqual([]);
   });
@@ -613,7 +617,7 @@ describe("POST /v1/composer/turns validation edge cases", () => {
       });
       const resp = await handler(req, deps, "/v1/composer/turns");
       expect(resp!.status).toBe(400);
-      const json = await resp!.clone().json();
+      const json = JSON.parse(await resp!.clone().text());
       expect(json.error.code).toBe("validation_error");
     }
   });
@@ -626,7 +630,7 @@ describe("POST /v1/composer/turns validation edge cases", () => {
     });
     const resp = await handler(req, deps, "/v1/composer/turns");
     expect(resp!.status).toBe(400);
-    const json = await resp!.clone().json();
+    const json = JSON.parse(await resp!.clone().text());
     expect(json.error.code).toBe("validation_error");
   });
 
@@ -636,7 +640,7 @@ describe("POST /v1/composer/turns validation edge cases", () => {
       message: "",
     });
     expect(resp.status).toBe(400);
-    const body = await resp.clone().json();
+    const body = JSON.parse(await (await resp.clone()).text());
     expect(body.error.code).toBe("validation_error");
   });
 
@@ -657,7 +661,7 @@ describe("POST /v1/composer/turns validation edge cases", () => {
       transcription: { mode: "not_a_mode" },
     });
     expect(resp.status).toBe(400);
-    const body = await resp.clone().json();
+    const body = JSON.parse(await (await resp.clone()).text());
     expect(body.error.code).toBe("validation_error");
   });
 
@@ -686,7 +690,7 @@ describe("POST /v1/composer/turns validation edge cases", () => {
       artifact_refs: "not-an-array",
     });
     expect(resp.status).toBe(400);
-    const body = await resp.clone().json();
+    const body = JSON.parse(await (await resp.clone()).text());
     expect(body.error.code).toBe("validation_error");
   });
 
@@ -697,7 +701,7 @@ describe("POST /v1/composer/turns validation edge cases", () => {
       artifact_refs: [null],
     });
     expect(resp.status).toBe(400);
-    const body = await resp.clone().json();
+    const body = JSON.parse(await (await resp.clone()).text());
     expect(body.error.code).toBe("validation_error");
   });
 
@@ -708,7 +712,7 @@ describe("POST /v1/composer/turns validation edge cases", () => {
       media_inputs: { kind: "image" },
     });
     expect(resp.status).toBe(400);
-    const body = await resp.clone().json();
+    const body = JSON.parse(await (await resp.clone()).text());
     expect(body.error.code).toBe("validation_error");
   });
 
@@ -719,7 +723,7 @@ describe("POST /v1/composer/turns validation edge cases", () => {
       context_refs: { kind: "project" },
     });
     expect(resp.status).toBe(400);
-    const body = await resp.clone().json();
+    const body = JSON.parse(await (await resp.clone()).text());
     expect(body.error.code).toBe("validation_error");
   });
 
@@ -730,7 +734,7 @@ describe("POST /v1/composer/turns validation edge cases", () => {
       provider_chain: { 0: "opencode" },
     });
     expect(resp.status).toBe(400);
-    const body = await resp.clone().json();
+    const body = JSON.parse(await (await resp.clone()).text());
     expect(body.error.code).toBe("validation_error");
   });
 
@@ -741,7 +745,7 @@ describe("POST /v1/composer/turns validation edge cases", () => {
       allowed_action_classes: "read",
     });
     expect(resp.status).toBe(400);
-    const body = await resp.clone().json();
+    const body = JSON.parse(await (await resp.clone()).text());
     expect(body.error.code).toBe("validation_error");
   });
 
@@ -752,7 +756,7 @@ describe("POST /v1/composer/turns validation edge cases", () => {
       delegation_policy: { allow_subagents: "yes", max_subagents: 3, require_preview_for_mutations: true },
     });
     expect(resp.status).toBe(400);
-    const body = await resp.clone().json();
+    const body = JSON.parse(await (await resp.clone()).text());
     expect(body.error.code).toBe("validation_error");
   });
 
@@ -763,7 +767,7 @@ describe("POST /v1/composer/turns validation edge cases", () => {
       delegation_policy: { allow_subagents: true, max_subagents: "3", require_preview_for_mutations: false },
     });
     expect(resp.status).toBe(400);
-    const body = await resp.clone().json();
+    const body = JSON.parse(await (await resp.clone()).text());
     expect(body.error.code).toBe("validation_error");
   });
 
@@ -774,7 +778,7 @@ describe("POST /v1/composer/turns validation edge cases", () => {
       context_refs: [{ kind: "invalid_kind", project_id: "p_1" }],
     });
     expect(resp.status).toBe(400);
-    const body = await resp.clone().json();
+    const body = JSON.parse(await (await resp.clone()).text());
     expect(body.error.code).toBe("validation_error");
   });
 
@@ -785,7 +789,7 @@ describe("POST /v1/composer/turns validation edge cases", () => {
       context_refs: [{ kind: "project" }],
     });
     expect(resp.status).toBe(400);
-    const body = await resp.clone().json();
+    const body = JSON.parse(await (await resp.clone()).text());
     expect(body.error.code).toBe("validation_error");
   });
 
@@ -796,7 +800,7 @@ describe("POST /v1/composer/turns validation edge cases", () => {
       context_refs: [{ kind: "artifact" }],
     });
     expect(resp.status).toBe(400);
-    const body = await resp.clone().json();
+    const body = JSON.parse(await (await resp.clone()).text());
     expect(body.error.code).toBe("validation_error");
   });
 
@@ -807,7 +811,7 @@ describe("POST /v1/composer/turns validation edge cases", () => {
       context_refs: [{ kind: "session" }],
     });
     expect(resp.status).toBe(400);
-    const body = await resp.clone().json();
+    const body = JSON.parse(await (await resp.clone()).text());
     expect(body.error.code).toBe("validation_error");
   });
 
@@ -818,7 +822,7 @@ describe("POST /v1/composer/turns validation edge cases", () => {
       context_refs: [{ kind: "work_item" }],
     });
     expect(resp.status).toBe(400);
-    const body = await resp.clone().json();
+    const body = JSON.parse(await (await resp.clone()).text());
     expect(body.error.code).toBe("validation_error");
   });
 
@@ -974,7 +978,7 @@ describe("Method routing", () => {
     // GET with query string should still match the list route
     const resp = await makeRequest(handler, deps, "GET", "/v1/composer/turns?scope_kind=global", {});
     expect(resp.status).toBe(200);
-    const body = await resp.clone().json();
+    const body = JSON.parse(await (await resp.clone()).text());
     expect(body.items.length).toBe(1);
   });
 });
@@ -985,15 +989,14 @@ describe("Method routing", () => {
 
 describe("POST /v1/composer/turns/:id/approve", () => {
   test("approves a turn in waiting_for_approval state", async () => {
-    const created = await (await makeRequest(handler, deps, "POST", "/v1/composer/turns", {
+    const created = JSON.parse(await (await makeRequest(handler, deps, "POST", "/v1/composer/turns", {
       scope: { kind: "global" }, message: "Approve me",
-    })).json() as { id: string };
-    const { registry } = deps;
-    registry.updateResponse(created.id, { status: "waiting_for_approval" });
+    })).text()) as { id: string };
+    deps.registry!.updateResponse(created.id, { status: "waiting_for_approval" });
 
     const resp = await makeRequest(handler, deps, "POST", `/v1/composer/turns/${created.id}/approve`);
     expect(resp.status).toBe(200);
-    const body = await resp.clone().json();
+    const body = JSON.parse(await (await resp.clone()).text());
     expect(body.status).toBe("running");
   });
 
@@ -1004,7 +1007,7 @@ describe("POST /v1/composer/turns/:id/approve", () => {
 
     const resp = await makeRequest(handler, deps, "POST", `/v1/composer/turns/${created.id}/approve`);
     expect(resp.status).toBe(409);
-    const body = await resp.clone().json();
+    const body = JSON.parse(await (await resp.clone()).text());
     expect(body.error.code).toBe("invalid_state");
   });
 
@@ -1014,9 +1017,9 @@ describe("POST /v1/composer/turns/:id/approve", () => {
   });
 
   test("returns 405 for GET", async () => {
-    const created = await (await makeRequest(handler, deps, "POST", "/v1/composer/turns", {
+    const created = JSON.parse(await (await makeRequest(handler, deps, "POST", "/v1/composer/turns", {
       scope: { kind: "global" }, message: "Find me",
-    })).json() as { id: string };
+    })).text()) as { id: string };
     const resp = await makeRequest(handler, deps, "GET", `/v1/composer/turns/${created.id}/approve`);
     expect(resp.status).toBe(405);
   });
@@ -1028,11 +1031,10 @@ describe("POST /v1/composer/turns/:id/approve", () => {
 
 describe("GET /v1/composer/turns/:id/actions", () => {
   test("returns proposed_actions for existing turn", async () => {
-    const created = await (await makeRequest(handler, deps, "POST", "/v1/composer/turns", {
+    const created = JSON.parse(await (await makeRequest(handler, deps, "POST", "/v1/composer/turns", {
       scope: { kind: "global" }, message: "List actions",
-    })).json() as { id: string };
-    const { registry } = deps;
-    registry.updateResponse(created.id, {
+    })).text()) as { id: string };
+    deps.registry!.updateResponse(created.id, {
       proposed_actions: [
         {
           id: "act_abc",
@@ -1049,7 +1051,7 @@ describe("GET /v1/composer/turns/:id/actions", () => {
 
     const resp = await makeRequest(handler, deps, "GET", `/v1/composer/turns/${created.id}/actions`);
     expect(resp.status).toBe(200);
-    const body = await resp.clone().json();
+    const body = JSON.parse(await (await resp.clone()).text());
     expect(body._v).toBe(1);
     expect(body.proposed_actions).toHaveLength(1);
     expect(body.proposed_actions[0].id).toBe("act_abc");
@@ -1061,9 +1063,9 @@ describe("GET /v1/composer/turns/:id/actions", () => {
   });
 
   test("POST returns 404 (route not defined)", async () => {
-    const created = await (await makeRequest(handler, deps, "POST", "/v1/composer/turns", {
+    const created = JSON.parse(await (await makeRequest(handler, deps, "POST", "/v1/composer/turns", {
       scope: { kind: "global" }, message: "Find me",
-    })).json() as { id: string };
+    })).text()) as { id: string };
     const resp = await makeRequest(handler, deps, "POST", `/v1/composer/turns/${created.id}/actions`);
     expect(resp.status).toBe(404);
   });
@@ -1076,11 +1078,10 @@ describe("GET /v1/composer/turns/:id/actions", () => {
 
 describe("POST /v1/composer/turns/:id/actions/:action_id/apply", () => {
   test("applies an action and transitions turn to running if requires_approval", async () => {
-    const created = await (await makeRequest(handler, deps, "POST", "/v1/composer/turns", {
+    const created = JSON.parse(await (await makeRequest(handler, deps, "POST", "/v1/composer/turns", {
       scope: { kind: "global" }, message: "Apply action",
-    })).json() as { id: string };
-    const { registry } = deps;
-    registry.updateResponse(created.id, {
+    })).text()) as { id: string };
+    deps.registry!.updateResponse(created.id, {
       status: "waiting_for_approval",
       proposed_actions: [
         {
@@ -1098,18 +1099,17 @@ describe("POST /v1/composer/turns/:id/actions/:action_id/apply", () => {
 
     const resp = await makeRequest(handler, deps, "POST", `/v1/composer/turns/${created.id}/actions/act_abc/apply`);
     expect(resp.status).toBe(200);
-    const body = await resp.clone().json();
+    const body = JSON.parse(await (await resp.clone()).text());
     expect(body.action_id).toBe("act_abc");
     expect(body.status).toBe("applied");
     expect(body.turn_status).toBe("running");
   });
 
   test("applies an action without state transition if not requires_approval", async () => {
-    const created = await (await makeRequest(handler, deps, "POST", "/v1/composer/turns", {
+    const created = JSON.parse(await (await makeRequest(handler, deps, "POST", "/v1/composer/turns", {
       scope: { kind: "global" }, message: "Apply no-approval action",
-    })).json() as { id: string };
-    const { registry } = deps;
-    registry.updateResponse(created.id, {
+    })).text()) as { id: string };
+    deps.registry!.updateResponse(created.id, {
       status: "running",
       proposed_actions: [
         {
@@ -1127,7 +1127,7 @@ describe("POST /v1/composer/turns/:id/actions/:action_id/apply", () => {
 
     const resp = await makeRequest(handler, deps, "POST", `/v1/composer/turns/${created.id}/actions/act_xyz/apply`);
     expect(resp.status).toBe(200);
-    const body = await resp.clone().json();
+    const body = JSON.parse(await (await resp.clone()).text());
     expect(body.action_id).toBe("act_xyz");
     expect(body.status).toBe("applied");
   });
@@ -1139,7 +1139,7 @@ describe("POST /v1/composer/turns/:id/actions/:action_id/apply", () => {
 
     const resp = await makeRequest(handler, deps, "POST", `/v1/composer/turns/${created.id}/actions/act_unknown/apply`);
     expect(resp.status).toBe(404);
-    const body = await resp.clone().json();
+    const body = JSON.parse(await (await resp.clone()).text());
     expect(body.error.code).toBe("action_not_found");
   });
 
@@ -1151,11 +1151,10 @@ describe("POST /v1/composer/turns/:id/actions/:action_id/apply", () => {
 
 describe("POST /v1/composer/turns/:id/actions/:action_id/reject", () => {
   test("rejects an action", async () => {
-    const created = await (await makeRequest(handler, deps, "POST", "/v1/composer/turns", {
+    const created = JSON.parse(await (await makeRequest(handler, deps, "POST", "/v1/composer/turns", {
       scope: { kind: "global" }, message: "Reject action",
-    })).json() as { id: string };
-    const { registry } = deps;
-    registry.updateResponse(created.id, {
+    })).text()) as { id: string };
+    deps.registry!.updateResponse(created.id, {
       proposed_actions: [
         {
           id: "act_abc",
@@ -1172,7 +1171,7 @@ describe("POST /v1/composer/turns/:id/actions/:action_id/reject", () => {
 
     const resp = await makeRequest(handler, deps, "POST", `/v1/composer/turns/${created.id}/actions/act_abc/reject`);
     expect(resp.status).toBe(200);
-    const body = await resp.clone().json();
+    const body = JSON.parse(await (await resp.clone()).text());
     expect(body.action_id).toBe("act_abc");
     expect(body.status).toBe("rejected");
   });
@@ -1201,7 +1200,7 @@ describe("PATCH /v1/composer/turns/:id", () => {
       status: "running",
     });
     expect(resp.status).toBe(200);
-    const body = await resp.clone().json();
+    const body = JSON.parse(await (await resp.clone()).text());
     expect(body.status).toBe("running");
   });
 
@@ -1214,7 +1213,7 @@ describe("PATCH /v1/composer/turns/:id", () => {
       media_mode: "derived",
     });
     expect(resp.status).toBe(200);
-    const body = await resp.clone().json();
+    const body = JSON.parse(await (await resp.clone()).text());
     expect(body.media_mode).toBe("derived");
   });
 
@@ -1227,7 +1226,7 @@ describe("PATCH /v1/composer/turns/:id", () => {
       usage: { tokens_in: 1000, tokens_out: 500, cost_usd: 0.05 },
     });
     expect(resp.status).toBe(200);
-    const body = await resp.clone().json();
+    const body = JSON.parse(await (await resp.clone()).text());
     expect(body.usage.tokens_in).toBe(1000);
     expect(body.usage.tokens_out).toBe(500);
     expect(body.usage.cost_usd).toBe(0.05);
@@ -1244,7 +1243,7 @@ describe("PATCH /v1/composer/turns/:id", () => {
       ],
     });
     expect(resp.status).toBe(200);
-    const body = await resp.clone().json();
+    const body = JSON.parse(await (await resp.clone()).text());
     expect(body.delegated_refs).toHaveLength(1);
     expect(body.delegated_refs[0].id).toBe("csr_abc");
   });
@@ -1269,7 +1268,7 @@ describe("PATCH /v1/composer/turns/:id", () => {
       ],
     });
     expect(resp.status).toBe(200);
-    const body = await resp.clone().json();
+    const body = JSON.parse(await (await resp.clone()).text());
     expect(body.proposed_actions).toHaveLength(1);
     expect(body.proposed_actions[0].id).toBe("act_1");
   });
@@ -1290,7 +1289,7 @@ describe("PATCH /v1/composer/turns/:id", () => {
       status: "not_a_status",
     });
     expect(resp.status).toBe(400);
-    const body = await resp.clone().json();
+    const body = JSON.parse(await (await resp.clone()).text());
     expect(body.error.code).toBe("validation_error");
   });
 
@@ -1328,17 +1327,17 @@ describe("PATCH /v1/composer/turns/:id", () => {
   });
 
   test("returns 405 for GET", async () => {
-    const created = await (await makeRequest(handler, deps, "POST", "/v1/composer/turns", {
+    const created = JSON.parse(await (await makeRequest(handler, deps, "POST", "/v1/composer/turns", {
       scope: { kind: "global" }, message: "Find me",
-    })).json() as { id: string };
+    })).text()) as { id: string };
     const resp = await makeRequest(handler, deps, "GET", `/v1/composer/turns/${created.id}`);
     expect(resp.status).toBe(200);
   });
 
   test("returns 405 for DELETE", async () => {
-    const created = await (await makeRequest(handler, deps, "POST", "/v1/composer/turns", {
+    const created = JSON.parse(await (await makeRequest(handler, deps, "POST", "/v1/composer/turns", {
       scope: { kind: "global" }, message: "Find me",
-    })).json() as { id: string };
+    })).text()) as { id: string };
     const resp = await makeRequest(handler, deps, "DELETE", `/v1/composer/turns/${created.id}`);
     expect(resp.status).toBe(204);
   });
@@ -1351,13 +1350,14 @@ describe("PATCH /v1/composer/turns/:id", () => {
 describe("composer.turn.changed events", () => {
   test("emits event on POST /v1/composer/turns", async () => {
     const appendedEvents: Array<{ topic: string; data: Record<string, unknown> }> = [];
-    const eventsDep = {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const eventsDep: any = {
       append: async <T>(topic: string, data: T) => {
-        appendedEvents.push({ topic, data });
-        return { _v: 1, id: "evt_test", timestamp: "2026-05-01T00:00:00Z", topic, data: data as Record<string, unknown> };
+        appendedEvents.push({ topic, data: data as Record<string, unknown> });
+        return { _v: 1 as const, id: "evt_test", timestamp: "2026-05-01T00:00:00Z", topic, data: data as any };
       },
     };
-    const depsWithEvents = { db, events: eventsDep };
+    const depsWithEvents = { db, events: eventsDep, logFile: () => join(dir, "daemon.log.jsonl") } as unknown as ComposerDeps;
 
     await makeRequest(handler, depsWithEvents, "POST", "/v1/composer/turns", {
       scope: { kind: "global" },
@@ -1372,18 +1372,19 @@ describe("composer.turn.changed events", () => {
 
   test("emits event on POST /v1/composer/turns/:id/cancel", async () => {
     const appendedEvents: Array<{ topic: string; data: Record<string, unknown> }> = [];
-    const eventsDep = {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const eventsDep: any = {
       append: async <T>(topic: string, data: T) => {
-        appendedEvents.push({ topic, data });
-        return { _v: 1, id: "evt_test", timestamp: "2026-05-01T00:00:00Z", topic, data: data as Record<string, unknown> };
+        appendedEvents.push({ topic, data: data as Record<string, unknown> });
+        return { _v: 1 as const, id: "evt_test", timestamp: "2026-05-01T00:00:00Z", topic, data: data as any };
       },
     };
-    const depsWithEvents = { db, events: eventsDep };
+    const depsWithEvents = { db, events: eventsDep, logFile: () => join(dir, "daemon.log.jsonl") } as unknown as ComposerDeps;
 
-    const created = await (await makeRequest(handler, deps, "POST", "/v1/composer/turns", {
+    const created = JSON.parse(await (await makeRequest(handler, deps, "POST", "/v1/composer/turns", {
       scope: { kind: "global" },
       message: "To cancel",
-    })).json() as { id: string };
+    })).text()) as { id: string };
 
     appendedEvents.length = 0;
 
@@ -1397,18 +1398,19 @@ describe("composer.turn.changed events", () => {
 
   test("emits event on PATCH /v1/composer/turns/:id", async () => {
     const appendedEvents: Array<{ topic: string; data: Record<string, unknown> }> = [];
-    const eventsDep = {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const eventsDep: any = {
       append: async <T>(topic: string, data: T) => {
-        appendedEvents.push({ topic, data });
-        return { _v: 1, id: "evt_test", timestamp: "2026-05-01T00:00:00Z", topic, data: data as Record<string, unknown> };
+        appendedEvents.push({ topic, data: data as Record<string, unknown> });
+        return { _v: 1 as const, id: "evt_test", timestamp: "2026-05-01T00:00:00Z", topic, data: data as any };
       },
     };
-    const depsWithEvents = { db, events: eventsDep };
+    const depsWithEvents = { db, events: eventsDep, logFile: () => join(dir, "daemon.log.jsonl") } as unknown as ComposerDeps;
 
-    const created = await (await makeRequest(handler, deps, "POST", "/v1/composer/turns", {
+    const created = JSON.parse(await (await makeRequest(handler, deps, "POST", "/v1/composer/turns", {
       scope: { kind: "global" },
       message: "To patch",
-    })).json() as { id: string };
+    })).text()) as { id: string };
 
     appendedEvents.length = 0;
 
@@ -1421,18 +1423,19 @@ describe("composer.turn.changed events", () => {
 
   test("emits event on POST /v1/composer/turns/:id/approve", async () => {
     const appendedEvents: Array<{ topic: string; data: Record<string, unknown> }> = [];
-    const eventsDep = {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const eventsDep: any = {
       append: async <T>(topic: string, data: T) => {
-        appendedEvents.push({ topic, data });
-        return { _v: 1, id: "evt_test", timestamp: "2026-05-01T00:00:00Z", topic, data: data as Record<string, unknown> };
+        appendedEvents.push({ topic, data: data as Record<string, unknown> });
+        return { _v: 1 as const, id: "evt_test", timestamp: "2026-05-01T00:00:00Z", topic, data: data as any };
       },
     };
-    const depsWithEvents = { db, events: eventsDep };
+    const depsWithEvents = { db, events: eventsDep, logFile: () => join(dir, "daemon.log.jsonl") } as unknown as ComposerDeps;
 
-    const created = await (await makeRequest(handler, deps, "POST", "/v1/composer/turns", {
+    const created = JSON.parse(await (await makeRequest(handler, deps, "POST", "/v1/composer/turns", {
       scope: { kind: "global" },
       message: "To approve",
-    })).json() as { id: string };
+    })).text()) as { id: string };
     deps.registry!.updateResponse(created.id, { status: "waiting_for_approval" });
 
     appendedEvents.length = 0;
@@ -1444,13 +1447,14 @@ describe("composer.turn.changed events", () => {
 
   test("does not emit event when events is not provided", async () => {
     const appendedEvents: Array<{ topic: string; data: Record<string, unknown> }> = [];
-    const eventsDep = {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const eventsDep: any = {
       append: async <T>(topic: string, data: T) => {
-        appendedEvents.push({ topic, data });
-        return { _v: 1, id: "evt_test", timestamp: "2026-05-01T00:00:00Z", topic, data: data as Record<string, unknown> };
+        appendedEvents.push({ topic, data: data as Record<string, unknown> });
+        return { _v: 1 as const, id: "evt_test", timestamp: "2026-05-01T00:00:00Z", topic, data: data as any };
       },
     };
-    const depsWithEvents = { db, events: eventsDep };
+    const depsWithEvents = { db, events: eventsDep, logFile: () => join(dir, "daemon.log.jsonl") } as unknown as ComposerDeps;
 
     await makeRequest(handler, depsWithEvents, "POST", "/v1/composer/turns", {
       scope: { kind: "global" },

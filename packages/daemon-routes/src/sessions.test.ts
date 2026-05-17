@@ -209,8 +209,8 @@ function makeDeps(sessionId?: string): SessionsDeps {
   };
 }
 
-async function resJson<T>(res: Response): Promise<T> {
-  return JSON.parse(await res.text()) as T;
+async function resJson(res: Response): Promise<any> {
+  return JSON.parse(await res.text());
 }
 
 // ─── POST /v1/sessions/:id/steer ──────────────────────────────────────────────
@@ -240,7 +240,7 @@ describe("POST /v1/sessions/:id/steer", () => {
 
     expect(res).toBeDefined();
     expect(res!.status).toBe(400);
-    const body = await resJson<{ error: { code: string; message: string } }>(res!);
+    const body = await resJson(res!);
     expect(body.error.code).toBe("bad_request");
     expect(body.error.message).toContain("instruction");
   });
@@ -255,7 +255,7 @@ describe("POST /v1/sessions/:id/steer", () => {
 
     expect(res).toBeDefined();
     expect(res!.status).toBe(400);
-    const body = await resJson<{ error: { code: string; message: string } }>(res!);
+    const body = await resJson(res!);
     expect(body.error.code).toBe("bad_request");
   });
 
@@ -281,7 +281,7 @@ describe("POST /v1/sessions/:id/steer", () => {
 
     expect(res).toBeDefined();
     expect(res!.status).toBe(400);
-    const body = await resJson<{ error: { code: string } }>(res!);
+    const body = await resJson(res!);
     expect(body.error.code).toBe("bad_request");
   });
 
@@ -307,13 +307,7 @@ describe("POST /v1/sessions/:id/steer", () => {
 
     expect(res).toBeDefined();
     expect(res!.status).toBe(201);
-    const body = await resJson<{
-      _v: number;
-      queue_item_id: string;
-      filename: string;
-      position: number;
-      session_id: string;
-    }>(res!);
+    const body = await resJson(res!);
     expect(body._v).toBe(1);
     expect(body.queue_item_id).toBeTruthy();
     expect(body.filename).toMatch(/^steer-\d+\.md$/);
@@ -401,7 +395,7 @@ describe("GET /v1/sessions", () => {
 
     expect(res).toBeDefined();
     expect(res!.status).toBe(200);
-    const body = await resJson<{ _v: number; items: unknown[]; next_cursor: null }>(res!);
+    const body = await resJson(res!);
     expect(body._v).toBe(1);
     expect(body.items).toEqual([]);
     expect(body.next_cursor).toBeNull();
@@ -409,25 +403,27 @@ describe("GET /v1/sessions", () => {
 
   test("returns 200 with empty items when sessions dir has no subdirs", async () => {
     const deps = makeDeps("empty-sessions");
-    mkdirSync(deps.sessionsDir(), { recursive: true });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const sessionsDir = (deps.sessionsDir as any)();
+    mkdirSync(sessionsDir, { recursive: true });
     const req = new Request("http://x/v1/sessions", { method: "GET" });
     const res = await handleSessions(req, deps, "/v1/sessions");
 
     expect(res!.status).toBe(200);
-    const body = await resJson<{ _v: number; items: unknown[] }>(res!);
+    const body = await resJson(res!);
     expect(body.items).toEqual([]);
   });
 
   test("returns sessions as items array", async () => {
     const deps = makeDeps("multi-session");
-    mkdirSync(deps.sessionsDir(), { recursive: true });
+    mkdirSync((deps.sessionsDir as any)(), { recursive: true });
 
     // Create two sessions — each is a directory containing session.json
     for (const [id, proj, kind, status, workflow, createdAt] of [
       ["s_aaa111", "p_proj1", "standalone", "running", null, "2026-01-01T00:00:00.000Z"],
       ["s_bbb222", "p_proj2", "orchestrator", "pending", "default", "2026-01-02T00:00:00.000Z"],
     ] as const) {
-      const sessionDir = join(deps.sessionsDir(), id);
+      const sessionDir = join((deps.sessionsDir as any)(), id);
       mkdirSync(sessionDir, { recursive: true });
       writeFileSync(
         join(sessionDir, "session.json"),
@@ -439,7 +435,7 @@ describe("GET /v1/sessions", () => {
     const res = await handleSessions(req, deps, "/v1/sessions");
 
     expect(res!.status).toBe(200);
-    const body = await resJson<{ _v: number; items: unknown[] }>(res!);
+    const body = await resJson(res!);
     expect(body.items).toHaveLength(2);
     const ids = (body.items as { id: string }[]).map((s) => s.id).sort();
     expect(ids).toEqual(["s_aaa111", "s_bbb222"]);
@@ -447,10 +443,10 @@ describe("GET /v1/sessions", () => {
 
   test("skips entries that are not session dirs (missing session.json)", async () => {
     const deps = makeDeps("mixed-entries");
-    mkdirSync(deps.sessionsDir(), { recursive: true });
+    mkdirSync((deps.sessionsDir as any)(), { recursive: true });
 
     // Create a valid session (directory with session.json inside)
-    const validSessionDir = join(deps.sessionsDir(), "s_valid");
+    const validSessionDir = join((deps.sessionsDir as any)(), "s_valid");
     mkdirSync(validSessionDir, { recursive: true });
     writeFileSync(
       join(validSessionDir, "session.json"),
@@ -464,13 +460,13 @@ describe("GET /v1/sessions", () => {
       }),
     );
     // Create a directory that is not a session (no session.json)
-    mkdirSync(join(deps.sessionsDir(), "not-a-session"), { recursive: true });
+    mkdirSync(join((deps.sessionsDir as any)(), "not-a-session"), { recursive: true });
 
     const req = new Request("http://x/v1/sessions", { method: "GET" });
     const res = await handleSessions(req, deps, "/v1/sessions");
 
     expect(res!.status).toBe(200);
-    const body = await resJson<{ items: unknown[] }>(res!);
+    const body = await resJson(res!);
     expect(body.items).toHaveLength(1);
     expect((body.items[0] as { id: string }).id).toBe("s_valid");
   });
@@ -481,31 +477,31 @@ describe("GET /v1/sessions", () => {
 describe("GET /v1/sessions/:id", () => {
   test("returns 404 when session does not exist", async () => {
     const deps = makeDeps("missing-session");
-    mkdirSync(deps.sessionsDir(), { recursive: true });
+    mkdirSync((deps.sessionsDir as any)(), { recursive: true });
     const req = new Request("http://x/v1/sessions/s_missing", { method: "GET" });
     const res = await handleSessions(req, deps, "/v1/sessions/s_missing");
 
     expect(res).toBeDefined();
     expect(res!.status).toBe(404);
-    const body = await resJson<{ error: { code: string; message: string } }>(res!);
+    const body = await resJson(res!);
     expect(body.error.code).toBe("session_not_found");
   });
 
   test("returns 404 when session dir exists but session.json is missing", async () => {
     const deps = makeDeps("incomplete-session");
-    mkdirSync(deps.sessionsDir(), { recursive: true });
-    mkdirSync(join(deps.sessionsDir(), "s_incomplete"), { recursive: true });
+    mkdirSync((deps.sessionsDir as any)(), { recursive: true });
+    mkdirSync(join((deps.sessionsDir as any)(), "s_incomplete"), { recursive: true });
     const req = new Request("http://x/v1/sessions/s_incomplete", { method: "GET" });
     const res = await handleSessions(req, deps, "/v1/sessions/s_incomplete");
 
     expect(res!.status).toBe(404);
-    const body = await resJson<{ error: { code: string } }>(res!);
+    const body = await resJson(res!);
     expect(body.error.code).toBe("session_not_found");
   });
 
   test("returns 200 with full session summary", async () => {
     const deps = makeDeps("full-session-test");
-    const sessionDir = join(deps.sessionsDir(), "s_full001");
+    const sessionDir = join((deps.sessionsDir as any)(), "s_full001");
     mkdirSync(sessionDir, { recursive: true });
     const session = {
       id: "s_full001",
@@ -522,15 +518,7 @@ describe("GET /v1/sessions/:id", () => {
 
     expect(res).toBeDefined();
     expect(res!.status).toBe(200);
-    const body = await resJson<{
-      _v: number;
-      id: string;
-      project_id: string;
-      kind: string;
-      status: string;
-      workflow: string | null;
-      created_at: string;
-    }>(res!);
+    const body = await resJson(res!);
     expect(body._v).toBe(1);
     expect(body.id).toBe("s_full001");
     expect(body.project_id).toBe("p_myproject");
@@ -542,7 +530,7 @@ describe("GET /v1/sessions/:id", () => {
 
   test("returns all required session fields for orchestrator kind", async () => {
     const deps = makeDeps("orch-session-test");
-    const sessionDir = join(deps.sessionsDir(), "s_orch001");
+    const sessionDir = join((deps.sessionsDir as any)(), "s_orch001");
     mkdirSync(sessionDir, { recursive: true });
     const session = {
       id: "s_orch001",
@@ -558,7 +546,7 @@ describe("GET /v1/sessions/:id", () => {
     const res = await handleSessions(req, deps, "/v1/sessions/s_orch001");
 
     expect(res!.status).toBe(200);
-    const body = await resJson<Record<string, unknown>>(res!);
+    const body = await resJson(res!);
     expect(body.kind).toBe("orchestrator");
     expect(body.status).toBe("pending");
   });
@@ -570,7 +558,7 @@ describe("GET /v1/sessions/:id", () => {
 describe("GET /v1/sessions/:id/queue", () => {
   test("returns empty items when queue dir does not exist", async () => {
     const deps = makeDeps("s_queue_001");
-    const sessionDir = join(deps.sessionsDir(), "s_queue_001");
+    const sessionDir = join((deps.sessionsDir as any)(), "s_queue_001");
     mkdirSync(sessionDir, { recursive: true });
     writeFileSync(join(sessionDir, "session.json"), JSON.stringify({
       id: "s_queue_001",
@@ -586,14 +574,14 @@ describe("GET /v1/sessions/:id/queue", () => {
 
     expect(res).toBeDefined();
     expect(res!.status).toBe(200);
-    const body = await resJson<{ _v: number; items: unknown[] }>(res!);
+    const body = await resJson(res!);
     expect(body._v).toBe(1);
     expect(body.items).toEqual([]);
   });
 
   test("returns steering entries from queue dir", async () => {
     const deps = makeDeps("s_queue_002");
-    const sessionDir = join(deps.sessionsDir(), "s_queue_002");
+    const sessionDir = join((deps.sessionsDir as any)(), "s_queue_002");
     mkdirSync(sessionDir, { recursive: true });
     writeFileSync(join(sessionDir, "session.json"), JSON.stringify({
       id: "s_queue_002",
@@ -620,7 +608,7 @@ describe("GET /v1/sessions/:id/queue", () => {
 
     expect(res).toBeDefined();
     expect(res!.status).toBe(200);
-    const body = await resJson<{ _v: number; items: unknown[] }>(res!);
+    const body = await resJson(res!);
     expect(body._v).toBe(1);
     expect(body.items).toHaveLength(1);
     expect((body.items[0] as { id: string }).id).toBe("steer_test_123");
@@ -628,7 +616,7 @@ describe("GET /v1/sessions/:id/queue", () => {
 
   test("ignores non-JSON files in queue dir", async () => {
     const deps = makeDeps("s_queue_003");
-    const sessionDir = join(deps.sessionsDir(), "s_queue_003");
+    const sessionDir = join((deps.sessionsDir as any)(), "s_queue_003");
     mkdirSync(sessionDir, { recursive: true });
     writeFileSync(join(sessionDir, "session.json"), JSON.stringify({
       id: "s_queue_003",
@@ -656,7 +644,7 @@ describe("GET /v1/sessions/:id/queue", () => {
 
     expect(res).toBeDefined();
     expect(res!.status).toBe(200);
-    const body = await resJson<{ items: unknown[] }>(res!);
+    const body = await resJson(res!);
     expect(body.items).toHaveLength(1);
   });
 });
@@ -677,7 +665,7 @@ describe("DELETE /v1/sessions/:id/queue/:itemId", () => {
 
   test("returns 404 when item does not exist in queue", async () => {
     const deps = makeDeps("s_del_002");
-    const sessionDir = join(deps.sessionsDir(), "s_del_002");
+    const sessionDir = join((deps.sessionsDir as any)(), "s_del_002");
     mkdirSync(sessionDir, { recursive: true });
     writeFileSync(join(sessionDir, "session.json"), JSON.stringify({
       id: "s_del_002",
@@ -700,7 +688,7 @@ describe("DELETE /v1/sessions/:id/queue/:itemId", () => {
 
   test("deletes existing queue item and returns 204", async () => {
     const deps = makeDeps("s_del_003");
-    const sessionDir = join(deps.sessionsDir(), "s_del_003");
+    const sessionDir = join((deps.sessionsDir as any)(), "s_del_003");
     const queueDir = join(sessionDir, "queue");
     mkdirSync(queueDir, { recursive: true });
     writeFileSync(join(sessionDir, "session.json"), JSON.stringify({
@@ -769,7 +757,7 @@ describe("POST /v1/sessions", () => {
     });
     const res = await handleSessions(req, deps, "/v1/sessions");
     expect(res!.status).toBe(400);
-    const body = await resJson<{ error: { code: string } }>(res!);
+    const body = await resJson(res!);
     expect(body.error.code).toBe("bad_request");
   });
 
@@ -782,7 +770,7 @@ describe("POST /v1/sessions", () => {
     });
     const res = await handleSessions(req, deps, "/v1/sessions");
     expect(res!.status).toBe(400);
-    const body = await resJson<{ error: { code: string } }>(res!);
+    const body = await resJson(res!);
     expect(body.error.code).toBe("bad_request");
   });
 
@@ -795,7 +783,7 @@ describe("POST /v1/sessions", () => {
     });
     const res = await handleSessions(req, deps, "/v1/sessions");
     expect(res!.status).toBe(201);
-    const body = await resJson<{ _v: number; id: string; project_id: string; kind: string; status: string }>(res!);
+    const body = await resJson(res!);
     expect(body._v).toBe(1);
     expect(body.id).toBeTruthy();
     expect(body.project_id).toBe("p_abc");
@@ -817,7 +805,7 @@ describe("POST /v1/sessions", () => {
     });
     const res = await handleSessions(req, deps, "/v1/sessions");
     expect(res!.status).toBe(201);
-    const body = await resJson<{ _v: number; id: string; project_id: string; kind: string; workflow: string | null; status: string }>(res!);
+    const body = await resJson(res!);
     expect(body.project_id).toBe("p_xyz");
     expect(body.kind).toBe("orchestrator");
     expect(body.workflow).toBe("my-workflow");
@@ -833,8 +821,8 @@ describe("POST /v1/sessions", () => {
     });
     const res = await handleSessions(req, deps, "/v1/sessions");
     expect(res!.status).toBe(201);
-    const body = await resJson<{ id: string }>(res!);
-    const sessionDir = join(deps.sessionsDir(), body.id);
+    const body = await resJson(res!);
+    const sessionDir = join((deps.sessionsDir as any)(), body.id);
     expect(existsSync(sessionDir)).toBe(true);
     expect(existsSync(join(sessionDir, "queue"))).toBe(true);
     expect(existsSync(join(sessionDir, "worktree"))).toBe(true);
@@ -862,7 +850,7 @@ describe("POST /v1/sessions", () => {
     });
     const parentRes = await handleSessions(parentReq, deps, "/v1/sessions");
     expect(parentRes!.status).toBe(201);
-    const parent = await resJson<{ id: string }>(parentRes!);
+    const parent = await resJson(parentRes!);
 
     // Now create a valid child session
     const req = new Request("http://x/v1/sessions", {
@@ -872,7 +860,7 @@ describe("POST /v1/sessions", () => {
     });
     const res = await handleSessions(req, deps, "/v1/sessions");
     expect(res!.status).toBe(201);
-    const body = await resJson<{ kind: string; parent_session_id: string }>(res!);
+    const body = await resJson(res!);
     expect(body.kind).toBe("child");
     expect(body.parent_session_id).toBe(parent.id);
   });
@@ -886,7 +874,7 @@ describe("POST /v1/sessions", () => {
     });
     const res = await handleSessions(req, deps, "/v1/sessions");
     expect(res!.status).toBe(400);
-    const body = await resJson<{ error: { code: string } }>(res!);
+    const body = await resJson(res!);
     expect(body.error.code).toBe("bad_request");
   });
 
@@ -911,7 +899,7 @@ describe("POST /v1/sessions", () => {
     });
     const gpRes = await handleSessions(gpReq, deps, "/v1/sessions");
     expect(gpRes!.status).toBe(201);
-    const gp = await resJson<{ id: string }>(gpRes!);
+    const gp = await resJson(gpRes!);
 
     // Create parent child
     const parentReq = new Request("http://x/v1/sessions", {
@@ -921,7 +909,7 @@ describe("POST /v1/sessions", () => {
     });
     const parentRes = await handleSessions(parentReq, deps, "/v1/sessions");
     expect(parentRes!.status).toBe(201);
-    const parent = await resJson<{ id: string }>(parentRes!);
+    const parent = await resJson(parentRes!);
 
     // Try to create grandchild — should fail
     const req = new Request("http://x/v1/sessions", {
@@ -931,7 +919,7 @@ describe("POST /v1/sessions", () => {
     });
     const res = await handleSessions(req, deps, "/v1/sessions");
     expect(res!.status).toBe(400);
-    const body = await resJson<{ error: { code: string } }>(res!);
+    const body = await resJson(res!);
     expect(body.error.code).toBe("bad_request");
   });
 
@@ -952,18 +940,13 @@ describe("POST /v1/sessions", () => {
     });
     const res = await handleSessions(req, deps, "/v1/sessions");
     expect(res!.status).toBe(201);
-    const body = await resJson<{
-      id: string;
-      issue_ref: string;
-      max_iterations: number;
-      notes: string;
-    }>(res!);
+    const body = await resJson(res!);
     expect(body.issue_ref).toBe("42");
     expect(body.max_iterations).toBe(10);
     expect(body.notes).toBe("Test session notes");
 
     // Verify persisted to session.json
-    const sessionDir = join(deps.sessionsDir(), body.id);
+    const sessionDir = join((deps.sessionsDir as any)(), body.id);
     const stored = JSON.parse(readFileSync(join(sessionDir, "session.json"), "utf-8"));
     expect(stored.issue_ref).toBe("42");
     expect(stored.max_iterations).toBe(10);
@@ -987,7 +970,7 @@ describe("POST /v1/sessions", () => {
     });
     const res = await handleSessions(req, deps, "/v1/sessions");
     expect(res!.status).toBe(201);
-    const body = await resJson<{ parent_session_id: null; max_iterations: null; notes: string }>(res!);
+    const body = await resJson(res!);
     expect(body.parent_session_id).toBeNull();
     expect(body.max_iterations).toBeNull();
     expect(body.notes).toBe("");
@@ -1010,7 +993,7 @@ describe("POST /v1/sessions", () => {
     });
     const res = await handleSessions(req, deps, "/v1/sessions");
     expect(res!.status).toBe(201);
-    const body = await resJson<Record<string, unknown>>(res!);
+    const body = await resJson(res!);
     expect(body.issue_ref).toBeNull();
     expect(body.max_iterations).toBeNull();
     expect(body.notes).toBe("");
@@ -1027,13 +1010,13 @@ describe("GET /v1/sessions/:id/log", () => {
     });
     const res = await handleSessions(req, deps, "/v1/sessions/s_nonexistent/log");
     expect(res!.status).toBe(404);
-    const body = await resJson<{ error: { code: string } }>(res!);
+    const body = await resJson(res!);
     expect(body.error.code).toBe("session_not_found");
   });
 
   test("returns SSE stream with 200 when log exists", async () => {
     const deps = makeDeps("s_log_001");
-    const sessionDir = join(deps.sessionsDir(), "s_log_001");
+    const sessionDir = join((deps.sessionsDir as any)(), "s_log_001");
     mkdirSync(sessionDir, { recursive: true });
     writeFileSync(join(sessionDir, "log.jsonl"), "", "utf-8");
     const req = new Request("http://x/v1/sessions/s_log_001/log", {
@@ -1046,7 +1029,7 @@ describe("GET /v1/sessions/:id/log", () => {
 
   test("streams events via SSE", async () => {
     const deps = makeDeps("s_log_002");
-    const sessionDir = join(deps.sessionsDir(), "s_log_002");
+    const sessionDir = join((deps.sessionsDir as any)(), "s_log_002");
     mkdirSync(sessionDir, { recursive: true });
     const event1 = JSON.stringify({ _v: 1, id: "0001", topic: "session.update", data: { session_id: "s_log_002" } });
     const event2 = JSON.stringify({ _v: 1, id: "0002", topic: "agent.chunk", data: { session_id: "s_log_002", turn_id: "t1", sequence: 0, type: "text", content: { delta: "hi" }, final: false } });
@@ -1060,7 +1043,7 @@ describe("GET /v1/sessions/:id/log", () => {
 
   test("returns NDJSON format when format=ndjson", async () => {
     const deps = makeDeps("s_log_003");
-    const sessionDir = join(deps.sessionsDir(), "s_log_003");
+    const sessionDir = join((deps.sessionsDir as any)(), "s_log_003");
     mkdirSync(sessionDir, { recursive: true });
     const event1 = JSON.stringify({ _v: 1, id: "0001", topic: "session.update", data: {} });
     writeFileSync(join(sessionDir, "log.jsonl"), event1 + "\n", "utf-8");
@@ -1073,7 +1056,7 @@ describe("GET /v1/sessions/:id/log", () => {
 
   test("returns NDJSON format when format=jsonl", async () => {
     const deps = makeDeps("s_log_004");
-    const sessionDir = join(deps.sessionsDir(), "s_log_004");
+    const sessionDir = join((deps.sessionsDir as any)(), "s_log_004");
     mkdirSync(sessionDir, { recursive: true });
     writeFileSync(join(sessionDir, "log.jsonl"), "", "utf-8");
 
@@ -1085,7 +1068,7 @@ describe("GET /v1/sessions/:id/log", () => {
 
   test("skips events with id <= since parameter", async () => {
     const deps = makeDeps("s_log_005");
-    const sessionDir = join(deps.sessionsDir(), "s_log_005");
+    const sessionDir = join((deps.sessionsDir as any)(), "s_log_005");
     mkdirSync(sessionDir, { recursive: true });
     const event1 = JSON.stringify({ _v: 1, id: "0001", topic: "session.update", data: { n: 1 } });
     const event2 = JSON.stringify({ _v: 1, id: "0002", topic: "session.update", data: { n: 2 } });
@@ -1098,7 +1081,7 @@ describe("GET /v1/sessions/:id/log", () => {
 
   test("closes stream when log file does not exist", async () => {
     const deps = makeDeps("s_log_006");
-    const sessionDir = join(deps.sessionsDir(), "s_log_006");
+    const sessionDir = join((deps.sessionsDir as any)(), "s_log_006");
     mkdirSync(sessionDir, { recursive: true });
     // No log.jsonl written
 
@@ -1137,24 +1120,24 @@ describe("DELETE /v1/sessions/:id", () => {
     const req = new Request("http://x/v1/sessions/s_nonexistent", { method: "DELETE" });
     const res = await handleSessions(req, deps, "/v1/sessions/s_nonexistent");
     expect(res!.status).toBe(404);
-    const body = await resJson<{ error: { code: string } }>(res!);
+    const body = await resJson(res!);
     expect(body.error.code).toBe("session_not_found");
   });
 
   test("returns 409 when session is already completed", async () => {
     const deps = makeDeps("s_del_completed");
-    const dir = join(deps.sessionsDir(), "s_del_completed");
+    const dir = join((deps.sessionsDir as any)(), "s_del_completed");
     writeSessionStatus(dir, "completed");
     const req = new Request("http://x/v1/sessions/s_del_completed", { method: "DELETE" });
     const res = await handleSessions(req, deps, "/v1/sessions/s_del_completed");
     expect(res!.status).toBe(409);
-    const body = await resJson<{ error: { code: string } }>(res!);
+    const body = await resJson(res!);
     expect(body.error.code).toBe("session_not_stoppable");
   });
 
   test("returns 409 when session is already failed", async () => {
     const deps = makeDeps("s_del_failed");
-    const dir = join(deps.sessionsDir(), "s_del_failed");
+    const dir = join((deps.sessionsDir as any)(), "s_del_failed");
     writeSessionStatus(dir, "failed");
     const req = new Request("http://x/v1/sessions/s_del_failed", { method: "DELETE" });
     const res = await handleSessions(req, deps, "/v1/sessions/s_del_failed");
@@ -1163,7 +1146,7 @@ describe("DELETE /v1/sessions/:id", () => {
 
   test("returns 409 when session is archived", async () => {
     const deps = makeDeps("s_del_archived");
-    const dir = join(deps.sessionsDir(), "s_del_archived");
+    const dir = join((deps.sessionsDir as any)(), "s_del_archived");
     writeSessionStatus(dir, "archived");
     const req = new Request("http://x/v1/sessions/s_del_archived", { method: "DELETE" });
     const res = await handleSessions(req, deps, "/v1/sessions/s_del_archived");
@@ -1172,35 +1155,35 @@ describe("DELETE /v1/sessions/:id", () => {
 
   test("stops a running session and returns 200", async () => {
     const deps = makeDeps("s_del_running");
-    const dir = join(deps.sessionsDir(), "s_del_running");
+    const dir = join((deps.sessionsDir as any)(), "s_del_running");
     writeSessionStatus(dir, "running");
     const req = new Request("http://x/v1/sessions/s_del_running", { method: "DELETE" });
     const res = await handleSessions(req, deps, "/v1/sessions/s_del_running");
     expect(res!.status).toBe(200);
-    const body = await resJson<{ id: string; status: string }>(res!);
+    const body = await resJson(res!);
     expect(body.id).toBe("s_del_running");
     expect(body.status).toBe("stopped");
   });
 
   test("stops a pending session and returns 200", async () => {
     const deps = makeDeps("s_del_pending");
-    const dir = join(deps.sessionsDir(), "s_del_pending");
+    const dir = join((deps.sessionsDir as any)(), "s_del_pending");
     writeSessionStatus(dir, "pending");
     const req = new Request("http://x/v1/sessions/s_del_pending", { method: "DELETE" });
     const res = await handleSessions(req, deps, "/v1/sessions/s_del_pending");
     expect(res!.status).toBe(200);
-    const body = await resJson<{ status: string }>(res!);
+    const body = await resJson(res!);
     expect(body.status).toBe("stopped");
   });
 
   test("force mode still returns stopped", async () => {
     const deps = makeDeps("s_del_force");
-    const dir = join(deps.sessionsDir(), "s_del_force");
+    const dir = join((deps.sessionsDir as any)(), "s_del_force");
     writeSessionStatus(dir, "running");
     const req = new Request("http://x/v1/sessions/s_del_force?mode=force", { method: "DELETE" });
     const res = await handleSessions(req, deps, "/v1/sessions/s_del_force");
     expect(res!.status).toBe(200);
-    const body = await resJson<{ status: string }>(res!);
+    const body = await resJson(res!);
     expect(body.status).toBe("stopped");
   });
 });
@@ -1217,13 +1200,13 @@ describe("POST /v1/sessions/:id/pause", () => {
     });
     const res = await handleSessions(req, deps, "/v1/sessions/s_nonexistent/pause");
     expect(res!.status).toBe(404);
-    const body = await resJson<{ error: { code: string } }>(res!);
+    const body = await resJson(res!);
     expect(body.error.code).toBe("session_not_found");
   });
 
   test("returns 409 when session is completed", async () => {
     const deps = makeDeps("s_pause_completed");
-    const dir = join(deps.sessionsDir(), "s_pause_completed");
+    const dir = join((deps.sessionsDir as any)(), "s_pause_completed");
     writeSessionStatus(dir, "completed");
     const req = new Request("http://x/v1/sessions/s_pause_completed/pause", {
       method: "POST",
@@ -1232,13 +1215,13 @@ describe("POST /v1/sessions/:id/pause", () => {
     });
     const res = await handleSessions(req, deps, "/v1/sessions/s_pause_completed/pause");
     expect(res!.status).toBe(409);
-    const body = await resJson<{ error: { code: string } }>(res!);
+    const body = await resJson(res!);
     expect(body.error.code).toBe("session_not_pausable");
   });
 
   test("pauses a running session", async () => {
     const deps = makeDeps("s_pause_running");
-    const dir = join(deps.sessionsDir(), "s_pause_running");
+    const dir = join((deps.sessionsDir as any)(), "s_pause_running");
     writeSessionStatus(dir, "running");
     const req = new Request("http://x/v1/sessions/s_pause_running/pause", {
       method: "POST",
@@ -1247,13 +1230,13 @@ describe("POST /v1/sessions/:id/pause", () => {
     });
     const res = await handleSessions(req, deps, "/v1/sessions/s_pause_running/pause");
     expect(res!.status).toBe(200);
-    const body = await resJson<{ id: string; status: string }>(res!);
+    const body = await resJson(res!);
     expect(body.status).toBe("paused");
   });
 
   test("pauses a pending session", async () => {
     const deps = makeDeps("s_pause_pending");
-    const dir = join(deps.sessionsDir(), "s_pause_pending");
+    const dir = join((deps.sessionsDir as any)(), "s_pause_pending");
     writeSessionStatus(dir, "pending");
     const req = new Request("http://x/v1/sessions/s_pause_pending/pause", {
       method: "POST",
@@ -1262,13 +1245,13 @@ describe("POST /v1/sessions/:id/pause", () => {
     });
     const res = await handleSessions(req, deps, "/v1/sessions/s_pause_pending/pause");
     expect(res!.status).toBe(200);
-    const body = await resJson<{ status: string }>(res!);
+    const body = await resJson(res!);
     expect(body.status).toBe("paused");
   });
 
   test("returns 409 when session is already paused", async () => {
     const deps = makeDeps("s_pause_already");
-    const dir = join(deps.sessionsDir(), "s_pause_already");
+    const dir = join((deps.sessionsDir as any)(), "s_pause_already");
     writeSessionStatus(dir, "paused");
     const req = new Request("http://x/v1/sessions/s_pause_already/pause", {
       method: "POST",
@@ -1296,7 +1279,7 @@ describe("POST /v1/sessions/:id/unpause", () => {
 
   test("returns 409 when session is not paused", async () => {
     const deps = makeDeps("s_unpause_running");
-    const dir = join(deps.sessionsDir(), "s_unpause_running");
+    const dir = join((deps.sessionsDir as any)(), "s_unpause_running");
     writeSessionStatus(dir, "running");
     const req = new Request("http://x/v1/sessions/s_unpause_running/unpause", {
       method: "POST",
@@ -1305,13 +1288,13 @@ describe("POST /v1/sessions/:id/unpause", () => {
     });
     const res = await handleSessions(req, deps, "/v1/sessions/s_unpause_running/unpause");
     expect(res!.status).toBe(409);
-    const body = await resJson<{ error: { code: string } }>(res!);
+    const body = await resJson(res!);
     expect(body.error.code).toBe("session_not_paused");
   });
 
   test("unpauses a paused session", async () => {
     const deps = makeDeps("s_unpause_paused");
-    const dir = join(deps.sessionsDir(), "s_unpause_paused");
+    const dir = join((deps.sessionsDir as any)(), "s_unpause_paused");
     writeSessionStatus(dir, "paused");
     const req = new Request("http://x/v1/sessions/s_unpause_paused/unpause", {
       method: "POST",
@@ -1320,7 +1303,7 @@ describe("POST /v1/sessions/:id/unpause", () => {
     });
     const res = await handleSessions(req, deps, "/v1/sessions/s_unpause_paused/unpause");
     expect(res!.status).toBe(200);
-    const body = await resJson<{ status: string }>(res!);
+    const body = await resJson(res!);
     expect(body.status).toBe("running");
   });
 });
@@ -1341,7 +1324,7 @@ describe("POST /v1/sessions/:id/resume", () => {
 
   test("returns 409 when session is running", async () => {
     const deps = makeDeps("s_resume_running");
-    const dir = join(deps.sessionsDir(), "s_resume_running");
+    const dir = join((deps.sessionsDir as any)(), "s_resume_running");
     writeSessionStatus(dir, "running");
     const req = new Request("http://x/v1/sessions/s_resume_running/resume", {
       method: "POST",
@@ -1350,13 +1333,13 @@ describe("POST /v1/sessions/:id/resume", () => {
     });
     const res = await handleSessions(req, deps, "/v1/sessions/s_resume_running/resume");
     expect(res!.status).toBe(409);
-    const body = await resJson<{ error: { code: string } }>(res!);
+    const body = await resJson(res!);
     expect(body.error.code).toBe("session_not_resumable");
   });
 
   test("returns 409 when session is completed", async () => {
     const deps = makeDeps("s_resume_completed");
-    const dir = join(deps.sessionsDir(), "s_resume_completed");
+    const dir = join((deps.sessionsDir as any)(), "s_resume_completed");
     writeSessionStatus(dir, "completed");
     const req = new Request("http://x/v1/sessions/s_resume_completed/resume", {
       method: "POST",
@@ -1369,7 +1352,7 @@ describe("POST /v1/sessions/:id/resume", () => {
 
   test("resumes a stopped session", async () => {
     const deps = makeDeps("s_resume_stopped");
-    const dir = join(deps.sessionsDir(), "s_resume_stopped");
+    const dir = join((deps.sessionsDir as any)(), "s_resume_stopped");
     writeSessionStatus(dir, "stopped");
     const req = new Request("http://x/v1/sessions/s_resume_stopped/resume", {
       method: "POST",
@@ -1378,13 +1361,13 @@ describe("POST /v1/sessions/:id/resume", () => {
     });
     const res = await handleSessions(req, deps, "/v1/sessions/s_resume_stopped/resume");
     expect(res!.status).toBe(200);
-    const body = await resJson<{ status: string }>(res!);
+    const body = await resJson(res!);
     expect(body.status).toBe("running");
   });
 
   test("resumes an interrupted session", async () => {
     const deps = makeDeps("s_resume_interrupted");
-    const dir = join(deps.sessionsDir(), "s_resume_interrupted");
+    const dir = join((deps.sessionsDir as any)(), "s_resume_interrupted");
     writeSessionStatus(dir, "interrupted");
     const req = new Request("http://x/v1/sessions/s_resume_interrupted/resume", {
       method: "POST",
@@ -1393,13 +1376,13 @@ describe("POST /v1/sessions/:id/resume", () => {
     });
     const res = await handleSessions(req, deps, "/v1/sessions/s_resume_interrupted/resume");
     expect(res!.status).toBe(200);
-    const body = await resJson<{ status: string }>(res!);
+    const body = await resJson(res!);
     expect(body.status).toBe("running");
   });
 
   test("resumes a paused session", async () => {
     const deps = makeDeps("s_resume_paused");
-    const dir = join(deps.sessionsDir(), "s_resume_paused");
+    const dir = join((deps.sessionsDir as any)(), "s_resume_paused");
     writeSessionStatus(dir, "paused");
     const req = new Request("http://x/v1/sessions/s_resume_paused/resume", {
       method: "POST",
@@ -1408,7 +1391,7 @@ describe("POST /v1/sessions/:id/resume", () => {
     });
     const res = await handleSessions(req, deps, "/v1/sessions/s_resume_paused/resume");
     expect(res!.status).toBe(200);
-    const body = await resJson<{ status: string }>(res!);
+    const body = await resJson(res!);
     expect(body.status).toBe("running");
   });
 });
@@ -1432,7 +1415,7 @@ describe("DELETE /v1/sessions/:id?mode=force emits session.forced", () => {
   test("emits session.forced event when mode=force", async () => {
     const { events, writer } = makeMockEventWriter();
     const deps = makeDeps("s_force_event");
-    const dir = join(deps.sessionsDir(), "s_force_event");
+    const dir = join((deps.sessionsDir as any)(), "s_force_event");
     writeSessionStatus(dir, "running");
     const req = new Request("http://x/v1/sessions/s_force_event?mode=force", { method: "DELETE" });
     const res = await handleSessions(req, { ...deps, events: writer }, "/v1/sessions/s_force_event");
@@ -1446,7 +1429,7 @@ describe("DELETE /v1/sessions/:id?mode=force emits session.forced", () => {
   test("does NOT emit session.forced when mode=graceful (default)", async () => {
     const { events, writer } = makeMockEventWriter();
     const deps = makeDeps("s_graceful_event");
-    const dir = join(deps.sessionsDir(), "s_graceful_event");
+    const dir = join((deps.sessionsDir as any)(), "s_graceful_event");
     writeSessionStatus(dir, "running");
     const req = new Request("http://x/v1/sessions/s_graceful_event", { method: "DELETE" });
     const res = await handleSessions(req, { ...deps, events: writer }, "/v1/sessions/s_graceful_event");
@@ -1462,7 +1445,7 @@ describe("session.event emission on lifecycle transitions", () => {
   test("DELETE emits session.event with correct previous and next status", async () => {
     const { events, writer } = makeMockEventWriter();
     const deps = makeDeps("s_del_event");
-    const dir = join(deps.sessionsDir(), "s_del_event");
+    const dir = join((deps.sessionsDir as any)(), "s_del_event");
     writeSessionStatus(dir, "running");
     const req = new Request("http://x/v1/sessions/s_del_event", { method: "DELETE" });
     const res = await handleSessions(req, { ...deps, events: writer }, "/v1/sessions/s_del_event");
@@ -1480,7 +1463,7 @@ describe("session.event emission on lifecycle transitions", () => {
   test("pause emits session.event", async () => {
     const { events, writer } = makeMockEventWriter();
     const deps = makeDeps("s_pause_event");
-    const dir = join(deps.sessionsDir(), "s_pause_event");
+    const dir = join((deps.sessionsDir as any)(), "s_pause_event");
     writeSessionStatus(dir, "running");
     const req = new Request("http://x/v1/sessions/s_pause_event/pause", {
       method: "POST",
@@ -1498,7 +1481,7 @@ describe("session.event emission on lifecycle transitions", () => {
   test("unpause emits session.event", async () => {
     const { events, writer } = makeMockEventWriter();
     const deps = makeDeps("s_unpause_event");
-    const dir = join(deps.sessionsDir(), "s_unpause_event");
+    const dir = join((deps.sessionsDir as any)(), "s_unpause_event");
     writeSessionStatus(dir, "paused");
     const req = new Request("http://x/v1/sessions/s_unpause_event/unpause", {
       method: "POST",
@@ -1516,7 +1499,7 @@ describe("session.event emission on lifecycle transitions", () => {
   test("resume emits session.event", async () => {
     const { events, writer } = makeMockEventWriter();
     const deps = makeDeps("s_resume_event");
-    const dir = join(deps.sessionsDir(), "s_resume_event");
+    const dir = join((deps.sessionsDir as any)(), "s_resume_event");
     writeSessionStatus(dir, "stopped");
     const req = new Request("http://x/v1/sessions/s_resume_event/resume", {
       method: "POST",
@@ -1533,7 +1516,7 @@ describe("session.event emission on lifecycle transitions", () => {
 
   test("lifecycle functions work without events writer (optional dependency)", async () => {
     const deps = makeDeps("s_no_events");
-    const dir = join(deps.sessionsDir(), "s_no_events");
+    const dir = join((deps.sessionsDir as any)(), "s_no_events");
     writeSessionStatus(dir, "running");
     // No events property — should not throw
     const req = new Request("http://x/v1/sessions/s_no_events/pause", {

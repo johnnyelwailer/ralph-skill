@@ -12,6 +12,10 @@ import {
   parseJsonBody,
 } from "./http-helpers.ts";
 
+async function resJson<T>(res: Response): Promise<T> {
+  return JSON.parse(await res.text()) as T;
+}
+
 describe("jsonResponse", () => {
   test("returns a Response with correct status and content-type", () => {
     const res = jsonResponse(200, { foo: "bar" });
@@ -22,7 +26,7 @@ describe("jsonResponse", () => {
   test("serializes the body as JSON", async () => {
     const body = { _v: 1, items: [1, 2, 3] };
     const res = jsonResponse(201, body);
-    expect(await res.json()).toEqual(body);
+    expect(await resJson<typeof body>(res)).toEqual(body);
   });
 
   test("accepts null as body", () => {
@@ -40,7 +44,7 @@ describe("errorResponse", () => {
   test("wraps error in the v1 envelope with all fields", async () => {
     const res = errorResponse(403, "access_denied", "you shall not pass", { ip: "1.2.3.4" });
     expect(res.status).toBe(403);
-    const body = await res.json();
+    const body = await resJson(res);
     expect(body).toEqual({
       error: { _v: 1, code: "access_denied", message: "you shall not pass", details: { ip: "1.2.3.4" } },
     });
@@ -48,7 +52,7 @@ describe("errorResponse", () => {
 
   test("defaults details to empty object when omitted", async () => {
     const res = errorResponse(500, "internal_error", "oops");
-    const body = await res.json();
+    const body = await resJson<{ error: { details: Record<string, unknown> } }>(res);
     expect(body.error.details).toEqual({});
   });
 
@@ -67,13 +71,13 @@ describe("badRequest", () => {
 
   test("includes the message", async () => {
     const res = badRequest("field x is required");
-    const body = await res.json();
+    const body = await resJson<{ error: { message: string } }>(res);
     expect(body.error.message).toBe("field x is required");
   });
 
   test("accepts optional details", async () => {
     const res = badRequest("invalid", { field: "email" });
-    const body = await res.json();
+    const body = await resJson<{ error: { details: Record<string, unknown> } }>(res);
     expect(body.error.details).toEqual({ field: "email" });
   });
 });
@@ -86,13 +90,13 @@ describe("notFoundResponse", () => {
 
   test("message includes the path", async () => {
     const res = notFoundResponse("/v1/unknown");
-    const body = await res.json();
+    const body = await resJson<{ error: { message: string } }>(res);
     expect(body.error.message).toBe("No route: /v1/unknown");
   });
 
   test("details contain the path", async () => {
     const res = notFoundResponse("/v1/foo");
-    const body = await res.json();
+    const body = await resJson<{ error: { details: { path: string } } }>(res);
     expect(body.error.details).toEqual({ path: "/v1/foo" });
   });
 });
@@ -105,7 +109,7 @@ describe("methodNotAllowed", () => {
 
   test("returns a generic message", async () => {
     const res = methodNotAllowed();
-    const body = await res.json();
+    const body = await resJson<{ error: { message: string; code: string } }>(res);
     expect(body.error.message).toBe("method not allowed for this resource");
     expect(body.error.code).toBe("method_not_allowed");
   });
@@ -128,8 +132,9 @@ describe("parseJsonBody", () => {
       body: JSON.stringify({ key: "value", num: 42 }),
     });
     const result = await parseJsonBody(req);
+    const dataResult = result as { data: Record<string, unknown> };
     expect(isParseJsonBodySuccess(result)).toBe(true);
-    expect(result.data).toEqual({ key: "value", num: 42 });
+    expect(dataResult.data).toEqual({ key: "value", num: 42 });
   });
 
   test("returns empty object for an empty body", async () => {
@@ -138,8 +143,9 @@ describe("parseJsonBody", () => {
       body: "",
     });
     const result = await parseJsonBody(req);
+    const dataResult = result as { data: Record<string, unknown> };
     expect(isParseJsonBodySuccess(result)).toBe(true);
-    expect(result.data).toEqual({});
+    expect(dataResult.data).toEqual({});
   });
 
   test("returns badRequest error for invalid JSON", async () => {
@@ -149,8 +155,9 @@ describe("parseJsonBody", () => {
     });
     const result = await parseJsonBody(req);
     expect(isParseJsonBodySuccess(result)).toBe(false);
-    expect(result.error.status).toBe(400);
-    const body = await result.error.json();
+    const errorResult = result as { error: Response };
+    expect(errorResult.error.status).toBe(400);
+    const body = await resJson<{ error: { code: string; message: string } }>(errorResult.error);
     expect(body.error.code).toBe("bad_request");
     expect(body.error.message).toBe("invalid JSON body");
   });
@@ -162,8 +169,9 @@ describe("parseJsonBody", () => {
     });
     const result = await parseJsonBody(req);
     expect(isParseJsonBodySuccess(result)).toBe(false);
-    expect(result.error.status).toBe(400);
-    const body = await result.error.json();
+    const errorResult = result as { error: Response };
+    expect(errorResult.error.status).toBe(400);
+    const body = await resJson<{ error: { message: string } }>(errorResult.error);
     expect(body.error.message).toBe("request body must be a JSON object");
   });
 
@@ -174,8 +182,9 @@ describe("parseJsonBody", () => {
     });
     const result = await parseJsonBody(req);
     expect(isParseJsonBodySuccess(result)).toBe(false);
-    expect(result.error.status).toBe(400);
-    const body = await result.error.json();
+    const errorResult = result as { error: Response };
+    expect(errorResult.error.status).toBe(400);
+    const body = await resJson<{ error: { message: string } }>(errorResult.error);
     expect(body.error.message).toBe("request body must be a JSON object");
   });
 
@@ -186,8 +195,9 @@ describe("parseJsonBody", () => {
     });
     const result = await parseJsonBody(req);
     expect(isParseJsonBodySuccess(result)).toBe(false);
-    expect(result.error.status).toBe(400);
-    const body = await result.error.json();
+    const errorResult = result as { error: Response };
+    expect(errorResult.error.status).toBe(400);
+    const body = await resJson<{ error: { message: string } }>(errorResult.error);
     expect(body.error.message).toBe("request body must be a JSON object");
   });
 
@@ -198,8 +208,9 @@ describe("parseJsonBody", () => {
     });
     const result = await parseJsonBody(req);
     expect(isParseJsonBodySuccess(result)).toBe(false);
-    expect(result.error.status).toBe(400);
-    const body = await result.error.json();
+    const errorResult = result as { error: Response };
+    expect(errorResult.error.status).toBe(400);
+    const body = await resJson<{ error: { message: string } }>(errorResult.error);
     expect(body.error.message).toBe("request body must be a JSON object");
   });
 
@@ -210,7 +221,8 @@ describe("parseJsonBody", () => {
     });
     const result = await parseJsonBody(req);
     expect(isParseJsonBodySuccess(result)).toBe(false);
-    expect(result.error.status).toBe(400);
+    const errorResult = result as { error: Response };
+    expect(errorResult.error.status).toBe(400);
   });
 
   test("returns badRequest error when body contains only whitespace", async () => {
@@ -220,8 +232,9 @@ describe("parseJsonBody", () => {
     });
     const result = await parseJsonBody(req);
     expect(isParseJsonBodySuccess(result)).toBe(false);
-    expect(result.error.status).toBe(400);
-    const body = await result.error.json();
+    const errorResult = result as { error: Response };
+    expect(errorResult.error.status).toBe(400);
+    const body = await resJson<{ error: { code: string; message: string } }>(errorResult.error);
     expect(body.error.code).toBe("bad_request");
     expect(body.error.message).toBe("invalid JSON body");
   });
@@ -234,7 +247,8 @@ describe("parseJsonBody", () => {
     });
     const result = await parseJsonBody(req);
     expect(isParseJsonBodySuccess(result)).toBe(true);
-    expect(result.data).toEqual(nested);
+    const dataResult = result as { data: Record<string, unknown> };
+    expect(dataResult.data).toEqual(nested);
   });
 
   test("handles object with array values", async () => {
@@ -245,7 +259,8 @@ describe("parseJsonBody", () => {
     });
     const result = await parseJsonBody(req);
     expect(isParseJsonBodySuccess(result)).toBe(true);
-    expect(result.data).toEqual(data);
+    const dataResult = result as { data: Record<string, unknown> };
+    expect(dataResult.data).toEqual(data);
   });
 
   test("unwraps enveloped body when top-level 'data' field is an object", async () => {
@@ -256,7 +271,8 @@ describe("parseJsonBody", () => {
     });
     const result = await parseJsonBody(req);
     expect(isParseJsonBodySuccess(result)).toBe(true);
-    expect(result.data).toEqual({ project_id: "proj-1", kind: "standalone" });
+    const dataResult = result as { data: Record<string, unknown> };
+    expect(dataResult.data).toEqual({ project_id: "proj-1", kind: "standalone" });
   });
 
   test("unwraps enveloped body preserving all nested fields", async () => {
@@ -275,8 +291,9 @@ describe("parseJsonBody", () => {
     });
     const result = await parseJsonBody(req);
     expect(isParseJsonBodySuccess(result)).toBe(true);
-    expect(result.data).toEqual(enveloped.data);
-    expect((result.data as Record<string, unknown>).metadata).toEqual({ source: "api" });
+    const dataResult = result as { data: Record<string, unknown> };
+    expect(dataResult.data).toEqual(enveloped.data);
+    expect((dataResult.data as Record<string, unknown>).metadata).toEqual({ source: "api" });
   });
 
   test("returns direct shape when 'data' field is a primitive", async () => {
@@ -287,7 +304,8 @@ describe("parseJsonBody", () => {
     });
     const result = await parseJsonBody(req);
     expect(isParseJsonBodySuccess(result)).toBe(true);
-    expect(result.data).toEqual(body);
+    const dataResult = result as { data: Record<string, unknown> };
+    expect(dataResult.data).toEqual(body);
   });
 
   test("returns direct shape when 'data' field is null", async () => {
@@ -298,7 +316,8 @@ describe("parseJsonBody", () => {
     });
     const result = await parseJsonBody(req);
     expect(isParseJsonBodySuccess(result)).toBe(true);
-    expect(result.data).toEqual(body);
+    const dataResult = result as { data: Record<string, unknown> };
+    expect(dataResult.data).toEqual(body);
   });
 
   test("returns error Response (not throw) for all error cases", async () => {
@@ -314,7 +333,8 @@ describe("parseJsonBody", () => {
       const req = new Request("http://x/", { method: "POST", body });
       const result = await parseJsonBody(req);
       expect(isParseJsonBodySuccess(result)).toBe(false);
-      expect(result.error).toBeInstanceOf(Response);
+      const errorResult = result as { error: Response };
+      expect(errorResult.error).toBeInstanceOf(Response);
     }
   });
 });

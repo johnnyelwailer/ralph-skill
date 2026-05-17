@@ -19,8 +19,9 @@ import {
 } from "./sessions-handlers.ts";
 import type { SessionsDeps } from "./sessions-handlers.ts";
 
-async function resJson<T>(res: Response): Promise<T> {
-  return JSON.parse(await res.text()) as T;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function resJson(res: Response): Promise<any> {
+  return JSON.parse(await res.text());
 }
 
 function makeDeps(dir: string): SessionsDeps {
@@ -61,7 +62,7 @@ describe("getSessionHandler", () => {
     const req = new Request(`http://localhost/v1/sessions/${sessionId}`);
     const res = getSessionHandler(sessionId, deps);
     expect(res.status).toBe(200);
-    const body = await resJson<{ _v: number; id: string; kind: string; status: string; workflow: string; provider_chain: readonly string[] }>(res);
+    const body = await resJson(res);
     expect(body.id).toBe(sessionId);
     expect(body.kind).toBe("standalone");
     expect(body.status).toBe("pending");
@@ -73,7 +74,7 @@ describe("getSessionHandler", () => {
     const req = new Request("http://localhost/v1/sessions/nonexistent-id");
     const res = getSessionHandler("nonexistent-id", deps);
     expect(res.status).toBe(404);
-    const body = await resJson<{ error: { code: string } }>(res);
+    const body = await resJson(res);
     expect(body.error).toBeDefined();
     expect(body.error.code).toBe("session_not_found");
   });
@@ -114,7 +115,7 @@ describe("deleteSessionHandler", () => {
     // Verify session still exists but status is "stopped"
     const getRes = getSessionHandler(sessionId, deps);
     expect(getRes.status).toBe(200);
-    const body = await (getRes as Response).json();
+    const body = await resJson(getRes);
     expect(body.status).toBe("stopped");
   });
 
@@ -124,7 +125,7 @@ describe("deleteSessionHandler", () => {
     });
     const res = deleteSessionHandler("nonexistent-id", req, deps);
     expect(res.status).toBe(404);
-    const body = await (res as Response).json();
+    const body = await resJson(res);
     expect(body.error.code).toBe("session_not_found");
   });
 
@@ -134,7 +135,7 @@ describe("deleteSessionHandler", () => {
     });
     const res = deleteSessionHandler(sessionId, req, deps);
     expect(res.status).toBe(400);
-    const body = await (res as Response).json();
+    const body = await resJson(res);
     expect(body.error.message).toContain("mode must be one of");
   });
 
@@ -146,7 +147,7 @@ describe("deleteSessionHandler", () => {
     expect(res.status).toBe(200);
     const getRes = getSessionHandler(sessionId, deps);
     expect(getRes.status).toBe(200);
-    const body = await (getRes as Response).json();
+    const body = await resJson(getRes);
     expect(body.status).toBe("stopped");
   });
 
@@ -159,7 +160,7 @@ describe("deleteSessionHandler", () => {
     // mode=graceful stops the session (doesn't hard-delete)
     const getRes = getSessionHandler(sessionId, deps);
     expect(getRes.status).toBe(200);
-    const body = await (getRes as Response).json();
+    const body = await resJson(getRes);
     expect(body.status).toBe("stopped");
   });
 });
@@ -193,7 +194,7 @@ describe("resumeSessionHandler", () => {
     deps.sessions.updateStatus(id, "interrupted");
     const res = resumeSessionHandler(id, deps);
     expect(res.status).toBe(200);
-    const body = await (res as Response).json();
+    const body = await resJson(res);
     expect(body.status).toBe("running");
   });
 
@@ -207,7 +208,7 @@ describe("resumeSessionHandler", () => {
     deps.sessions.updateStatus(id, "stopped");
     const res = resumeSessionHandler(id, deps);
     expect(res.status).toBe(200);
-    const body = await (res as Response).json();
+    const body = await resJson(res);
     expect(body.status).toBe("running");
   });
 
@@ -221,7 +222,7 @@ describe("resumeSessionHandler", () => {
     deps.sessions.updateStatus(id, "paused");
     const res = resumeSessionHandler(id, deps);
     expect(res.status).toBe(200);
-    const body = await (res as Response).json();
+    const body = await resJson(res);
     expect(body.status).toBe("running");
   });
 
@@ -234,7 +235,7 @@ describe("resumeSessionHandler", () => {
     }).id;
     const res = resumeSessionHandler(id, deps);
     expect(res.status).toBe(409);
-    const body = await (res as Response).json();
+    const body = await resJson(res);
     expect(body.error.message).toContain("cannot resume session in status");
     expect(body.error.message).toContain("pending");
   });
@@ -249,7 +250,7 @@ describe("resumeSessionHandler", () => {
     deps.sessions.updateStatus(id, "running");
     const res = resumeSessionHandler(id, deps);
     expect(res.status).toBe(409);
-    const body = await (res as Response).json();
+    const body = await resJson(res);
     expect(body.error.message).toContain("cannot resume session in status");
     expect(body.error.message).toContain("running");
   });
@@ -264,7 +265,7 @@ describe("resumeSessionHandler", () => {
     deps.sessions.updateStatus(id, "completed");
     const res = resumeSessionHandler(id, deps);
     expect(res.status).toBe(409);
-    const body = await (res as Response).json();
+    const body = await resJson(res);
     expect(body.error.message).toContain("cannot resume session in status");
     expect(body.error.message).toContain("completed");
   });
@@ -272,7 +273,7 @@ describe("resumeSessionHandler", () => {
   test("returns 404 when session does not exist", async () => {
     const res = resumeSessionHandler("nonexistent-id", deps);
     expect(res.status).toBe(404);
-    const body = await (res as Response).json();
+    const body = await resJson(res);
     expect(body.error.code).toBe("session_not_found");
   });
 });
@@ -307,7 +308,7 @@ describe("pauseSessionHandler", () => {
     deps.sessions.updateStatus(id, "running");
     const res = pauseSessionHandler(id, deps);
     expect(res.status).toBe(200);
-    const body = await (res as Response).json();
+    const body = await resJson(res);
     expect(body.status).toBe("paused");
   });
 
@@ -320,7 +321,7 @@ describe("pauseSessionHandler", () => {
     }).id;
     const res = pauseSessionHandler(id, deps);
     expect(res.status).toBe(200);
-    const body = await (res as Response).json();
+    const body = await resJson(res);
     expect(body.status).toBe("paused");
   });
 
@@ -334,7 +335,7 @@ describe("pauseSessionHandler", () => {
     deps.sessions.updateStatus(id, "stopped");
     const res = pauseSessionHandler(id, deps);
     expect(res.status).toBe(409);
-    const body = await (res as Response).json();
+    const body = await resJson(res);
     expect(body.error.message).toContain("cannot pause session in status");
     expect(body.error.message).toContain("stopped");
   });
@@ -342,7 +343,7 @@ describe("pauseSessionHandler", () => {
   test("returns 404 when session does not exist", async () => {
     const res = pauseSessionHandler("nonexistent-id", deps);
     expect(res.status).toBe(404);
-    const body = await (res as Response).json();
+    const body = await resJson(res);
     expect(body.error.code).toBe("session_not_found");
   });
 });
@@ -376,7 +377,7 @@ describe("unpauseSessionHandler", () => {
     deps.sessions.updateStatus(id, "paused");
     const res = unpauseSessionHandler(id, deps);
     expect(res.status).toBe(200);
-    const body = await (res as Response).json();
+    const body = await resJson(res);
     expect(body.status).toBe("running");
   });
 
@@ -390,7 +391,7 @@ describe("unpauseSessionHandler", () => {
     deps.sessions.updateStatus(id, "running");
     const res = unpauseSessionHandler(id, deps);
     expect(res.status).toBe(409);
-    const body = await (res as Response).json();
+    const body = await resJson(res);
     expect(body.error.message).toContain("cannot unpause session in status");
     expect(body.error.message).toContain("running");
   });
@@ -404,7 +405,7 @@ describe("unpauseSessionHandler", () => {
     }).id;
     const res = unpauseSessionHandler(id, deps);
     expect(res.status).toBe(409);
-    const body = await (res as Response).json();
+    const body = await resJson(res);
     expect(body.error.message).toContain("cannot unpause session in status");
     expect(body.error.message).toContain("pending");
   });
@@ -412,7 +413,7 @@ describe("unpauseSessionHandler", () => {
   test("returns 404 when session does not exist", async () => {
     const res = unpauseSessionHandler("nonexistent-id", deps);
     expect(res.status).toBe(404);
-    const body = await (res as Response).json();
+    const body = await resJson(res);
     expect(body.error.code).toBe("session_not_found");
   });
 });
@@ -447,7 +448,7 @@ describe("listSessionQueueHandler", () => {
     const req = new Request(`http://localhost/v1/sessions/${sessionId}/queue`);
     const res = listSessionQueueHandler(sessionId, deps);
     expect(res.status).toBe(200);
-    const body = await (res as Response).json();
+    const body = await resJson(res);
     expect(body.items).toEqual([]);
   });
 
@@ -471,7 +472,7 @@ describe("listSessionQueueHandler", () => {
     const req = new Request(`http://localhost/v1/sessions/${sessionId}/queue`);
     const res = listSessionQueueHandler(sessionId, deps);
     expect(res.status).toBe(200);
-    const body = await (res as Response).json();
+    const body = await resJson(res);
     expect(body.items).toHaveLength(2);
     expect(body.items[0].filename).toBe("steer-1.md");
     expect(body.items[0].instruction).toBe("do the thing");
@@ -482,7 +483,7 @@ describe("listSessionQueueHandler", () => {
     const req = new Request("http://localhost/v1/sessions/nonexistent/queue");
     const res = listSessionQueueHandler("nonexistent", deps);
     expect(res.status).toBe(404);
-    const body = await (res as Response).json();
+    const body = await resJson(res);
     expect(body.error.code).toBe("session_not_found");
   });
 });
@@ -530,7 +531,7 @@ describe("deleteSessionQueueItemHandler", () => {
     expect(res.status).toBe(204);
     // Verify queue is now empty
     const listRes = listSessionQueueHandler(sessionId, deps);
-    const body = await (listRes as Response).json();
+    const body = await resJson(listRes);
     expect(body.items).toEqual([]);
   });
 
@@ -540,7 +541,7 @@ describe("deleteSessionQueueItemHandler", () => {
     });
     const res = deleteSessionQueueItemHandler("nonexistent", queueItemId, deps);
     expect(res.status).toBe(404);
-    const body = await (res as Response).json();
+    const body = await resJson(res);
     expect(body.error.code).toBe("session_not_found");
   });
 });
@@ -570,7 +571,7 @@ describe("listSessionsHandler", () => {
     const req = new Request("http://localhost/v1/sessions");
     const res = listSessionsHandler(req, deps);
     expect(res.status).toBe(200);
-    const body = await (res as Response).json();
+    const body = await resJson(res);
     expect(body.items).toEqual([]);
     expect(body._v).toBe(1);
   });
@@ -593,7 +594,7 @@ describe("listSessionsHandler", () => {
     const req = new Request("http://localhost/v1/sessions");
     const res = listSessionsHandler(req, deps);
     expect(res.status).toBe(200);
-    const body = await (res as Response).json();
+    const body = await resJson(res);
     expect(body.items).toHaveLength(2);
     const ids = body.items.map((i: { id: string }) => i.id).sort();
     expect(ids).toEqual(["s_list1", "s_list2"]);
@@ -607,7 +608,7 @@ describe("listSessionsHandler", () => {
     const req = new Request(`http://localhost/v1/sessions?project_id=${projectId}`);
     const res = listSessionsHandler(req, deps);
     expect(res.status).toBe(200);
-    const body = await (res as Response).json();
+    const body = await resJson(res);
     expect(body.items).toHaveLength(1);
     expect(body.items[0].id).toBe("s_proj1");
     rmSync(otherDir, { recursive: true, force: true });
@@ -620,7 +621,7 @@ describe("listSessionsHandler", () => {
     const req = new Request(`http://localhost/v1/sessions?status=running`);
     const res = listSessionsHandler(req, deps);
     expect(res.status).toBe(200);
-    const body = await (res as Response).json();
+    const body = await resJson(res);
     expect(body.items).toHaveLength(1);
     expect(body.items[0].id).toBe("s_running");
     expect(body.items[0].status).toBe("running");
@@ -635,7 +636,7 @@ describe("listSessionsHandler", () => {
     const req = new Request(`http://localhost/v1/sessions?status=pending,running`);
     const res = listSessionsHandler(req, deps);
     expect(res.status).toBe(200);
-    const body = await (res as Response).json();
+    const body = await resJson(res);
     expect(body.items).toHaveLength(2);
     const statuses = body.items.map((i: { status: string }) => i.status).sort();
     expect(statuses).toEqual(["pending", "running"]);
@@ -647,7 +648,7 @@ describe("listSessionsHandler", () => {
     const req = new Request(`http://localhost/v1/sessions?kind=orchestrator`);
     const res = listSessionsHandler(req, deps);
     expect(res.status).toBe(200);
-    const body = await (res as Response).json();
+    const body = await resJson(res);
     expect(body.items).toHaveLength(1);
     expect(body.items[0].kind).toBe("orchestrator");
   });
@@ -658,7 +659,7 @@ describe("listSessionsHandler", () => {
     const req = new Request(`http://localhost/v1/sessions?parent=${parentId}`);
     const res = listSessionsHandler(req, deps);
     expect(res.status).toBe(200);
-    const body = await (res as Response).json();
+    const body = await resJson(res);
     expect(body.items).toHaveLength(1);
     expect(body.items[0].id).toBe("s_child");
   });
@@ -670,7 +671,7 @@ describe("listSessionsHandler", () => {
     const req = new Request(`http://localhost/v1/sessions?limit=3`);
     const res = listSessionsHandler(req, deps);
     expect(res.status).toBe(200);
-    const body = await (res as Response).json();
+    const body = await resJson(res);
     expect(body.items).toHaveLength(3);
   });
 });
@@ -712,7 +713,7 @@ describe("createSessionHandler", () => {
     });
     const res = await createSessionHandler(req, deps);
     expect(res.status).toBe(201);
-    const body = await (res as Response).json();
+    const body = await resJson(res);
     expect(body.id).toBe("s_new");
     expect(body.kind).toBe("standalone");
     expect(body.workflow).toBe("plan-build-review");
@@ -735,7 +736,7 @@ describe("createSessionHandler", () => {
     });
     const res = await createSessionHandler(req, deps);
     expect(res.status).toBe(201);
-    const body = await (res as Response).json();
+    const body = await resJson(res);
     expect(body.id).toMatch(/^[0-9a-f-]{36}$/);
   });
 
@@ -747,7 +748,7 @@ describe("createSessionHandler", () => {
     });
     const res = await createSessionHandler(req, deps);
     expect(res.status).toBe(400);
-    const body = await (res as Response).json();
+    const body = await resJson(res);
     expect(body.error.message).toContain("project_id");
   });
 
@@ -761,7 +762,7 @@ describe("createSessionHandler", () => {
     });
     const res = await createSessionHandler(req, deps);
     expect(res.status).toBe(404);
-    const body = await (res as Response).json();
+    const body = await resJson(res);
     expect(body.error.code).toBe("project_not_found");
   });
 
@@ -775,7 +776,7 @@ describe("createSessionHandler", () => {
     });
     const res = await createSessionHandler(req, deps);
     expect(res.status).toBe(400);
-    const body = await (res as Response).json();
+    const body = await resJson(res);
     expect(body.error.message).toContain("kind");
   });
 
@@ -789,7 +790,7 @@ describe("createSessionHandler", () => {
     });
     const res = await createSessionHandler(req, deps);
     expect(res.status).toBe(400);
-    const body = await (res as Response).json();
+    const body = await resJson(res);
     expect(body.error.message).toContain("workflow");
   });
 
@@ -803,7 +804,7 @@ describe("createSessionHandler", () => {
     });
     const res = await createSessionHandler(req, deps);
     expect(res.status).toBe(400);
-    const body = await (res as Response).json();
+    const body = await resJson(res);
     expect(body.error.message).toContain("provider_chain");
   });
 
@@ -817,7 +818,7 @@ describe("createSessionHandler", () => {
     });
     const res = await createSessionHandler(req, deps);
     expect(res.status).toBe(400);
-    const body = await (res as Response).json();
+    const body = await resJson(res);
     expect(body.error.message).toContain("parent_session_id");
   });
 
@@ -831,7 +832,7 @@ describe("createSessionHandler", () => {
     });
     const res = await createSessionHandler(req, deps);
     expect(res.status).toBe(400);
-    const body = await (res as Response).json();
+    const body = await resJson(res);
     expect(body.error.code).toBe("bad_request");
   });
 
@@ -847,7 +848,7 @@ describe("createSessionHandler", () => {
     });
     const res = await createSessionHandler(req, deps);
     expect(res.status).toBe(400);
-    const body = await (res as Response).json();
+    const body = await resJson(res);
     expect(body.error.message).toContain("grandchild");
   });
 
@@ -861,7 +862,7 @@ describe("createSessionHandler", () => {
     });
     const res = await createSessionHandler(req, deps);
     expect(res.status).toBe(201);
-    const body = await (res as Response).json();
+    const body = await resJson(res);
     expect(body.max_iterations).toBe(10);
   });
 
@@ -875,7 +876,7 @@ describe("createSessionHandler", () => {
     });
     const res = await createSessionHandler(req, deps);
     expect(res.status).toBe(201);
-    const body = await (res as Response).json();
+    const body = await resJson(res);
     expect(body.notes).toBe("test session");
   });
 });
@@ -914,7 +915,7 @@ describe("steerSessionHandler", () => {
     });
     const res = await steerSessionHandler(sessionId, req, deps);
     expect(res.status).toBe(201);
-    const body = await (res as Response).json();
+    const body = await resJson(res);
     expect(body.queue_item_id).toBeTruthy();
     expect(body.filename).toMatch(/^steer-\d+\.md$/);
     expect(body.position).toBe(0);
@@ -938,7 +939,7 @@ describe("steerSessionHandler", () => {
     });
     const res = await steerSessionHandler(sessionId, req, deps);
     expect(res.status).toBe(201);
-    const body = await (res as Response).json();
+    const body = await resJson(res);
     expect(body.position).toBe(1);
     expect(body.filename).toMatch(/^steer-\d+\.md$/);
   });
@@ -951,12 +952,12 @@ describe("steerSessionHandler", () => {
     });
     const res = await steerSessionHandler(sessionId, req, deps);
     expect(res.status).toBe(201);
-    const body = await (res as Response).json();
+    const body = await resJson(res);
 
     // Verify the stored queue item has the correct default
     const queueReq = new Request(`http://localhost/v1/sessions/${sessionId}/queue`);
     const queueRes = listSessionQueueHandler(sessionId, deps);
-    const queueBody = await (queueRes as Response).json();
+    const queueBody = await resJson(queueRes);
     expect(queueBody.items[0].affects_completed_work).toBe("no");
   });
 
@@ -978,7 +979,7 @@ describe("steerSessionHandler", () => {
       });
       const res = await steerSessionHandler(sid, req, deps);
       expect(res.status).toBe(201);
-      const body = await (res as Response).json();
+      const body = await resJson(res);
       expect(body._v).toBe(1);
     }
   });
@@ -991,7 +992,7 @@ describe("steerSessionHandler", () => {
     });
     const res = await steerSessionHandler("nonexistent", req, deps);
     expect(res.status).toBe(404);
-    const body = await (res as Response).json();
+    const body = await resJson(res);
     expect(body.error.code).toBe("session_not_found");
   });
 
@@ -1003,7 +1004,7 @@ describe("steerSessionHandler", () => {
     });
     const res = await steerSessionHandler(sessionId, req, deps);
     expect(res.status).toBe(400);
-    const body = await (res as Response).json();
+    const body = await resJson(res);
     expect(body.error.code).toBe("bad_request");
     expect(body.error.message).toContain("instruction");
   });
@@ -1016,7 +1017,7 @@ describe("steerSessionHandler", () => {
     });
     const res = await steerSessionHandler(sessionId, req, deps);
     expect(res.status).toBe(400);
-    const body = await (res as Response).json();
+    const body = await resJson(res);
     expect(body.error.code).toBe("bad_request");
     expect(body.error.message).toContain("instruction");
   });
@@ -1029,7 +1030,7 @@ describe("steerSessionHandler", () => {
     });
     const res = await steerSessionHandler(sessionId, req, deps);
     expect(res.status).toBe(400);
-    const body = await (res as Response).json();
+    const body = await resJson(res);
     expect(body.error.code).toBe("bad_request");
     expect(body.error.message).toContain("instruction");
   });
@@ -1042,7 +1043,7 @@ describe("steerSessionHandler", () => {
     });
     const res = await steerSessionHandler(sessionId, req, deps);
     expect(res.status).toBe(400);
-    const body = await (res as Response).json();
+    const body = await resJson(res);
     expect(body.error.code).toBe("bad_request");
   });
 
@@ -1054,7 +1055,7 @@ describe("steerSessionHandler", () => {
     });
     const res = await steerSessionHandler(sessionId, req, deps);
     expect(res.status).toBe(400);
-    const body = await (res as Response).json();
+    const body = await resJson(res);
     expect(body.error.code).toBe("bad_request");
     expect(body.error.message).toBe("request body must be a JSON object");
   });
@@ -1067,7 +1068,7 @@ describe("steerSessionHandler", () => {
     });
     const res = await steerSessionHandler(sessionId, req, deps);
     expect(res.status).toBe(400);
-    const body = await (res as Response).json();
+    const body = await resJson(res);
     expect(body.error.code).toBe("bad_request");
   });
 });
@@ -1101,7 +1102,7 @@ describe("recompileSessionHandler", () => {
   test("returns 200 and writes workflow-plan.json", async () => {
     const res = recompileSessionHandler(sessionId, deps);
     expect(res.status).toBe(200);
-    const body = await (res as Response).json();
+    const body = await resJson(res);
     expect(body._v).toBe(1);
     expect(body.session_id).toBe(sessionId);
     expect(body.workflow_plan_version).toBe(1);
@@ -1122,7 +1123,7 @@ describe("recompileSessionHandler", () => {
   test("returns 404 when session does not exist", async () => {
     const res = recompileSessionHandler("nonexistent-id", deps);
     expect(res.status).toBe(404);
-    const body = await (res as Response).json();
+    const body = await resJson(res);
     expect(body.error.code).toBe("session_not_found");
   });
 
@@ -1180,14 +1181,15 @@ describe("getSessionMetricsHandler", () => {
     const req = new Request(`http://localhost/v1/sessions/${sessionId}/metrics`);
     const res = getSessionMetricsHandler(sessionId, deps);
     expect(res.status).toBe(200);
-    const body = await (res as Response).json();
+    const body = await resJson(res);
     expect(body._v).toBe(1);
     expect(body.session_id).toBe(sessionId);
     expect(body.metrics).toEqual([]);
   });
 
   test("returns 200 with all session metrics", async () => {
-    const reg = deps.sessions as unknown as { _db: { run(sql: string): void } };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const reg = deps.sessions as any;
     reg._db.run(
       `INSERT INTO session_metrics (session_id, metric_name, value, updated_at)
        VALUES (?, 'burn_rate.tokens_since_last_commit', 1234.5, '2025-01-01T00:00:00.000Z')`,
@@ -1202,7 +1204,7 @@ describe("getSessionMetricsHandler", () => {
     const req = new Request(`http://localhost/v1/sessions/${sessionId}/metrics`);
     const res = getSessionMetricsHandler(sessionId, deps);
     expect(res.status).toBe(200);
-    const body = await (res as Response).json();
+    const body = await resJson(res);
     expect(body.metrics).toHaveLength(2);
     const names = body.metrics.map((m: { name: string }) => m.name).sort();
     expect(names).toEqual(["burn_rate.tokens_since_last_commit", "turn_success_rate"]);
@@ -1215,12 +1217,13 @@ describe("getSessionMetricsHandler", () => {
     const req = new Request("http://localhost/v1/sessions/nonexistent-id/metrics");
     const res = getSessionMetricsHandler("nonexistent-id", deps);
     expect(res.status).toBe(404);
-    const body = await (res as Response).json();
+    const body = await resJson(res);
     expect(body.error.code).toBe("session_not_found");
   });
 
   test("returns metrics sorted by name", async () => {
-    const reg = deps.sessions as unknown as { _db: { run(sql: string): void } };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const reg = deps.sessions as any;
     reg._db.run(
       `INSERT INTO session_metrics (session_id, metric_name, value, updated_at)
        VALUES (?, 'z_metric', 1, '2025-01-01T00:00:00.000Z')`,
@@ -1240,12 +1243,13 @@ describe("getSessionMetricsHandler", () => {
     const req = new Request(`http://localhost/v1/sessions/${sessionId}/metrics`);
     const res = getSessionMetricsHandler(sessionId, deps);
     expect(res.status).toBe(200);
-    const body = await (res as Response).json();
+    const body = await resJson(res);
     expect(body.metrics.map((m: { name: string }) => m.name)).toEqual(["a_metric", "m_metric", "z_metric"]);
   });
 
   test("only returns metrics for that specific session", async () => {
-    const reg = deps.sessions as unknown as { _db: { run(sql: string): void } };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const reg = deps.sessions as any;
     const otherSessionId = deps.sessions.create({
       projectId: "proj-1",
       kind: "standalone",
@@ -1267,7 +1271,7 @@ describe("getSessionMetricsHandler", () => {
     const req = new Request(`http://localhost/v1/sessions/${sessionId}/metrics`);
     const res = getSessionMetricsHandler(sessionId, deps);
     expect(res.status).toBe(200);
-    const body = await (res as Response).json();
+    const body = await resJson(res);
     expect(body.metrics).toHaveLength(1);
     expect(body.metrics[0]?.value).toBe(1.0);
   });
