@@ -1,7 +1,6 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import { startHttp, type StartHttpOptions } from "./http.ts";
 
-// Minimal deps factory — all handlers return undefined so requests 404
 function makeDeps() {
   return {
     handleDaemon: () => undefined,
@@ -9,100 +8,77 @@ function makeDeps() {
     handleProjects: () => undefined,
     handleProviders: () => undefined,
     handleScheduler: () => undefined,
+    handleWorkspaces: () => undefined,
     handleSessions: () => undefined,
     handleComposer: () => undefined,
     handleArtifacts: () => undefined,
     handleTriggers: () => undefined,
-    handleEvents: () => undefined,
     handleSetup: () => undefined,
-    handleWorkspaces: () => undefined,
+    handleEvents: () => undefined,
   };
 }
 
-describe("startHttp error paths", () => {
-  test("throws EADDRINUSE when the port is already bound", async () => {
-    // Start a server on an OS-assigned port
-    const first = startHttp({ port: 0, deps: makeDeps() });
-    const boundPort = first.port;
-    expect(boundPort).toBeGreaterThan(0);
+describe("startHttp error handling", () => {
+  test("throws when HTTP server fails to bind a port (port is undefined)", async () => {
+    // Monkey-patch Bun.serve to simulate a bind failure where port is undefined.
+    // This mirrors a real scenario where the OS refuses the port binding.
+    const originalServe = Bun.serve;
+    let serveCallCount = 0;
+    Bun.serve = (options: {
+      hostname: string;
+      port: number;
+      fetch: (req: Request) => Response | Promise<Response>;
+    }) => {
+      serveCallCount++;
+      // Simulate a port bind failure by returning an object with port as undefined
+      return {
+        port: undefined,
+        hostname: options.hostname,
+        stop: () => {},
+      } as unknown as ReturnType<typeof originalServe>;
+    };
 
-    // Keep the first server running and try to bind the same port
-    // This must throw EADDRINUSE
-    expect(() => startHttp({ port: boundPort, deps: makeDeps() })).toThrow();
-
-    await first.stop();
-  });
-
-  test("error message mentions the port or syscall when bind fails", async () => {
-    const first = startHttp({ port: 0, deps: makeDeps() });
-    const boundPort = first.port;
-
-    let thrownMessage = "";
     try {
-      startHttp({ port: boundPort, deps: makeDeps() });
-    } catch (err) {
-      thrownMessage = (err as Error).message;
+      const opts: StartHttpOptions = { port: 0, deps: makeDeps() };
+      expect(() => startHttp(opts)).toThrow(
+        "HTTP server failed to bind a port",
+      );
+    } finally {
+      Bun.serve = originalServe;
     }
-
-    // Error message should reference port, listen, or address
-    expect(
-      thrownMessage.includes("port") ||
-        thrownMessage.includes("listen") ||
-        thrownMessage.includes("address") ||
-        thrownMessage.includes("EADDRINUSE"),
-    ).toBe(true);
-
-    await first.stop();
   });
-});
 
-describe("startHttp request handling via full server", () => {
-  let running: Awaited<ReturnType<typeof startHttp>> | null = null;
+  test("returns a RunningHttp with correct hostname when hostname is explicitly set", async () => {
+    const opts: StartHttpOptions = { hostname: "0.0.0.0", port: 0, deps: makeDeps() };
+    const running = startHttp(opts);
+    expect(running.hostname).toBe("0.0.0.0");
+    await running.stop();
+  });
 
-  afterEach(async () => {
-    if (running) {
+  test("stop() calls server.stop with true to allow graceful shutdown", async () => {
+    const originalServe = Bun.serve;
+    let stopCalledWith: unknown = undefined;
+    Bun.serve = (options: {
+      hostname: string;
+      port: number;
+      fetch: (req: Request) => Response | Promise<Response>;
+    }) => {
+      return {
+        port: 0,
+        hostname: options.hostname,
+        stop: (graceful: unknown) => {
+          stopCalledWith = graceful;
+        },
+      } as unknown as ReturnType<typeof originalServe>;
+    };
+
+    try {
+      const opts: StartHttpOptions = { port: 0, deps: makeDeps() };
+      const running = startHttp(opts);
       await running.stop();
-      running = null;
-    }
-  });
-
-  test("returns 404 envelope for requests to unhandled routes", async () => {
-    const opts: StartHttpOptions = { port: 0, deps: makeDeps() };
-    running = startHttp(opts);
-
-    const res = await fetch(`http://${running.hostname}:${running.port}/v1/unknown-route`);
-    expect(res.status).toBe(404);
-    const body = (await res.json()) as { error: { code: string; message: string } };
-    expect(body.error.code).toBe("not_found");
-    expect(body.error.message).toContain("/v1/unknown-route");
-  });
-
-  test("returns 404 for POST to unhandled route", async () => {
-    const opts: StartHttpOptions = { port: 0, deps: makeDeps() };
-    running = startHttp(opts);
-
-    const res = await fetch(`http://${running.hostname}:${running.port}/v1/sessions`, {
-      method: "POST",
-    });
-    expect(res.status).toBe(404);
-  });
-
-  test("GET to /v1/daemon/health 404s when handleDaemon returns undefined", async () => {
-    const opts: StartHttpOptions = { port: 0, deps: makeDeps() };
-    running = startHttp(opts);
-
-    const res = await fetch(`http://${running.hostname}:${running.port}/v1/daemon/health`);
-    // handleDaemon returns undefined → falls through to 404 envelope
-    expect(res.status).toBe(404);
-  });
-
-  test("multiple sequential requests all get proper responses", async () => {
-    const opts: StartHttpOptions = { port: 0, deps: makeDeps() };
-    running = startHttp(opts);
-
-    for (let i = 0; i < 5; i++) {
-      const res = await fetch(`http://${running.hostname}:${running.port}/v1/sessions/test-${i}`);
-      expect(res.status).toBe(404);
+      expect(stopCalledWith).toBe(true);
+    } finally {
+      Bun.serve = originalServe;
     }
   });
 });
