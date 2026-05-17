@@ -108,8 +108,12 @@ describe("handleMetrics", () => {
     expect(text).toContain('aloop_scheduler_permit{session_id="sess_abc",provider_id="openai"} 1');
   });
 
-  test("emits NaN for system metrics when systemSample is undefined", async () => {
-    const deps = makeDeps({ systemSample: undefined });
+  test("emits NaN for system metrics when systemSample probe throws", async () => {
+    const deps = makeDeps({
+      systemSample: () => {
+        throw new Error("probe unavailable");
+      },
+    });
     const req = makeRequest("/v1/metrics");
     const res = await handleMetrics(req, deps, "/v1/metrics");
     const text = await res!.text();
