@@ -3,6 +3,8 @@ import { handleArtifacts } from "@aloop/daemon-routes-artifacts";
 import { handleTriggers, TriggerStore } from "@aloop/daemon-routes-triggers";
 import { handleSetup, SetupStore } from "@aloop/daemon-routes-setup";
 import { handleEvents } from "@aloop/daemon-routes";
+import { handleMetricsAggregates } from "@aloop/daemon-routes";
+import { createMetricsAggregatesDeps } from "./router-deps-helpers.ts";
 import type { ConfigStore } from "@aloop/daemon-config";
 import type { RouterDeps } from "@aloop/daemon-http";
 import type { InMemoryProviderHealthStore, ProviderRegistry } from "@aloop/provider";
@@ -14,11 +16,12 @@ import {
   handleSessions as handleSessionsRoute,
 } from "@aloop/daemon-routes";
 import type { SchedulerService } from "@aloop/scheduler";
-import type { ComposerTurnRegistry, EventWriter, ProjectRegistry, SessionRegistry, WorkspaceRegistry, ArtifactRegistry } from "@aloop/state-sqlite";
+import type { ComposerTurnRegistry, EventWriter, ProjectRegistry, SessionRegistry, WorkspaceRegistry, ArtifactRegistry, Database } from "@aloop/state-sqlite";
 import { handleDaemon as handleDaemonRoute } from "../routes/daemon.ts";
 import { join } from "node:path";
 
 export type MakeRouterDepsInput = {
+  readonly db: Database;
   readonly registry: ProjectRegistry;
   readonly workspaceRegistry: WorkspaceRegistry;
   readonly sessionRegistry: SessionRegistry;
@@ -38,9 +41,12 @@ export function makeRouterDeps(input: MakeRouterDepsInput): RouterDeps {
   const triggersDir = () => join(input.config.paths().stateDir, "triggers");
   const triggerStore = new TriggerStore({ triggersDir: triggersDir() });
   const setupStore = new SetupStore({ stateDir: input.config.paths().stateDir });
+  const metricsAggregatesDeps = createMetricsAggregatesDeps({ db: input.db });
   return {
     handleDaemon: (req, pathname) =>
       handleDaemonRoute(req, { startedAt: input.startedAt, config: input.config, scheduler: input.scheduler, registry: input.registry, sessionsDir }, pathname),
+    handleMetrics: (req, pathname) =>
+      handleMetricsAggregates(req, metricsAggregatesDeps, pathname),
     handleProjects: (req, pathname) =>
       handleProjectsRoute(
         req,

@@ -12,4 +12,8 @@ export {
   parseJsonBody,
   isParseJsonBodySuccess,
 } from "./http-helpers.ts";
-export type { MetricsDeps, MetricsAggregatesDeps } from "./metrics.ts";
+export {
+  handleMetricsAggregates,
+  type MetricsDeps,
+  type MetricsAggregatesDeps,
+} from "./metrics.ts";

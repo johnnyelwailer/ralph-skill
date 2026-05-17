@@ -103,6 +103,7 @@ export async function startDaemon(opts: StartDaemonOptions = {}): Promise<Runnin
   const providerHealth = new InMemoryProviderHealthStore(providerRegistry.list().map((adapter) => adapter.id));
   const scheduler = new SchedulerService(permits, makeSchedulerConfig(config, events), events, { providerQuota: createProviderQuotaProbe(providerHealth) });
   const routerDeps = makeRouterDeps({
+    db,
     registry,
     workspaceRegistry,
     sessionRegistry,
