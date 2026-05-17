@@ -25,6 +25,16 @@ This deliberately treats local execution as a development and compatibility path
 5. **Backpressure is product behavior.** Tests, lints, builds, typechecks, policy gates, and cost gates are not implementation details; they are how the system stays honest.
 6. **Everything important emits events.** Runtime state must be observable, replayable, and resumable.
 
+## Product-first implementation rule
+
+Implementation work should begin from a user action and end at a user-observable result. The reference path is:
+
+```text
+setup project -> mark ready -> start session -> acquire permit -> run provider turn -> stream/log events -> validate -> update tracker/session -> continue or stop
+```
+
+Agents should not optimize for package count, isolated adapter completeness, or dashboard shape before this path works. Example: a provider adapter without a session-runner callsite is unfinished; a scheduler without a real turn permit is unfinished; a dashboard panel backed by placeholder data is unfinished. The next slice should make one narrow version of the whole path work, then widen it.
+
 ## P0 - Runtime contracts and invariants
 
 Define the contracts that everything else depends on.

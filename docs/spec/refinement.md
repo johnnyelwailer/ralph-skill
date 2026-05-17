@@ -2,7 +2,7 @@
 
 > **Reference document.** Shared prompt behavior for ambiguity handling, issue refinement, contradiction handling, and variant exploration across setup and runtime. This is **not** a new daemon subsystem. It is a prompt-level contract implemented using the existing orchestration architecture, triggers, submit types, and workflows.
 >
-> Hard rules live in `CONSTITUTION.md`. Runtime orchestration lives in `orchestrator.md`. Setup-specific gating lives in `setup.md`.
+> Hard rules live in [docs/CONSTITUTION.md](../CONSTITUTION.md). Runtime orchestration lives in `orchestrator.md`. Setup-specific gating lives in `setup.md`.
 
 ## Why this exists
 

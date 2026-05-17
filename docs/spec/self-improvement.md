@@ -1,6 +1,6 @@
 # Self-Improvement
 
-> **Reference document.** Four levels of self-improvement, three of them allowed, one of them prohibited. The prohibition is load-bearing — it's the difference between a system that compounds its own capabilities and a system that reward-hacks its way to a broken equilibrium. Hard rules live in CONSTITUTION.md. Work items live in GitHub issues.
+> **Reference document.** Four levels of self-improvement, three of them allowed, one of them prohibited. The prohibition is load-bearing — it's the difference between a system that compounds its own capabilities and a system that reward-hacks its way to a broken equilibrium. Hard rules live in [docs/CONSTITUTION.md](../CONSTITUTION.md). Work items live in GitHub issues.
 >
 > Sources: Darwin Gödel Machine (Sakana 2025) — demonstrated reward hacking of its own checker the moment it could touch it; STOP (Zelikman et al., COLM 2024) — scaffold self-improvement works within bounds; Karpathy's AutoResearch (March 2026) — `prepare.py` is immutable, agent touches `train.py` only.
 
@@ -103,7 +103,7 @@ Ordered by risk. Levels 1–3 are required for the system to deliver on "autonom
 **Prohibition enforcement:**
 
 - These paths are **not in any agent's worktree**. `ProjectAdapter` excludes them when opening the session's worktree. The agent has no file-system access to them.
-- The CONSTITUTION, spec files, orchestrator prompts, and metric definitions live at well-known paths (`CONSTITUTION.md`, `docs/spec/**`, `aloop/templates/PROMPT_orch_*.md`, `docs/spec/metrics.md`). `ProjectAdapter` treats these as **immutable-for-agents** — it's a filter at the adapter level, not a hope-for-the-best convention.
+- The CONSTITUTION, spec files, orchestrator prompts, and metric definitions live at well-known paths (`docs/CONSTITUTION.md` in this repo, `<project>/CONSTITUTION.md` in setup-generated target projects, `docs/spec/**`, `aloop/templates/PROMPT_orch_*.md`, `docs/spec/metrics.md`). `ProjectAdapter` treats these as **immutable-for-agents** — it's a filter at the adapter level, not a hope-for-the-best convention.
 - The daemon binary, scheduler code, and `daemon.yml` live outside the worktree entirely. No adapter ever exposes them.
 - A human may of course modify these files — but that's a regular PR, not an agent-driven side effect.
 

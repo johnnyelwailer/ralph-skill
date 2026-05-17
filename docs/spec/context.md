@@ -1,6 +1,6 @@
 # Prompt Context
 
-> **Reference document.** Prompt context is the daemon-owned extension point for adding bounded, source-cited context to an agent turn. Hard rules live in CONSTITUTION.md. Work items live in GitHub issues.
+> **Reference document.** Prompt context is the daemon-owned extension point for adding bounded, source-cited context to an agent turn. Hard rules live in [docs/CONSTITUTION.md](../CONSTITUTION.md). Work items live in GitHub issues.
 >
 > Sources: `pipeline.md` prompt frontmatter, `architecture.md` daemon boundary, `metrics.md` curated views, `refinement.md` decision handling.
 

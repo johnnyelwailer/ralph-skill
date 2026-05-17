@@ -1,6 +1,6 @@
 # Security
 
-> **Reference document.** Trust boundaries, policy enforcement, and audit guarantees. Hard rules live in CONSTITUTION.md. Work items live in GitHub issues.
+> **Reference document.** Trust boundaries, policy enforcement, and audit guarantees. Hard rules live in [docs/CONSTITUTION.md](../CONSTITUTION.md). Work items live in GitHub issues.
 >
 > Sources: SPEC.md §Security Model: Trust Boundaries & GH Access Control (pre-decomposition, 2026-04-18). Generalized against `daemon.md`, `api.md`, `pipeline.md`, `work-tracker.md`.
 

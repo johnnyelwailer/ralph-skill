@@ -1,6 +1,6 @@
 # Architecture
 
-> **Reference document.** The layers, boundaries, and seams of the `aloopd` daemon. Hard rules live in CONSTITUTION.md. Work items live in GitHub issues.
+> **Reference document.** The layers, boundaries, and seams of the `aloopd` daemon. Hard rules live in [docs/CONSTITUTION.md](../CONSTITUTION.md). Work items live in GitHub issues.
 >
 > Sources: SPEC.md §Architecture, §Inner Loop vs Runtime, §Cross-Platform; `daemon.md`, `api.md`, `pipeline.md`, `provider-contract.md`, `work-tracker.md`, `incubation.md`. External implementation reference for overlapping server/client/provider boundary patterns: [pingdotgg/t3code](https://github.com/pingdotgg/t3code).
 

@@ -1,6 +1,6 @@
 # Incubation
 
-> **Reference document.** Incubation is a product mode over shared aloop primitives, not a separate backend subsystem. Hard rules live in `CONSTITUTION.md`. Work items live in GitHub issues only after promotion to the tracker.
+> **Reference document.** Incubation is a product mode over shared aloop primitives, not a separate backend subsystem. Hard rules live in [docs/CONSTITUTION.md](../CONSTITUTION.md). Work items live in GitHub issues only after promotion to the tracker.
 
 ## Role
 

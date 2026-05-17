@@ -1,6 +1,6 @@
 # Work Tracker
 
-> **Reference document.** The generic work-tracking contract. GitHub is the first-class shipped adapter. The contract is tracker-agnostic; any project can swap adapters — or run the minimum orchestrator flow offline using the built-in adapter. Hard rules live in CONSTITUTION.md. Work items may be mirrored to GitHub issues or other tracker-native entities, but aloop's full product state is daemon-owned.
+> **Reference document.** The generic work-tracking contract. GitHub is the first-class shipped adapter. The contract is tracker-agnostic; any project can swap adapters — or run the minimum orchestrator flow offline using the built-in adapter. Hard rules live in [docs/CONSTITUTION.md](../CONSTITUTION.md). Work items may be mirrored to GitHub issues or other tracker-native entities, but aloop's full product state is daemon-owned.
 >
 > The name "work tracker" (not "issue tracker") is deliberate — "issue" is GitHub's term for a single entity type, whereas aloop models **Epic**, **Story**, and **ChangeSet** as distinct work items. GitLab calls them issues/MRs/epics, Linear calls them issues/projects, Jira calls them stories/epics, plain text calls them tasks. "Work item" is the abstract vocabulary.
 >

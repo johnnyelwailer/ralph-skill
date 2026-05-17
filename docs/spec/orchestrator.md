@@ -1,6 +1,6 @@
 # Orchestrator
 
-> **Reference document.** The contract for orchestrator sessions — how a spec becomes tracked work, how children are dispatched, how results are gated and merged, how self-healing happens. Hard rules live in CONSTITUTION.md. Work items live in GitHub issues (or the configured tracker).
+> **Reference document.** The contract for orchestrator sessions — how a spec becomes tracked work, how children are dispatched, how results are gated and merged, how self-healing happens. Hard rules live in [docs/CONSTITUTION.md](../CONSTITUTION.md). Work items live in GitHub issues (or the configured tracker).
 >
 > Sources: SPEC.md §Parallel Orchestrator Mode, §State Machine, §Budget; SPEC-ADDENDUM.md §Adapter Pattern, §Scan Agent Self-Healing, §Orchestrator Autonomy Fix, §PR Review, §Self-Healing, §Session Resumability (pre-decomposition, 2026-04-18). Consolidated against `daemon.md`, `api.md`, `pipeline.md`, `work-tracker.md`, `refinement.md`. External implementation reference for overlapping command/projector/thread-runtime ideas: [pingdotgg/t3code](https://github.com/pingdotgg/t3code).
 

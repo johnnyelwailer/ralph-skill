@@ -1,6 +1,6 @@
 # Pipeline
 
-> **Reference document.** The workflow step model: how pipelines are authored, compiled, executed, and mutated. Hard rules live in CONSTITUTION.md. Work items live in GitHub issues.
+> **Reference document.** The workflow step model: how pipelines are authored, compiled, executed, and mutated. Hard rules live in [docs/CONSTITUTION.md](../CONSTITUTION.md). Work items live in GitHub issues.
 >
 > Sources: SPEC.md §Configurable Agent Pipeline, §Reasoning Effort, §Vision Model; SPEC-ADDENDUM.md §Prompt Reference Rule, §`aloop start` Unification; CRs #287 (chain grammar), #135 (agent CLI), #94 (data-driven), #191 (compile step).
 
@@ -386,7 +386,7 @@ Variables resolved at two stages:
 | `{{VALIDATION_COMMANDS}}` | Bulleted list of backpressure validation commands |
 | `{{SAFETY_RULES}}` | Bulleted list of project-specific safety rules |
 | `{{PROVIDER_HINTS}}` | Provider-specific guidance (subagent usage, output format hints) |
-| `{{CONSTITUTION}}` | Contents of `CONSTITUTION.md` (empty if absent) |
+| `{{CONSTITUTION}}` | Contents of the active constitution (`docs/CONSTITUTION.md` for this repo; `<project>/CONSTITUTION.md` for setup-generated target projects; empty if absent) |
 | `{{SUBAGENT_HINTS}}` | Per-phase subagent delegation hints (only for providers with delegation support) |
 | `{{include:path}}` | Inlined file contents |
 

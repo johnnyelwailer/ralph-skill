@@ -2,7 +2,7 @@
 
 > **Reference document.** Invariants and contracts for the `aloopd` daemon — the long-running service that owns session state, scheduling, and event aggregation.
 >
-> Hard rules live in CONSTITUTION.md. Work items live in GitHub issues.
+> Hard rules live in [docs/CONSTITUTION.md](../CONSTITUTION.md). Work items live in GitHub issues.
 >
 > External implementation reference for overlapping server-backed project/thread/session runtime concepts: [pingdotgg/t3code](https://github.com/pingdotgg/t3code).
 

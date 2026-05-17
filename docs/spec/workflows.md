@@ -1,6 +1,6 @@
 # Workflows
 
-> **Reference document.** The shipped workflow catalog and the rules for selecting one per Story. A workflow is data — a YAML file describing trigger-keyed `on:` handlers, handler-local pipelines/finalizers, and per-step agent/exec assignments. The daemon executes any workflow uniformly. This document specifies the ones that ship and how the orchestrator picks the right one for each Story. Hard rules live in CONSTITUTION.md. Work items live in GitHub issues.
+> **Reference document.** The shipped workflow catalog and the rules for selecting one per Story. A workflow is data — a YAML file describing trigger-keyed `on:` handlers, handler-local pipelines/finalizers, and per-step agent/exec assignments. The daemon executes any workflow uniformly. This document specifies the ones that ship and how the orchestrator picks the right one for each Story. Hard rules live in [docs/CONSTITUTION.md](../CONSTITUTION.md). Work items live in GitHub issues.
 >
 > Sources: CR #281 (specialized agent roles), CR #275 (wave + focus dispatch), `pipeline.md` (workflow mechanism), `agents.md` (per-role contracts), `work-tracker.md` (Story metadata fields).
 

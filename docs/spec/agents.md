@@ -2,7 +2,7 @@
 
 > **Reference document.** Per-agent contracts for the bundled agent catalog. What each agent reads, writes, and commits to. What it may do and must not. Agents are **workflow participants**, not built-in roles — projects can add, remove, or replace any of them via workflow YAML.
 >
-> Hard rules live in CONSTITUTION.md. Work items live in GitHub issues.
+> Hard rules live in [docs/CONSTITUTION.md](../CONSTITUTION.md). Work items live in GitHub issues.
 >
 > Sources: SPEC.md §Proof-of-Work Phase, §QA Agent, §Spec-Gap Analysis, §Documentation Sync, §CLAUDECODE Sanitization (pre-decomposition, 2026-04-18). Consolidated against `pipeline.md`, `provider-contract.md`, `work-tracker.md`, `refinement.md`.
 

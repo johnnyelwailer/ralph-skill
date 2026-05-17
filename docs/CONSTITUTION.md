@@ -2,7 +2,7 @@
 
 These rules are enforced at every stage of the pipeline. Violating any rule means the PR gets rejected. If an issue's scope conflicts with a rule, flag it — do not implement the violation.
 
-The constitution is law. Specs describe the system; this document constrains it.
+The constitution is law. Specs describe the system; this document constrains it. In this repository, the constitution path is `docs/CONSTITUTION.md`. Do not assume a root `CONSTITUTION.md` exists here.
 
 ---
 
@@ -23,6 +23,9 @@ The constitution is law. Specs describe the system; this document constrains it.
 8. **One process owns concurrency.** The scheduler is the single authority over what runs when. Every turn — standalone, orchestrator, child — acquires a permit before provider invocation. No bypasses, not even for single-session local runs.
 9. **Tracker is an abstraction.** GitHub is one `TrackerAdapter` among many; `builtin` is a first-class offline alternative. Orchestrator prompts are tracker-agnostic (`WorkItem`, `Epic`, `Story`, `ChangeSet`). No `gh`-specific terms leak upstream of the adapter.
 10. **Provider is an abstraction.** Five shipped adapters (OpenCode, Copilot, Codex, Gemini, Claude) implement one `ProviderAdapter` interface. The chain grammar (`provider[/track][@version]`) and mandatory per-turn fallthrough are universal; round-robin is an authoring pattern at the workflow level, never a runtime mode.
+
+**Architecture corollary — product behavior beats loose parts.** A primitive is not done until it participates in the setup-to-maintenance path: setup project → mark ready → start session → acquire permit → run provider turn → stream/log events → validate → update tracker/session → continue or stop. Unit-tested pieces that cannot be driven through CLI/API/dashboard are scaffolding, not product.
+
 ## III. Data-Driven
 
 11. **100% data-driven workflow.** No hardcoded paths, prompt names, thresholds, intervals, handler sequences, or agent rosters in code. Workflows live in workflow YAML; providers in `providers.yml`; daemon settings in `daemon.yml`; project defaults in `aloop/config.yml`. The code reads these; it never encodes them.

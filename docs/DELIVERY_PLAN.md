@@ -14,6 +14,14 @@ Spec is on branch `next`. Code lands on `next` (for now); a future `main` merge 
 4. **Each milestone should unlock the next.** If M5 doesn't visibly unlock something in M6, the plan is wrong.
 5. **User-observable behavior is the acceptance.** Not "code compiles" — "you can run command X and see result Y."
 
+The product path is the controlling example for every milestone:
+
+```text
+setup project -> mark ready -> start session -> acquire permit -> run provider turn -> stream/log events -> validate -> update tracker/session -> continue or stop
+```
+
+Milestones may build internal pieces, but they are not accepted as done unless they move this path forward. If a milestone adds a loose primitive, its test must show how the primitive is called by, or will be called by, the product path.
+
 ## Setup delivery note
 
 The new setup architecture is **cross-cutting**, not one isolated milestone. It lands in layers:

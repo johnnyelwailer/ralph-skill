@@ -1,6 +1,6 @@
 # Loop Invariants
 
-> **Reference document.** The state-machine invariants every session (standalone, orchestrator, child) must obey. Hard rules live in CONSTITUTION.md. Work items live in GitHub issues.
+> **Reference document.** The state-machine invariants every session (standalone, orchestrator, child) must obey. Hard rules live in [docs/CONSTITUTION.md](../CONSTITUTION.md). Work items live in GitHub issues.
 >
 > Sources: SPEC.md §Mandatory Final Review Gate, §Phase Advancement Only on Success; SPEC-ADDENDUM.md §Orchestrate Mode: No Iteration Cap, §Scan Agent Self-Healing, §Loop Flag `--no-task-exit` (pre-decomposition, 2026-04-18).
 

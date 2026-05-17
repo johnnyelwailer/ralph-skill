@@ -1,6 +1,6 @@
 # Metrics
 
-> **Reference document.** The canonical catalog of metrics aloop emits, stores, exposes, and consumes. Metrics are load-bearing: self-healing can't detect anomalies without them, self-tuning can't close a loop without them, the orchestrator can't gate decisions without them. Hard rules live in CONSTITUTION.md. Work items live in GitHub issues.
+> **Reference document.** The canonical catalog of metrics aloop emits, stores, exposes, and consumes. Metrics are load-bearing: self-healing can't detect anomalies without them, self-tuning can't close a loop without them, the orchestrator can't gate decisions without them. Hard rules live in [docs/CONSTITUTION.md](../CONSTITUTION.md). Work items live in GitHub issues.
 >
 > "Good metrics are hard to get, but good metrics are key. A complex autonomous system must self-heal and self-improve — and metrics are the connective tissue."
 

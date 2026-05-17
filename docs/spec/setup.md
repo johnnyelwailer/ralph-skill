@@ -1,6 +1,6 @@
 # Setup
 
-> **Reference document.** How aloop onboards a new project — a daemon-owned, long-lived **setup orchestration** surfaced through multiple entry points (CLI, dashboard, external skill/chat hosts) and powered by discovered intelligence providers / agent harnesses. Hard rules live in CONSTITUTION.md. Work items live in GitHub issues (or the configured tracker).
+> **Reference document.** How aloop onboards a new project — a daemon-owned, long-lived **setup orchestration** surfaced through multiple entry points (CLI, dashboard, external skill/chat hosts) and powered by discovered intelligence providers / agent harnesses. Hard rules live in [docs/CONSTITUTION.md](../CONSTITUTION.md). Work items live in GitHub issues (or the configured tracker).
 >
 > Setup is the single gate between "a repository exists" and "aloop can run a loop against it." A misconfigured setup never recovers — every downstream subsystem (scheduler, orchestrator, tracker adapter, provider chain) reads the artifacts setup produces.
 >

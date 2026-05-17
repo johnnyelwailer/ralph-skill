@@ -1,6 +1,6 @@
 # Provider Contract
 
-> **Reference document.** Contracts between the daemon's scheduler, provider adapters, and workflows. Hard rules live in CONSTITUTION.md. Work items live in GitHub issues.
+> **Reference document.** Contracts between the daemon's scheduler, provider adapters, and workflows. Hard rules live in [docs/CONSTITUTION.md](../CONSTITUTION.md). Work items live in GitHub issues.
 >
 > Sources: SPEC.md §Global Provider Health & Rate-Limit Resilience, §OpenCode First-Class Parity, §OpenRouter Cost Monitoring; CR #287 (aloop-runner foundation), #288 (runtime override policy), #302 (provider load balancing). External implementation reference for overlapping provider-runtime ideas: [pingdotgg/t3code](https://github.com/pingdotgg/t3code), especially its provider adapter shape and canonical provider runtime event stream.
 

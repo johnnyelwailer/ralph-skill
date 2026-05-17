@@ -4,7 +4,7 @@
 >
 > Every action against aloop goes through this API. No side channels.
 >
-> Hard rules live in CONSTITUTION.md. Work items live in GitHub issues.
+> Hard rules live in [docs/CONSTITUTION.md](../CONSTITUTION.md). Work items live in GitHub issues.
 >
 > External implementation reference for overlapping command, thread, approval, proposed-plan, checkpoint, diff, and provider-streaming shapes: [pingdotgg/t3code](https://github.com/pingdotgg/t3code).
 

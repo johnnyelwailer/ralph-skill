@@ -2,7 +2,7 @@
 
 > **Reference document.** The event bus, JSONL log schema, SSE streaming contract, and projector model for aloop's observability layer.
 >
-> Hard rules live in CONSTITUTION.md. Work items live in GitHub issues.
+> Hard rules live in [docs/CONSTITUTION.md](../CONSTITUTION.md). Work items live in GitHub issues.
 >
 > External implementation reference for overlapping trace/event concepts: [pingdotgg/t3code](https://github.com/pingdotgg/t3code), especially its local `server.trace.ndjson`, provider event NDJSON, OTLP export path, and trace/debugging guide.
 

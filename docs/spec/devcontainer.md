@@ -1,6 +1,6 @@
 # Sandboxing
 
-> **Reference document.** How aloop sessions run inside sandboxes. In v1, the concrete sandbox backend is the project's VS Code / Docker devcontainer. Longer term this broadens into backend-neutral sandboxing, with devcontainer as one backend and `sandbox-core` as the planned abstraction seam for local Docker and hosted sandbox backends. Hard rules live in CONSTITUTION.md. Work items live in GitHub issues.
+> **Reference document.** How aloop sessions run inside sandboxes. In v1, the concrete sandbox backend is the project's VS Code / Docker devcontainer. Longer term this broadens into backend-neutral sandboxing, with devcontainer as one backend and `sandbox-core` as the planned abstraction seam for local Docker and hosted sandbox backends. Hard rules live in [docs/CONSTITUTION.md](../CONSTITUTION.md). Work items live in GitHub issues.
 >
 > Sources: SPEC.md §Devcontainer Support (pre-decomposition, 2026-04-18). Consolidated against `daemon.md`, `security.md`, `provider-contract.md`.
 

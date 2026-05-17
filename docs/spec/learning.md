@@ -1,6 +1,6 @@
 # Learning
 
-> **Reference document.** How aloop accumulates evidence about its own performance over time and turns that evidence into improvements — without crossing into Level-4 self-rewriting. The catalog of methodologies considered, the v1 minimum that makes future learning possible, and the explicit deferrals. Hard rules live in CONSTITUTION.md. Work items live in GitHub issues.
+> **Reference document.** How aloop accumulates evidence about its own performance over time and turns that evidence into improvements — without crossing into Level-4 self-rewriting. The catalog of methodologies considered, the v1 minimum that makes future learning possible, and the explicit deferrals. Hard rules live in [docs/CONSTITUTION.md](../CONSTITUTION.md). Work items live in GitHub issues.
 >
 > Distinct from `metrics.md` (what we measure) and `self-improvement.md` (the four-level framework). This file is the **methodology layer**: given metrics + self-improvement bounds, *how* does the system learn what to change?
 
