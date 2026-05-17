@@ -12,7 +12,7 @@ function makeDeps(overrides?: Partial<MetricsDeps>): MetricsDeps {
   return {
     scheduler: overrides?.scheduler ?? makeMockScheduler(),
     providerHealth: overrides?.providerHealth ?? new InMemoryProviderHealthStore([]),
-    systemSample: overrides?.systemSample ?? (() => undefined),
+    systemSample: overrides?.systemSample ?? (() => ({ cpuPct: 0, memPct: 0, loadAvg: 0 })),
   };
 }
 

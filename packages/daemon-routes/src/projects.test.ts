@@ -448,7 +448,7 @@ describe("PATCH /v1/projects/:id error handling", () => {
     });
     const res = await handleProjects(req, deps, `/v1/projects/${created.id}`);
     expect(res!.status).toBe(400);
-    const body = await resJson<{ error: { code: string } }>(res!);
+    const body = await resJson<{ error: { code: string; message?: string } }>(res!);
     expect(body.error.code).toBe("bad_request");
     expect(body.error.message).toContain("no updatable fields");
   });

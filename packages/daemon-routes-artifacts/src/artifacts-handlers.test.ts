@@ -3,26 +3,29 @@ import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { handleArtifacts, type ArtifactsDeps } from "./artifacts-handlers.ts";
-import type { ArtifactKind } from "@aloop/state-sqlite";
+import type { ArtifactFilter, ArtifactKind } from "@aloop/state-sqlite";
 
 // ─── Minimal ArtifactRegistry mock ─────────────────────────────────────────
 
 type MockArtifact = {
-  id: string;
-  project_id: string;
-  session_id: string | null;
-  setup_run_id: string | null;
-  work_item_key: string | null;
-  kind: ArtifactKind;
-  phase: string | null;
-  label: string | null;
-  filename: string;
-  media_type: string;
-  bytes: number;
-  composer_turn_id: string | null;
-  control_subagent_run_id: string | null;
-  created_at: string;
-  updated_at: string;
+  readonly _v: 1;
+  readonly id: string;
+  readonly project_id: string;
+  readonly session_id: string | null;
+  readonly setup_run_id: string | null;
+  readonly work_item_key: string | null;
+  readonly kind: ArtifactKind;
+  readonly phase: string | null;
+  readonly label: string | null;
+  readonly filename: string;
+  readonly media_type: string;
+  readonly bytes: number;
+  readonly url: string;
+  readonly composer_turn_id: string | null;
+  readonly control_subagent_run_id: string | null;
+  readonly incubation: null;
+  readonly created_at: string;
+  readonly updated_at: string;
 };
 
 function makeArtifactRegistry(): {
@@ -33,15 +36,16 @@ function makeArtifactRegistry(): {
   let counter = 0;
 
   const registry: ArtifactsDeps["registry"] = {
-    list(filter) {
+    list(filter?: ArtifactFilter) {
       const all = Array.from(storage.values());
       return all.filter((a) => {
+        if (filter === undefined) return true;
         if (filter.project_id && a.project_id !== filter.project_id) return false;
         if (filter.session_id && a.session_id !== filter.session_id) return false;
         if (filter.setup_run_id && a.setup_run_id !== filter.setup_run_id) return false;
         if (filter.work_item_key && a.work_item_key !== filter.work_item_key) return false;
         if (filter.phase && a.phase !== filter.phase) return false;
-        if (filter.kind && a.kind !== filter.kind) return false;
+        if (filter.type && a.kind !== filter.type) return false;
         if (filter.composer_turn_id && a.composer_turn_id !== filter.composer_turn_id) return false;
         if (filter.control_subagent_run_id && a.control_subagent_run_id !== filter.control_subagent_run_id) return false;
         return true;
@@ -65,8 +69,10 @@ function makeArtifactRegistry(): {
         filename: input.filename,
         media_type: input.media_type,
         bytes: input.bytes,
+        url: `/artifacts/${id}/content`,
         composer_turn_id: input.composer_turn_id ?? null,
         control_subagent_run_id: input.control_subagent_run_id ?? null,
+        incubation: null,
         created_at: now,
         updated_at: now,
       };

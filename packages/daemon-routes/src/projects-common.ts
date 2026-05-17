@@ -89,7 +89,7 @@ export type ProjectCounts = {
  * Count projects in a workspace grouped by status.
  * Uses the listProjects results to derive the count shape.
  */
-export function countWorkspaceProjects(projects: Array<{ projectStatus: string }>): ProjectCounts {
+export function countWorkspaceProjects(projects: Array<{ projectStatus?: string }>): ProjectCounts {
   const byStatus: Record<string, number> = {};
   for (const p of projects) {
     const s = p.projectStatus ?? "unknown";

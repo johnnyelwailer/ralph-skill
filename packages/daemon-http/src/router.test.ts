@@ -10,6 +10,7 @@ function makeDeps() {
         headers: { "content-type": "application/json" },
       });
     },
+    handleMetrics: () => undefined,
     handleProjects: (req: Request, pathname: string) => {
       if (req.method !== "GET" || pathname !== "/v1/projects") return undefined;
       return new Response(JSON.stringify({ _v: 1, items: [] }), {
@@ -144,6 +145,7 @@ describe("makeFetchHandler dispatch order", () => {
         }
         return undefined;
       },
+      handleMetrics: () => undefined,
       handleProjects: (req: Request, pathname: string) => {
         if (pathname === "/v1/projects") {
           return new Response(JSON.stringify({ _v: 1, handler: "projects" }), {
@@ -277,6 +279,7 @@ describe("makeFetchHandler sessions dispatch", () => {
   test("dispatches GET /v1/sessions to the sessions route callback", async () => {
     const deps = {
       handleDaemon: () => undefined,
+      handleMetrics: () => undefined,
       handleProjects: () => undefined,
       handleProviders: () => undefined,
       handleScheduler: () => undefined,
@@ -307,6 +310,7 @@ describe("makeFetchHandler sessions dispatch", () => {
   test("dispatches POST /v1/sessions to the sessions route callback", async () => {
     const deps = {
       handleDaemon: () => undefined,
+      handleMetrics: () => undefined,
       handleProjects: () => undefined,
       handleProviders: () => undefined,
       handleScheduler: () => undefined,
@@ -337,6 +341,7 @@ describe("makeFetchHandler sessions dispatch", () => {
   test("sessions handler returning undefined for non-sessions path falls through to 404", async () => {
     const deps = {
       handleDaemon: () => undefined,
+      handleMetrics: () => undefined,
       handleProjects: () => undefined,
       handleProviders: () => undefined,
       handleScheduler: () => undefined,

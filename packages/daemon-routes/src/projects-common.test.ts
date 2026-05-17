@@ -170,7 +170,7 @@ describe("projectResponse", () => {
     addedAt: "2024-01-01T00:00:00.000Z",
     lastActiveAt: "2024-01-02T00:00:00.000Z" as string | null,
     updatedAt: "2024-01-03T00:00:00.000Z",
-    workspaceMemberships: [] as ReadonlyArray<{ workspaceId: string; role: string; addedAt: string }>,
+    workspaceMemberships: [] as ReadonlyArray<{ readonly workspaceId: string; readonly role: "primary" | "supporting" | "dependency" | "experiment"; readonly addedAt: string }>,
     ...overrides,
   });
 

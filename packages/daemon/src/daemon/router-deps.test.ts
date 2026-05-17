@@ -48,6 +48,7 @@ function makeInput(): MakeRouterDepsInput {
   );
 
   return {
+    db: undefined as never,
     registry: {
       listProjects: () =>
         Promise.resolve({

@@ -6,7 +6,7 @@ import type { SchedulerService } from "@aloop/scheduler";
 export type MetricsDeps = {
   readonly scheduler: SchedulerService;
   readonly providerHealth: InMemoryProviderHealthStore;
-  readonly systemSample: () => SystemSample;
+  readonly systemSample: (() => SystemSample) | undefined;
 };
 
 export type MetricsAggregatesDeps = {

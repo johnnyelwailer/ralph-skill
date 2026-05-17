@@ -119,7 +119,7 @@ describe("orch_recall provider", () => {
 
     const provider = createOrchRecallProvider({ sessionsDir: "/tmp", db });
     const input = makeFakeInput("s1", "p1");
-    input.budgetTokens = 100;
+    Object.defineProperty(input, "budgetTokens", { value: 100 });
     const blocks = await provider.build(input);
     expect(Array.isArray(blocks)).toBe(true);
   });
