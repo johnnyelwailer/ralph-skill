@@ -300,5 +300,105 @@ describe("handleTurns", () => {
       expect(payloads).toContainEqual({ session_id: "s_live_no_log", turn_id: "t_live", type: "start" });
       expect(payloads).toContainEqual({ session_id: "s_live_no_log", turn_id: "t_live", type: "end" });
     });
+
+    test("skips malformed JSON lines in log.jsonl without crashing", async () => {
+      const deps = makeDeps();
+      const sessionDir = join(deps.sessionsDir(), "s_malformed");
+      mkdirSync(sessionDir, { recursive: true });
+
+      // Write a log with valid lines interspersed with malformed lines
+      writeFileSync(
+        join(sessionDir, "log.jsonl"),
+        [
+          // Valid event — wrong topic, will be filtered
+          JSON.stringify({
+            _v: 1,
+            id: "evt_1",
+            timestamp: "2026-04-30T00:00:00.000Z",
+            topic: "session.update",
+            data: { session_id: "s_malformed", phase: "build" },
+          }) + "\n",
+          // Not JSON at all — malformed line
+          "this is not json\n",
+          // Valid agent.chunk event for the target turn
+          JSON.stringify({
+            _v: 1,
+            id: "evt_2",
+            timestamp: "2026-04-30T00:00:01.000Z",
+            topic: "agent.chunk",
+            data: {
+              session_id: "s_malformed",
+              turn_id: "t_malformed",
+              sequence: 0,
+              type: "text",
+              content: { delta: "Valid chunk" },
+              final: false,
+            },
+          }) + "\n",
+          // Truncated JSON — parse error
+          '{"_v":1,"id":"evt_3","timestamp":"2026-04-30T00:00:02.000Z","topic":"agent.chunk","data":{"session_id":"s_malformed","turn_id":"t_malformed",',
+        ].join(""),
+        "utf-8",
+      );
+
+      const req = new Request("http://localhost/v1/sessions/s_malformed/turns/t_malformed/chunks?replay=true", {
+        method: "GET",
+      });
+      const res = await handleTurns(req, deps, "/v1/sessions/s_malformed/turns/t_malformed/chunks");
+      expect(res!.status).toBe(200);
+
+      const lines = await collectSSELines(res!);
+      const payloads = lines.map((l) => JSON.parse(l));
+
+      // Must emit start and end markers
+      expect(payloads).toContainEqual({ session_id: "s_malformed", turn_id: "t_malformed", type: "start" });
+      expect(payloads).toContainEqual({ session_id: "s_malformed", turn_id: "t_malformed", type: "end" });
+
+      // The valid agent.chunk must still be present despite surrounding malformed lines
+      expect(payloads).toContainEqual({
+        session_id: "s_malformed",
+        turn_id: "t_malformed",
+        sequence: 0,
+        type: "text",
+        content: { delta: "Valid chunk" },
+        final: false,
+      });
+    });
+
+    test("returns 405 for PUT method", async () => {
+      const deps = makeDeps();
+      const req = new Request("http://localhost/v1/sessions/s_1/turns/t_1/chunks", {
+        method: "PUT",
+      });
+      const res = await handleTurns(req, deps, "/v1/sessions/s_1/turns/t_1/chunks");
+      expect(res!.status).toBe(405);
+    });
+
+    test("returns 405 for DELETE method", async () => {
+      const deps = makeDeps();
+      const req = new Request("http://localhost/v1/sessions/s_1/turns/t_1/chunks", {
+        method: "DELETE",
+      });
+      const res = await handleTurns(req, deps, "/v1/sessions/s_1/turns/t_1/chunks");
+      expect(res!.status).toBe(405);
+    });
+
+    test("handles empty turn_id segment in path — returns undefined (no match)", async () => {
+      const deps = makeDeps();
+      // /v1/sessions/s_1/turns//chunks — empty turn_id
+      const req = new Request("http://localhost/v1/sessions/s_1/turns//chunks", { method: "GET" });
+      const result = await handleTurns(req, deps, "/v1/sessions/s_1/turns//chunks");
+      // Regex requires non-empty turn_id, so no match → undefined
+      expect(result).toBeUndefined();
+    });
+
+    test("handles empty session_id segment in path — returns undefined (no match)", async () => {
+      const deps = makeDeps();
+      // /v1/sessions//turns/t_1/chunks — empty session_id
+      const req = new Request("http://localhost/v1/sessions//turns/t_1/chunks", { method: "GET" });
+      const result = await handleTurns(req, deps, "/v1/sessions//turns/t_1/chunks");
+      // Regex requires non-empty session_id, so no match → undefined
+      expect(result).toBeUndefined();
+    });
   });
 });
