@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { extractErrorMessage, isAbortError } from "./opencode-errors.ts";
+import { createErrorChunk, extractErrorMessage, isAbortError } from "./opencode-errors.ts";
 
 // ─── extractErrorMessage ──────────────────────────────────────────────────────
 
@@ -120,5 +120,68 @@ describe("isAbortError", () => {
 
   test("returns false for numbers", () => {
     expect(isAbortError(42)).toBe(false);
+  });
+});
+
+// ─── createErrorChunk ─────────────────────────────────────────────────────────
+
+describe("createErrorChunk", () => {
+  test("returns error chunk with timeout classification when timedOut is true", () => {
+    const result = createErrorChunk(new Error("test"), true);
+    expect(result.type).toBe("error");
+    expect(result.content.classification).toBe("timeout");
+    expect(result.content.retriable).toBe(true);
+    expect(result.content.message).toBe("test");
+  });
+
+  test("returns error chunk with extracted message from Error", () => {
+    const result = createErrorChunk(new Error("connection failed"), false);
+    expect(result.type).toBe("error");
+    expect(result.content.message).toBe("connection failed");
+  });
+
+  test("returns error chunk with extracted message from plain string", () => {
+    const result = createErrorChunk("raw error string", false);
+    expect(result.content.message).toBe("raw error string");
+  });
+
+  test("returns error chunk with extracted message from record.stderr", () => {
+    const result = createErrorChunk({ stderr: "server error output" }, false);
+    expect(result.content.message).toBe("server error output");
+  });
+
+  test("returns error chunk with extracted message from record.data.message", () => {
+    const result = createErrorChunk({ data: { message: "inner error" } }, false);
+    expect(result.content.message).toBe("inner error");
+  });
+
+  test("returns error chunk with unknown classification for unrecognized errors", () => {
+    const result = createErrorChunk({ code: 42 }, false);
+    expect(result.content.classification).toBe("unknown");
+    expect(result.content.retriable).toBe(true);
+  });
+
+  test("returns rate_limit classification for rate limit errors", () => {
+    const result = createErrorChunk({ stderr: "rate limit exceeded" }, false);
+    expect(result.content.classification).toBe("rate_limit");
+    expect(result.content.retriable).toBe(true);
+  });
+
+  test("returns auth classification for auth errors with non-retriable flag", () => {
+    const result = createErrorChunk({ stderr: "unauthorized" }, false);
+    expect(result.content.classification).toBe("auth");
+    expect(result.content.retriable).toBe(false);
+  });
+
+  test("returns concurrent_cap classification for concurrent session errors", () => {
+    const result = createErrorChunk({ stderr: "another session is already running" }, false);
+    expect(result.content.classification).toBe("concurrent_cap");
+    expect(result.content.retriable).toBe(true);
+  });
+
+  test("timedOut flag takes priority over error content", () => {
+    const result = createErrorChunk({ stderr: "unauthorized" }, true);
+    expect(result.content.classification).toBe("timeout");
+    expect(result.content.retriable).toBe(true);
   });
 });

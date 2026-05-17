@@ -104,6 +104,17 @@ describe("translateParts", () => {
       { type: "text", content: { delta: "done" } },
     ]);
   });
+
+  test("tool result with undefined output emits empty string", () => {
+    // stringifyToolOutput(undefined) returns "" — undefined signals no output collected yet
+    const input = [
+      { id: "tool1", type: "tool", callID: "call_1", tool: "read_file", state: { status: "completed", input: { path: "a.txt" } } },
+    ];
+    expect(translateParts(input)).toEqual([
+      { type: "tool_call", content: { name: "read_file", arguments: '{"path":"a.txt"}' } },
+      { type: "tool_result", content: { id: "call_1", output: "" } },
+    ]);
+  });
 });
 
 describe("buildUsageChunk", () => {
