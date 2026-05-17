@@ -163,6 +163,21 @@ describe("deleteSessionHandler", () => {
     const body = await resJson(getRes);
     expect(body.status).toBe("stopped");
   });
+
+  for (const status of ["completed", "failed", "archived"] as const) {
+    test(`returns 409 when session is in ${status} status (terminal)`, async () => {
+      deps.sessions.updateStatus(sessionId, status);
+      const req = new Request(`http://localhost/v1/sessions/${sessionId}?mode=graceful`, {
+        method: "DELETE",
+      });
+      const res = deleteSessionHandler(sessionId, req, deps);
+      expect(res.status).toBe(409);
+      const body = await resJson(res);
+      expect(body.error.code).toBe("session_not_stoppable");
+      expect(body.error.message).toContain("cannot delete session");
+      expect(body.error.details).toMatchObject({ id: sessionId, status });
+    });
+  }
 });
 
 // ─────────────────────────────────────────────────────────────────
