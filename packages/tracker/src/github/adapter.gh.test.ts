@@ -24,7 +24,7 @@ describe("parseGitHubAge parsing", () => {
     const ageStr = "5 hours ago";
     const match = ageStr.match(/(\d+)\s+(\w+)\s+ago/) as RegExpMatchArray;
     expect(match).toBeTruthy();
-    expect(match[2]!).toBe("hour");
+    expect(match[2]!.replace(/s$/, "")).toBe("hour");
   });
 
   test("parses days ago correctly", () => {
