@@ -153,7 +153,7 @@ describe("getMetricAggregates", () => {
     const req = new Request("http://x/v1/metrics/aggregates");
     const res = await getMetricAggregates(req, deps);
     expect(res.status).toBe(400);
-    const body = await res.json();
+    const body = await res.json() as unknown as { error: { code: string; message: string } };
     expect(body.error.code).toBe("bad_request");
     expect(body.error.message).toContain("metric query param is required");
   });
@@ -162,7 +162,7 @@ describe("getMetricAggregates", () => {
     const req = new Request("http://x/v1/metrics/aggregates?metric=cpu_usage&window=unknown");
     const res = await getMetricAggregates(req, deps);
     expect(res.status).toBe(400);
-    const body = await res.json();
+    const body = await res.json() as unknown as { error: { code: string; message: string } };
     expect(body.error.code).toBe("bad_request");
     expect(body.error.message).toContain("window must be 'rolling' or 'calendar'");
   });
@@ -171,7 +171,7 @@ describe("getMetricAggregates", () => {
     const req = new Request("http://x/v1/metrics/aggregates?metric=cpu_usage&stat=median");
     const res = await getMetricAggregates(req, deps);
     expect(res.status).toBe(400);
-    const body = await res.json();
+    const body = await res.json() as unknown as { error: { code: string; message: string } };
     expect(body.error.code).toBe("bad_request");
     expect(body.error.message).toContain("stat must be one of");
   });
@@ -180,7 +180,7 @@ describe("getMetricAggregates", () => {
     const req = new Request("http://x/v1/metrics/aggregates?metric=nonexistent");
     const res = await getMetricAggregates(req, deps);
     expect(res.status).toBe(200);
-    const body = await res.json();
+    const body = await res.json() as unknown as { _v: number; items: unknown[]; next_cursor: string | null };
     expect(body._v).toBe(1);
     expect(body.items).toEqual([]);
     expect(body.next_cursor).toBeNull();
@@ -202,7 +202,7 @@ describe("getMetricAggregates", () => {
     const req = new Request("http://x/v1/metrics/aggregates?metric=cpu_usage&window=rolling&stat=mean");
     const res = await getMetricAggregates(req, deps);
     expect(res.status).toBe(200);
-    const body = await res.json();
+    const body = await res.json() as unknown as { _v: number; items: Record<string, unknown>[]; next_cursor: string | null };
     expect(body.items).toHaveLength(2);
     for (const item of body.items) {
       expect(item.metric_name).toBe("cpu_usage");
@@ -224,7 +224,7 @@ describe("getMetricAggregates", () => {
     `);
     const req = new Request("http://x/v1/metrics/aggregates?metric=response_time_ms&stat=p95");
     const res = await getMetricAggregates(req, deps);
-    const body = await res.json();
+    const body = await res.json() as unknown as { _v: number; items: Record<string, unknown>[]; next_cursor: string | null };
     expect(body.items[0].labels).toEqual({ endpoint: "/v1/chat" });
   });
 
@@ -239,7 +239,7 @@ describe("getMetricAggregates", () => {
     const req = new Request("http://x/v1/metrics/aggregates?metric=test_metric");
     const res = await getMetricAggregates(req, deps);
     expect(res.status).toBe(200);
-    const body = await res.json();
+    const body = await res.json() as unknown as { _v: number; items: Record<string, unknown>[]; next_cursor: string | null };
     expect(body.items).toHaveLength(1);
     expect(body.items[0].window_kind).toBe("rolling");
     expect(body.items[0].stat).toBe("mean");
@@ -260,7 +260,7 @@ describe("getMetricAggregates", () => {
     const req = new Request("http://x/v1/metrics/aggregates?metric=cpu_usage&window_hours=24");
     const res = await getMetricAggregates(req, deps);
     expect(res.status).toBe(200);
-    const body = await res.json();
+    const body = await res.json() as unknown as { _v: number; items: Record<string, unknown>[]; next_cursor: string | null };
     expect(body.items).toHaveLength(1);
     expect(body.items[0].value).toBe(42.0);
   });
@@ -282,7 +282,7 @@ describe("getMetricAggregates", () => {
     const req = new Request("http://x/v1/metrics/aggregates?metric=cpu_usage&limit=3");
     const res = await getMetricAggregates(req, deps);
     expect(res.status).toBe(200);
-    const body = await res.json();
+    const body = await res.json() as unknown as { _v: number; items: Record<string, unknown>[]; next_cursor: string | null };
     expect(body.items.length).toBe(3);
   });
 
@@ -297,7 +297,7 @@ describe("getMetricAggregates", () => {
     const req = new Request("http://x/v1/metrics/aggregates?metric=test_metric");
     const res = await getMetricAggregates(req, deps);
     expect(res.status).toBe(200);
-    const body = await res.json();
+    const body = await res.json() as unknown as { _v: number; items: Record<string, unknown>[]; next_cursor: string | null };
     expect(body.items).toHaveLength(1);
   });
 
@@ -318,7 +318,7 @@ describe("getMetricAggregates", () => {
     const req = new Request("http://x/v1/metrics/aggregates?metric=test_metric");
     const res = await getMetricAggregates(req, deps);
     expect(res.status).toBe(200);
-    const body = await res.json();
+    const body = await res.json() as unknown as { _v: number; items: Record<string, unknown>[]; next_cursor: string | null };
     expect(body.items.length).toBe(100);
   });
 
@@ -330,7 +330,7 @@ describe("getMetricAggregates", () => {
     const badReq = new Request("http://x/v1/metrics/aggregates?metric=x");
     const res = await getMetricAggregates(badReq, { db: badDb });
     expect(res.status).toBe(500);
-    const body = await res.json();
+    const body = await res.json() as unknown as { _v: number; items: Record<string, unknown>[]; next_cursor: string | null };
     expect(body.error.code).toBe("internal_error");
     badDb.close();
   });
@@ -343,7 +343,7 @@ describe("getMetricHistory", () => {
     const req = new Request("http://x/v1/metrics/history");
     const res = await getMetricHistory(req, deps);
     expect(res.status).toBe(400);
-    const body = await res.json();
+    const body = await res.json() as unknown as { _v: number; items: Record<string, unknown>[]; next_cursor: string | null };
     expect(body.error.code).toBe("bad_request");
   });
 
@@ -351,7 +351,7 @@ describe("getMetricHistory", () => {
     const req = new Request("http://x/v1/metrics/history?metric=cpu_usage");
     const res = await getMetricHistory(req, deps);
     expect(res.status).toBe(200);
-    const body = await res.json();
+    const body = await res.json() as unknown as { _v: number; items: Record<string, unknown>[]; next_cursor: string | null };
     expect(body._v).toBe(1);
     expect(body.items).toEqual([]);
     expect(body.next_cursor).toBeNull();
@@ -368,7 +368,7 @@ describe("getMetricHistory", () => {
     const req = new Request("http://x/v1/metrics/history?metric=cpu_usage");
     const res = await getMetricHistory(req, deps);
     expect(res.status).toBe(200);
-    const body = await res.json();
+    const body = await res.json() as unknown as { _v: number; items: Record<string, unknown>[]; next_cursor: string | null };
     expect(body.items).toHaveLength(3);
     expect(body.items[0].value).toBe(50.0); // newest first
     expect(body.items[2].value).toBe(40.0); // oldest last
@@ -381,7 +381,7 @@ describe("getMetricHistory", () => {
     `);
     const req = new Request("http://x/v1/metrics/history?metric=response_time");
     const res = await getMetricHistory(req, deps);
-    const body = await res.json();
+    const body = await res.json() as unknown as { _v: number; items: Record<string, unknown>[]; next_cursor: string | null };
     expect(body.items[0].labels).toEqual({ endpoint: "/api" });
   });
 
@@ -405,7 +405,7 @@ describe("getMetricHistory", () => {
     const badReq = new Request("http://x/v1/metrics/history?metric=x");
     const res = await getMetricHistory(badReq, { db: badDb });
     expect(res.status).toBe(500);
-    const body = await res.json();
+    const body = await res.json() as unknown as { _v: number; items: Record<string, unknown>[]; next_cursor: string | null };
     expect(body.error.code).toBe("internal_error");
     badDb.close();
   });
