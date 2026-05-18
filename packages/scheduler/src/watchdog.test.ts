@@ -399,3 +399,62 @@ describe("startSchedulerWatchdog with watchSessionBurnRates", () => {
     wd.stop(); // must not throw
   });
 });
+
+// ─── evaluateTriggers integration ───────────────────────────────────────────────
+
+describe("startSchedulerWatchdog with evaluateTriggers", () => {
+  test("calls evaluateTriggers on every tick when provided", async () => {
+    const calls: number[] = [];
+    const writer = makeFakeEventWriter();
+    const input = {
+      tickIntervalSeconds: () => 1,
+      expirePermits: async () => 0,
+      evaluateTriggers: async () => {
+        calls.push(Date.now());
+        return 0;
+      },
+      events: writer,
+    };
+
+    const wd = startSchedulerWatchdog(input as any);
+    await new Promise((r) => setTimeout(r, 3200));
+    wd.stop();
+
+    expect(calls.length).toBeGreaterThanOrEqual(2);
+    expect(calls.length).toBeLessThanOrEqual(4);
+  });
+
+  test("does not call evaluateTriggers when events is absent", async () => {
+    const calls: string[] = [];
+    const input = {
+      tickIntervalSeconds: () => 0.05,
+      expirePermits: async () => 0,
+      evaluateTriggers: async (events: unknown) => {
+        calls.push("called");
+        return 0;
+      },
+      // events intentionally omitted
+    };
+
+    const wd = startSchedulerWatchdog(input as any);
+    await new Promise((r) => setTimeout(r, 200));
+    wd.stop();
+
+    expect(calls).toHaveLength(0);
+  });
+
+  test("errors from evaluateTriggers are swallowed", async () => {
+    const input = {
+      tickIntervalSeconds: () => 0.05,
+      expirePermits: async () => 0,
+      evaluateTriggers: async () => {
+        throw new Error("trigger evaluation error");
+      },
+      events: makeFakeEventWriter(),
+    };
+
+    const wd = startSchedulerWatchdog(input as any);
+    await new Promise((r) => setTimeout(r, 1200));
+    wd.stop(); // must not throw
+  });
+});
