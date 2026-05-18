@@ -42,6 +42,11 @@ describe("SCHEDULER_KNOB_BOUNDS", () => {
     expect(SCHEDULER_KNOB_BOUNDS.watchdogStuckThresholdSeconds.max).toBe(3600);
   });
 
+  test("loadMax is bounded [0, 100]", () => {
+    expect(SCHEDULER_KNOB_BOUNDS.loadMax.min).toBe(0);
+    expect(SCHEDULER_KNOB_BOUNDS.loadMax.max).toBe(100);
+  });
+
   test("all bounds objects are deeply frozen (cannot be reassigned at runtime)", () => {
     // TypeScript's readonly is compile-time only — Bun executes the JS assignment.
     // We use Object.isFrozen to prove deep-frozen status rather than attempting
@@ -54,6 +59,7 @@ describe("SCHEDULER_KNOB_BOUNDS", () => {
     expect(Object.isFrozen(SCHEDULER_KNOB_BOUNDS.memMaxPct)).toBe(true);
     expect(Object.isFrozen(SCHEDULER_KNOB_BOUNDS.permitTtlDefaultSeconds)).toBe(true);
     expect(Object.isFrozen(SCHEDULER_KNOB_BOUNDS.watchdogStuckThresholdSeconds)).toBe(true);
+    expect(Object.isFrozen(SCHEDULER_KNOB_BOUNDS.loadMax)).toBe(true);
   });
 });
 
