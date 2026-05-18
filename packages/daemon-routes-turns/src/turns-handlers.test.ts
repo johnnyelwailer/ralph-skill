@@ -553,4 +553,234 @@ describe("handleTurns", () => {
       expect(body.session_id).toBe("s_abc");
     });
   });
+
+  describe("PATCH /v1/sessions/:id/turns/:turnId", () => {
+    async function patchTurn(sessionId: string, turnId: string, data: Record<string, unknown>, deps = makeDeps()) {
+      const req = new Request(`http://localhost/v1/sessions/${sessionId}/turns/${turnId}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(data),
+      });
+      return handleTurns(req, deps, `/v1/sessions/${sessionId}/turns/${turnId}`);
+    }
+
+    test("returns 404 when turn does not exist", async () => {
+      const deps = makeDeps();
+      const res = await patchTurn("s_missing", "t_missing", {}, deps);
+      expect(res!.status).toBe(404);
+      const body = await res!.json();
+      expect(body.error.code).toBe("turn_not_found");
+    });
+
+    test("returns 400 when body is not JSON", async () => {
+      const deps = makeDeps();
+      // First create a turn
+      const createReq = new Request("http://localhost/v1/sessions/s_abc/turns", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ turn_id: "t_patch_1" }),
+      });
+      await handleTurns(createReq, deps, "/v1/sessions/s_abc/turns");
+
+      const badReq = new Request("http://localhost/v1/sessions/s_abc/turns/t_patch_1", {
+        method: "PATCH",
+        headers: { "content-type": "text/plain" },
+        body: "not json",
+      });
+      const res = await handleTurns(badReq, deps, "/v1/sessions/s_abc/turns/t_patch_1");
+      expect(res!.status).toBe(400);
+    });
+
+    test("updates ended_at with a valid timestamp string", async () => {
+      const deps = makeDeps();
+      const createReq = new Request("http://localhost/v1/sessions/s_abc/turns", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ turn_id: "t_end_1" }),
+      });
+      await handleTurns(createReq, deps, "/v1/sessions/s_abc/turns");
+
+      const res = await patchTurn("s_abc", "t_end_1", { ended_at: "2026-01-01T12:00:00.000Z" }, deps);
+      expect(res!.status).toBe(200);
+      const body = await res!.json();
+      expect(body.ended_at).toBe("2026-01-01T12:00:00.000Z");
+    });
+
+    test("updates ended_at to null when null is sent", async () => {
+      const deps = makeDeps();
+      const createReq = new Request("http://localhost/v1/sessions/s_abc/turns", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ turn_id: "t_null_end" }),
+      });
+      await handleTurns(createReq, deps, "/v1/sessions/s_abc/turns");
+
+      // First set it to a value
+      await patchTurn("s_abc", "t_null_end", { ended_at: "2026-01-01T00:00:00.000Z" }, deps);
+      // Then set it back to null
+      const res = await patchTurn("s_abc", "t_null_end", { ended_at: null }, deps);
+      expect(res!.status).toBe(200);
+      const body = await res!.json();
+      expect(body.ended_at).toBeNull();
+    });
+
+    test("updates tokens_in", async () => {
+      const deps = makeDeps();
+      const createReq = new Request("http://localhost/v1/sessions/s_abc/turns", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ turn_id: "t_ti" }),
+      });
+      await handleTurns(createReq, deps, "/v1/sessions/s_abc/turns");
+
+      const res = await patchTurn("s_abc", "t_ti", { tokens_in: 1500 }, deps);
+      expect(res!.status).toBe(200);
+      const body = await res!.json();
+      expect(body.tokens_in).toBe(1500);
+    });
+
+    test("updates tokens_out", async () => {
+      const deps = makeDeps();
+      const createReq = new Request("http://localhost/v1/sessions/s_abc/turns", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ turn_id: "t_to" }),
+      });
+      await handleTurns(createReq, deps, "/v1/sessions/s_abc/turns");
+
+      const res = await patchTurn("s_abc", "t_to", { tokens_out: 3200 }, deps);
+      expect(res!.status).toBe(200);
+      const body = await res!.json();
+      expect(body.tokens_out).toBe(3200);
+    });
+
+    test("updates cost_usd", async () => {
+      const deps = makeDeps();
+      const createReq = new Request("http://localhost/v1/sessions/s_abc/turns", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ turn_id: "t_cu" }),
+      });
+      await handleTurns(createReq, deps, "/v1/sessions/s_abc/turns");
+
+      const res = await patchTurn("s_abc", "t_cu", { cost_usd: 0.05 }, deps);
+      expect(res!.status).toBe(200);
+      const body = await res!.json();
+      expect(body.cost_usd).toBe(0.05);
+    });
+
+    test("updates multiple fields in one request", async () => {
+      const deps = makeDeps();
+      const createReq = new Request("http://localhost/v1/sessions/s_multi/turns", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ turn_id: "t_multi" }),
+      });
+      await handleTurns(createReq, deps, "/v1/sessions/s_multi/turns");
+
+      const res = await patchTurn("s_multi", "t_multi", {
+        ended_at: "2026-06-01T10:00:00.000Z",
+        tokens_in: 500,
+        tokens_out: 1000,
+        cost_usd: 0.025,
+      }, deps);
+      expect(res!.status).toBe(200);
+      const body = await res!.json();
+      expect(body.ended_at).toBe("2026-06-01T10:00:00.000Z");
+      expect(body.tokens_in).toBe(500);
+      expect(body.tokens_out).toBe(1000);
+      expect(body.cost_usd).toBe(0.025);
+    });
+
+    test("partial update — only ended_at changes, others stay as created", async () => {
+      const deps = makeDeps();
+      const createReq = new Request("http://localhost/v1/sessions/s_part/turns", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ turn_id: "t_part" }),
+      });
+      await handleTurns(createReq, deps, "/v1/sessions/s_part/turns");
+
+      const res = await patchTurn("s_part", "t_part", { ended_at: "2026-07-01T00:00:00.000Z" }, deps);
+      expect(res!.status).toBe(200);
+      const body = await res!.json();
+      expect(body.ended_at).toBe("2026-07-01T00:00:00.000Z");
+      expect(body.tokens_in).toBe(0);  // default from DB
+      expect(body.tokens_out).toBe(0);  // default from DB
+      expect(body.cost_usd).toBe(0);    // default from DB
+    });
+
+    test("ignores negative tokens_in — treats as undefined", async () => {
+      const deps = makeDeps();
+      const createReq = new Request("http://localhost/v1/sessions/s_neg/turns", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ turn_id: "t_neg" }),
+      });
+      await handleTurns(createReq, deps, "/v1/sessions/s_neg/turns");
+
+      const res = await patchTurn("s_neg", "t_neg", { tokens_in: -10 }, deps);
+      expect(res!.status).toBe(200);
+      const body = await res!.json();
+      expect(body.tokens_in).toBe(0); // default, since -10 is ignored
+    });
+
+    test("ignores negative cost_usd — treats as undefined", async () => {
+      const deps = makeDeps();
+      const createReq = new Request("http://localhost/v1/sessions/s_nc/turns", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ turn_id: "t_nc" }),
+      });
+      await handleTurns(createReq, deps, "/v1/sessions/s_nc/turns");
+
+      const res = await patchTurn("s_nc", "t_nc", { cost_usd: -1.5 }, deps);
+      expect(res!.status).toBe(200);
+      const body = await res!.json();
+      expect(body.cost_usd).toBe(0); // default, since -1.5 is ignored
+    });
+
+    test("converts non-string ended_at to string", async () => {
+      const deps = makeDeps();
+      const createReq = new Request("http://localhost/v1/sessions/s_str/turns", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ turn_id: "t_str" }),
+      });
+      await handleTurns(createReq, deps, "/v1/sessions/s_str/turns");
+
+      // Number passed as ended_at should be coerced to string
+      const res = await patchTurn("s_str", "t_str", { ended_at: 1234567890000 }, deps);
+      expect(res!.status).toBe(200);
+      const body = await res!.json();
+      expect(body.ended_at).toBe("1234567890000");
+    });
+  });
+
+  describe("DELETE /v1/sessions/:id/turns/:turnId", () => {
+    test("returns 404 when turn does not exist", async () => {
+      const deps = makeDeps();
+      const req = new Request("http://localhost/v1/sessions/s_abc/turns/t_missing", { method: "DELETE" });
+      const res = await handleTurns(req, deps, "/v1/sessions/s_abc/turns/t_missing");
+      expect(res!.status).toBe(404);
+      const body = await res!.json();
+      expect(body.error.code).toBe("turn_not_found");
+    });
+
+    test("returns 404 when turn exists — not yet implemented", async () => {
+      const deps = makeDeps();
+      const createReq = new Request("http://localhost/v1/sessions/s_abc/turns", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ turn_id: "t_del_1" }),
+      });
+      await handleTurns(createReq, deps, "/v1/sessions/s_abc/turns");
+
+      const delReq = new Request("http://localhost/v1/sessions/s_abc/turns/t_del_1", { method: "DELETE" });
+      const res = await handleTurns(delReq, deps, "/v1/sessions/s_abc/turns/t_del_1");
+      expect(res!.status).toBe(404);
+      const body = await res!.json();
+      expect(body.error.code).toBe("not_found");
+    });
+  });
 });
