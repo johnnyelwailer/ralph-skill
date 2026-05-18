@@ -123,4 +123,86 @@ describe("orch_recall provider", () => {
     const blocks = await provider.build(input);
     expect(Array.isArray(blocks)).toBe(true);
   });
+
+  test("returns stale assumptions block when other sessions have high stuck count", async () => {
+    const now = new Date().toISOString();
+    // current session (should be excluded)
+    db.run(
+      `INSERT INTO sessions (id, project_id, kind, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)`,
+      ["s1", "p1", "child", "running", now, now],
+    );
+    db.run(
+      `INSERT INTO session_metrics (session_id, metric_name, value, updated_at) VALUES (?, ?, ?, ?)`,
+      ["s1", "iteration_stuck_count", 5, now],
+    );
+    // other session with high stuck count (should be included)
+    db.run(
+      `INSERT INTO sessions (id, project_id, kind, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)`,
+      ["s2", "p1", "child", "running", now, now],
+    );
+    db.run(
+      `INSERT INTO session_metrics (session_id, metric_name, value, updated_at) VALUES (?, ?, ?, ?)`,
+      ["s2", "iteration_stuck_count", 3, now],
+    );
+
+    const provider = createOrchRecallProvider({ sessionsDir: "/tmp", db });
+    const input = makeFakeInput("s1", "p1");
+    const blocks = await provider.build(input);
+
+    const staleBlock = blocks.find((b) => b.id === "stale-assumptions");
+    expect(staleBlock).not.toBeNull();
+    expect(staleBlock!.body).toContain("s2");
+    expect(staleBlock!.body).toContain("3");
+    // current session s1 must NOT appear in the stale block
+    expect(staleBlock!.body).not.toContain("s1");
+  });
+
+  test("stale assumptions excludes sessions with stuck count <= 2", async () => {
+    const now = new Date().toISOString();
+    db.run(
+      `INSERT INTO sessions (id, project_id, kind, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)`,
+      ["s1", "p1", "child", "running", now, now],
+    );
+    // stuck count exactly 2 — threshold is > 2 so this should NOT appear
+    db.run(
+      `INSERT INTO session_metrics (session_id, metric_name, value, updated_at) VALUES (?, ?, ?, ?)`,
+      ["s1", "iteration_stuck_count", 2, now],
+    );
+    db.run(
+      `INSERT INTO sessions (id, project_id, kind, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)`,
+      ["s2", "p1", "child", "running", now, now],
+    );
+    db.run(
+      `INSERT INTO session_metrics (session_id, metric_name, value, updated_at) VALUES (?, ?, ?, ?)`,
+      ["s2", "iteration_stuck_count", 4, now],
+    );
+
+    const provider = createOrchRecallProvider({ sessionsDir: "/tmp", db });
+    const input = makeFakeInput("s1", "p1");
+    const blocks = await provider.build(input);
+
+    const staleBlock = blocks.find((b) => b.id === "stale-assumptions");
+    expect(staleBlock).not.toBeNull();
+    expect(staleBlock!.body).toContain("s2");
+    expect(staleBlock!.body).not.toContain("s1");
+  });
+
+  test("stale assumptions block is absent when no sessions exceed stuck threshold", async () => {
+    const now = new Date().toISOString();
+    db.run(
+      `INSERT INTO sessions (id, project_id, kind, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)`,
+      ["s1", "p1", "child", "running", now, now],
+    );
+    db.run(
+      `INSERT INTO session_metrics (session_id, metric_name, value, updated_at) VALUES (?, ?, ?, ?)`,
+      ["s1", "iteration_stuck_count", 1, now],
+    );
+
+    const provider = createOrchRecallProvider({ sessionsDir: "/tmp", db });
+    const input = makeFakeInput("s1", "p1");
+    const blocks = await provider.build(input);
+
+    const staleBlock = blocks.find((b) => b.id === "stale-assumptions");
+    expect(staleBlock).toBeUndefined();
+  });
 });
