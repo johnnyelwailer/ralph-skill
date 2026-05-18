@@ -94,10 +94,10 @@ export async function handleEvents(
               if (data.project_id !== projectId) return;
             }
 
-            // parent filter — matches data.parent_id
+            // parent filter — matches data.parent_session_id
             if (parent) {
               const data = envelope.data as Record<string, unknown>;
-              if (data.parent_id !== parent) return;
+              if (data.parent_session_id !== parent) return;
             }
 
             // composer_turn_id filter — matches data.composer_turn_id
