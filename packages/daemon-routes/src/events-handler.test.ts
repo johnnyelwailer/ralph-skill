@@ -313,6 +313,109 @@ describe("handleEvents", () => {
     });
   });
 
+  // ─── SPEC MISMATCH: parent filter uses wrong field ─────────────────────────
+  // Per api.md §Events: `parent` filters to a session's children by matching
+  // `parent_session_id` in event data (the field set on child sessions per
+  // pipeline.md and daemon.md session hierarchy).  The current implementation in
+  // events-handler.ts checks `data.parent_id` instead — this is a bug.
+  // The correct behavior (matching `parent_session_id`) is asserted below.
+  describe("SPEC MISMATCH — parent filter should use parent_session_id", () => {
+    test("filters events by parent_session_id (not parent_id)", async () => {
+      // Per api.md: `parent` = "filter to a session's children (for orchestrators)"
+      // Child sessions carry `parent_session_id` in their data per pipeline.md §Children.
+      const base = mkdtempSync(join(tmpdir(), "aloop-parent-spec-"));
+      const deps = makeDeps(base);
+      mkdirSync(deps.sessionsDir(), { recursive: true });
+      const sessionDir = join(deps.sessionsDir(), "s_child_1");
+      mkdirSync(sessionDir, { recursive: true });
+
+      // Two child events from two different parent sessions (p_abc and p_xyz)
+      writeFileSync(join(sessionDir, "log.jsonl"), [
+        // child of parent p_abc
+        makeEvent("agent.chunk", { session_id: "s_child_1", parent_session_id: "p_abc", turn_id: "t1" }, "1748537600000.000001"),
+        // child of parent p_xyz
+        makeEvent("agent.chunk", { session_id: "s_child_1", parent_session_id: "p_xyz", turn_id: "t2" }, "1748537600000.000002"),
+        // child with no parent_session_id (standalone)
+        makeEvent("agent.chunk", { session_id: "s_child_1", turn_id: "t3" }, "1748537600000.000003"),
+      ].join("\n") + "\n");
+
+      // Filter ?parent=p_abc should return only events whose parent_session_id === "p_abc"
+      const req = new Request("http://localhost/v1/events?session_id=s_child_1&parent=p_abc", { method: "GET" });
+      const res = await handleEvents(req, deps, "/v1/events");
+      const text = await res!.text();
+      expect(text).toContain("1748537600000.000001"); // child of p_abc — should be included
+      expect(text).not.toContain("1748537600000.000002"); // child of p_xyz — should be excluded
+      expect(text).not.toContain("1748537600000.000003"); // no parent_session_id — should be excluded
+
+      rmSync(base, { recursive: true, force: true });
+    });
+
+    test("parent filter matches parent_session_id, not parent_id", async () => {
+      // An event that has BOTH parent_id and parent_session_id fields should be
+      // filtered by parent_session_id (per spec) and NOT by parent_id.
+      const base = mkdtempSync(join(tmpdir(), "aloop-parent-both-"));
+      const deps = makeDeps(base);
+      mkdirSync(deps.sessionsDir(), { recursive: true });
+      const sessionDir = join(deps.sessionsDir(), "s_both");
+      mkdirSync(sessionDir, { recursive: true });
+
+      writeFileSync(join(sessionDir, "log.jsonl"), [
+        // has both fields with DIFFERENT values — parent_session_id is what matters per api.md
+        makeEvent("agent.chunk", { session_id: "s_both", parent_id: "id_ignore", parent_session_id: "p_correct" }, "1748537600000.000001"),
+      ].join("\n") + "\n");
+
+      // ?parent=p_correct should match via parent_session_id, not parent_id
+      const req = new Request("http://localhost/v1/events?session_id=s_both&parent=p_correct", { method: "GET" });
+      const res = await handleEvents(req, deps, "/v1/events");
+      const text = await res!.text();
+      expect(text).toContain("1748537600000.000001"); // matches via parent_session_id === "p_correct"
+
+      rmSync(base, { recursive: true, force: true });
+    });
+
+    test("parent filter with no matching parent_session_id excludes all events", async () => {
+      const base = mkdtempSync(join(tmpdir(), "aloop-parent-none-"));
+      const deps = makeDeps(base);
+      mkdirSync(deps.sessionsDir(), { recursive: true });
+      const sessionDir = join(deps.sessionsDir(), "s_none");
+      mkdirSync(sessionDir, { recursive: true });
+
+      writeFileSync(join(sessionDir, "log.jsonl"), [
+        makeEvent("agent.chunk", { session_id: "s_none", parent_session_id: "p_abc" }, "1748537600000.000001"),
+        makeEvent("agent.chunk", { session_id: "s_none", parent_session_id: "p_xyz" }, "1748537600000.000002"),
+      ].join("\n") + "\n");
+
+      const req = new Request("http://localhost/v1/events?session_id=s_none&parent=p_missing", { method: "GET" });
+      const res = await handleEvents(req, deps, "/v1/events");
+      const text = await res!.text();
+      expect(text).not.toContain("1748537600000.000001");
+      expect(text).not.toContain("1748537600000.000002");
+
+      rmSync(base, { recursive: true, force: true });
+    });
+
+    test("parent filter with no parent_session_id field on any event excludes all", async () => {
+      const base = mkdtempSync(join(tmpdir(), "aloop-parent-empty-"));
+      const deps = makeDeps(base);
+      mkdirSync(deps.sessionsDir(), { recursive: true });
+      const sessionDir = join(deps.sessionsDir(), "s_empty");
+      mkdirSync(sessionDir, { recursive: true });
+
+      writeFileSync(join(sessionDir, "log.jsonl"), [
+        makeEvent("agent.chunk", { session_id: "s_empty" }, "1748537600000.000001"),
+        makeEvent("agent.chunk", { session_id: "s_empty" }, "1748537600000.000002"),
+      ].join("\n") + "\n");
+
+      const req = new Request("http://localhost/v1/events?session_id=s_empty&parent=p_any", { method: "GET" });
+      const res = await handleEvents(req, deps, "/v1/events");
+      const text = await res!.text();
+      expect(text).not.toContain("1748537600000.000001");
+      expect(text).not.toContain("1748537600000.000002");
+
+      rmSync(base, { recursive: true, force: true });
+    });
+  });
+
   describe("composer_turn_id filter", () => {
     test("filters events by composer_turn_id in event data", async () => {
       const base = mkdtempSync(join(tmpdir(), "aloop-events-ctid-"));
