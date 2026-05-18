@@ -353,7 +353,20 @@ describe("POST /v1/artifacts (uploadArtifact)", () => {
   });
 
   test("accepts all valid kind values", async () => {
-    const validKinds = ["image", "screenshot", "mockup", "diff", "other"] as const;
+    const validKinds = [
+      "image",
+      "screenshot",
+      "audio",
+      "speech",
+      "video",
+      "document",
+      "transcript",
+      "mockup",
+      "diff",
+      "log",
+      "code",
+      "other",
+    ] as const;
     for (const kind of validKinds) {
       const deps = makeDeps();
       const file = new File(["data"], "f.bin");

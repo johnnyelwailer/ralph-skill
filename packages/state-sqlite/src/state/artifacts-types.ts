@@ -1,4 +1,16 @@
-export type ArtifactKind = "image" | "screenshot" | "mockup" | "diff" | "other";
+export type ArtifactKind =
+  | "image"
+  | "screenshot"
+  | "audio"
+  | "speech"
+  | "video"
+  | "document"
+  | "transcript"
+  | "mockup"
+  | "diff"
+  | "log"
+  | "code"
+  | "other";
 
 export type IncubationSource = {
   readonly client: string;

@@ -143,7 +143,20 @@ async function uploadArtifact(req: Request, deps: ArtifactsDeps): Promise<Respon
     return badRequest("kind is required");
   }
   const trimmedKind = kind.trim() as ArtifactKind;
-  const validKinds: ArtifactKind[] = ["image", "screenshot", "mockup", "diff", "other"];
+  const validKinds: ArtifactKind[] = [
+    "image",
+    "screenshot",
+    "audio",
+    "speech",
+    "video",
+    "document",
+    "transcript",
+    "mockup",
+    "diff",
+    "log",
+    "code",
+    "other",
+  ];
   if (!validKinds.includes(trimmedKind)) {
     return badRequest(`kind must be one of: ${validKinds.join(", ")}`);
   }

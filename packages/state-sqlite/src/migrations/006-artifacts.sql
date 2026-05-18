@@ -9,7 +9,7 @@ CREATE TABLE IF NOT EXISTS artifacts (
   setup_run_id TEXT,
   work_item_key TEXT,
   kind         TEXT NOT NULL DEFAULT 'other'
-                 CHECK (kind IN ('image', 'screenshot', 'mockup', 'diff', 'other')),
+                 CHECK (kind IN ('image', 'screenshot', 'audio', 'speech', 'video', 'document', 'transcript', 'mockup', 'diff', 'log', 'code', 'other')),
   phase        TEXT,
   label        TEXT,
   filename     TEXT NOT NULL,
