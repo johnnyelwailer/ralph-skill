@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { countWorkspaceProjects, countProjectSessions, projectResponse, VALID_STATUSES } from "./projects-common.ts";
+import type { ProjectWorkspaceRole } from "@aloop/state-projects";
 
 describe("VALID_STATUSES", () => {
   test("contains exactly the three expected project statuses", () => {
@@ -161,7 +162,7 @@ describe("projectResponse", () => {
   const makeProject = (overrides: Partial<{
     id: string; absPath: string; name: string; status: "ready" | "setup_pending" | "archived";
     addedAt: string; lastActiveAt: string | null; updatedAt: string;
-    workspaceMemberships: ReadonlyArray<{ workspaceId: string; role: string; addedAt: string }>;
+    workspaceMemberships: ReadonlyArray<{ workspaceId: string; role: ProjectWorkspaceRole; addedAt: string }>;
   }> = {}) => ({
     id: "proj-123",
     absPath: "/home/user/my-project",

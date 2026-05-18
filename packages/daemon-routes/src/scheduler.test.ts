@@ -34,6 +34,15 @@ function makeDeps(overrides: Partial<SchedulerDeps["scheduler"]["currentLimits"]
   };
   return {
     scheduler: {
+      permits: { db: null as any, get: () => undefined, list: () => [], countActive: () => 0, listExpired: () => [], countByProject: () => ({}) },
+      config: {
+        scheduler() { return { ...defaults, ...overrides }; },
+        overrides() { return ({} as any); },
+        projectLimits() { return ({ maxConcurrentSessions: 0, maxTokensPerHour: 0 } as any); },
+        updateLimits() { return Promise.resolve({ ok: true, limits: { ...defaults, concurrencyCap: 5 } as any }); },
+      },
+      events: { append: (async () => ({} as any)) as any },
+      probes: {},
       currentLimits() { return { ...defaults, ...overrides }; },
       listPermits() { return []; },
       updateLimits(): Promise<LimitsUpdateResult> {
@@ -346,7 +355,7 @@ describe("POST /v1/scheduler/permits", () => {
     const deps = makeDeps();
     deps.scheduler.acquirePermit = (input: AcquirePermitInput) => {
       expect(input.composerTurnId).toBe("ct_01");
-      return Promise.resolve({ granted: true, permit: mockPermit({ composerTurnId: "ct_01" }) });
+      return Promise.resolve(mockPermit({ composerTurnId: "ct_01" }));
     };
     const req = new Request("http://x/v1/scheduler/permits", {
       method: "POST",
@@ -361,7 +370,7 @@ describe("POST /v1/scheduler/permits", () => {
     const deps = makeDeps();
     deps.scheduler.acquirePermit = (input: AcquirePermitInput) => {
       expect(input.controlSubagentRunId).toBe("csar_01");
-      return Promise.resolve({ granted: true, permit: mockPermit({ controlSubagentRunId: "csar_01" }) });
+      return Promise.resolve(mockPermit({ controlSubagentRunId: "csar_01" }));
     };
     const req = new Request("http://x/v1/scheduler/permits", {
       method: "POST",
