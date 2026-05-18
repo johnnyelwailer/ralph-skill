@@ -24,9 +24,10 @@ function makeDeps() {
     handleSessions: () => undefined,
     handleComposer: () => undefined,
     handleArtifacts: () => undefined,
-    handleTriggers: () => undefined,
-    handleSetup: () => undefined,
-    handleEvents: () => undefined,
+      handleTriggers: () => undefined,
+      handleSetup: () => undefined,
+      handleEvents: () => undefined,
+      handleTurns: () => undefined,
   };
 }
 
@@ -180,6 +181,7 @@ describe("makeFetchHandler dispatch order", () => {
       handleTriggers: () => undefined,
       handleSetup: () => undefined,
       handleEvents: () => undefined,
+      handleTurns: () => undefined,
     };
   }
 
@@ -298,6 +300,7 @@ describe("makeFetchHandler sessions dispatch", () => {
       handleTriggers: () => undefined,
       handleSetup: () => undefined,
       handleEvents: () => undefined,
+      handleTurns: () => undefined,
     };
     const fetch = makeFetchHandler(deps);
     const res = await fetch(new Request("http://x/v1/sessions"));
@@ -329,6 +332,7 @@ describe("makeFetchHandler sessions dispatch", () => {
       handleTriggers: () => undefined,
       handleSetup: () => undefined,
       handleEvents: () => undefined,
+      handleTurns: () => undefined,
     };
     const fetch = makeFetchHandler(deps);
     const res = await fetch(new Request("http://x/v1/sessions", { method: "POST" }));
@@ -352,14 +356,15 @@ describe("makeFetchHandler sessions dispatch", () => {
       },
       handleComposer: () => undefined,
       handleArtifacts: () => undefined,
-      handleTriggers: () => undefined,
+handleTriggers: () => undefined,
       handleSetup: () => undefined,
       handleEvents: () => undefined,
+      handleTurns: () => undefined,
     };
     const fetch = makeFetchHandler(deps);
     const res = await fetch(new Request("http://x/v1/sessions/other", { method: "GET" }));
     expect(res.status).toBe(404);
-    const body = (await res.json()) as { error: { code: string } };
+    const body = await res.json() as { error: { code: string } };
     expect(body.error.code).toBe("not_found");
   });
 });

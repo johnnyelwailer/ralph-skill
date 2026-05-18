@@ -52,7 +52,9 @@ export async function handleTurns(
     if (req.method !== "GET") {
       return errorResponse(405, "method_not_allowed", "method not allowed for this resource");
     }
-    return streamTurnChunks(chunksMatch[1]!, chunksMatch[2]!, deps);
+    const url = new URL(req.url);
+    const replay = url.searchParams.get("replay") === "true";
+    return streamTurnChunks(chunksMatch[1]!, chunksMatch[2]!, deps, replay);
   }
 
   return undefined;
