@@ -34,7 +34,7 @@ function makeDeps(overrides: Partial<SchedulerDeps["scheduler"]["currentLimits"]
   };
   return {
     scheduler: {
-      permits: { db: null as any, get: () => undefined, list: () => [], countActive: () => 0, listExpired: () => [], countByProject: () => ({}) },
+      permits: { db: null as any, get: () => undefined, list: () => [], countActive: () => 0, listExpired: () => [], countByProject: () => 0 },
       config: {
         scheduler() { return { ...defaults, ...overrides }; },
         overrides() { return ({} as any); },

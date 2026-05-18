@@ -45,10 +45,7 @@ describe("createMetricsDeps", () => {
     const providerHealth = new InMemoryProviderHealthStore(providerRegistry.list().map((p) => p.id));
 
     const deps = createMetricsDeps({ scheduler, providerHealth });
-    const sample = deps.systemSample();
-
-    // systemSample returns an object from DEFAULT_SCHEDULER_PROBES.systemSample
-    expect(typeof sample).toBe("object");
+    const sample = deps.systemSample?.();
     expect(sample).toBeTruthy();
   });
 });

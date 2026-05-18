@@ -89,6 +89,12 @@ function makeInput(): MakeRouterDepsInput {
       findActive: () => undefined,
       archive: () => { throw new Error("not implemented"); },
     } as unknown as ComposerTurnRegistry,
+    turnRegistry: {
+      create: () => { throw new Error("not implemented"); },
+      get: () => undefined,
+      listBySession: () => [],
+      getTurnCount: () => 0,
+    },
     artifactRegistry: {
       create: () => { throw new Error("not implemented"); },
       get: () => undefined,
