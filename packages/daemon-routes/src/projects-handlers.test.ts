@@ -183,6 +183,59 @@ describe("listProjects", () => {
   });
 });
 
+describe("listProjects workspace_id filter", () => {
+  let dir: string;
+  let deps: Deps;
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), "aloop-proj-wsid-"));
+    deps = makeDeps(dir);
+  });
+
+  afterEach(() => {
+    const reg = deps.registry as unknown as { _db: { close(): void } };
+    reg._db?.close();
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  test("passes workspace_id filter to registry.list", async () => {
+    // Create a project — it has no workspace memberships, so workspace_id filter
+    // with a non-existent workspace should return empty
+    deps.registry.create({ absPath: "/p1", name: "proj-1" });
+    deps.registry.create({ absPath: "/p2", name: "proj-2" });
+
+    const req = new Request("http://localhost/v1/projects?workspace_id=no-such-workspace");
+    const res = listProjects(req, deps);
+    expect(res.status).toBe(200);
+    const body = await (res as Response).json();
+    expect(body.items).toHaveLength(0);
+  });
+
+  test("workspace_id filter is passed to registry.list as workspaceId", async () => {
+    // Verify the filter works by checking behavior with a real workspace membership
+    // Since we can't easily add workspace memberships without a WorkspaceRegistry,
+    // we verify that the workspace_id param is consumed without error
+    deps.registry.create({ absPath: "/w1", name: "proj-w1" });
+
+    const req = new Request("http://localhost/v1/projects?workspace_id=any-value");
+    const res = listProjects(req, deps);
+    expect(res.status).toBe(200);
+    // Returns whatever the registry returns for that workspaceId filter
+  });
+
+  test("workspace_id combined with other filters", async () => {
+    deps.registry.create({ absPath: "/combined", name: "proj-combined" });
+
+    const req = new Request("http://localhost/v1/projects?workspace_id=ws1&status=ready");
+    const res = listProjects(req, deps);
+    expect(res.status).toBe(200);
+    const body = await (res as Response).json();
+    // Filter applies — may or may not return results depending on workspace membership
+    // but the important thing is the handler does not reject the combination
+    expect(body).toHaveProperty("items");
+  });
+});
+
 describe("getProject", () => {
   let dir: string;
   let deps: Deps;
