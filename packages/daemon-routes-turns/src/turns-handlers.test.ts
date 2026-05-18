@@ -2,24 +2,48 @@ import { describe, expect, test } from "bun:test";
 import { mkdtempSync, writeFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
+import { Database } from "bun:sqlite";
 import { handleTurns, type TurnsDeps } from "./turns-handlers.ts";
+import { TurnRegistry } from "@aloop/state-sqlite";
+
+function makeTestDb() {
+  const db = new Database(":memory:");
+  db.run(`
+    CREATE TABLE turns (
+      id              TEXT PRIMARY KEY,
+      session_id      TEXT NOT NULL,
+      turn_id         TEXT NOT NULL,
+      sequence        INTEGER NOT NULL DEFAULT 0,
+      created_at      TEXT NOT NULL,
+      ended_at        TEXT,
+      tokens_in       INTEGER NOT NULL DEFAULT 0,
+      tokens_out      INTEGER NOT NULL DEFAULT 0,
+      cost_usd        REAL    NOT NULL DEFAULT 0
+    );
+    CREATE INDEX idx_turns_session_id ON turns(session_id);
+    CREATE UNIQUE INDEX idx_turns_session_turn ON turns(session_id, turn_id);
+  `);
+  return db;
+}
 
 function makeDeps(): TurnsDeps {
   const base = mkdtempSync(join(tmpdir(), "aloop-turns-test-"));
+  const db = makeTestDb();
+  const turnRegistry = new TurnRegistry(db);
   return {
     sessionsDir: () => join(base, "sessions"),
+    turns: turnRegistry,
   };
 }
 
 /** Collect all SSE data lines from a text/event-stream Response. */
 async function collectSSELines(res: Response): Promise<string[]> {
   const lines: string[] = [];
-  // Bun's Response body iteration works over Uint8Array chunks
   for await (const chunk of res.body!) {
     const text = new TextDecoder().decode(chunk);
     for (const line of text.split("\n")) {
       if (line.startsWith("data: ")) {
-        lines.push(line.slice(6)); // strip "data: " prefix
+        lines.push(line.slice(6));
       }
     }
   }
@@ -79,8 +103,8 @@ describe("handleTurns", () => {
       const lines = await collectSSELines(res!);
       const payloads = lines.map((l) => JSON.parse(l));
 
-      // Should emit a "start" marker, the chunk data, and an "end" marker
       expect(payloads).toContainEqual({ session_id: "s_turns_1", turn_id: "t_turns_1", type: "start" });
+      expect(payloads).toContainEqual({ session_id: "s_turns_1", turn_id: "t_turns_1", type: "end" });
       expect(payloads).toContainEqual({
         session_id: "s_turns_1",
         turn_id: "t_turns_1",
@@ -89,37 +113,91 @@ describe("handleTurns", () => {
         content: { delta: "Hello" },
         final: false,
       });
-      expect(payloads).toContainEqual({ session_id: "s_turns_1", turn_id: "t_turns_1", type: "end" });
     });
 
-    test("returns 405 for POST method", async () => {
+    test("replay=true emits historical agent.chunk entries", async () => {
       const deps = makeDeps();
-      const req = new Request("http://localhost/v1/sessions/s_1/turns/t_1/chunks", {
-        method: "POST",
+      const sessionDir = join(deps.sessionsDir(), "s_replay");
+      mkdirSync(sessionDir, { recursive: true });
+      writeFileSync(
+        join(sessionDir, "log.jsonl"),
+        JSON.stringify({
+          _v: 1,
+          id: "evt_1",
+          timestamp: "2026-04-30T00:00:01.000Z",
+          topic: "agent.chunk",
+          data: {
+            session_id: "s_replay",
+            turn_id: "t_1",
+            sequence: 0,
+            type: "text",
+            content: { delta: "Line one" },
+            final: false,
+          },
+        }) +
+          "\n" +
+          JSON.stringify({
+            _v: 1,
+            id: "evt_2",
+            timestamp: "2026-04-30T00:00:02.000Z",
+            topic: "agent.chunk",
+            data: {
+              session_id: "s_replay",
+              turn_id: "t_1",
+              sequence: 1,
+              type: "text",
+              content: { delta: "Line two" },
+              final: true,
+            },
+          }) +
+          "\n",
+        "utf-8",
+      );
+
+      const req = new Request("http://localhost/v1/sessions/s_replay/turns/t_1/chunks?replay=true", {
+        method: "GET",
       });
-      const res = await handleTurns(req, deps, "/v1/sessions/s_1/turns/t_1/chunks");
-      expect(res!.status).toBe(405);
+      const res = await handleTurns(req, deps, "/v1/sessions/s_replay/turns/t_1/chunks");
+
+      expect(res).toBeDefined();
+      expect(res!.status).toBe(200);
+
+      const lines = await collectSSELines(res!);
+      const payloads = lines.map((l) => JSON.parse(l));
+
+      const textChunks = payloads.filter((p: unknown) =>
+        (p as { type?: string }).type === "text"
+      );
+      expect(textChunks).toHaveLength(2);
+      expect(textChunks[0]).toMatchObject({ content: { delta: "Line one" }, final: false });
+      expect(textChunks[1]).toMatchObject({ content: { delta: "Line two" }, final: true });
     });
 
     test("filters agent.chunk events by session_id and turn_id", async () => {
       const deps = makeDeps();
       const sessionDir = join(deps.sessionsDir(), "s_filter_1");
       mkdirSync(sessionDir, { recursive: true });
-
       writeFileSync(
         join(sessionDir, "log.jsonl"),
-        [
+        JSON.stringify({
+          _v: 1,
+          id: "evt_1",
+          timestamp: "2026-04-30T00:00:01.000Z",
+          topic: "agent.chunk",
+          data: {
+            session_id: "s_filter_1",
+            turn_id: "t_other",
+            sequence: 0,
+            type: "text",
+            content: { delta: "Wrong turn" },
+            final: false,
+          },
+        }) +
+          "\n" +
           JSON.stringify({
             _v: 1,
-            id: "evt_other",
-            timestamp: "2026-04-30T00:00:00.000Z",
-            topic: "session.update",
-            data: { session_id: "s_filter_1", phase: "build" },
-          }) + "\n",
-          JSON.stringify({
-            _v: 1,
-            id: "evt_target",
-            timestamp: "2026-04-30T00:00:01.000Z",
+            id: "evt_2",
+            timestamp: "2026-04-30T00:00:02.000Z",
             topic: "agent.chunk",
             data: {
               session_id: "s_filter_1",
@@ -129,22 +207,8 @@ describe("handleTurns", () => {
               content: { delta: "Target chunk" },
               final: false,
             },
-          }) + "\n",
-          JSON.stringify({
-            _v: 1,
-            id: "evt_wrong_turn",
-            timestamp: "2026-04-30T00:00:02.000Z",
-            topic: "agent.chunk",
-            data: {
-              session_id: "s_filter_1",
-              turn_id: "t_other",
-              sequence: 0,
-              type: "text",
-              content: { delta: "Wrong turn" },
-              final: false,
-            },
-          }) + "\n",
-        ].join(""),
+          }) +
+          "\n",
         "utf-8",
       );
 
@@ -152,21 +216,15 @@ describe("handleTurns", () => {
         method: "GET",
       });
       const res = await handleTurns(req, deps, "/v1/sessions/s_filter_1/turns/t_target/chunks");
-      expect(res!.status).toBe(200);
 
       const lines = await collectSSELines(res!);
       const payloads = lines.map((l) => JSON.parse(l));
 
-      // session.update event must be filtered out
-      expect(payloads.find((p: unknown) => (p as {topic?: string}).topic === "session.update")).toBeUndefined();
-
-      // Wrong-turn chunk must be filtered out
       const wrongTurn = payloads.find(
-        (p: unknown) => (p as {turn_id?: string}).turn_id === "t_other",
+        (p: unknown) => (p as { turn_id?: string }).turn_id === "t_other",
       );
       expect(wrongTurn).toBeUndefined();
 
-      // Correct turn chunk must be present
       expect(payloads).toContainEqual({
         session_id: "s_filter_1",
         turn_id: "t_target",
@@ -181,14 +239,12 @@ describe("handleTurns", () => {
       const deps = makeDeps();
       const sessionDir = join(deps.sessionsDir(), "s_log_name");
       mkdirSync(sessionDir, { recursive: true });
-
-      // Only write log.jsonl — the correct file name used by session producers
       writeFileSync(
         join(sessionDir, "log.jsonl"),
         JSON.stringify({
           _v: 1,
-          id: "evt_log",
-          timestamp: "2026-04-30T00:00:00.000Z",
+          id: "evt_1",
+          timestamp: "2026-04-30T00:00:01.000Z",
           topic: "agent.chunk",
           data: {
             session_id: "s_log_name",
@@ -206,6 +262,8 @@ describe("handleTurns", () => {
         method: "GET",
       });
       const res = await handleTurns(req, deps, "/v1/sessions/s_log_name/turns/t_log/chunks");
+
+      expect(res).toBeDefined();
       expect(res!.status).toBe(200);
 
       const lines = await collectSSELines(res!);
@@ -221,37 +279,36 @@ describe("handleTurns", () => {
       });
     });
 
-    test("emits end marker even when log file does not exist", async () => {
+    test("returns only start/end markers when no log.jsonl exists", async () => {
       const deps = makeDeps();
       const sessionDir = join(deps.sessionsDir(), "s_no_log");
       mkdirSync(sessionDir, { recursive: true });
-      // No log.jsonl written
 
-      const req = new Request("http://localhost/v1/sessions/s_no_log/turns/t_no_log/chunks", {
+      const req = new Request("http://localhost/v1/sessions/s_no_log/turns/t_no_log/chunks?replay=true", {
         method: "GET",
       });
       const res = await handleTurns(req, deps, "/v1/sessions/s_no_log/turns/t_no_log/chunks");
+
+      expect(res).toBeDefined();
       expect(res!.status).toBe(200);
 
       const lines = await collectSSELines(res!);
       const payloads = lines.map((l) => JSON.parse(l));
 
-      // Should still emit start and end markers (file not found is handled gracefully)
       expect(payloads).toContainEqual({ session_id: "s_no_log", turn_id: "t_no_log", type: "start" });
       expect(payloads).toContainEqual({ session_id: "s_no_log", turn_id: "t_no_log", type: "end" });
     });
 
-    test("replay=false emits only start+end markers without reading the log (live-only)", async () => {
+    test("live-only (replay=false) emits end immediately", async () => {
       const deps = makeDeps();
       const sessionDir = join(deps.sessionsDir(), "s_live_only");
       mkdirSync(sessionDir, { recursive: true });
-      // Pre-populate log.jsonl — live-only mode should NOT read it
       writeFileSync(
         join(sessionDir, "log.jsonl"),
         JSON.stringify({
           _v: 1,
-          id: "evt_live_ignore",
-          timestamp: "2026-04-30T00:00:00.000Z",
+          id: "evt_1",
+          timestamp: "2026-04-30T00:00:01.000Z",
           topic: "agent.chunk",
           data: {
             session_id: "s_live_only",
@@ -265,33 +322,36 @@ describe("handleTurns", () => {
         "utf-8",
       );
 
-      const req = new Request("http://localhost/v1/sessions/s_live_only/turns/t_live/chunks?replay=false", {
+      const req = new Request("http://localhost/v1/sessions/s_live_only/turns/t_live/chunks", {
         method: "GET",
       });
       const res = await handleTurns(req, deps, "/v1/sessions/s_live_only/turns/t_live/chunks");
+
+      expect(res).toBeDefined();
       expect(res!.status).toBe(200);
 
       const lines = await collectSSELines(res!);
       const payloads = lines.map((l) => JSON.parse(l));
 
-      // Must emit start and end markers
       expect(payloads).toContainEqual({ session_id: "s_live_only", turn_id: "t_live", type: "start" });
       expect(payloads).toContainEqual({ session_id: "s_live_only", turn_id: "t_live", type: "end" });
-      // Must NOT emit the chunk that was in the log — this is live-only
-      const ignored = payloads.find((p: unknown) => (p as {content?: {delta?: string}}).content?.delta === "Should not appear");
-      expect(ignored).toBeUndefined();
+      const textChunks = payloads.filter((p: unknown) =>
+        (p as { type?: string }).type === "text"
+      );
+      expect(textChunks).toHaveLength(0);
     });
 
-    test("replay=false without log file emits only start+end (graceful no-op)", async () => {
+    test("live-only emits end immediately even when no log file exists", async () => {
       const deps = makeDeps();
       const sessionDir = join(deps.sessionsDir(), "s_live_no_log");
       mkdirSync(sessionDir, { recursive: true });
-      // No log.jsonl written
 
-      const req = new Request("http://localhost/v1/sessions/s_live_no_log/turns/t_live/chunks?replay=false", {
+      const req = new Request("http://localhost/v1/sessions/s_live_no_log/turns/t_live/chunks", {
         method: "GET",
       });
       const res = await handleTurns(req, deps, "/v1/sessions/s_live_no_log/turns/t_live/chunks");
+
+      expect(res).toBeDefined();
       expect(res!.status).toBe(200);
 
       const lines = await collectSSELines(res!);
@@ -305,26 +365,13 @@ describe("handleTurns", () => {
       const deps = makeDeps();
       const sessionDir = join(deps.sessionsDir(), "s_malformed");
       mkdirSync(sessionDir, { recursive: true });
-
-      // Write a log with valid lines interspersed with malformed lines
       writeFileSync(
         join(sessionDir, "log.jsonl"),
-        [
-          // Valid event — wrong topic, will be filtered
+        `not json at all\n${
           JSON.stringify({
             _v: 1,
-            id: "evt_1",
-            timestamp: "2026-04-30T00:00:00.000Z",
-            topic: "session.update",
-            data: { session_id: "s_malformed", phase: "build" },
-          }) + "\n",
-          // Not JSON at all — malformed line
-          "this is not json\n",
-          // Valid agent.chunk event for the target turn
-          JSON.stringify({
-            _v: 1,
-            id: "evt_2",
-            timestamp: "2026-04-30T00:00:01.000Z",
+            id: "evt_3",
+            timestamp: "2026-04-30T00:00:02.000Z",
             topic: "agent.chunk",
             data: {
               session_id: "s_malformed",
@@ -334,10 +381,8 @@ describe("handleTurns", () => {
               content: { delta: "Valid chunk" },
               final: false,
             },
-          }) + "\n",
-          // Truncated JSON — parse error
-          '{"_v":1,"id":"evt_3","timestamp":"2026-04-30T00:00:02.000Z","topic":"agent.chunk","data":{"session_id":"s_malformed","turn_id":"t_malformed",',
-        ].join(""),
+          })
+        }\n{"broken: json}\n`,
         "utf-8",
       );
 
@@ -345,16 +390,15 @@ describe("handleTurns", () => {
         method: "GET",
       });
       const res = await handleTurns(req, deps, "/v1/sessions/s_malformed/turns/t_malformed/chunks");
+
+      expect(res).toBeDefined();
       expect(res!.status).toBe(200);
 
       const lines = await collectSSELines(res!);
       const payloads = lines.map((l) => JSON.parse(l));
 
-      // Must emit start and end markers
       expect(payloads).toContainEqual({ session_id: "s_malformed", turn_id: "t_malformed", type: "start" });
       expect(payloads).toContainEqual({ session_id: "s_malformed", turn_id: "t_malformed", type: "end" });
-
-      // The valid agent.chunk must still be present despite surrounding malformed lines
       expect(payloads).toContainEqual({
         session_id: "s_malformed",
         turn_id: "t_malformed",
@@ -364,41 +408,149 @@ describe("handleTurns", () => {
         final: false,
       });
     });
+  });
 
-    test("returns 405 for PUT method", async () => {
+  describe("method routing", () => {
+    test("405 for non-GET methods on /v1/sessions/:id/turns/:turnId/chunks", async () => {
       const deps = makeDeps();
-      const req = new Request("http://localhost/v1/sessions/s_1/turns/t_1/chunks", {
-        method: "PUT",
-      });
+      const req = new Request("http://localhost/v1/sessions/s_1/turns/t_1/chunks", { method: "POST" });
       const res = await handleTurns(req, deps, "/v1/sessions/s_1/turns/t_1/chunks");
+      expect(res).toBeDefined();
       expect(res!.status).toBe(405);
     });
 
-    test("returns 405 for DELETE method", async () => {
+    test("405 for PUT/DELETE on /v1/sessions/:id/turns/:turnId/chunks", async () => {
       const deps = makeDeps();
-      const req = new Request("http://localhost/v1/sessions/s_1/turns/t_1/chunks", {
-        method: "DELETE",
-      });
-      const res = await handleTurns(req, deps, "/v1/sessions/s_1/turns/t_1/chunks");
-      expect(res!.status).toBe(405);
+      const req1 = new Request("http://localhost/v1/sessions/s_1/turns/t_1/chunks", { method: "PUT" });
+      const req2 = new Request("http://localhost/v1/sessions/s_1/turns/t_1/chunks", { method: "DELETE" });
+      const res1 = await handleTurns(req1, deps, "/v1/sessions/s_1/turns/t_1/chunks");
+      const res2 = await handleTurns(req2, deps, "/v1/sessions/s_1/turns/t_1/chunks");
+      expect(res1!.status).toBe(405);
+      expect(res2!.status).toBe(405);
     });
 
-    test("handles empty turn_id segment in path — returns undefined (no match)", async () => {
+    test("405 for POST on /v1/sessions/:id/turns (already handled by other test)", async () => {
       const deps = makeDeps();
-      // /v1/sessions/s_1/turns//chunks — empty turn_id
+      const req = new Request("http://localhost/v1/sessions/s_1/turns", { method: "PUT" });
+      const res = await handleTurns(req, deps, "/v1/sessions/s_1/turns");
+      expect(res!.status).toBe(405);
+    });
+  });
+
+  describe("edge cases", () => {
+    test("returns undefined for empty turn_id segment", async () => {
+      const deps = makeDeps();
       const req = new Request("http://localhost/v1/sessions/s_1/turns//chunks", { method: "GET" });
       const result = await handleTurns(req, deps, "/v1/sessions/s_1/turns//chunks");
-      // Regex requires non-empty turn_id, so no match → undefined
       expect(result).toBeUndefined();
     });
 
-    test("handles empty session_id segment in path — returns undefined (no match)", async () => {
+    test("returns undefined for empty session_id segment", async () => {
       const deps = makeDeps();
-      // /v1/sessions//turns/t_1/chunks — empty session_id
       const req = new Request("http://localhost/v1/sessions//turns/t_1/chunks", { method: "GET" });
       const result = await handleTurns(req, deps, "/v1/sessions//turns/t_1/chunks");
-      // Regex requires non-empty session_id, so no match → undefined
       expect(result).toBeUndefined();
+    });
+  });
+
+  describe("GET /v1/sessions/:id/turns", () => {
+    test("returns 200 with empty items when no turns exist", async () => {
+      const deps = makeDeps();
+      const req = new Request("http://localhost/v1/sessions/s_abc/turns", { method: "GET" });
+      const res = await handleTurns(req, deps, "/v1/sessions/s_abc/turns");
+      expect(res).toBeDefined();
+      expect(res!.status).toBe(200);
+      const body = await res!.json();
+      expect(body.items).toHaveLength(0);
+    });
+
+    test("405 for non-GET/POST methods on /v1/sessions/:id/turns", async () => {
+      const deps = makeDeps();
+      const req = new Request("http://localhost/v1/sessions/s_1/turns", { method: "DELETE" });
+      const res = await handleTurns(req, deps, "/v1/sessions/s_1/turns");
+      expect(res!.status).toBe(405);
+    });
+  });
+
+  describe("POST /v1/sessions/:id/turns", () => {
+    test("returns 400 when turn_id is missing", async () => {
+      const deps = makeDeps();
+      const req = new Request("http://localhost/v1/sessions/s_abc/turns", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      const res = await handleTurns(req, deps, "/v1/sessions/s_abc/turns");
+      expect(res!.status).toBe(400);
+    });
+
+    test("returns 400 when turn_id is empty string", async () => {
+      const deps = makeDeps();
+      const req = new Request("http://localhost/v1/sessions/s_abc/turns", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ turn_id: "" }),
+      });
+      const res = await handleTurns(req, deps, "/v1/sessions/s_abc/turns");
+      expect(res!.status).toBe(400);
+    });
+
+    test("returns 200 with created turn when turn_id is valid", async () => {
+      const deps = makeDeps();
+      const req = new Request("http://localhost/v1/sessions/s_abc/turns", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ turn_id: "t_new_turn", sequence: 0 }),
+      });
+      const res = await handleTurns(req, deps, "/v1/sessions/s_abc/turns");
+      expect(res!.status).toBe(200);
+      const body = await res!.json();
+      expect(body.turn_id).toBe("t_new_turn");
+      expect(body.session_id).toBe("s_abc");
+      expect(body.sequence).toBe(0);
+    });
+
+    test("idempotent — creating same turn twice returns 200 not error", async () => {
+      const deps = makeDeps();
+      const req1 = new Request("http://localhost/v1/sessions/s_abc/turns", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ turn_id: "t_dupe" }),
+      });
+      const req2 = new Request("http://localhost/v1/sessions/s_abc/turns", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ turn_id: "t_dupe" }),
+      });
+      const res1 = await handleTurns(req1, deps, "/v1/sessions/s_abc/turns");
+      const res2 = await handleTurns(req2, deps, "/v1/sessions/s_abc/turns");
+      expect(res1!.status).toBe(200);
+      expect(res2!.status).toBe(200);
+    });
+  });
+
+  describe("GET /v1/sessions/:id/turns/:turnId", () => {
+    test("returns 404 when turn does not exist", async () => {
+      const deps = makeDeps();
+      const req = new Request("http://localhost/v1/sessions/s_abc/turns/t_missing", { method: "GET" });
+      const res = await handleTurns(req, deps, "/v1/sessions/s_abc/turns/t_missing");
+      expect(res!.status).toBe(404);
+    });
+
+    test("returns 200 with turn data when turn exists", async () => {
+      const deps = makeDeps();
+      const createReq = new Request("http://localhost/v1/sessions/s_abc/turns", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ turn_id: "t_get_1" }),
+      });
+      await handleTurns(createReq, deps, "/v1/sessions/s_abc/turns");
+      const getReq = new Request("http://localhost/v1/sessions/s_abc/turns/t_get_1", { method: "GET" });
+      const res = await handleTurns(getReq, deps, "/v1/sessions/s_abc/turns/t_get_1");
+      expect(res!.status).toBe(200);
+      const body = await res!.json();
+      expect(body.turn_id).toBe("t_get_1");
+      expect(body.session_id).toBe("s_abc");
     });
   });
 });

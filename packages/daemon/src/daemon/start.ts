@@ -10,6 +10,7 @@ import {
   PermitRegistry,
   ProjectRegistry,
   SessionRegistry,
+  TurnRegistry,
   WorkspaceRegistry,
   ComposerTurnRegistry,
   ArtifactRegistry,
@@ -87,6 +88,7 @@ export async function startDaemon(opts: StartDaemonOptions = {}): Promise<Runnin
   const registry = new ProjectRegistry(db);
   const workspaceRegistry = new WorkspaceRegistry(db);
   const sessionRegistry = new SessionRegistry(db);
+  const turnRegistry = new TurnRegistry(db);
   const composerRegistry = new ComposerTurnRegistry(db);
   const artifactRegistry = new ArtifactRegistry(db);
   const permits = new PermitRegistry(db);
@@ -107,6 +109,7 @@ export async function startDaemon(opts: StartDaemonOptions = {}): Promise<Runnin
     registry,
     workspaceRegistry,
     sessionRegistry,
+    turnRegistry,
     composerRegistry,
     artifactRegistry,
     scheduler,

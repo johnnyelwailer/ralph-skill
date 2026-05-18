@@ -7,6 +7,10 @@ export type RouterDeps = {
     req: Request,
     pathname: string,
   ) => Response | Promise<Response | undefined> | undefined;
+  readonly handleWorkspaces: (
+    req: Request,
+    pathname: string,
+  ) => Response | Promise<Response | undefined> | undefined;
   readonly handleProjects: (
     req: Request,
     pathname: string,
@@ -16,10 +20,6 @@ export type RouterDeps = {
     pathname: string,
   ) => Response | Promise<Response | undefined> | undefined;
   readonly handleScheduler: (
-    req: Request,
-    pathname: string,
-  ) => Response | Promise<Response | undefined> | undefined;
-  readonly handleWorkspaces: (
     req: Request,
     pathname: string,
   ) => Response | Promise<Response | undefined> | undefined;
@@ -44,6 +44,10 @@ export type RouterDeps = {
     pathname: string,
   ) => Response | Promise<Response | undefined> | undefined;
   readonly handleEvents: (
+    req: Request,
+    pathname: string,
+  ) => Response | Promise<Response | undefined> | undefined;
+  readonly handleTurns: (
     req: Request,
     pathname: string,
   ) => Response | Promise<Response | undefined> | undefined;
@@ -89,6 +93,9 @@ export function makeFetchHandler(
 
     const schedulerResponse = await deps.handleScheduler(req, pathname);
     if (schedulerResponse) return schedulerResponse;
+
+    const turnsResponse = await deps.handleTurns(req, pathname);
+    if (turnsResponse) return turnsResponse;
 
     const sessionsResponse = await deps.handleSessions(req, pathname);
     if (sessionsResponse) return sessionsResponse;

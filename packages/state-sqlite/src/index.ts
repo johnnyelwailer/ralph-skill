@@ -78,6 +78,15 @@ export {
   type SessionQueueItem,
 } from "./state/sessions-registry";
 export {
+  TurnRegistry,
+  TurnNotFoundError,
+  type Turn,
+  type TurnFilter,
+  type TurnPhase,
+  type CreateTurnInput,
+  type UpdateTurnInput,
+} from "./state/turns.ts";
+export {
   executeRefreshProjection,
   emitTriggerFired,
   emitTriggerFailed,

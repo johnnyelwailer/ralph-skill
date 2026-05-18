@@ -16,8 +16,9 @@ import {
   handleSessions as handleSessionsRoute,
 } from "@aloop/daemon-routes";
 import type { SchedulerService } from "@aloop/scheduler";
-import type { ComposerTurnRegistry, EventWriter, ProjectRegistry, SessionRegistry, WorkspaceRegistry, ArtifactRegistry, Database } from "@aloop/state-sqlite";
+import type { ComposerTurnRegistry, EventWriter, ProjectRegistry, SessionRegistry, WorkspaceRegistry, ArtifactRegistry, Database, TurnRegistry } from "@aloop/state-sqlite";
 import { handleDaemon as handleDaemonRoute } from "../routes/daemon.ts";
+import { handleTurns } from "@aloop/daemon-routes-turns";
 import { join } from "node:path";
 
 export type MakeRouterDepsInput = {
@@ -25,6 +26,7 @@ export type MakeRouterDepsInput = {
   readonly registry: ProjectRegistry;
   readonly workspaceRegistry: WorkspaceRegistry;
   readonly sessionRegistry: SessionRegistry;
+  readonly turnRegistry: TurnRegistry;
   readonly composerRegistry: ComposerTurnRegistry;
   readonly artifactRegistry: ArtifactRegistry;
   readonly scheduler: SchedulerService;
@@ -104,5 +106,7 @@ export function makeRouterDeps(input: MakeRouterDepsInput): RouterDeps {
       handleSetup(req, { store: setupStore, eventsDir: input.config.paths().stateDir }, pathname),
     handleEvents: (req, pathname) =>
       handleEvents(req, { logFile: () => input.config.paths().logFile, sessionsDir }, pathname),
+    handleTurns: (req, pathname) =>
+      handleTurns(req, { turns: input.turnRegistry, sessionsDir }, pathname),
   };
 }
