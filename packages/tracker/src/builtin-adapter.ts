@@ -453,12 +453,14 @@ export function createBuiltinAdapter(
                 try {
                   const env = JSON.parse(line) as { topic: string; data: Record<string, unknown>; timestamp: string };
                   if (filter.topics !== undefined && !filter.topics.includes(env.topic)) continue;
+                  const source = env.data?.source as string | undefined;
                   yield {
                     topic: env.topic,
                     data: {
                       adapter: "builtin" as TrackerId,
                       project_id: projectId,
                       kind: env.topic as TrackerEvent["data"]["kind"],
+                      ...(source === "human" || source === "aloop" || source === "poll" ? { source } : {}),
                       received_at: env.timestamp,
                     },
                   };

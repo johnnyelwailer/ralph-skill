@@ -475,12 +475,15 @@ export function createGitHubAdapter(options: CreateGitHubAdapterOptions): Tracke
             if (eventTime <= lastTimestamp) continue;
             const kind = topicKindMap[eventType] ?? "work_item.updated";
             if (filter.topics !== undefined && !filter.topics.includes(kind)) continue;
+            const source: TrackerEvent["data"]["source"] =
+              kind === "comment.created" || kind === "comment.updated" ? "human" : undefined;
             yield {
               topic: kind,
               data: {
                 adapter: "github" as TrackerId,
                 project_id: projectId,
                 kind,
+                ...(source ? { source } : {}),
                 received_at: new Date().toISOString(),
               },
             };

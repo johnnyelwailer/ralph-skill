@@ -994,6 +994,68 @@ describe("TrackerEvent", () => {
     expect(requested).toBe("changes_requested");
     expect(reject).toBe("reject");
   });
+
+  test("accepts source field on comment events", () => {
+    const humanComment: TrackerEvent = {
+      topic: "tracker.event",
+      data: {
+        adapter: "github",
+        project_id: "p_123",
+        kind: "comment.created",
+        source: "human",
+        received_at: "2026-01-01T00:00:00Z",
+      },
+    };
+    expect(humanComment.data.source).toBe("human");
+
+    const aloopComment: TrackerEvent = {
+      topic: "tracker.event",
+      data: {
+        adapter: "github",
+        project_id: "p_123",
+        kind: "comment.updated",
+        source: "aloop",
+        received_at: "2026-01-01T00:00:00Z",
+      },
+    };
+    expect(aloopComment.data.source).toBe("aloop");
+  });
+
+  test("accepts poll source on any event kind", () => {
+    const polledEvent: TrackerEvent = {
+      topic: "tracker.event",
+      data: {
+        adapter: "github",
+        project_id: "p_123",
+        kind: "work_item.updated",
+        source: "poll",
+        received_at: "2026-01-01T00:00:00Z",
+      },
+    };
+    expect(polledEvent.data.source).toBe("poll");
+  });
+
+  test("source field is optional - omitted when not set", () => {
+    const event: TrackerEvent = {
+      topic: "tracker.event",
+      data: {
+        adapter: "github",
+        project_id: "p_123",
+        kind: "work_item.created",
+        received_at: "2026-01-01T00:00:00Z",
+      },
+    };
+    expect(event.data.source).toBeUndefined();
+  });
+
+  test("source field is only valid values human, aloop, poll", () => {
+    const humanSource: TrackerEvent["data"]["source"] = "human";
+    const aloopSource: TrackerEvent["data"]["source"] = "aloop";
+    const pollSource: TrackerEvent["data"]["source"] = "poll";
+    expect(humanSource).toBe("human");
+    expect(aloopSource).toBe("aloop");
+    expect(pollSource).toBe("poll");
+  });
 });
 
 // ─── LinePosition ───────────────────────────────────────────────────────────

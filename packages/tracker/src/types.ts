@@ -218,35 +218,38 @@ export type TrackerEventFilter = {
  *
  * Specified in `docs/spec/work-tracker.md` §Events (lines 670–698).
  */
+export type TrackerEventData = {
+  readonly adapter: TrackerId;
+  readonly project_id: string;
+  readonly kind:
+    | "work_item.created"
+    | "work_item.updated"
+    | "work_item.closed"
+    | "work_item.reopened"
+    | "hierarchy.child_added"
+    | "hierarchy.child_removed"
+    | "hierarchy.parent_added"
+    | "hierarchy.parent_removed"
+    | "comment.created"
+    | "comment.updated"
+    | "change_set.opened"
+    | "change_set.updated"
+    | "change_set.closed"
+    | "change_set.merged"
+    | "change_set.conflict"
+    | "change_set.review_submitted"
+    | "change_set.review_thread_resolved";
+  readonly source?: "human" | "aloop" | "poll";
+  readonly work_item?: WorkItemRef;
+  readonly change_set?: ChangeSetRef;
+  readonly reviewer?: string;
+  readonly verdict?: "approved" | "changes_requested" | "reject";
+  readonly received_at: string;
+};
+
 export type TrackerEvent = {
   readonly topic: string;
-  readonly data: {
-    readonly adapter: TrackerId;
-    readonly project_id: string;
-    readonly kind:
-      | "work_item.created"
-      | "work_item.updated"
-      | "work_item.closed"
-      | "work_item.reopened"
-      | "hierarchy.child_added"
-      | "hierarchy.child_removed"
-      | "hierarchy.parent_added"
-      | "hierarchy.parent_removed"
-      | "comment.created"
-      | "comment.updated"
-      | "change_set.opened"
-      | "change_set.updated"
-      | "change_set.closed"
-      | "change_set.merged"
-      | "change_set.conflict"
-      | "change_set.review_submitted"
-      | "change_set.review_thread_resolved";
-    readonly work_item?: WorkItemRef;
-    readonly change_set?: ChangeSetRef;
-    readonly reviewer?: string;
-    readonly verdict?: "approved" | "changes_requested" | "reject";
-    readonly received_at: string;
-  };
+  readonly data: TrackerEventData;
 };
 
 // ─── Adapter interface ────────────────────────────────────────────────────────
