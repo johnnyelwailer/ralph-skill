@@ -285,3 +285,70 @@ describe("getProjectCounts", () => {
     expect(counts.experiment).toBe(0);
   });
 });
+
+// ─── getProjectRole ────────────────────────────────────────────────────────────
+
+describe("getProjectRole", () => {
+  test("returns the role when project is a member of the workspace", () => {
+    const ws = registry.create({ name: "Role Test" });
+    db.exec(
+      `INSERT INTO projects (id, abs_path, name, status, added_at, updated_at)
+       VALUES ('proj-role-1', '/tmp/proj-role-1', 'PR1', 'ready', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')`,
+    );
+    registry.addProject(ws.id, "proj-role-1", "primary");
+
+    const role = registry.getProjectRole(ws.id, "proj-role-1");
+    expect(role).toBe("primary");
+  });
+
+  test("returns null when project is not a member of the workspace", () => {
+    const ws = registry.create({ name: "No Role Test" });
+    db.exec(
+      `INSERT INTO projects (id, abs_path, name, status, added_at, updated_at)
+       VALUES ('proj-lonely', '/tmp/proj-lonely', 'PL', 'ready', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')`,
+    );
+
+    const role = registry.getProjectRole(ws.id, "proj-lonely");
+    expect(role).toBeNull();
+  });
+
+  test("returns null when workspace does not exist", () => {
+    const role = registry.getProjectRole("nonexistent-ws", "some-project");
+    expect(role).toBeNull();
+  });
+});
+
+// ─── archive ─────────────────────────────────────────────────────────────────
+
+describe("archive", () => {
+  test("sets archivedAt timestamp on the workspace", () => {
+    const ws = registry.create({ name: "To Archive" });
+    expect(ws.archivedAt).toBeNull();
+
+    const archived = registry.archive(ws.id);
+    expect(archived.archivedAt).not.toBeNull();
+    expect(archived.id).toBe(ws.id);
+  });
+
+  test("archived workspace is not returned by list() by default", () => {
+    const ws = registry.create({ name: "Archive List Test" });
+    registry.archive(ws.id);
+
+    const { items } = registry.list();
+    const ids = items.map((w) => w.id);
+    expect(ids).not.toContain(ws.id);
+  });
+
+  test("archived workspace is returned by list({ archived: true })", () => {
+    const ws = registry.create({ name: "Archive Filter Test" });
+    registry.archive(ws.id);
+
+    const { items } = registry.list({ archived: true });
+    const ids = items.map((w) => w.id);
+    expect(ids).toContain(ws.id);
+  });
+
+  test("throws WorkspaceNotFoundError when workspace does not exist", () => {
+    expect(() => registry.archive("nonexistent-archive-id")).toThrow();
+  });
+});
