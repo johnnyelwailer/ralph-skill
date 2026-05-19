@@ -346,4 +346,187 @@ describe("MetricsProjector", () => {
     const { db, projector } = makeProjector();
     expect(() => projector.apply(db, makeEnv("some.random.topic", {}))).not.toThrow();
   });
+
+  // ── turn.completed ─────────────────────────────────────────────────────────
+
+  test("turn.completed increments turn_success_rate by 1", () => {
+    const { db, projector } = makeProjector();
+    projector.apply(db, makeEnv("session.created", { session_id: "s1", kind: "child" }));
+    projector.apply(db, makeEnv("turn.completed", { session_id: "s1" }));
+
+    const row = db
+      .query<{ value: number }, [string, string]>(
+        `SELECT value FROM session_metrics WHERE session_id = ? AND metric_name = ?`,
+      )
+      .get("s1", "turn_success_rate");
+    expect(row?.value).toBe(1);
+  });
+
+  test("turn.completed accumulates turn_success_rate across multiple completions", () => {
+    const { db, projector } = makeProjector();
+    projector.apply(db, makeEnv("session.created", { session_id: "s1", kind: "child" }));
+    projector.apply(db, makeEnv("turn.completed", { session_id: "s1" }));
+    projector.apply(db, makeEnv("turn.completed", { session_id: "s1" }));
+    projector.apply(db, makeEnv("turn.completed", { session_id: "s1" }));
+
+    const row = db
+      .query<{ value: number }, [string, string]>(
+        `SELECT value FROM session_metrics WHERE session_id = ? AND metric_name = ?`,
+      )
+      .get("s1", "turn_success_rate");
+    expect(row?.value).toBe(3);
+  });
+
+  test("turn.failed does NOT reset turn_success_rate", () => {
+    const { db, projector } = makeProjector();
+    projector.apply(db, makeEnv("session.created", { session_id: "s1", kind: "child" }));
+    projector.apply(db, makeEnv("turn.completed", { session_id: "s1" }));
+    projector.apply(db, makeEnv("turn.failed", { session_id: "s1" }));
+
+    const rate = db
+      .query<{ value: number }, [string, string]>(
+        `SELECT value FROM session_metrics WHERE session_id = ? AND metric_name = ?`,
+      )
+      .get("s1", "turn_success_rate");
+    expect(rate?.value).toBe(1); // still 1 after failed turn, not reset
+  });
+
+  test("turn.completed does NOT reset burn_rate.tokens_since_last_commit", () => {
+    const { db, projector } = makeProjector();
+    projector.apply(db, makeEnv("session.created", { session_id: "s1", kind: "child" }));
+    projector.apply(db, makeEnv("usage", { session_id: "s1", tokens_in: 5000, tokens_out: 3000 }));
+    projector.apply(db, makeEnv("turn.completed", { session_id: "s1" }));
+
+    const burn = db
+      .query<{ value: number }, [string, string]>(
+        `SELECT value FROM session_metrics WHERE session_id = ? AND metric_name = ?`,
+      )
+      .get("s1", "burn_rate.tokens_since_last_commit");
+    // turn.completed resets iteration_stuck_count but NOT burn rate — only commit resets burn rate
+    expect(burn?.value).toBe(8000);
+  });
+
+  // ── scheduler.permit.expired ────────────────────────────────────────────────
+
+  test("scheduler.permit.expired decrements concurrency_in_flight", () => {
+    const { db, projector } = makeProjector();
+    projector.apply(db, makeEnv("scheduler.permit.grant", {
+      permit_id: "p_1",
+      session_id: "s1",
+      provider_id: "opencode",
+    }));
+    projector.apply(db, makeEnv("scheduler.permit.expired", { permit_id: "p_1" }));
+
+    const row = db
+      .query<{ value: number }, [string]>(
+        `SELECT value FROM scheduler_metrics WHERE metric_name = ?`,
+      )
+      .get("concurrency_in_flight");
+    expect(row?.value).toBe(0);
+  });
+
+  test("scheduler.permit.expired uses Math.max(0, ...) — does not go below 0", () => {
+    const { db, projector } = makeProjector();
+    // Grant + expire + expire — second expire should not decrement below 0
+    projector.apply(db, makeEnv("scheduler.permit.grant", {
+      permit_id: "p_1",
+      session_id: "s1",
+      provider_id: "opencode",
+    }));
+    projector.apply(db, makeEnv("scheduler.permit.expired", { permit_id: "p_1" }));
+    projector.apply(db, makeEnv("scheduler.permit.expired", { permit_id: "p_1" }));
+
+    const row = db
+      .query<{ value: number }, [string]>(
+        `SELECT value FROM scheduler_metrics WHERE metric_name = ?`,
+      )
+      .get("concurrency_in_flight");
+    expect(row?.value).toBe(0);
+  });
+
+  test("scheduler.permit.release and scheduler.permit.expired both decrement concurrency", () => {
+    const { db, projector } = makeProjector();
+    projector.apply(db, makeEnv("scheduler.permit.grant", {
+      permit_id: "p_1",
+      session_id: "s1",
+      provider_id: "opencode",
+    }));
+    projector.apply(db, makeEnv("scheduler.permit.grant", {
+      permit_id: "p_2",
+      session_id: "s2",
+      provider_id: "opencode",
+    }));
+    projector.apply(db, makeEnv("scheduler.permit.release", { permit_id: "p_1" }));
+    projector.apply(db, makeEnv("scheduler.permit.expired", { permit_id: "p_2" }));
+
+    const row = db
+      .query<{ value: number }, [string]>(
+        `SELECT value FROM scheduler_metrics WHERE metric_name = ?`,
+      )
+      .get("concurrency_in_flight");
+    expect(row?.value).toBe(0);
+  });
+
+  // ── session.ended ──────────────────────────────────────────────────────────
+
+  test("session.ended does not wipe session-level metrics", () => {
+    const { db, projector } = makeProjector();
+    projector.apply(db, makeEnv("session.created", { session_id: "s1", kind: "child" }));
+    projector.apply(db, makeEnv("turn.completed", { session_id: "s1" }));
+    projector.apply(db, makeEnv("session.ended", { session_id: "s1" }));
+
+    const rate = db
+      .query<{ value: number }, [string, string]>(
+        `SELECT value FROM session_metrics WHERE session_id = ? AND metric_name = ?`,
+      )
+      .get("s1", "turn_success_rate");
+    expect(rate?.value).toBe(1); // session metrics persist after session ends
+  });
+
+  // ── usage event edge cases ────────────────────────────────────────────────
+
+  test("usage with no session_id is silently ignored", () => {
+    const { db, projector } = makeProjector();
+    // Should not throw and should not create any session metric row
+    projector.apply(db, makeEnv("usage", { tokens_in: 1000, tokens_out: 500 }));
+
+    const rows = db
+      .query<{ session_id: string; metric_name: string; value: number }, []>(
+        `SELECT session_id, metric_name, value FROM session_metrics`,
+      )
+      .all();
+    expect(rows).toHaveLength(0);
+  });
+
+  // ── commit event ──────────────────────────────────────────────────────────
+
+  test("commit resets burn_rate.tokens_since_last_commit to 0", () => {
+    const { db, projector } = makeProjector();
+    projector.apply(db, makeEnv("session.created", { session_id: "s1", kind: "child" }));
+    projector.apply(db, makeEnv("usage", { session_id: "s1", tokens_in: 5000, tokens_out: 3000 }));
+    projector.apply(db, makeEnv("commit", { session_id: "s1", sha: "abc123" }));
+
+    const burn = db
+      .query<{ value: number }, [string, string]>(
+        `SELECT value FROM session_metrics WHERE session_id = ? AND metric_name = ?`,
+      )
+      .get("s1", "burn_rate.tokens_since_last_commit");
+    expect(burn?.value).toBe(0);
+  });
+
+  test("tokens accumulate again after commit reset", () => {
+    const { db, projector } = makeProjector();
+    projector.apply(db, makeEnv("session.created", { session_id: "s1", kind: "child" }));
+    projector.apply(db, makeEnv("usage", { session_id: "s1", tokens_in: 1000, tokens_out: 500 }));
+    projector.apply(db, makeEnv("commit", { session_id: "s1", sha: "abc123" }));
+    projector.apply(db, makeEnv("usage", { session_id: "s1", tokens_in: 2000, tokens_out: 1000 }));
+
+    const burn = db
+      .query<{ value: number }, [string, string]>(
+        `SELECT value FROM session_metrics WHERE session_id = ? AND metric_name = ?`,
+      )
+      .get("s1", "burn_rate.tokens_since_last_commit");
+    // 2000 + 1000 after reset (1000+500 from before the reset are cleared)
+    expect(burn?.value).toBe(3000);
+  });
 });
