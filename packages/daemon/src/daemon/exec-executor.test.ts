@@ -143,4 +143,61 @@ test("returns non-zero exit code on script failure", async () => {
 
     expect(result.stdout).toContain("file:");
   });
+
+  test("runs node runtime scripts", async () => {
+    writeFileSync(join(tmpDir, "script.js"), `console.log("node runtime");`);
+
+    const manifest = makeManifest({ runtime: "node", file: "script.js", args: [] });
+    const context = makeContext(tmpDir);
+
+    const result = await executeExec({ manifest, context });
+
+    expect(result.ok).toBe(true);
+    expect(result.stdout).toContain("node runtime");
+    expect(result.exitCode).toBe(0);
+  });
+
+  test("aborts execution when AbortSignal is cancelled", async () => {
+    writeFileSync(join(tmpDir, "script.ts"), `await new Promise(r => setTimeout(r, 3000)); console.log("done");`);
+
+    const manifest = makeManifest({ timeout: "5s", args: [] });
+    const context = makeContext(tmpDir);
+
+    const controller = new AbortController();
+    const promise = executeExec({ manifest, context, signal: controller.signal });
+
+    // Cancel before timeout triggers
+    controller.abort();
+
+    const result = await promise;
+
+    expect(result.ok).toBe(false);
+    expect(result.exitCode).toBeNull();
+  });
+
+  test("handles spawn error when executable not found", async () => {
+    writeFileSync(join(tmpDir, "script.ts"), `console.log("this should not run");`);
+
+    const manifest = makeManifest({ runtime: "nonexistent-runtime-xyz", file: "script.ts", args: [] });
+    const context = makeContext(tmpDir);
+
+    const result = await executeExec({ manifest, context });
+
+    expect(result.ok).toBe(false);
+    expect(result.exitCode).toBeNull();
+    expect(result.stderr.length).toBeGreaterThan(0);
+  });
+
+  test("passes empty env_allowlist when set (spawn fails without env)", async () => {
+    writeFileSync(join(tmpDir, "script.ts"), `console.log("this should not run");`);
+
+    const manifest = makeManifest({ envAllowlist: [], args: [] });
+    const context = makeContext(tmpDir);
+
+    // Empty allowlist → buildEnv returns {} → spawn has no PATH → bun not found → spawn error
+    const result = await executeExec({ manifest, context });
+
+    expect(result.ok).toBe(false);
+    expect(result.exitCode).toBeNull(); // spawn error, not process exit
+  });
 });
