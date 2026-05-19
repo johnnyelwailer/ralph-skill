@@ -211,6 +211,17 @@ describe("POST /v1/composer/turns", () => {
     expect(resp.status).toBe(400);
   });
 
+  test("rejects media_inputs with derived_refs that is not an array", async () => {
+    const resp = await makeRequest(handler, deps, "POST", "/v1/composer/turns", {
+      scope: { kind: "global" },
+      message: "Hello",
+      media_inputs: [{ kind: "image", artifact_id: "a_1", derived_refs: "not-an-array" }],
+    });
+    expect(resp.status).toBe(400);
+    const body = JSON.parse(await (await resp.clone()).text());
+    expect(body.error.code).toBe("validation_error");
+  });
+
   test("rejects invalid context_refs kind", async () => {
     const resp = await makeRequest(handler, deps, "POST", "/v1/composer/turns", {
       scope: { kind: "global" },
