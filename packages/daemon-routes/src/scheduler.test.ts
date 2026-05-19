@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { handleScheduler, type SchedulerDeps } from "./scheduler.ts";
-import type { AcquirePermitInput, LimitsUpdateResult, PermitDecision } from "@aloop/scheduler";
+import type { AcquirePermitInput, LimitsUpdateResult, PermitDecision, SchedulerService } from "@aloop/scheduler";
 
 function mockPermit(overrides: Partial<{
   id: string; sessionId: string | null; composerTurnId: string | null;
@@ -34,11 +34,11 @@ function makeDeps(overrides: Partial<SchedulerDeps["scheduler"]["currentLimits"]
   };
   return {
     scheduler: {
-      permits: { db: null as any, get: () => undefined, list: () => [], countActive: () => 0, listExpired: () => [], countByProject: () => 0 },
+      permits: { db: null as any, get: () => undefined, list: () => [], countActive: () => 0, listExpired: () => [], countByProject: () => 0 } as any,
       config: {
         scheduler() { return { ...defaults, ...overrides }; },
         overrides() { return ({} as any); },
-        projectLimits() { return ({ maxConcurrentSessions: 0, maxTokensPerHour: 0 } as any); },
+        projectLimits(_projectId: string) { return ({ maxConcurrentSessions: 0, maxTokensPerHour: 0 } as any); },
         updateLimits() { return Promise.resolve({ ok: true, limits: { ...defaults, concurrencyCap: 5 } as any }); },
       },
       events: { append: (async () => ({} as any)) as any },
@@ -54,7 +54,7 @@ function makeDeps(overrides: Partial<SchedulerDeps["scheduler"]["currentLimits"]
       releasePermit() { throw new Error("not stubbed"); },
       expirePermits() { throw new Error("not stubbed"); },
     },
-  };
+  } as unknown as SchedulerDeps;
 }
 
 async function resJson<T>(res: Response): Promise<T> {

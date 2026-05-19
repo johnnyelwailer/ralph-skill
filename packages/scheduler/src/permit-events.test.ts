@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { resolvePermitTtl } from "./permit-events.ts";
-import type { PermitOwner } from "./decisions.ts";
+import type { PermitDenied, PermitOwner } from "./decisions.ts";
 
 // ownerToFields is exported for testing but not re-exported from index.
 // We test it via the append* functions' behavior.
@@ -43,7 +43,7 @@ describe("appendPermitGrant", () => {
       expiresAt: "2026-01-01T00:05:00.000Z",
     });
 
-    const appended = events.appends[0];
+    const appended = events.appends[0]!;
     expect(appended.topic).toBe("scheduler.permit.grant");
     expect(appended.data).toMatchObject({ session_id: "sess-42" });
     expect(appended.data).not.toHaveProperty("composer_turn_id");
@@ -65,7 +65,7 @@ describe("appendPermitGrant", () => {
       expiresAt: "2026-01-01T00:10:00.000Z",
     });
 
-    const appended = events.appends[0];
+    const appended = events.appends[0]!;
     expect(appended.data).toMatchObject({ composer_turn_id: "turn-99" });
     expect(appended.data).not.toHaveProperty("session_id");
     expect(appended.data).not.toHaveProperty("control_subagent_run_id");
@@ -86,7 +86,7 @@ describe("appendPermitGrant", () => {
       expiresAt: "2026-01-01T00:02:00.000Z",
     });
 
-    const appended = events.appends[0];
+    const appended = events.appends[0]!;
     expect(appended.data).toMatchObject({ control_subagent_run_id: "run-abc" });
     expect(appended.data).not.toHaveProperty("session_id");
     expect(appended.data).not.toHaveProperty("composer_turn_id");
@@ -107,7 +107,7 @@ describe("appendPermitGrant", () => {
       expiresAt: "2026-01-01T00:05:00.000Z",
     });
 
-    const appended = events.appends[0];
+    const appended = events.appends[0]!;
     expect(appended.data).not.toHaveProperty("project_id");
   });
 
@@ -126,7 +126,7 @@ describe("appendPermitGrant", () => {
       expiresAt: "2026-01-01T00:05:00.000Z",
     });
 
-    const appended = events.appends[0];
+    const appended = events.appends[0]!;
     expect(appended.data).toMatchObject({ project_id: "proj-visible" });
   });
 });
@@ -142,7 +142,7 @@ describe("appendPermitRelease", () => {
       owner,
     });
 
-    const appended = events.appends[0];
+    const appended = events.appends[0]!;
     expect(appended.topic).toBe("scheduler.permit.release");
     expect(appended.data).toMatchObject({
       permit_id: "perm-release-1",
@@ -162,7 +162,7 @@ describe("appendPermitExpired", () => {
       owner,
     });
 
-    const appended = events.appends[0];
+    const appended = events.appends[0]!;
     expect(appended.topic).toBe("scheduler.permit.expired");
     expect(appended.data).toMatchObject({
       permit_id: "perm-expired-1",
@@ -186,10 +186,10 @@ describe("appendPermitDeny", () => {
     });
 
     expect(result.granted).toBe(false);
-    expect(result.reason).toBe("concurrency_limit");
-    expect(result.gate).toBe("global_cap");
-    expect(result.details).toEqual({ concurrencyCap: 3, currentPermits: 3 });
-    expect(result.retryAfterSeconds).toBe(45);
+    expect((result as PermitDenied).reason).toBe("concurrency_limit");
+    expect((result as PermitDenied).gate).toBe("global_cap");
+    expect((result as PermitDenied).details).toEqual({ concurrencyCap: 3, currentPermits: 3 });
+    expect((result as PermitDenied).retryAfterSeconds).toBe(45);
   });
 
   test("returns PermitDenied without retryAfterSeconds when not provided", async () => {
@@ -221,7 +221,7 @@ describe("appendPermitDeny", () => {
       retryAfterSeconds: 30,
     });
 
-    const appended = events.appends[0];
+    const appended = events.appends[0]!;
     expect(appended.topic).toBe("scheduler.permit.deny");
     expect(appended.data).toMatchObject({
       session_id: "sess-event",
@@ -245,7 +245,7 @@ describe("appendPermitDeny", () => {
 
     // The denial is still returned even when event append fails
     expect(result.granted).toBe(false);
-    expect(result.reason).toBe("audit_log_failure");
+    expect((result as PermitDenied).reason).toBe("audit_log_failure");
   });
 });
 

@@ -210,7 +210,7 @@ describe("getMetricAggregates", () => {
       expect(item.stat).toBe("mean");
     }
     // Values are the two rows inserted
-    const values = body.items.map((i: { value: number }) => i.value).sort();
+    const values = (body.items as unknown as { value: number }[]).map((i) => i.value).sort();
     expect(values).toEqual([38.1, 42.5]);
   });
 
@@ -225,7 +225,7 @@ describe("getMetricAggregates", () => {
     const req = new Request("http://x/v1/metrics/aggregates?metric=response_time_ms&stat=p95");
     const res = await getMetricAggregates(req, deps);
     const body = await res.json() as unknown as { _v: number; items: Record<string, unknown>[]; next_cursor: string | null };
-    expect(body.items[0].labels).toEqual({ endpoint: "/v1/chat" });
+    expect(body.items[0]!.labels).toEqual({ endpoint: "/v1/chat" });
   });
 
   test("applies default window=rolling and stat=mean", async () => {
@@ -241,8 +241,8 @@ describe("getMetricAggregates", () => {
     expect(res.status).toBe(200);
     const body = await res.json() as unknown as { _v: number; items: Record<string, unknown>[]; next_cursor: string | null };
     expect(body.items).toHaveLength(1);
-    expect(body.items[0].window_kind).toBe("rolling");
-    expect(body.items[0].stat).toBe("mean");
+    expect(body.items[0]!.window_kind).toBe("rolling");
+    expect(body.items[0]!.stat).toBe("mean");
   });
 
   test("window_hours=24 excludes windows older than 24 hours from now", async () => {
@@ -262,7 +262,7 @@ describe("getMetricAggregates", () => {
     expect(res.status).toBe(200);
     const body = await res.json() as unknown as { _v: number; items: Record<string, unknown>[]; next_cursor: string | null };
     expect(body.items).toHaveLength(1);
-    expect(body.items[0].value).toBe(42.0);
+    expect(body.items[0]!.value).toBe(42.0);
   });
 
   test("applies limit parameter to cap rows returned", async () => {
@@ -330,8 +330,8 @@ describe("getMetricAggregates", () => {
     const badReq = new Request("http://x/v1/metrics/aggregates?metric=x");
     const res = await getMetricAggregates(badReq, { db: badDb });
     expect(res.status).toBe(500);
-    const body = await res.json() as unknown as { _v: number; items: Record<string, unknown>[]; next_cursor: string | null };
-    expect(body.error.code).toBe("internal_error");
+    const body = await res.json() as unknown as { _v: number; items: Record<string, unknown>[]; next_cursor: string | null; error?: { code: string; message: string } };
+    expect(body.error?.code).toBe("internal_error");
     badDb.close();
   });
 });
@@ -343,8 +343,8 @@ describe("getMetricHistory", () => {
     const req = new Request("http://x/v1/metrics/history");
     const res = await getMetricHistory(req, deps);
     expect(res.status).toBe(400);
-    const body = await res.json() as unknown as { _v: number; items: Record<string, unknown>[]; next_cursor: string | null };
-    expect(body.error.code).toBe("bad_request");
+    const body = await res.json() as unknown as { _v: number; items: Record<string, unknown>[]; next_cursor: string | null; error?: { code: string; message: string } };
+    expect(body.error?.code).toBe("bad_request");
   });
 
   test("returns 200 with empty items when no history exists", async () => {
