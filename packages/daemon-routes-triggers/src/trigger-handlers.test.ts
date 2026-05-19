@@ -505,6 +505,36 @@ describe("PATCH /v1/triggers/:id", () => {
     const res = await handleTriggers(patchReq(deps, id, { scope: { kind: "invalid" } }), deps, `/v1/triggers/${id}`);
     expect(res.status).toBe(400);
   });
+
+  test("rejects invalid source.kind", async () => {
+    const res = await handleTriggers(patchReq(deps, id, { source: { kind: "invalid" } }), deps, `/v1/triggers/${id}`);
+    expect(res.status).toBe(400);
+  });
+
+  test("rejects invalid action.kind", async () => {
+    const res = await handleTriggers(patchReq(deps, id, { action: { kind: "invalid", target: {} } }), deps, `/v1/triggers/${id}`);
+    expect(res.status).toBe(400);
+  });
+
+  test("rejects non-integer debounce_seconds", async () => {
+    const res = await handleTriggers(patchReq(deps, id, { debounce_seconds: 1.5 }), deps, `/v1/triggers/${id}`);
+    expect(res.status).toBe(400);
+  });
+
+  test("rejects negative debounce_seconds", async () => {
+    const res = await handleTriggers(patchReq(deps, id, { debounce_seconds: -10 }), deps, `/v1/triggers/${id}`);
+    expect(res.status).toBe(400);
+  });
+
+  test("rejects negative budget_policy.max_cost_usd_per_fire", async () => {
+    const res = await handleTriggers(patchReq(deps, id, { budget_policy: { max_cost_usd_per_fire: -1 } }), deps, `/v1/triggers/${id}`);
+    expect(res.status).toBe(400);
+  });
+
+  test("rejects non-boolean enabled", async () => {
+    const res = await handleTriggers(patchReq(deps, id, { enabled: "yes" }), deps, `/v1/triggers/${id}`);
+    expect(res.status).toBe(400);
+  });
 });
 
 // ─── POST /v1/triggers/:id/fire ────────────────────────────────────────────────
