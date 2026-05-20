@@ -233,6 +233,16 @@ describe("projectResponse", () => {
     expect(result.workspace_ids).toEqual(["w1", "w2"]);
   });
 
+  test("accepts sessionsDir as a function (lazy evaluation)", () => {
+    const projDir = join(dir, "proj-123");
+    mkdirSync(join(projDir, "s_1"), { recursive: true });
+    writeFileSync(join(projDir, "s_1", "session.json"), JSON.stringify({ status: "running" }));
+
+    const sessionsDirFn = () => dir;
+    const result = projectResponse(makeProject(), sessionsDirFn) as Record<string, unknown>;
+    expect(result.session_counts).toEqual({ total: 1, by_status: { running: 1 } });
+  });
+
   test("includes session_counts from countProjectSessions", () => {
     // Create a project with known sessions
     const projDir = join(dir, "proj-123");
