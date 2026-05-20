@@ -740,6 +740,51 @@ describe("handleTurns", () => {
       expect(body.cost_usd).toBe(0); // default, since -1.5 is ignored
     });
 
+    test("ignores non-number tokens_in (string) — treats as undefined", async () => {
+      const deps = makeDeps();
+      const createReq = new Request("http://localhost/v1/sessions/s_nn/turns", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ turn_id: "t_nn" }),
+      });
+      await handleTurns(createReq, deps, "/v1/sessions/s_nn/turns");
+
+      const res = await patchTurn("s_nn", "t_nn", { tokens_in: "500" }, deps);
+      expect(res!.status).toBe(200);
+      const body = await res!.json();
+      expect(body.tokens_in).toBe(0); // default, since "500" is ignored (not a number)
+    });
+
+    test("ignores non-number tokens_out (string) — treats as undefined", async () => {
+      const deps = makeDeps();
+      const createReq = new Request("http://localhost/v1/sessions/s_no/turns", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ turn_id: "t_no" }),
+      });
+      await handleTurns(createReq, deps, "/v1/sessions/s_no/turns");
+
+      const res = await patchTurn("s_no", "t_no", { tokens_out: "1000" }, deps);
+      expect(res!.status).toBe(200);
+      const body = await res!.json();
+      expect(body.tokens_out).toBe(0); // default, since "1000" is ignored (not a number)
+    });
+
+    test("ignores non-number cost_usd (string) — treats as undefined", async () => {
+      const deps = makeDeps();
+      const createReq = new Request("http://localhost/v1/sessions/s_ncu/turns", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ turn_id: "t_ncu" }),
+      });
+      await handleTurns(createReq, deps, "/v1/sessions/s_ncu/turns");
+
+      const res = await patchTurn("s_ncu", "t_ncu", { cost_usd: "0.05" }, deps);
+      expect(res!.status).toBe(200);
+      const body = await res!.json();
+      expect(body.cost_usd).toBe(0); // default, since "0.05" is ignored (not a number)
+    });
+
     test("converts non-string ended_at to string", async () => {
       const deps = makeDeps();
       const createReq = new Request("http://localhost/v1/sessions/s_str/turns", {
