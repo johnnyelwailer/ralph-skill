@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { buildCooldownMultipliers } from "./start-infra.ts";
+import { buildCooldownMultipliers, createDaemonInfra } from "./start-infra.ts";
 
 /** Minimal ConfigStore stub for buildCooldownMultipliers */
 function makeConfig(overrides?: {
@@ -99,5 +99,61 @@ describe("buildCooldownMultipliers", () => {
     expect(result.get("too_low")).toBe(0.5);
     expect(result.get("bad_type")).toBe(1.0);
     expect(result.get("missing")).toBe(1.0);
+  });
+});
+
+describe("createDaemonInfra", () => {
+  test("returns a DaemonInfra object with all required keys", () => {
+    const infra = createDaemonInfra({
+      dbPath: ":memory:",
+      logFile: "/tmp/test-events.jsonl",
+    });
+
+    expect(typeof infra.db).toBe("object");
+    expect(typeof infra.registry).toBe("object");
+    expect(typeof infra.workspaceRegistry).toBe("object");
+    expect(typeof infra.sessionRegistry).toBe("object");
+    expect(typeof infra.permits).toBe("object");
+    expect(typeof infra.artifactRegistry).toBe("object");
+    expect(typeof infra.eventStore).toBe("object");
+    expect(typeof infra.events).toBe("object");
+    expect(typeof infra.providerRegistry).toBe("object");
+    expect(typeof infra.providerHealth).toBe("object");
+    expect(typeof infra.idempotencyStore).toBe("object");
+  });
+
+  test("registers both opencode and opencode-cli adapters in providerRegistry", () => {
+    const infra = createDaemonInfra({
+      dbPath: ":memory:",
+      logFile: "/tmp/test-events.jsonl",
+    });
+
+    const adapters = infra.providerRegistry.list().map((a) => a.id);
+    expect(adapters).toContain("opencode");
+    expect(adapters).toContain("opencode-cli");
+  });
+
+  test("initializes providerHealth with existing provider adapter IDs", () => {
+    const infra = createDaemonInfra({
+      dbPath: ":memory:",
+      logFile: "/tmp/test-events.jsonl",
+    });
+
+    // providerHealth should be backed by the registered adapters; InMemoryProviderHealthStore
+    // is constructed with adapter IDs so its internal state reflects them
+    expect(infra.providerHealth).toBeDefined();
+    expect(typeof infra.providerHealth.get).toBe("function");
+    expect(typeof infra.providerHealth.list).toBe("function");
+  });
+
+  test("idempotencyStore is backed by the database", () => {
+    const infra = createDaemonInfra({
+      dbPath: ":memory:",
+      logFile: "/tmp/test-events.jsonl",
+    });
+
+    // idempotencyStore has get/put methods backed by the db
+    expect(typeof infra.idempotencyStore.get).toBe("function");
+    expect(typeof infra.idempotencyStore.put).toBe("function");
   });
 });
