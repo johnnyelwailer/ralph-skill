@@ -966,3 +966,47 @@ describe("asNonNegativeFloat", () => {
     expect(asNonNegativeFloat(-Infinity)).toBe("invalid");
   });
 });
+
+// ─── asNonNegativeNumber ─────────────────────────────────────────────────────
+
+function asNonNegativeNumber(value: unknown): number | "invalid" | undefined {
+  if (value === undefined) return undefined;
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0) return "invalid";
+  return value;
+}
+
+describe("asNonNegativeNumber", () => {
+  test("returns the number when given a valid non-negative number", () => {
+    expect(asNonNegativeNumber(0)).toBe(0);
+    expect(asNonNegativeNumber(0.01)).toBe(0.01);
+    expect(asNonNegativeNumber(1.5)).toBe(1.5);
+    expect(asNonNegativeNumber(999.99)).toBe(999.99);
+  });
+
+  test("returns undefined when value is undefined", () => {
+    expect(asNonNegativeNumber(undefined)).toBeUndefined();
+  });
+
+  test("returns 'invalid' for non-number values", () => {
+    expect(asNonNegativeNumber("0.05")).toBe("invalid");
+    expect(asNonNegativeNumber(null)).toBe("invalid");
+    expect(asNonNegativeNumber({})).toBe("invalid");
+    expect(asNonNegativeNumber([])).toBe("invalid");
+    expect(asNonNegativeNumber(true)).toBe("invalid");
+  });
+
+  test("returns 'invalid' for negative numbers", () => {
+    expect(asNonNegativeNumber(-0.01)).toBe("invalid");
+    expect(asNonNegativeNumber(-1)).toBe("invalid");
+    expect(asNonNegativeNumber(-999.99)).toBe("invalid");
+  });
+
+  test("returns 'invalid' for NaN", () => {
+    expect(asNonNegativeNumber(NaN)).toBe("invalid");
+  });
+
+  test("returns 'invalid' for Infinity", () => {
+    expect(asNonNegativeNumber(Infinity)).toBe("invalid");
+    expect(asNonNegativeNumber(-Infinity)).toBe("invalid");
+  });
+});
