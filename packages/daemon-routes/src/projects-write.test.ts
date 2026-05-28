@@ -509,6 +509,66 @@ describe("createProject workspace_ids", () => {
     const body = await (res as Response).json();
     expect(body.workspace_ids).toEqual([]);
   });
+
+  test("returns 201 with valid workspace_id and role", async () => {
+    const req = makeRequest({
+      abs_path: "/test/project",
+      name: "with-workspace",
+      workspace_ids: [{ workspace_id: "w_platform", role: "primary" }],
+    });
+    const res = await createProject(req, deps);
+    expect(res.status).toBe(201);
+    const body = await (res as Response).json();
+    expect(body.name).toBe("with-workspace");
+    expect(body.workspace_ids).toHaveLength(1);
+    expect(body.workspace_ids[0]).toEqual({ workspace_id: "w_platform", role: "primary" });
+  });
+
+  test("defaults role to supporting when role is not a valid role string", async () => {
+    const req = makeRequest({
+      abs_path: "/test/project",
+      workspace_ids: [{ workspace_id: "w_xyz", role: "not_a_real_role" }],
+    });
+    const res = await createProject(req, deps);
+    expect(res.status).toBe(201);
+    const body = await (res as Response).json();
+    expect(body.workspace_ids).toHaveLength(1);
+    expect(body.workspace_ids[0].role).toBe("supporting");
+  });
+
+  test("returns 201 when workspace_ids has multiple entries", async () => {
+    const req = makeRequest({
+      abs_path: "/test/multi-workspace",
+      workspace_ids: [
+        { workspace_id: "w_alpha", role: "primary" },
+        { workspace_id: "w_beta", role: "dependency" },
+      ],
+    });
+    const res = await createProject(req, deps);
+    expect(res.status).toBe(201);
+    const body = await (res as Response).json();
+    expect(body.workspace_ids).toHaveLength(2);
+    expect(body.workspace_ids).toContainEqual({ workspace_id: "w_alpha", role: "primary" });
+    expect(body.workspace_ids).toContainEqual({ workspace_id: "w_beta", role: "dependency" });
+  });
+
+  test("project is persisted in registry with workspace membership", async () => {
+    const req = makeRequest({
+      abs_path: "/test/persisted",
+      workspace_ids: [{ workspace_id: "w_persist", role: "experiment" }],
+    });
+    const res = await createProject(req, deps);
+    expect(res.status).toBe(201);
+    const body = await (res as Response).json();
+    // Verify the project is actually in the registry with the membership
+    const stored = deps.registry.get(body.id);
+    expect(stored).toBeDefined();
+    expect(stored!.workspaceMemberships).toHaveLength(1);
+    expect(stored!.workspaceMemberships[0]).toEqual({
+      workspaceId: "w_persist",
+      role: "experiment",
+    });
+  });
 });
 
 // ─── purgeProject re-throws unknown errors ─────────────────────────────────
