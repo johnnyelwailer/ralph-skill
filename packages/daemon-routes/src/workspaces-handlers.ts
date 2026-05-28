@@ -22,7 +22,7 @@ export async function createWorkspaceHandler(
   const body = await parseJsonBody(req);
   if ("error" in body) return body.error;
 
-  const name = typeof body.data.name === "string" && body.data.name.length > 0
+  const name = typeof body.data.name === "string" && body.data.name.trim().length > 0
     ? body.data.name
     : undefined;
   if (!name) return badRequest("name is required");
@@ -34,6 +34,12 @@ export async function createWorkspaceHandler(
     typeof body.data.default_budget_usd_per_day === "number"
       ? body.data.default_budget_usd_per_day
       : undefined;
+  if (body.data.default_budget_usd_per_day !== undefined && defaultBudgetUsdPerDay === undefined) {
+    return badRequest("default_budget_usd_per_day must be a number");
+  }
+  if (defaultBudgetUsdPerDay !== undefined && defaultBudgetUsdPerDay < 0) {
+    return badRequest("default_budget_usd_per_day cannot be negative");
+  }
 
   const metadata =
     typeof body.data.metadata === "object" && body.data.metadata !== null
@@ -87,6 +93,15 @@ export async function patchWorkspaceHandler(
   }
   if (body.data.name !== undefined && body.data.name.length === 0) {
     return badRequest("name is required");
+  }
+  // Reject whitespace-only names
+  if (body.data.name !== undefined && typeof body.data.name === "string" && body.data.name.trim().length === 0) {
+    return badRequest("name cannot be only whitespace");
+  }
+
+  // Reject negative budget
+  if (body.data.default_budget_usd_per_day !== undefined && typeof body.data.default_budget_usd_per_day === "number" && body.data.default_budget_usd_per_day < 0) {
+    return badRequest("default_budget_usd_per_day cannot be negative");
   }
 
   if (name === undefined && description === undefined && defaultBudgetUsdPerDay === undefined && metadata === undefined) {
