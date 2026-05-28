@@ -21,6 +21,7 @@ function makeDeps() {
     handleEvents: () => undefined,
     handleSetup: () => undefined,
     handleWorkspaces: () => undefined,
+    handleTurns: () => undefined,
   };
 }
 

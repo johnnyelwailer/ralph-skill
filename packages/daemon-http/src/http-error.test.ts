@@ -15,28 +15,22 @@ function makeDeps() {
     handleTriggers: () => undefined,
     handleSetup: () => undefined,
     handleEvents: () => undefined,
+    handleTurns: () => undefined,
   };
 }
 
 describe("startHttp error handling", () => {
   test("throws when HTTP server fails to bind a port (port is undefined)", async () => {
-    // Monkey-patch Bun.serve to simulate a bind failure where port is undefined.
-    // This mirrors a real scenario where the OS refuses the port binding.
     const originalServe = Bun.serve;
-    let serveCallCount = 0;
-    Bun.serve = (options: {
-      hostname: string;
-      port: number;
-      fetch: (req: Request) => Response | Promise<Response>;
-    }) => {
-      serveCallCount++;
-      // Simulate a port bind failure by returning an object with port as undefined
+    Bun.serve = ((
+      options: Parameters<typeof originalServe>[0]
+    ) => {
       return {
         port: undefined,
-        hostname: options.hostname,
+        hostname: options.hostname ?? "127.0.0.1",
         stop: () => {},
       } as unknown as ReturnType<typeof originalServe>;
-    };
+    }) as typeof originalServe;
 
     try {
       const opts: StartHttpOptions = { port: 0, deps: makeDeps() };
@@ -58,19 +52,17 @@ describe("startHttp error handling", () => {
   test("stop() calls server.stop with true to allow graceful shutdown", async () => {
     const originalServe = Bun.serve;
     let stopCalledWith: unknown = undefined;
-    Bun.serve = (options: {
-      hostname: string;
-      port: number;
-      fetch: (req: Request) => Response | Promise<Response>;
-    }) => {
+    Bun.serve = ((
+      options: Parameters<typeof originalServe>[0]
+    ) => {
       return {
         port: 0,
-        hostname: options.hostname,
+        hostname: options.hostname ?? "127.0.0.1",
         stop: (graceful: unknown) => {
           stopCalledWith = graceful;
         },
       } as unknown as ReturnType<typeof originalServe>;
-    };
+    }) as typeof originalServe;
 
     try {
       const opts: StartHttpOptions = { port: 0, deps: makeDeps() };

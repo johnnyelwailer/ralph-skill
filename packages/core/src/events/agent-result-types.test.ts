@@ -825,7 +825,7 @@ describe("SetupReadinessVerdict", () => {
     };
     expect(r.status).toBe("unresolved");
     expect(r.blocking_ambiguities).toHaveLength(1);
-    expect(r.blocking_ambiguities[0]!.kind).toBe("missing_required");
+    expect(r.blocking_ambiguities![0]!.kind).toBe("missing_required");
   });
 
   test("needs_deeper_research status", () => {
