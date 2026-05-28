@@ -1,68 +1,119 @@
 import { describe, expect, test } from "bun:test";
-import { buildHealth, type HealthCounters, type HealthPayload } from "./health.ts";
+import { buildHealth, type HealthCounters } from "./health.ts";
 import { VERSION } from "../version.ts";
 
 describe("buildHealth", () => {
-  test("returns canonical v1 health envelope", () => {
-    const now = Date.now();
-    const result = buildHealth(now - 5000, now);
-
+  test("returns _v of 1", () => {
+    const result = buildHealth(Date.now() - 60_000);
     expect(result._v).toBe(1);
+  });
+
+  test("returns status 'ok'", () => {
+    const result = buildHealth(Date.now() - 60_000);
     expect(result.status).toBe("ok");
+  });
+
+  test("returns the VERSION constant", () => {
+    const result = buildHealth(Date.now() - 60_000);
     expect(result.version).toBe(VERSION);
-    expect(typeof result.uptime_seconds).toBe("number");
   });
 
-  test("computes correct uptime_seconds from startedAt and now", () => {
-    const startedAt = Date.now() - 30_000; // 30 seconds ago
+  test("uptime_seconds is floor of (now - startedAt) / 1000", () => {
+    const startedAt = Date.now() - 123_456; // 123.456 seconds ago
+    const result = buildHealth(startedAt, startedAt + 123_456);
+    expect(result.uptime_seconds).toBe(123);
+  });
+
+  test("uptime_seconds is 0 when now equals startedAt", () => {
     const now = Date.now();
-    const result = buildHealth(startedAt, now);
-
-    // Allow 1 second tolerance for test execution time
-    expect(result.uptime_seconds).toBeGreaterThanOrEqual(29);
-    expect(result.uptime_seconds).toBeLessThanOrEqual(31);
-  });
-
-  test("uptime_seconds is zero when now equals startedAt", () => {
-    const timestamp = Date.now();
-    const result = buildHealth(timestamp, timestamp);
-
+    const result = buildHealth(now, now);
     expect(result.uptime_seconds).toBe(0);
   });
 
-  test("uptime_seconds never goes negative", () => {
-    // Simulate clock skew where `now` appears before `startedAt`
+  test("uptime_seconds is 0 when now is before startedAt (clock skew)", () => {
     const startedAt = Date.now();
-    const earlier = startedAt - 1000;
-    const result = buildHealth(startedAt, earlier);
-
+    const before = startedAt - 1_000;
+    const result = buildHealth(startedAt, before);
     expect(result.uptime_seconds).toBe(0);
   });
 
-  test("returns zero counters when none provided", () => {
-    const now = Date.now();
-    const result = buildHealth(now - 1000, now);
-
-    expect(result.counters).toEqual({
-      sessions_total: 0,
-      sessions_by_status: {},
-      permits_in_flight: 0,
-    });
+  test("uses provided now parameter over Date.now()", () => {
+    const startedAt = 1_700_000_000_000; // fixed point
+    const fixedNow = startedAt + 90_000; // 90 seconds later
+    const result = buildHealth(startedAt, fixedNow);
+    expect(result.uptime_seconds).toBe(90);
   });
 
-  test("maps counters to snake_case in response", () => {
-    const now = Date.now();
-    const counters: HealthCounters = {
-      sessionsTotal: 5,
-      sessionsByStatus: { active: 3, completed: 2 },
-      permitsInFlight: 4,
-    };
-    const result = buildHealth(now - 1000, now, counters);
+  test("defaults now to Date.now() when not provided", () => {
+    const before = Date.now();
+    const result = buildHealth(before);
+    const after = Date.now();
+    // uptime_seconds should be at least 0 and at most a few seconds
+    expect(result.uptime_seconds).toBeGreaterThanOrEqual(0);
+    expect(result.uptime_seconds).toBeLessThanOrEqual(5);
+  });
 
-    expect(result.counters).toEqual({
-      sessions_total: 5,
-      sessions_by_status: { active: 3, completed: 2 },
-      permits_in_flight: 4,
+  describe("counters transformation", () => {
+    test("defaults to zero counters when counters is undefined", () => {
+      const result = buildHealth(Date.now() - 60_000, Date.now(), undefined);
+      expect(result.counters).toEqual({
+        sessions_total: 0,
+        sessions_by_status: {},
+        permits_in_flight: 0,
+      });
+    });
+
+    test("defaults to zero counters when counters is null", () => {
+      const result = buildHealth(Date.now() - 60_000, Date.now(), null);
+      expect(result.counters).toEqual({
+        sessions_total: 0,
+        sessions_by_status: {},
+        permits_in_flight: 0,
+      });
+    });
+
+    test("maps sessionsTotal to sessions_total", () => {
+      const counters: HealthCounters = {
+        sessionsTotal: 42,
+        sessionsByStatus: {},
+        permitsInFlight: 0,
+      };
+      const result = buildHealth(Date.now() - 60_000, Date.now(), counters);
+      expect(result.counters.sessions_total).toBe(42);
+    });
+
+    test("maps sessionsByStatus to sessions_by_status", () => {
+      const counters: HealthCounters = {
+        sessionsTotal: 3,
+        sessionsByStatus: { running: 2, stopped: 1 },
+        permitsInFlight: 5,
+      };
+      const result = buildHealth(Date.now() - 60_000, Date.now(), counters);
+      expect(result.counters.sessions_by_status).toEqual({ running: 2, stopped: 1 });
+    });
+
+    test("maps permitsInFlight to permits_in_flight", () => {
+      const counters: HealthCounters = {
+        sessionsTotal: 0,
+        sessionsByStatus: {},
+        permitsInFlight: 7,
+      };
+      const result = buildHealth(Date.now() - 60_000, Date.now(), counters);
+      expect(result.counters.permits_in_flight).toBe(7);
+    });
+
+    test("maps all counter fields together", () => {
+      const counters: HealthCounters = {
+        sessionsTotal: 10,
+        sessionsByStatus: { active: 6, idle: 4 },
+        permitsInFlight: 3,
+      };
+      const result = buildHealth(Date.now() - 60_000, Date.now(), counters);
+      expect(result.counters).toEqual({
+        sessions_total: 10,
+        sessions_by_status: { active: 6, idle: 4 },
+        permits_in_flight: 3,
+      });
     });
   });
 });

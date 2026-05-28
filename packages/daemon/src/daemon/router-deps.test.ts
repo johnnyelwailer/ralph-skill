@@ -2,8 +2,9 @@ import { describe, expect, test } from "bun:test";
 import { makeRouterDeps, type MakeRouterDepsInput } from "./router-deps.ts";
 import type { ConfigStore } from "@aloop/daemon-config";
 import { DAEMON_DEFAULTS, OVERRIDES_DEFAULT } from "@aloop/daemon-config";
-import type { EventWriter, ComposerTurnRegistry, ArtifactRegistry } from "@aloop/state-sqlite";
+import { type EventWriter, ComposerTurnRegistry, ArtifactRegistry, TurnRegistry } from "@aloop/state-sqlite";
 import { InMemoryProviderHealthStore, ProviderRegistry } from "@aloop/provider";
+import { openDatabase } from "@aloop/sqlite-db";
 
 function makeConfigStore(): ConfigStore {
   let overrides = { ...OVERRIDES_DEFAULT };
@@ -46,8 +47,12 @@ function makeInput(): MakeRouterDepsInput {
   const providerHealth = new InMemoryProviderHealthStore(
     providerRegistry.list().map((it) => it.id),
   );
+  const { db } = openDatabase(":memory:");
+  const turnRegistry = new TurnRegistry(db);
 
   return {
+    db,
+    turnRegistry,
     registry: {
       listProjects: () =>
         Promise.resolve({
