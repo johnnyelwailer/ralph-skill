@@ -18,6 +18,12 @@ function makeTmp() {
   return mkdtempSync(join(tmpdir(), "aloop-trigger-handlers-"));
 }
 
+function expectOk(res: Response | undefined, status = 200): Response {
+  expect(res).not.toBeUndefined();
+  expect(res!.status).toBe(status);
+  return res!;
+}
+
 function createTriggerReq(deps: TriggersDeps, body: object) {
   return new Request("http://localhost/v1/triggers", {
     method: "POST",
@@ -82,8 +88,8 @@ describe("POST /v1/triggers", () => {
       action: { kind: "emit_alert", target: { message: "weekly check" } },
     });
     const res = await handleTriggers(req, deps, "/v1/triggers");
-    expect(res.status).toBe(201);
-    const body = await res.json();
+    expect(res!.status).toBe(201);
+    const body = await res!.json();
     expect(body._v).toBe(1);
     expect(body.id).toMatch(/^tr_/);
     expect(body.scope.kind).toBe("global");
@@ -106,8 +112,8 @@ describe("POST /v1/triggers", () => {
       enabled: false,
     });
     const res = await handleTriggers(req, deps, "/v1/triggers");
-    expect(res.status).toBe(201);
-    const body = await res.json();
+    expect(res!.status).toBe(201);
+    const body = await res!.json();
     expect(body.scope.id).toBe("p_abc123");
     expect(body.action.target.handler).toBe("dependency_signal");
     expect(body.budget_policy.max_cost_usd_per_fire).toBe(2.5);
@@ -121,7 +127,7 @@ describe("POST /v1/triggers", () => {
       action: { kind: "emit_alert", target: {} },
     });
     const res = await handleTriggers(req, deps, "/v1/triggers");
-    expect(res.status).toBe(400);
+    expect(res!.status).toBe(400);
   });
 
   test("rejects missing source", async () => {
@@ -130,7 +136,7 @@ describe("POST /v1/triggers", () => {
       action: { kind: "emit_alert", target: {} },
     });
     const res = await handleTriggers(req, deps, "/v1/triggers");
-    expect(res.status).toBe(400);
+    expect(res!.status).toBe(400);
   });
 
   test("rejects missing action", async () => {
@@ -139,7 +145,7 @@ describe("POST /v1/triggers", () => {
       source: { kind: "time" },
     });
     const res = await handleTriggers(req, deps, "/v1/triggers");
-    expect(res.status).toBe(400);
+    expect(res!.status).toBe(400);
   });
 
   test("rejects invalid scope.kind", async () => {
@@ -149,7 +155,7 @@ describe("POST /v1/triggers", () => {
       action: { kind: "emit_alert", target: {} },
     });
     const res = await handleTriggers(req, deps, "/v1/triggers");
-    expect(res.status).toBe(400);
+    expect(res!.status).toBe(400);
   });
 
   test("rejects non-global trigger without scope.id", async () => {
@@ -159,7 +165,7 @@ describe("POST /v1/triggers", () => {
       action: { kind: "emit_alert", target: {} },
     });
     const res = await handleTriggers(req, deps, "/v1/triggers");
-    expect(res.status).toBe(400);
+    expect(res!.status).toBe(400);
   });
 
   test("rejects invalid source.kind", async () => {
@@ -169,7 +175,7 @@ describe("POST /v1/triggers", () => {
       action: { kind: "emit_alert", target: {} },
     });
     const res = await handleTriggers(req, deps, "/v1/triggers");
-    expect(res.status).toBe(400);
+    expect(res!.status).toBe(400);
   });
 
   test("rejects invalid action.kind", async () => {
@@ -179,7 +185,7 @@ describe("POST /v1/triggers", () => {
       action: { kind: "invalid", target: {} },
     });
     const res = await handleTriggers(req, deps, "/v1/triggers");
-    expect(res.status).toBe(400);
+    expect(res!.status).toBe(400);
   });
 
   test("rejects negative budget_policy.max_cost_usd_per_fire", async () => {
@@ -190,7 +196,7 @@ describe("POST /v1/triggers", () => {
       budget_policy: { max_cost_usd_per_fire: -1 },
     });
     const res = await handleTriggers(req, deps, "/v1/triggers");
-    expect(res.status).toBe(400);
+    expect(res!.status).toBe(400);
   });
 
   test("rejects non-integer debounce_seconds", async () => {
@@ -201,13 +207,13 @@ describe("POST /v1/triggers", () => {
       debounce_seconds: 1.5,
     });
     const res = await handleTriggers(req, deps, "/v1/triggers");
-    expect(res.status).toBe(400);
+    expect(res!.status).toBe(400);
   });
 
   test("returns 405 for non-POST methods", async () => {
     const req = new Request("http://localhost/v1/triggers", { method: "PUT" });
     const res = await handleTriggers(req, deps, "/v1/triggers");
-    expect(res.status).toBe(405);
+    expect(res!.status).toBe(405);
   });
 
   test("rejects action without target", async () => {
@@ -217,7 +223,7 @@ describe("POST /v1/triggers", () => {
       action: { kind: "emit_alert" },
     });
     const res = await handleTriggers(req, deps, "/v1/triggers");
-    expect(res.status).toBe(400);
+    expect(res!.status).toBe(400);
   });
 
   test("accepts fire_monitor_profile action kind", async () => {
@@ -227,8 +233,8 @@ describe("POST /v1/triggers", () => {
       action: { kind: "fire_monitor_profile", target: { artifact_id: "a_monitor_001" } },
     });
     const res = await handleTriggers(req, deps, "/v1/triggers");
-    expect(res.status).toBe(201);
-    const body = await res.json();
+    expect(res!.status).toBe(201);
+    const body = await res!.json();
     expect(body.action.kind).toBe("fire_monitor_profile");
     expect(body.action.target.artifact_id).toBe("a_monitor_001");
   });
@@ -240,8 +246,8 @@ describe("POST /v1/triggers", () => {
       action: { kind: "create_session", target: { reason: "scheduled check-in" } },
     });
     const res = await handleTriggers(req, deps, "/v1/triggers");
-    expect(res.status).toBe(201);
-    const body = await res.json();
+    expect(res!.status).toBe(201);
+    const body = await res!.json();
     expect(body.action.kind).toBe("create_session");
     expect(body.action.target.reason).toBe("scheduled check-in");
   });
@@ -253,8 +259,8 @@ describe("POST /v1/triggers", () => {
       action: { kind: "create_artifact", target: { reason: "daily summary" } },
     });
     const res = await handleTriggers(req, deps, "/v1/triggers");
-    expect(res.status).toBe(201);
-    const body = await res.json();
+    expect(res!.status).toBe(201);
+    const body = await res!.json();
     expect(body.action.kind).toBe("create_artifact");
     expect(body.action.target.reason).toBe("daily summary");
   });
@@ -269,8 +275,8 @@ describe("POST /v1/triggers", () => {
       },
     });
     const res = await handleTriggers(req, deps, "/v1/triggers");
-    expect(res.status).toBe(201);
-    const body = await res.json();
+    expect(res!.status).toBe(201);
+    const body = await res!.json();
     expect(body.action.kind).toBe("refresh_projection");
     expect(body.action.target.projection_name).toBe("session_summary");
     expect(body.action.target.projection_scope_kind).toBe("project");
@@ -284,8 +290,8 @@ describe("POST /v1/triggers", () => {
       action: { kind: "emit_alert", target: { message: "daily workspace check" } },
     });
     const res = await handleTriggers(req, deps, "/v1/triggers");
-    expect(res.status).toBe(201);
-    const body = await res.json();
+    expect(res!.status).toBe(201);
+    const body = await res!.json();
     expect(body.scope.kind).toBe("workspace");
     expect(body.scope.id).toBe("ws_abc123");
   });
@@ -297,8 +303,8 @@ describe("POST /v1/triggers", () => {
       action: { kind: "fire_monitor_profile", target: { artifact_id: "a_artifact_001" } },
     });
     const res = await handleTriggers(req, deps, "/v1/triggers");
-    expect(res.status).toBe(201);
-    const body = await res.json();
+    expect(res!.status).toBe(201);
+    const body = await res!.json();
     expect(body.scope.kind).toBe("artifact");
     expect(body.scope.id).toBe("a_artifact_001");
   });
@@ -318,8 +324,8 @@ describe("POST /v1/triggers", () => {
       action: { kind: "emit_alert", target: { message: "threshold breach" } },
     });
     const res = await handleTriggers(req, deps, "/v1/triggers");
-    expect(res.status).toBe(201);
-    const body = await res.json();
+    expect(res!.status).toBe(201);
+    const body = await res!.json();
     expect(body.source.kind).toBe("event");
     expect(body.source.topic).toBe("session.*");
     expect(body.source.filters).toEqual({
@@ -337,7 +343,7 @@ describe("POST /v1/triggers", () => {
       debounce_seconds: -10,
     });
     const res = await handleTriggers(req, deps, "/v1/triggers");
-    expect(res.status).toBe(400);
+    expect(res!.status).toBe(400);
   });
 
   test("rejects non-boolean enabled", async () => {
@@ -348,7 +354,7 @@ describe("POST /v1/triggers", () => {
       enabled: "yes",
     });
     const res = await handleTriggers(req, deps, "/v1/triggers");
-    expect(res.status).toBe(400);
+    expect(res!.status).toBe(400);
   });
 });
 
@@ -370,8 +376,8 @@ describe("GET /v1/triggers", () => {
   test("returns empty list when no triggers", async () => {
     const req = listReq(deps);
     const res = await handleTriggers(req, deps, "/v1/triggers");
-    expect(res.status).toBe(200);
-    const body = await res.json();
+    expect(res!.status).toBe(200);
+    const body = await res!.json();
     expect(body.items).toEqual([]);
     expect(body.next_cursor).toBeNull();
   });
@@ -382,7 +388,7 @@ describe("GET /v1/triggers", () => {
 
     const listRequest = listReq(deps);
     const res = await handleTriggers(listRequest, deps, "/v1/triggers");
-    const body = await res.json();
+    const body = await res!.json();
     expect(body.items.length).toBe(2);
   });
 
@@ -392,7 +398,7 @@ describe("GET /v1/triggers", () => {
 
     const listRequest = listReq(deps, "scope_kind=project");
     const res = await handleTriggers(listRequest, deps, "/v1/triggers");
-    const body = await res.json();
+    const body = await res!.json();
     expect(body.items.length).toBe(1);
     expect(body.items[0].scope.kind).toBe("project");
   });
@@ -403,7 +409,7 @@ describe("GET /v1/triggers", () => {
 
     const listRequest = listReq(deps, "enabled=true");
     const res = await handleTriggers(listRequest, deps, "/v1/triggers");
-    const body = await res.json();
+    const body = await res!.json();
     expect(body.items.length).toBe(1);
     expect(body.items[0].enabled).toBe(true);
   });
@@ -433,8 +439,8 @@ describe("GET /v1/triggers/:id", () => {
 
   test("returns the trigger", async () => {
     const res = await handleTriggers(getReq(deps, id), deps, `/v1/triggers/${id}`);
-    expect(res.status).toBe(200);
-    const body = await res.json();
+    expect(res!.status).toBe(200);
+    const body = await res!.json();
     expect(body.id).toBe(id);
     expect(body.scope.kind).toBe("global");
     expect(body.source.schedule).toBe("P7D");
@@ -442,7 +448,7 @@ describe("GET /v1/triggers/:id", () => {
 
   test("returns 404 for unknown id", async () => {
     const res = await handleTriggers(getReq(deps, "tr_notfound"), deps, "/v1/triggers/tr_notfound");
-    expect(res.status).toBe(404);
+    expect(res!.status).toBe(404);
   });
 });
 
@@ -470,15 +476,15 @@ describe("PATCH /v1/triggers/:id", () => {
 
   test("patches enabled", async () => {
     const res = await handleTriggers(patchReq(deps, id, { enabled: false }), deps, `/v1/triggers/${id}`);
-    expect(res.status).toBe(200);
-    const body = await res.json();
+    expect(res!.status).toBe(200);
+    const body = await res!.json();
     expect(body.enabled).toBe(false);
   });
 
   test("patches schedule", async () => {
     const res = await handleTriggers(patchReq(deps, id, { source: { kind: "time", schedule: "P14D" } }), deps, `/v1/triggers/${id}`);
-    expect(res.status).toBe(200);
-    const body = await res.json();
+    expect(res!.status).toBe(200);
+    const body = await res!.json();
     expect(body.source.schedule).toBe("P14D");
   });
 
@@ -491,49 +497,49 @@ describe("PATCH /v1/triggers/:id", () => {
     const idWithBudget = (await createRes.json()).id;
 
     const res = await handleTriggers(patchReq(deps, idWithBudget, { budget_policy: null }), deps, `/v1/triggers/${idWithBudget}`);
-    expect(res.status).toBe(200);
-    const body = await res.json();
+    expect(res!.status).toBe(200);
+    const body = await res!.json();
     expect(body.budget_policy).toBeNull();
   });
 
   test("returns 404 for unknown id", async () => {
     const res = await handleTriggers(patchReq(deps, "tr_notfound", { enabled: false }), deps, "/v1/triggers/tr_notfound");
-    expect(res.status).toBe(404);
+    expect(res!.status).toBe(404);
   });
 
   test("rejects invalid scope.kind", async () => {
     const res = await handleTriggers(patchReq(deps, id, { scope: { kind: "invalid" } }), deps, `/v1/triggers/${id}`);
-    expect(res.status).toBe(400);
+    expect(res!.status).toBe(400);
   });
 
   test("rejects invalid source.kind", async () => {
     const res = await handleTriggers(patchReq(deps, id, { source: { kind: "invalid" } }), deps, `/v1/triggers/${id}`);
-    expect(res.status).toBe(400);
+    expect(res!.status).toBe(400);
   });
 
   test("rejects invalid action.kind", async () => {
     const res = await handleTriggers(patchReq(deps, id, { action: { kind: "invalid", target: {} } }), deps, `/v1/triggers/${id}`);
-    expect(res.status).toBe(400);
+    expect(res!.status).toBe(400);
   });
 
   test("rejects non-integer debounce_seconds", async () => {
     const res = await handleTriggers(patchReq(deps, id, { debounce_seconds: 1.5 }), deps, `/v1/triggers/${id}`);
-    expect(res.status).toBe(400);
+    expect(res!.status).toBe(400);
   });
 
   test("rejects negative debounce_seconds", async () => {
     const res = await handleTriggers(patchReq(deps, id, { debounce_seconds: -10 }), deps, `/v1/triggers/${id}`);
-    expect(res.status).toBe(400);
+    expect(res!.status).toBe(400);
   });
 
   test("rejects negative budget_policy.max_cost_usd_per_fire", async () => {
     const res = await handleTriggers(patchReq(deps, id, { budget_policy: { max_cost_usd_per_fire: -1 } }), deps, `/v1/triggers/${id}`);
-    expect(res.status).toBe(400);
+    expect(res!.status).toBe(400);
   });
 
   test("rejects non-boolean enabled", async () => {
     const res = await handleTriggers(patchReq(deps, id, { enabled: "yes" }), deps, `/v1/triggers/${id}`);
-    expect(res.status).toBe(400);
+    expect(res!.status).toBe(400);
   });
 });
 
@@ -572,12 +578,12 @@ describe("POST /v1/triggers/:id/fire", () => {
   test("rejects firing a disabled trigger", async () => {
     await handleTriggers(patchReq(deps, id, { enabled: false }), deps, `/v1/triggers/${id}`);
     const res = await handleTriggers(fireReq(deps, id), deps, `/v1/triggers/${id}/fire`);
-    expect(res.status).toBe(400);
+    expect(res!.status).toBe(400);
   });
 
   test("returns 404 for unknown id", async () => {
     const res = await handleTriggers(fireReq(deps, "tr_notfound"), deps, "/v1/triggers/tr_notfound/fire");
-    expect(res.status).toBe(404);
+    expect(res!.status).toBe(404);
   });
 });
 
@@ -605,7 +611,7 @@ describe("DELETE /v1/triggers/:id", () => {
 
   test("deletes the trigger and returns 204", async () => {
     const res = await handleTriggers(deleteReq(deps, id), deps, `/v1/triggers/${id}`);
-    expect(res.status).toBe(204);
+    expect(res!.status).toBe(204);
 
     // verify it's gone
     const getRes = await handleTriggers(getReq(deps, id), deps, `/v1/triggers/${id}`);
@@ -614,7 +620,7 @@ describe("DELETE /v1/triggers/:id", () => {
 
   test("returns 404 for unknown id", async () => {
     const res = await handleTriggers(deleteReq(deps, "tr_notfound"), deps, "/v1/triggers/tr_notfound");
-    expect(res.status).toBe(404);
+    expect(res!.status).toBe(404);
   });
 });
 

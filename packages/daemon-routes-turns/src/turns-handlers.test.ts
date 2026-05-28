@@ -36,6 +36,10 @@ function makeDeps(): TurnsDeps {
   };
 }
 
+function resolveSessionsDir(deps: TurnsDeps): string {
+  return typeof deps.sessionsDir === "function" ? deps.sessionsDir() : deps.sessionsDir;
+}
+
 /** Collect all SSE data lines from a text/event-stream Response. */
 async function collectSSELines(res: Response): Promise<string[]> {
   const lines: string[] = [];
@@ -70,7 +74,7 @@ describe("handleTurns", () => {
   describe("GET /v1/sessions/:id/turns/:turnId/chunks", () => {
     test("returns SSE stream with 200 status and emits start/end markers", async () => {
       const deps = makeDeps();
-      const sessionDir = join(deps.sessionsDir(), "s_turns_1");
+      const sessionDir = join(resolveSessionsDir(deps), "s_turns_1");
       mkdirSync(sessionDir, { recursive: true });
       writeFileSync(
         join(sessionDir, "log.jsonl"),
@@ -117,7 +121,7 @@ describe("handleTurns", () => {
 
     test("replay=true emits historical agent.chunk entries", async () => {
       const deps = makeDeps();
-      const sessionDir = join(deps.sessionsDir(), "s_replay");
+      const sessionDir = join(resolveSessionsDir(deps), "s_replay");
       mkdirSync(sessionDir, { recursive: true });
       writeFileSync(
         join(sessionDir, "log.jsonl"),
@@ -175,7 +179,7 @@ describe("handleTurns", () => {
 
     test("filters agent.chunk events by session_id and turn_id", async () => {
       const deps = makeDeps();
-      const sessionDir = join(deps.sessionsDir(), "s_filter_1");
+      const sessionDir = join(resolveSessionsDir(deps), "s_filter_1");
       mkdirSync(sessionDir, { recursive: true });
       writeFileSync(
         join(sessionDir, "log.jsonl"),
@@ -237,7 +241,7 @@ describe("handleTurns", () => {
 
     test("streams from log.jsonl (not events.jsonl) — regression for file name mismatch", async () => {
       const deps = makeDeps();
-      const sessionDir = join(deps.sessionsDir(), "s_log_name");
+      const sessionDir = join(resolveSessionsDir(deps), "s_log_name");
       mkdirSync(sessionDir, { recursive: true });
       writeFileSync(
         join(sessionDir, "log.jsonl"),
@@ -281,7 +285,7 @@ describe("handleTurns", () => {
 
     test("returns only start/end markers when no log.jsonl exists", async () => {
       const deps = makeDeps();
-      const sessionDir = join(deps.sessionsDir(), "s_no_log");
+      const sessionDir = join(resolveSessionsDir(deps), "s_no_log");
       mkdirSync(sessionDir, { recursive: true });
 
       const req = new Request("http://localhost/v1/sessions/s_no_log/turns/t_no_log/chunks?replay=true", {
@@ -301,7 +305,7 @@ describe("handleTurns", () => {
 
     test("live-only (replay=false) emits end immediately", async () => {
       const deps = makeDeps();
-      const sessionDir = join(deps.sessionsDir(), "s_live_only");
+      const sessionDir = join(resolveSessionsDir(deps), "s_live_only");
       mkdirSync(sessionDir, { recursive: true });
       writeFileSync(
         join(sessionDir, "log.jsonl"),
@@ -343,7 +347,7 @@ describe("handleTurns", () => {
 
     test("live-only emits end immediately even when no log file exists", async () => {
       const deps = makeDeps();
-      const sessionDir = join(deps.sessionsDir(), "s_live_no_log");
+      const sessionDir = join(resolveSessionsDir(deps), "s_live_no_log");
       mkdirSync(sessionDir, { recursive: true });
 
       const req = new Request("http://localhost/v1/sessions/s_live_no_log/turns/t_live/chunks", {
@@ -363,7 +367,7 @@ describe("handleTurns", () => {
 
     test("skips malformed JSON lines in log.jsonl without crashing", async () => {
       const deps = makeDeps();
-      const sessionDir = join(deps.sessionsDir(), "s_malformed");
+      const sessionDir = join(resolveSessionsDir(deps), "s_malformed");
       mkdirSync(sessionDir, { recursive: true });
       writeFileSync(
         join(sessionDir, "log.jsonl"),
@@ -460,7 +464,7 @@ describe("handleTurns", () => {
       const res = await handleTurns(req, deps, "/v1/sessions/s_abc/turns");
       expect(res).toBeDefined();
       expect(res!.status).toBe(200);
-      const body = await res!.json();
+      const body = await res!.json() as Record<string, unknown>;
       expect(body.items).toHaveLength(0);
     });
 
@@ -504,7 +508,7 @@ describe("handleTurns", () => {
       });
       const res = await handleTurns(req, deps, "/v1/sessions/s_abc/turns");
       expect(res!.status).toBe(200);
-      const body = await res!.json();
+      const body = await res!.json() as Record<string, unknown>;
       expect(body.turn_id).toBe("t_new_turn");
       expect(body.session_id).toBe("s_abc");
       expect(body.sequence).toBe(0);
@@ -548,7 +552,7 @@ describe("handleTurns", () => {
       const getReq = new Request("http://localhost/v1/sessions/s_abc/turns/t_get_1", { method: "GET" });
       const res = await handleTurns(getReq, deps, "/v1/sessions/s_abc/turns/t_get_1");
       expect(res!.status).toBe(200);
-      const body = await res!.json();
+      const body = await res!.json() as Record<string, unknown>;
       expect(body.turn_id).toBe("t_get_1");
       expect(body.session_id).toBe("s_abc");
     });
@@ -568,7 +572,7 @@ describe("handleTurns", () => {
       const deps = makeDeps();
       const res = await patchTurn("s_missing", "t_missing", {}, deps);
       expect(res!.status).toBe(404);
-      const body = await res!.json();
+      const body = await res!.json() as Record<string, unknown>;
       expect(body.error.code).toBe("turn_not_found");
     });
 
@@ -602,7 +606,7 @@ describe("handleTurns", () => {
 
       const res = await patchTurn("s_abc", "t_end_1", { ended_at: "2026-01-01T12:00:00.000Z" }, deps);
       expect(res!.status).toBe(200);
-      const body = await res!.json();
+      const body = await res!.json() as Record<string, unknown>;
       expect(body.ended_at).toBe("2026-01-01T12:00:00.000Z");
     });
 
@@ -620,7 +624,7 @@ describe("handleTurns", () => {
       // Then set it back to null
       const res = await patchTurn("s_abc", "t_null_end", { ended_at: null }, deps);
       expect(res!.status).toBe(200);
-      const body = await res!.json();
+      const body = await res!.json() as Record<string, unknown>;
       expect(body.ended_at).toBeNull();
     });
 
@@ -635,7 +639,7 @@ describe("handleTurns", () => {
 
       const res = await patchTurn("s_abc", "t_ti", { tokens_in: 1500 }, deps);
       expect(res!.status).toBe(200);
-      const body = await res!.json();
+      const body = await res!.json() as Record<string, unknown>;
       expect(body.tokens_in).toBe(1500);
     });
 
@@ -650,7 +654,7 @@ describe("handleTurns", () => {
 
       const res = await patchTurn("s_abc", "t_to", { tokens_out: 3200 }, deps);
       expect(res!.status).toBe(200);
-      const body = await res!.json();
+      const body = await res!.json() as Record<string, unknown>;
       expect(body.tokens_out).toBe(3200);
     });
 
@@ -665,7 +669,7 @@ describe("handleTurns", () => {
 
       const res = await patchTurn("s_abc", "t_cu", { cost_usd: 0.05 }, deps);
       expect(res!.status).toBe(200);
-      const body = await res!.json();
+      const body = await res!.json() as Record<string, unknown>;
       expect(body.cost_usd).toBe(0.05);
     });
 
@@ -685,7 +689,7 @@ describe("handleTurns", () => {
         cost_usd: 0.025,
       }, deps);
       expect(res!.status).toBe(200);
-      const body = await res!.json();
+      const body = await res!.json() as Record<string, unknown>;
       expect(body.ended_at).toBe("2026-06-01T10:00:00.000Z");
       expect(body.tokens_in).toBe(500);
       expect(body.tokens_out).toBe(1000);
@@ -703,7 +707,7 @@ describe("handleTurns", () => {
 
       const res = await patchTurn("s_part", "t_part", { ended_at: "2026-07-01T00:00:00.000Z" }, deps);
       expect(res!.status).toBe(200);
-      const body = await res!.json();
+      const body = await res!.json() as Record<string, unknown>;
       expect(body.ended_at).toBe("2026-07-01T00:00:00.000Z");
       expect(body.tokens_in).toBe(0);  // default from DB
       expect(body.tokens_out).toBe(0);  // default from DB
@@ -721,7 +725,7 @@ describe("handleTurns", () => {
 
       const res = await patchTurn("s_neg", "t_neg", { tokens_in: -10 }, deps);
       expect(res!.status).toBe(200);
-      const body = await res!.json();
+      const body = await res!.json() as Record<string, unknown>;
       expect(body.tokens_in).toBe(0); // default, since -10 is ignored
     });
 
@@ -736,7 +740,7 @@ describe("handleTurns", () => {
 
       const res = await patchTurn("s_nc", "t_nc", { cost_usd: -1.5 }, deps);
       expect(res!.status).toBe(200);
-      const body = await res!.json();
+      const body = await res!.json() as Record<string, unknown>;
       expect(body.cost_usd).toBe(0); // default, since -1.5 is ignored
     });
 
@@ -751,7 +755,7 @@ describe("handleTurns", () => {
 
       const res = await patchTurn("s_nn", "t_nn", { tokens_in: "500" }, deps);
       expect(res!.status).toBe(200);
-      const body = await res!.json();
+      const body = await res!.json() as Record<string, unknown>;
       expect(body.tokens_in).toBe(0); // default, since "500" is ignored (not a number)
     });
 
@@ -766,7 +770,7 @@ describe("handleTurns", () => {
 
       const res = await patchTurn("s_no", "t_no", { tokens_out: "1000" }, deps);
       expect(res!.status).toBe(200);
-      const body = await res!.json();
+      const body = await res!.json() as Record<string, unknown>;
       expect(body.tokens_out).toBe(0); // default, since "1000" is ignored (not a number)
     });
 
@@ -781,7 +785,7 @@ describe("handleTurns", () => {
 
       const res = await patchTurn("s_ncu", "t_ncu", { cost_usd: "0.05" }, deps);
       expect(res!.status).toBe(200);
-      const body = await res!.json();
+      const body = await res!.json() as Record<string, unknown>;
       expect(body.cost_usd).toBe(0); // default, since "0.05" is ignored (not a number)
     });
 
@@ -797,7 +801,7 @@ describe("handleTurns", () => {
       // Number passed as ended_at should be coerced to string
       const res = await patchTurn("s_str", "t_str", { ended_at: 1234567890000 }, deps);
       expect(res!.status).toBe(200);
-      const body = await res!.json();
+      const body = await res!.json() as Record<string, unknown>;
       expect(body.ended_at).toBe("1234567890000");
     });
   });
@@ -808,7 +812,7 @@ describe("handleTurns", () => {
       const req = new Request("http://localhost/v1/sessions/s_abc/turns/t_missing", { method: "DELETE" });
       const res = await handleTurns(req, deps, "/v1/sessions/s_abc/turns/t_missing");
       expect(res!.status).toBe(404);
-      const body = await res!.json();
+      const body = await res!.json() as Record<string, unknown>;
       expect(body.error.code).toBe("turn_not_found");
     });
 
@@ -824,7 +828,7 @@ describe("handleTurns", () => {
       const delReq = new Request("http://localhost/v1/sessions/s_abc/turns/t_del_1", { method: "DELETE" });
       const res = await handleTurns(delReq, deps, "/v1/sessions/s_abc/turns/t_del_1");
       expect(res!.status).toBe(404);
-      const body = await res!.json();
+      const body = await res!.json() as Record<string, unknown>;
       expect(body.error.code).toBe("not_found");
     });
   });
