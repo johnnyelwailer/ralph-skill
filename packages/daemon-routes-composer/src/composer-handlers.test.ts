@@ -1259,6 +1259,27 @@ describe("PATCH /v1/composer/turns/:id", () => {
     expect(body.delegated_refs[0].id).toBe("csr_abc");
   });
 
+  test("updates launched_refs via PATCH", async () => {
+    const created = await (await makeRequest(handler, deps, "POST", "/v1/composer/turns", {
+      scope: { kind: "global" }, message: "Patch launched",
+    })).json() as { id: string };
+
+    const resp = await makeRequest(handler, deps, "PATCH", `/v1/composer/turns/${created.id}`, {
+      launched_refs: [
+        { kind: "artifact", id: "a_launched_1" },
+        { kind: "session", id: "s_launched_1" },
+      ],
+    });
+    expect(resp.status).toBe(200);
+    const body = JSON.parse(await (await resp.clone()).text());
+    expect(body.launched_refs).toHaveLength(2);
+    expect(body.launched_refs[0]).toEqual({ kind: "artifact", id: "a_launched_1" });
+    expect(body.launched_refs[1]).toEqual({ kind: "session", id: "s_launched_1" });
+  });
+
+  // Note: validatePatchInput only checks that launched_refs is an Array — it does
+  // not validate entry shapes (kind/id). Registry-level schema enforces that.
+
   test("updates proposed_actions via PATCH", async () => {
     const created = await (await makeRequest(handler, deps, "POST", "/v1/composer/turns", {
       scope: { kind: "global" }, message: "Patch actions",
