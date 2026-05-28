@@ -5,10 +5,15 @@ import { describe, expect, test } from "bun:test";
 import { checkProjectGate } from "./gates.ts";
 import type { SchedulerProbes } from "./probes.ts";
 
-const makeProbes = (overrides: Partial<SchedulerProbes> = {}): SchedulerProbes => ({
-  systemSample: () => ({ cpuPct: 10, memPct: 20, loadAvg: 0.5 }),
-  ...overrides,
-});
+const makeProbes = (overrides: Partial<SchedulerProbes> = {}): SchedulerProbes => {
+  const filtered = Object.fromEntries(
+    Object.entries(overrides).filter(([, v]) => v !== undefined),
+  );
+  return {
+    systemSample: () => ({ cpuPct: 10, memPct: 20, loadAvg: 0.5 }),
+    ...filtered,
+  };
+};
 
 describe("checkProjectGate — concurrency cap", () => {
   const probes = makeProbes();
@@ -105,11 +110,9 @@ describe("checkProjectGate — daily cost cap", () => {
     expect(result).toEqual({ ok: true });
   });
 
-  test("passes when projectDailyCost probe returns undefined", async () => {
-    const probesWithUndefined = makeProbes({
-      projectDailyCost: undefined,
-    });
-    const result = await checkProjectGate("proj_1", 0, { dailyCostCapCents: 100 }, probesWithUndefined);
+  test("passes when projectDailyCost probe is not provided", async () => {
+    const probesWithoutDailyCost = makeProbes({});
+    const result = await checkProjectGate("proj_1", 0, { dailyCostCapCents: 100 }, probesWithoutDailyCost);
     expect(result).toEqual({ ok: true });
   });
 

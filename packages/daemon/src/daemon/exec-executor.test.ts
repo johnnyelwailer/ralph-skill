@@ -1,6 +1,6 @@
 import { describe, expect, test, beforeEach, afterEach } from "bun:test";
 import { executeExec, type ExecContext } from "./exec-executor.ts";
-import type { ExecManifest } from "@aloop/core";
+import type { ExecManifest, Runtime } from "@aloop/core";
 import { writeFileSync, mkdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 
@@ -178,7 +178,7 @@ test("returns non-zero exit code on script failure", async () => {
   test("handles spawn error when executable not found", async () => {
     writeFileSync(join(tmpDir, "script.ts"), `console.log("this should not run");`);
 
-    const manifest = makeManifest({ runtime: "nonexistent-runtime-xyz", file: "script.ts", args: [] });
+    const manifest = makeManifest({ runtime: "nonexistent-runtime-xyz" as Runtime, file: "script.ts", args: [] });
     const context = makeContext(tmpDir);
 
     const result = await executeExec({ manifest, context });
