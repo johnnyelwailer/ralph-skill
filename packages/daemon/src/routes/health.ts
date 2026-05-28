@@ -18,7 +18,7 @@ export type HealthCounters = {
   permitsInFlight: number;
 };
 
-function toSnakeCounters(c?: HealthCounters): HealthPayload["counters"] {
+function toSnakeCounters(c?: HealthCounters | null): HealthPayload["counters"] {
   if (!c) return { sessions_total: 0, sessions_by_status: {}, permits_in_flight: 0 };
   return {
     sessions_total: c.sessionsTotal,
@@ -30,7 +30,7 @@ function toSnakeCounters(c?: HealthCounters): HealthPayload["counters"] {
 export function buildHealth(
   startedAt: number,
   now: number = Date.now(),
-  counters?: HealthCounters,
+  counters?: HealthCounters | null,
 ): HealthPayload {
   return {
     _v: 1,
