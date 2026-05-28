@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { makeRouterDeps, type MakeRouterDepsInput } from "./router-deps.ts";
 import type { ConfigStore } from "@aloop/daemon-config";
 import { DAEMON_DEFAULTS, OVERRIDES_DEFAULT } from "@aloop/daemon-config";
-import type { EventWriter, ComposerTurnRegistry, ArtifactRegistry, TurnRegistry } from "@aloop/state-sqlite";
+import type { EventWriter, ComposerTurnRegistry, ArtifactRegistry } from "@aloop/state-sqlite";
 import { InMemoryProviderHealthStore, ProviderRegistry } from "@aloop/provider";
 
 function makeConfigStore(): ConfigStore {
@@ -48,7 +48,6 @@ function makeInput(): MakeRouterDepsInput {
   );
 
   return {
-    db: undefined as never,
     registry: {
       listProjects: () =>
         Promise.resolve({
@@ -89,12 +88,6 @@ function makeInput(): MakeRouterDepsInput {
       findActive: () => undefined,
       archive: () => { throw new Error("not implemented"); },
     } as unknown as ComposerTurnRegistry,
-    turnRegistry: {
-      create: () => { throw new Error("not implemented"); },
-      getBySessionAndTurn: () => undefined,
-      list: () => [],
-      update: () => { throw new Error("not implemented"); },
-    } as unknown as TurnRegistry,
     artifactRegistry: {
       create: () => { throw new Error("not implemented"); },
       get: () => undefined,

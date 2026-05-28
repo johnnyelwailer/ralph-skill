@@ -6,7 +6,7 @@ import type { SchedulerService } from "@aloop/scheduler";
 export type MetricsDeps = {
   readonly scheduler: SchedulerService;
   readonly providerHealth: InMemoryProviderHealthStore;
-  readonly systemSample: (() => SystemSample) | undefined;
+  readonly systemSample: () => SystemSample;
 };
 
 export type MetricsAggregatesDeps = {
@@ -86,7 +86,7 @@ function emitInfo(
   lines.push(`${name}${labelStr} 1`);
 }
 
-function emitSchedulerLimits(lines: string[], scheduler: SchedulerService): void {
+function emitSchedulerLimits(lines: string[], scheduler: { currentLimits(): ReturnType<SchedulerService["currentLimits"]> }): void {
   const limits = scheduler.currentLimits();
   const prefix = "aloop_scheduler_limits";
 
@@ -119,7 +119,7 @@ function emitSchedulerLimits(lines: string[], scheduler: SchedulerService): void
   );
 }
 
-function emitConcurrency(lines: string[], scheduler: SchedulerService): void {
+function emitConcurrency(lines: string[], scheduler: { listPermits(): ReturnType<SchedulerService["listPermits"]> }): void {
   const inFlight = scheduler.listPermits();
   const count = inFlight.length;
 

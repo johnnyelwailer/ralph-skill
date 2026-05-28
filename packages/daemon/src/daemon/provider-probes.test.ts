@@ -1,7 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { createProviderQuotaProbe } from "./provider-probes.ts";
 import { InMemoryProviderHealthStore } from "@aloop/provider";
-import { createUnknownHealth, applyProviderFailure } from "@aloop/provider-health";
 
 describe("createProviderQuotaProbe", () => {
   let store: InMemoryProviderHealthStore;
@@ -144,9 +143,10 @@ describe("createProviderQuotaProbe", () => {
     });
     const probe = makeProbe();
     const result = await probe("prov-a");
+    const r = result!;
     // ~90 seconds ± 2s tolerance for test execution time
-    expect(result!.retryAfterSeconds).toBeGreaterThanOrEqual(88);
-    expect(result!.retryAfterSeconds).toBeLessThanOrEqual(92);
+    expect(r.retryAfterSeconds).toBeGreaterThanOrEqual(88);
+    expect(r.retryAfterSeconds).toBeLessThanOrEqual(92);
   });
 
   test("unknown provider id returns null (treats as available)", () => {
