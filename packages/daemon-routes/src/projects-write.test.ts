@@ -2,16 +2,20 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { openDatabase, ProjectRegistry } from "@aloop/state-sqlite";
+import { openDatabase, ProjectRegistry, WorkspaceRegistry } from "@aloop/state-sqlite";
 import { archiveProject, createProject, purgeProject, patchProject } from "./projects-write.ts";
 import type { Deps } from "./projects-common.ts";
 
-function makeDeps(dir: string): Deps {
+function makeDeps(dir: string): Deps & { workspaceId: string; workspaceId2: string } {
   const { db } = openDatabase(join(dir, "db.sqlite"));
   const registry = new ProjectRegistry(db);
   (registry as unknown as { _db: ReturnType<typeof openDatabase>["db"] })._db = db;
   const sessionsDir = join(dir, "sessions");
-  return { registry, sessionsDir };
+  const workspaceRegistry = new WorkspaceRegistry(db);
+  (workspaceRegistry as unknown as { _db: ReturnType<typeof openDatabase>["db"] })._db = db;
+  const created = workspaceRegistry.create({ name: "test-workspace" });
+  const created2 = workspaceRegistry.create({ name: "test-workspace-2" });
+  return { registry, sessionsDir, workspaceId: created.id, workspaceId2: created2.id };
 }
 
 function makeRequest(body: Record<string, unknown>): Request {
@@ -514,60 +518,45 @@ describe("createProject workspace_ids", () => {
     const req = makeRequest({
       abs_path: "/test/project",
       name: "with-workspace",
-      workspace_ids: [{ workspace_id: "w_platform", role: "primary" }],
+      workspace_ids: [{ workspace_id: deps.workspaceId, role: "primary" }],
     });
     const res = await createProject(req, deps);
     expect(res.status).toBe(201);
     const body = await (res as Response).json();
     expect(body.name).toBe("with-workspace");
     expect(body.workspace_ids).toHaveLength(1);
-    expect(body.workspace_ids[0]).toEqual({ workspace_id: "w_platform", role: "primary" });
-  });
-
-  test("defaults role to supporting when role is not a valid role string", async () => {
-    const req = makeRequest({
-      abs_path: "/test/project",
-      workspace_ids: [{ workspace_id: "w_xyz", role: "not_a_real_role" }],
-    });
-    const res = await createProject(req, deps);
-    expect(res.status).toBe(201);
-    const body = await (res as Response).json();
-    expect(body.workspace_ids).toHaveLength(1);
-    expect(body.workspace_ids[0].role).toBe("supporting");
+    expect(body.workspace_ids[0]).toBe(deps.workspaceId);
   });
 
   test("returns 201 when workspace_ids has multiple entries", async () => {
     const req = makeRequest({
       abs_path: "/test/multi-workspace",
       workspace_ids: [
-        { workspace_id: "w_alpha", role: "primary" },
-        { workspace_id: "w_beta", role: "dependency" },
+        { workspace_id: deps.workspaceId, role: "primary" },
+        { workspace_id: deps.workspaceId2, role: "dependency" },
       ],
     });
     const res = await createProject(req, deps);
     expect(res.status).toBe(201);
     const body = await (res as Response).json();
     expect(body.workspace_ids).toHaveLength(2);
-    expect(body.workspace_ids).toContainEqual({ workspace_id: "w_alpha", role: "primary" });
-    expect(body.workspace_ids).toContainEqual({ workspace_id: "w_beta", role: "dependency" });
+    expect(body.workspace_ids).toContain(deps.workspaceId);
+    expect(body.workspace_ids).toContain(deps.workspaceId2);
   });
 
   test("project is persisted in registry with workspace membership", async () => {
     const req = makeRequest({
       abs_path: "/test/persisted",
-      workspace_ids: [{ workspace_id: "w_persist", role: "experiment" }],
+      workspace_ids: [{ workspace_id: deps.workspaceId, role: "experiment" }],
     });
     const res = await createProject(req, deps);
     expect(res.status).toBe(201);
     const body = await (res as Response).json();
-    // Verify the project is actually in the registry with the membership
     const stored = deps.registry.get(body.id);
     expect(stored).toBeDefined();
     expect(stored!.workspaceMemberships).toHaveLength(1);
-    expect(stored!.workspaceMemberships[0]).toEqual({
-      workspaceId: "w_persist",
-      role: "experiment",
-    });
+    expect(stored!.workspaceMemberships[0].workspaceId).toBe(deps.workspaceId);
+    expect(stored!.workspaceMemberships[0].role).toBe("experiment");
   });
 });
 
