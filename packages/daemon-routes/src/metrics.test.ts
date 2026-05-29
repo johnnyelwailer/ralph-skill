@@ -312,7 +312,7 @@ describe("handleMetricsAggregates", () => {
         const req = makeRequest("/v1/metrics/aggregates?window=invalid");
         const res = await handleMetricsAggregates(req, deps, "/v1/metrics/aggregates");
         expect(res!.status).toBe(400);
-        const body = await res!.json();
+        const body = await res!.json() as unknown as { error: { _v: number; code: string; message: string; details?: unknown } };
         expect(body.error.code).toBe("bad_request");
         expect(body.error.message).toContain("window must be one of");
       } finally {
@@ -346,7 +346,7 @@ describe("handleMetricsAggregates", () => {
         const req = makeRequest("/v1/metrics/aggregates?group_by=invalid_field");
         const res = await handleMetricsAggregates(req, deps, "/v1/metrics/aggregates");
         expect(res!.status).toBe(400);
-        const body = await res!.json();
+        const body = await res!.json() as unknown as { error: { _v: number; code: string; message: string; details?: unknown } };
         expect(body.error.code).toBe("bad_request");
         expect(body.error.message).toContain("Unknown or high-cardinality group_by field");
         expect(body.error.message).toContain("invalid_field");
@@ -398,7 +398,7 @@ describe("handleMetricsAggregates", () => {
         const req = makeRequest("/v1/metrics/aggregates?metrics=invalid_metric");
         const res = await handleMetricsAggregates(req, deps, "/v1/metrics/aggregates");
         expect(res!.status).toBe(400);
-        const body = await res!.json();
+        const body = await res!.json() as unknown as { error: { _v: number; code: string; message: string; details?: unknown } };
         expect(body.error.code).toBe("bad_request");
         expect(body.error.message).toContain("Unknown metric");
         expect(body.error.message).toContain("invalid_metric");
@@ -440,7 +440,7 @@ describe("handleMetricsAggregates", () => {
         const res = await handleMetricsAggregates(req, deps, "/v1/metrics/aggregates");
         expect(res!.status).toBe(200);
         expect(res!.headers.get("content-type")).toBe("application/json");
-        const body = await res!.json();
+        const body = await res!.json() as unknown as { _v: number; window: { start: string; end: string }; items: unknown[] };
         expect(body.window).toBeDefined();
         expect(body.window.start).toBeTruthy();
         expect(body.window.end).toBeTruthy();
@@ -457,7 +457,7 @@ describe("handleMetricsAggregates", () => {
         const deps = makeAggregatesDeps(db);
         const req = makeRequest("/v1/metrics/aggregates?window=24h");
         const res = await handleMetricsAggregates(req, deps, "/v1/metrics/aggregates");
-        const body = await res!.json();
+        const body = await res!.json() as unknown as { _v: number; window: { start: string; end: string }; items: unknown[] };
         const start = new Date(body.window.start);
         const end = new Date(body.window.end);
         expect(end.getTime()).toBeGreaterThan(start.getTime());
@@ -487,7 +487,7 @@ describe("handleMetricsAggregates", () => {
         const deps = makeAggregatesDeps(db);
         const req = makeRequest("/v1/metrics/aggregates?window=all");
         const res = await handleMetricsAggregates(req, deps, "/v1/metrics/aggregates");
-        const body = await res!.json();
+        const body = await res!.json() as unknown as { _v: number; window: { start: string; end: string }; items: Array<{ labels: Record<string, unknown>; sample_size: number; directional: boolean; metrics: Record<string, unknown> }> };
         expect(body.items).toHaveLength(1);
         expect(body.items[0]!.labels).toEqual({ scope: "project:p_abc" });
         expect(body.items[0]!.sample_size).toBe(42);
@@ -513,7 +513,7 @@ describe("handleMetricsAggregates", () => {
         const deps = makeAggregatesDeps(db);
         const req = makeRequest("/v1/metrics/aggregates?window=all&metrics=model_approval_rate");
         const res = await handleMetricsAggregates(req, deps, "/v1/metrics/aggregates");
-        const body = await res!.json();
+        const body = await res!.json() as unknown as { _v: number; window: { start: string; end: string }; items: Array<{ labels: Record<string, unknown>; sample_size: number; directional: boolean; metrics: Record<string, unknown> }> };
         expect(body.items).toHaveLength(1);
         expect(body.items[0]!.metrics).toEqual({ model_approval_rate: 0.9 });
         expect(body.items[0]!.metrics).not.toHaveProperty("model_merge_rate");
@@ -540,7 +540,7 @@ describe("handleMetricsAggregates", () => {
         const deps = makeAggregatesDeps(db);
         const req = makeRequest("/v1/metrics/aggregates?window=all");
         const res = await handleMetricsAggregates(req, deps, "/v1/metrics/aggregates");
-        const body = await res!.json();
+        const body = await res!.json() as unknown as { _v: number; window: { start: string; end: string }; items: Array<{ labels: Record<string, unknown>; sample_size: number; directional: boolean; metrics: Record<string, unknown> }> };
         expect(body.items[0]!.sample_size).toBe(100);
         expect(body.items[1]!.sample_size).toBe(5);
       } finally {
@@ -563,7 +563,7 @@ describe("handleMetricsAggregates", () => {
         const deps = makeAggregatesDeps(db);
         const req = makeRequest("/v1/metrics/aggregates?window=all");
         const res = await handleMetricsAggregates(req, deps, "/v1/metrics/aggregates");
-        const body = await res!.json();
+        const body = await res!.json() as unknown as { _v: number; window: { start: string; end: string }; items: Array<{ labels: Record<string, unknown>; sample_size: number; directional: boolean; metrics: Record<string, unknown> }> };
         expect(body.items).toHaveLength(1);
         expect(body.items[0]!.labels).toEqual({});
         expect(body.items[0]!.metrics).toEqual({});
