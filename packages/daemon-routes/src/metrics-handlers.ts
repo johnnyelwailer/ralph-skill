@@ -103,6 +103,12 @@ export async function getMetricAggregates(
   if (!metricName) {
     return badRequest("metric query param is required", { metric: metricName });
   }
+  if (Number.isNaN(windowHours) || windowHours <= 0) {
+    return badRequest("window_hours must be a positive number", { window_hours: url.searchParams.get("window_hours") });
+  }
+  if (Number.isNaN(limit) || limit <= 0) {
+    return badRequest("limit must be a positive number", { limit: url.searchParams.get("limit") });
+  }
   if (!["rolling", "calendar"].includes(windowKind)) {
     return badRequest("window must be 'rolling' or 'calendar'", { window: windowKind });
   }

@@ -7,6 +7,8 @@ import {
   type WorkspaceWithCounts,
   WorkspaceNotFoundError,
   DuplicateWorkspaceProjectError,
+  WorkspaceProjectNotFoundError,
+  ProjectNotFoundWorkspaceError,
 } from "./workspace-types.ts";
 
 describe("Workspace", () => {
@@ -142,5 +144,63 @@ describe("DuplicateWorkspaceProjectError", () => {
     expect(err.workspaceId).toBe("w_01");
     expect(err.projectId).toBe("p_01");
     expect(err).toBeInstanceOf(Error);
+  });
+});
+
+describe("WorkspaceProjectNotFoundError", () => {
+  test("code is workspace_project_not_found", () => {
+    const err = new WorkspaceProjectNotFoundError("w_01", "p_01");
+    expect(err.code).toBe("workspace_project_not_found");
+  });
+
+  test("message includes workspace and project ids", () => {
+    const err = new WorkspaceProjectNotFoundError("w_01", "p_01");
+    expect(err.message).toContain("w_01");
+    expect(err.message).toContain("p_01");
+  });
+
+  test("workspaceId and projectId are accessible as properties", () => {
+    const err = new WorkspaceProjectNotFoundError("w_xyz", "p_abc");
+    expect(err.workspaceId).toBe("w_xyz");
+    expect(err.projectId).toBe("p_abc");
+  });
+
+  test("is an Error instance", () => {
+    const err = new WorkspaceProjectNotFoundError("w_01", "p_01");
+    expect(err).toBeInstanceOf(Error);
+    expect(err).toBeInstanceOf(WorkspaceProjectNotFoundError);
+  });
+
+  test("stack trace is present", () => {
+    const err = new WorkspaceProjectNotFoundError("w_01", "p_01");
+    expect(typeof err.stack).toBe("string");
+  });
+});
+
+describe("ProjectNotFoundWorkspaceError", () => {
+  test("code is project_not_found", () => {
+    const err = new ProjectNotFoundWorkspaceError("p_01");
+    expect(err.code).toBe("project_not_found");
+  });
+
+  test("message includes the project id", () => {
+    const err = new ProjectNotFoundWorkspaceError("p_01");
+    expect(err.message).toContain("p_01");
+  });
+
+  test("projectId is accessible as a property", () => {
+    const err = new ProjectNotFoundWorkspaceError("p_xyz");
+    expect(err.projectId).toBe("p_xyz");
+  });
+
+  test("is an Error instance", () => {
+    const err = new ProjectNotFoundWorkspaceError("p_01");
+    expect(err).toBeInstanceOf(Error);
+    expect(err).toBeInstanceOf(ProjectNotFoundWorkspaceError);
+  });
+
+  test("stack trace is present", () => {
+    const err = new ProjectNotFoundWorkspaceError("p_01");
+    expect(typeof err.stack).toBe("string");
   });
 });
