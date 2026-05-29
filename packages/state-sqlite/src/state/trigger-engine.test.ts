@@ -247,4 +247,25 @@ describe("getNextFireTime", () => {
     const result = getNextFireTime("invalid", null);
     expect(result).toBeNull();
   });
+
+  test("returns last+intervalMs when lastFiredAt is in the future (clock skew)", () => {
+    // Simulate clock skew: lastFiredAt timestamp is ahead of Date.now()
+    const future = new Date(Date.now() + 60000).toISOString(); // 60s in the future
+    const interval = "PT30M"; // 30 minutes
+    const result = getNextFireTime(interval, future);
+    expect(result).toBeInstanceOf(Date);
+    // next fire should be future + 30min interval
+    const expected = new Date(future).getTime() + 30 * 60 * 1000;
+    expect(result!.getTime()).toBe(expected);
+  });
+
+  test("returns next fire time when elapsed < interval (within schedule)", () => {
+    const recent = new Date(Date.now() - 1000).toISOString(); // 1s ago
+    const interval = "PT30M";
+    const result = getNextFireTime(interval, recent);
+    expect(result).toBeInstanceOf(Date);
+    // next fire should be recent + 30min
+    const expected = new Date(recent).getTime() + 30 * 60 * 1000;
+    expect(result!.getTime()).toBe(expected);
+  });
 });
