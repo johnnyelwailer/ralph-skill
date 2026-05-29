@@ -141,3 +141,53 @@ test("update partial — only endedAt", () => {
   expect(updated.endedAt).toBe("2026-05-01T12:00:00Z");
   expect(updated.tokensIn).toBe(0);
 });
+
+// ─── list() ordering ─────────────────────────────────────────────────────────
+
+test("list orders results by created_at ASC", () => {
+  const { registry } = makeRegistry();
+  // Insert in non-chronological order by using explicit `now` timestamps
+  registry.create({ id: "t_later", sessionId: "s_order", turnId: "t_later", now: "2026-05-01T12:00:00Z" });
+  registry.create({ id: "t_earlier", sessionId: "s_order", turnId: "t_earlier", now: "2026-05-01T10:00:00Z" });
+  registry.create({ id: "t_middle", sessionId: "s_order", turnId: "t_middle", now: "2026-05-01T11:00:00Z" });
+
+  const turns = registry.list({ sessionId: "s_order" });
+  expect(turns).toHaveLength(3);
+  // Verify ordering: earliest created_at first
+  expect(turns[0]!.id).toBe("t_earlier");
+  expect(turns[1]!.id).toBe("t_middle");
+  expect(turns[2]!.id).toBe("t_later");
+});
+
+test("list combines sessionId and turnId filters", () => {
+  const { registry } = makeRegistry();
+  registry.create({ id: "t_1", sessionId: "s_multi", turnId: "t_a" });
+  registry.create({ id: "t_2", sessionId: "s_multi", turnId: "t_b" });
+  registry.create({ id: "t_3", sessionId: "s_other", turnId: "t_a" });
+
+  const turns = registry.list({ sessionId: "s_multi", turnId: "t_a" });
+  expect(turns).toHaveLength(1);
+  expect(turns[0]!.id).toBe("t_1");
+});
+
+test("list with only turnId filter returns all sessions matching that turnId", () => {
+  const { registry } = makeRegistry();
+  registry.create({ sessionId: "s_x", turnId: "t_shared" });
+  registry.create({ sessionId: "s_y", turnId: "t_shared" });
+  registry.create({ sessionId: "s_z", turnId: "t_other" });
+
+  const turns = registry.list({ turnId: "t_shared" });
+  expect(turns).toHaveLength(2);
+  expect(turns.every((t) => t.turnId === "t_shared")).toBe(true);
+});
+
+// ─── getBySessionAndTurn edge cases ─────────────────────────────────────────
+
+test("getBySessionAndTurn returns the existing turn on duplicate sessionId+turnId create", () => {
+  const { registry } = makeRegistry();
+  const first = registry.create({ id: "t_dup", sessionId: "s_dup", turnId: "t_dup_turn" });
+  // Calling create again with same sessionId+turnId is idempotent — returns existing turn
+  const second = registry.create({ id: "t_dup_diff", sessionId: "s_dup", turnId: "t_dup_turn" });
+  expect(second.id).toBe(first.id); // Same turn, not a new one
+  expect(second.createdAt).toBe(first.createdAt);
+});
