@@ -306,4 +306,76 @@ describe("isProviderAvailable", () => {
     expect(isProviderAvailable(prev, NOW + 9_000)).toBe(false);
     expect(isProviderAvailable(prev, NOW + 11_000)).toBe(true);
   });
+
+  test("cooldown status with null cooldownUntil is treated as available", () => {
+    // cooldownUntil: null means no explicit expiry was set — the provider
+    // should be considered available (the null case in the ternary).
+    const h: ProviderHealth = {
+      ...createUnknownHealth("opencode", NOW),
+      status: "cooldown",
+      cooldownUntil: null,
+    };
+    expect(isProviderAvailable(h, NOW)).toBe(true);
+  });
+});
+
+describe("applyProviderFailure edge cases", () => {
+  const basePrev: ProviderHealth = {
+    ...createUnknownHealth("opencode", NOW),
+    status: "healthy",
+  };
+
+  test("non-auth failure with both cooldownUntil and quotaResetsAtMs null → healthy status", () => {
+    // When backoff is 0 (first failure) and no quota reset is given,
+    // cooldownUntil is null and status remains healthy.
+    const prev: ProviderHealth = { ...basePrev, consecutiveFailures: 0 };
+    const h = applyProviderFailure(prev, "rate_limit", NOW + 1_000, {
+      backoffMsByFailureCount: [0, 0, 0, 0],
+      cooldownMultiplier: 1.0,
+    });
+    expect(h.status).toBe("healthy");
+    expect(h.cooldownUntil).toBeNull();
+    expect(h.consecutiveFailures).toBe(1);
+  });
+
+  test("non-auth failure: maxNullableMs takes the greater of backoff and quota expiry", () => {
+    // backoffUntilMs = NOW + 2 min, quotaResetsAtMs = NOW + 5 min
+    // maxNullableMs returns the greater → cooldownUntil = quotaResetsAtMs
+    const prev: ProviderHealth = { ...basePrev, consecutiveFailures: 1 }; // schedule[2] = 2 min
+    const h = applyProviderFailure(prev, "rate_limit", NOW + 1_000, {
+      quotaResetsAtMs: NOW + 5 * 60_000,
+    });
+    expect(h.cooldownUntil).toBe(iso(NOW + 5 * 60_000)); // 5 min > 2 min
+    expect(h.status).toBe("cooldown");
+  });
+
+  test("non-auth failure: backoff greater than quotaResetsAtMs uses backoff", () => {
+    // backoff = 5 min, quotaResetsAtMs = NOW + 2 min
+    // maxNullableMs returns backoff
+    const prev: ProviderHealth = { ...basePrev, consecutiveFailures: 3 }; // schedule[4] = 15 min
+    const h = applyProviderFailure(prev, "rate_limit", NOW + 1_000, {
+      quotaResetsAtMs: NOW + 2 * 60_000,
+    });
+    // consecutive=4 → backoff[4] = 15 min (with default schedule)
+    expect(h.cooldownUntil).toBe(iso(NOW + 1_000 + 15 * 60_000));
+  });
+
+  test("rate_limit failure at consecutive=2 with cooldownMultiplier 0 (no backoff)", () => {
+    // backoff[2] = 2 min but multiplier 0 means 0ms cooldown
+    const prev: ProviderHealth = { ...basePrev, consecutiveFailures: 1 };
+    const h = applyProviderFailure(prev, "rate_limit", NOW + 1_000, {
+      cooldownMultiplier: 0,
+    });
+    expect(h.cooldownUntil).toBeNull();
+    expect(h.status).toBe("healthy");
+    expect(h.consecutiveFailures).toBe(2);
+  });
+
+  test("concurrent_cap failure follows same backoff schedule as rate_limit", () => {
+    const prev: ProviderHealth = { ...basePrev, consecutiveFailures: 2 }; // → after = 3, backoff[3] = 5 min
+    const h = applyProviderFailure(prev, "concurrent_cap", NOW + 1_000);
+    expect(h.status).toBe("cooldown");
+    expect(h.cooldownUntil).toBe(iso(NOW + 1_000 + 5 * 60_000));
+    expect(h.failureReason).toBe("concurrent_cap");
+  });
 });

@@ -44,7 +44,7 @@ function makeInvalidJsonRequest(method: "POST" | "PATCH", url: string): Request 
 
 describe("createProject", () => {
   let dir: string;
-  let deps: Deps;
+  let deps: Deps & { workspaceId: string; workspaceId2: string };
 
   beforeEach(() => {
     dir = mkdtempSync(join(tmpdir(), "aloop-proj-write-"));
@@ -435,7 +435,7 @@ describe("purgeProject", () => {
 
 describe("createProject workspace_ids", () => {
   let dir: string;
-  let deps: Deps;
+  let deps: Deps & { workspaceId: string; workspaceId2: string };
 
   beforeEach(() => {
     dir = mkdtempSync(join(tmpdir(), "aloop-proj-write-"));
@@ -553,8 +553,8 @@ describe("createProject workspace_ids", () => {
     const stored = deps.registry.get(body.id);
     expect(stored).toBeDefined();
     expect(stored!.workspaceMemberships).toHaveLength(1);
-    expect(stored!.workspaceMemberships[0].workspaceId).toBe(deps.workspaceId);
-    expect(stored!.workspaceMemberships[0].role).toBe("experiment");
+    expect(stored!.workspaceMemberships[0]!.workspaceId).toBe(deps.workspaceId);
+    expect(stored!.workspaceMemberships[0]!.role).toBe("experiment");
   });
 });
 
@@ -562,7 +562,7 @@ describe("createProject workspace_ids", () => {
 
 describe("purgeProject re-throws unknown errors", () => {
   let dir: string;
-  let deps: Deps;
+  let deps: Deps & { workspaceId: string; workspaceId2: string };
   let projectId: string;
 
   beforeEach(() => {

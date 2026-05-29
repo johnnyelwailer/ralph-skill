@@ -370,8 +370,8 @@ describe("getMetricHistory", () => {
     expect(res.status).toBe(200);
     const body = await res.json() as unknown as { _v: number; items: Record<string, unknown>[]; next_cursor: string | null };
     expect(body.items).toHaveLength(3);
-    expect(body.items[0].value).toBe(50.0); // newest first
-    expect(body.items[2].value).toBe(40.0); // oldest last
+    expect(body.items[0]!.value).toBe(50.0); // newest first
+    expect(body.items[2]!.value).toBe(40.0); // oldest last
   });
 
   test("parses labels JSON from string field", async () => {
@@ -382,7 +382,7 @@ describe("getMetricHistory", () => {
     const req = new Request("http://x/v1/metrics/history?metric=response_time");
     const res = await getMetricHistory(req, deps);
     const body = await res.json() as unknown as { _v: number; items: Record<string, unknown>[]; next_cursor: string | null };
-    expect(body.items[0].labels).toEqual({ endpoint: "/api" });
+    expect(body.items[0]!.labels).toEqual({ endpoint: "/api" });
   });
 
   test("applies default limit of 1000", async () => {
@@ -405,7 +405,7 @@ describe("getMetricHistory", () => {
     const badReq = new Request("http://x/v1/metrics/history?metric=x");
     const res = await getMetricHistory(badReq, { db: badDb });
     expect(res.status).toBe(500);
-    const body = await res.json() as unknown as { _v: number; items: Record<string, unknown>[]; next_cursor: string | null };
+    const body = await res.json() as unknown as { error: { _v: number; code: string; message: string; details?: unknown } };
     expect(body.error.code).toBe("internal_error");
     badDb.close();
   });
@@ -432,7 +432,7 @@ describe("handleMetrics", () => {
     const req = new Request("http://x/v1/metrics/aggregates?metric=cpu", { method: "GET" });
     const res = await handleMetrics(req, deps, "/v1/metrics/aggregates");
     expect(res!.status).toBe(200);
-    const body = await res!.json();
+    const body = await res!.json() as unknown as { _v: number; items: unknown[]; next_cursor: string | null };
     expect(body.items).toEqual([]);
   });
 

@@ -36,7 +36,7 @@ describe("listProjects", () => {
     const req = new Request("http://localhost/v1/projects");
     const res = listProjects(req, deps);
     expect(res.status).toBe(200);
-    const body = await (res as Response).json();
+    const body = await (res as Response).json() as unknown as { _v: number; items: any[]; next_cursor: string | null };
     expect(body.items).toEqual([]);
     expect(body.next_cursor).toBeNull();
   });
@@ -48,7 +48,7 @@ describe("listProjects", () => {
     const req = new Request("http://localhost/v1/projects");
     const res = listProjects(req, deps);
     expect(res.status).toBe(200);
-    const body = await (res as Response).json();
+    const body = await (res as Response).json() as unknown as { _v: number; items: any[]; next_cursor: string | null };
     expect(body.items).toHaveLength(2);
     expect(body.next_cursor).toBeNull();
   });
@@ -61,7 +61,7 @@ describe("listProjects", () => {
     const req = new Request("http://localhost/v1/projects?status=archived");
     const res = listProjects(req, deps);
     expect(res.status).toBe(200);
-    const body = await (res as Response).json();
+    const body = await (res as Response).json() as unknown as { _v: number; items: any[]; next_cursor: string | null };
     expect(body.items).toHaveLength(1);
     expect(body.items[0]!.name).toBe("proj-b");
     expect(body.items[0]!.status).toBe("archived");
@@ -74,7 +74,7 @@ describe("listProjects", () => {
     const req = new Request("http://localhost/v1/projects?path=/a");
     const res = listProjects(req, deps);
     expect(res.status).toBe(200);
-    const body = await (res as Response).json();
+    const body = await (res as Response).json() as unknown as { _v: number; items: any[]; next_cursor: string | null };
     expect(body.items).toHaveLength(1);
     expect(body.items[0]!.abs_path).toBe("/a");
   });
@@ -88,7 +88,7 @@ describe("listProjects", () => {
     const req = new Request("http://localhost/v1/projects?status=archived&path=/a-archived");
     const res = listProjects(req, deps);
     expect(res.status).toBe(200);
-    const body = await (res as Response).json();
+    const body = await (res as Response).json() as unknown as { _v: number; items: any[]; next_cursor: string | null };
     expect(body.items).toHaveLength(1);
     expect(body.items[0]!.name).toBe("proj-a-archived");
   });
@@ -97,7 +97,7 @@ describe("listProjects", () => {
     const req = new Request("http://localhost/v1/projects?status=not_a_real_status");
     const res = listProjects(req, deps);
     expect(res.status).toBe(400);
-    const body = await (res as Response).json();
+    const body = await (res as Response).json() as unknown as { error: { _v: number; code: string; message: string; details?: unknown } };
     expect(body.error.code).toBe("bad_request");
   });
 
@@ -105,7 +105,7 @@ describe("listProjects", () => {
     const req = new Request("http://localhost/v1/projects?status=");
     const res = listProjects(req, deps);
     expect(res.status).toBe(400);
-    const body = await (res as Response).json();
+    const body = await (res as Response).json() as unknown as { error: { _v: number; code: string; message: string; details?: unknown } };
     expect(body.error.code).toBe("bad_request");
     expect(body.error.message).toContain("invalid status");
   });
@@ -115,7 +115,7 @@ describe("listProjects", () => {
 
     const req = new Request("http://localhost/v1/projects");
     const res = listProjects(req, deps);
-    const body = await (res as Response).json();
+    const body = await (res as Response).json() as unknown as { _v: number; items: any[]; next_cursor: string | null };
     expect(body.items[0]).toMatchObject({
       _v: 1,
       abs_path: "/c",
@@ -133,7 +133,7 @@ describe("listProjects", () => {
     const req = new Request("http://localhost/v1/projects?q=alpha");
     const res = listProjects(req, deps);
     expect(res.status).toBe(200);
-    const body = await (res as Response).json();
+    const body = await (res as Response).json() as unknown as { _v: number; items: any[]; next_cursor: string | null };
     expect(body.items).toHaveLength(1);
     expect(body.items[0]!.name).toBe("alpha-service");
   });
@@ -145,7 +145,7 @@ describe("listProjects", () => {
     const req = new Request("http://localhost/v1/projects?q=ALPHA");
     const res = listProjects(req, deps);
     expect(res.status).toBe(200);
-    const body = await (res as Response).json();
+    const body = await (res as Response).json() as unknown as { _v: number; items: any[]; next_cursor: string | null };
     expect(body.items).toHaveLength(1);
   });
 
@@ -157,7 +157,7 @@ describe("listProjects", () => {
     const req = new Request("http://localhost/v1/projects?limit=2");
     const res = listProjects(req, deps);
     expect(res.status).toBe(200);
-    const body = await (res as Response).json();
+    const body = await (res as Response).json() as unknown as { _v: number; items: any[]; next_cursor: string | null };
     expect(body.items).toHaveLength(2);
     expect(body.next_cursor).not.toBeNull();
   });
@@ -167,11 +167,11 @@ describe("listProjects", () => {
       deps.registry.create({ absPath: `/p${i}`, name: `proj-${i}` });
     }
 
-    const page1 = await (listProjects(new Request("http://localhost/v1/projects?limit=2"), deps) as Response).json();
+    const page1 = await (listProjects(new Request("http://localhost/v1/projects?limit=2"), deps) as Response).json() as unknown as { _v: number; items: any[]; next_cursor: string | null };
     expect(page1.items).toHaveLength(2);
     expect(page1.next_cursor).not.toBeNull();
 
-    const page2 = await (listProjects(new Request(`http://localhost/v1/projects?limit=2&cursor=${page1.next_cursor}`), deps) as Response).json();
+    const page2 = await (listProjects(new Request(`http://localhost/v1/projects?limit=2&cursor=${page1.next_cursor}`), deps) as Response).json() as unknown as { _v: number; items: any[]; next_cursor: string | null };
     expect(page2.items).toHaveLength(2);
     expect(page2.next_cursor).toBeNull();
   });
@@ -207,7 +207,7 @@ describe("listProjects workspace_id filter", () => {
     const req = new Request("http://localhost/v1/projects?workspace_id=no-such-workspace");
     const res = listProjects(req, deps);
     expect(res.status).toBe(200);
-    const body = await (res as Response).json();
+    const body = await (res as Response).json() as unknown as { _v: number; items: any[]; next_cursor: string | null };
     expect(body.items).toHaveLength(0);
   });
 
@@ -229,7 +229,7 @@ describe("listProjects workspace_id filter", () => {
     const req = new Request("http://localhost/v1/projects?workspace_id=ws1&status=ready");
     const res = listProjects(req, deps);
     expect(res.status).toBe(200);
-    const body = await (res as Response).json();
+    const body = await (res as Response).json() as unknown as { _v: number; items: any[]; next_cursor: string | null };
     // Filter applies — may or may not return results depending on workspace membership
     // but the important thing is the handler does not reject the combination
     expect(body).toHaveProperty("items");
@@ -257,7 +257,7 @@ describe("getProject", () => {
     const req = new Request("http://localhost/v1/projects/" + added.id);
     const res = getProject(added.id, deps);
     expect(res.status).toBe(200);
-    const body = await (res as Response).json();
+    const body = await (res as Response).json() as unknown as { _v: number; id: string; name: string; abs_path: string; status: string };
     expect(body.id).toBe(added.id);
     expect(body.name).toBe("proj-x");
     expect(body.abs_path).toBe("/x");
@@ -268,9 +268,9 @@ describe("getProject", () => {
     const req = new Request("http://localhost/v1/projects/no-such-id");
     const res = getProject("no-such-id", deps);
     expect(res.status).toBe(404);
-    const body = await (res as Response).json();
+    const body = await (res as Response).json() as unknown as { error: { _v: number; code: string; message: string; details?: { id: string } } };
     expect(body.error.code).toBe("project_not_found");
-    expect(body.error.details.id).toBe("no-such-id");
+    expect(body.error.details?.id).toBe("no-such-id");
   });
 });
 
@@ -293,7 +293,7 @@ describe("archiveProject", () => {
     const created = deps.registry.create({ absPath: "/x", name: "proj-x" });
     const res = archiveProject(created.id, deps);
     expect(res.status).toBe(200);
-    const body = await (res as Response).json();
+    const body = await (res as Response).json() as unknown as { _v: number; id: string; status: string };
     expect(body.id).toBe(created.id);
     expect(body.status).toBe("archived");
     expect(body._v).toBe(1);
@@ -302,9 +302,9 @@ describe("archiveProject", () => {
   test("returns 404 when project not found", async () => {
     const res = archiveProject("no-such-id", deps);
     expect(res.status).toBe(404);
-    const body = await (res as Response).json();
+    const body = await (res as Response).json() as unknown as { error: { _v: number; code: string; message: string; details?: { id: string } } };
     expect(body.error.code).toBe("project_not_found");
-    expect(body.error.details.id).toBe("no-such-id");
+    expect(body.error.details?.id).toBe("no-such-id");
   });
 
   test("actually archives the project (verifiable via getProject)", async () => {
@@ -312,7 +312,7 @@ describe("archiveProject", () => {
     archiveProject(created.id, deps);
     const getRes = getProject(created.id, deps);
     expect(getRes.status).toBe(200);
-    const body = await (getRes as Response).json();
+    const body = await (getRes as Response).json() as unknown as { _v: number; id: string; name: string; abs_path: string; status: string };
     expect(body.status).toBe("archived");
   });
 });
@@ -342,9 +342,9 @@ describe("purgeProject", () => {
   test("returns 404 when project not found", async () => {
     const res = purgeProject("no-such-id", deps);
     expect(res.status).toBe(404);
-    const body = await (res as Response).json();
+    const body = await (res as Response).json() as unknown as { error: { _v: number; code: string; message: string; details?: { id: string } } };
     expect(body.error.code).toBe("project_not_found");
-    expect(body.error.details.id).toBe("no-such-id");
+    expect(body.error.details?.id).toBe("no-such-id");
   });
 
   test("actually removes the project (verifiable via getProject)", async () => {
