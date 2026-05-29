@@ -56,7 +56,7 @@ describe("createWorkspaceHandler whitespace-only name", () => {
     });
     const res = await createWorkspaceHandler(req, deps);
     expect(res.status).toBe(400);
-    const body = await res.json();
+    const body = await res.json() as unknown as { error: { code: string; message: string; details?: unknown } };
     expect(body.error.code).toBe("bad_request");
     // name is required and spaces-only is not a valid name
     expect(body.error.message).toContain("name");
@@ -142,7 +142,7 @@ describe("createWorkspaceHandler default_budget_usd_per_day validation", () => {
     });
     const res = await createWorkspaceHandler(req, deps);
     expect(res.status).toBe(400);
-    const body = await res.json();
+    const body = await res.json() as unknown as { error: { code: string; message: string; details?: unknown } };
     expect(body.error.code).toBe("bad_request");
   });
 
@@ -154,7 +154,7 @@ describe("createWorkspaceHandler default_budget_usd_per_day validation", () => {
     });
     const res = await createWorkspaceHandler(req, deps);
     expect(res.status).toBe(400);
-    const body = await res.json();
+    const body = await res.json() as unknown as { error: { code: string; message: string; details?: unknown } };
     expect(body.error.code).toBe("bad_request");
   });
 
@@ -228,7 +228,7 @@ describe("patchWorkspaceHandler whitespace-only name", () => {
     });
     const res = await patchWorkspaceHandler(workspaceId, req, deps);
     expect(res.status).toBe(400);
-    const body = await res.json();
+    const body = await res.json() as unknown as { error: { code: string; message: string; details?: unknown } };
     expect(body.error.code).toBe("bad_request");
   });
 
@@ -293,7 +293,7 @@ describe("patchWorkspaceHandler default_budget_usd_per_day validation", () => {
     });
     const res = await patchWorkspaceHandler(workspaceId, req, deps);
     expect(res.status).toBe(400);
-    const body = await res.json();
+    const body = await res.json() as unknown as { error: { code: string; message: string; details?: unknown } };
     expect(body.error.code).toBe("bad_request");
   });
 

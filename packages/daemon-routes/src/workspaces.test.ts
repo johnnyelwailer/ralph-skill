@@ -49,7 +49,7 @@ describe("GET /v1/workspaces", () => {
     try {
       const res = await dispatch("GET", "/v1/workspaces", deps);
       expect(res.status).toBe(200);
-      const body = await res.json();
+      const body = await res.json() as unknown as { _v: number; items: unknown[]; next_cursor: string | null };
       expect(body.items).toEqual([]);
     } finally {
       closeDeps(deps);
@@ -65,7 +65,7 @@ describe("POST /v1/workspaces", () => {
     try {
       const res = await dispatch("POST", "/v1/workspaces", deps, { name: "test-ws" });
       expect(res.status).toBe(201);
-      const body = await res.json();
+      const body = await res.json() as unknown as { _v: number; id: string; name: string; description?: string; default_budget_usd_per_day?: number; metadata?: Record<string, unknown>; default_project_id?: string; project_counts: { total: number; primary: number; supporting: number; dependency: number; experiment: number }; created_at: string; updated_at: string };
       expect(body.id).toBeTruthy();
       expect(body.name).toBe("test-ws");
     } finally {
@@ -80,7 +80,7 @@ describe("POST /v1/workspaces", () => {
     try {
       const res = await dispatch("POST", "/v1/workspaces", deps, {});
       expect(res.status).toBe(400);
-      const body = await res.json();
+      const body = await res.json() as unknown as { error: { code: string; message: string; details?: unknown } };
       expect(body.error.code).toBe("bad_request");
     } finally {
       closeDeps(deps);
@@ -96,7 +96,7 @@ describe("non-GET/POST on /v1/workspaces", () => {
     try {
       const res = await dispatch("DELETE", "/v1/workspaces", deps);
       expect(res.status).toBe(405);
-      const body = await res.json();
+      const body = await res.json() as unknown as { error: { code: string; message: string; details?: unknown } };
       expect(body.error.code).toBe("method_not_allowed");
     } finally {
       closeDeps(deps);
@@ -110,7 +110,7 @@ describe("non-GET/POST on /v1/workspaces", () => {
     try {
       const res = await dispatch("PATCH", "/v1/workspaces", deps, {});
       expect(res.status).toBe(405);
-      const body = await res.json();
+      const body = await res.json() as unknown as { error: { code: string; message: string; details?: unknown } };
       expect(body.error.code).toBe("method_not_allowed");
     } finally {
       closeDeps(deps);
@@ -129,7 +129,7 @@ describe("GET /v1/workspaces/:id", () => {
       const ws = deps.registry.create({ name: "my-ws" });
       const res = await dispatch("GET", `/v1/workspaces/${ws.id}`, deps);
       expect(res.status).toBe(200);
-      const body = await res.json();
+      const body = await res.json() as unknown as { _v: number; id: string; name: string; description?: string; default_budget_usd_per_day?: number; metadata?: Record<string, unknown>; default_project_id?: string; project_counts: { total: number; primary: number; supporting: number; dependency: number; experiment: number }; created_at: string; updated_at: string };
       expect(body.id).toBe(ws.id);
       expect(body.name).toBe("my-ws");
     } finally {
@@ -144,7 +144,7 @@ describe("GET /v1/workspaces/:id", () => {
     try {
       const res = await dispatch("GET", "/v1/workspaces/nonexistent-id", deps);
       expect(res.status).toBe(404);
-      const body = await res.json();
+      const body = await res.json() as unknown as { error: { code: string; message: string; details?: unknown } };
       expect(body.error.code).toBe("workspace_not_found");
     } finally {
       closeDeps(deps);
@@ -161,7 +161,7 @@ describe("PATCH /v1/workspaces/:id", () => {
       const ws = deps.registry.create({ name: "original" });
       const res = await dispatch("PATCH", `/v1/workspaces/${ws.id}`, deps, { name: "updated" });
       expect(res.status).toBe(200);
-      const body = await res.json();
+      const body = await res.json() as unknown as { _v: number; id: string; name: string; description?: string; default_budget_usd_per_day?: number; metadata?: Record<string, unknown>; default_project_id?: string; project_counts: { total: number; primary: number; supporting: number; dependency: number; experiment: number }; created_at: string; updated_at: string };
       expect(body.name).toBe("updated");
     } finally {
       closeDeps(deps);
@@ -234,7 +234,7 @@ describe("GET /v1/workspaces/:id/projects", () => {
       const ws = deps.registry.create({ name: "ws" });
       const res = await dispatch("GET", `/v1/workspaces/${ws.id}/projects`, deps);
       expect(res.status).toBe(200);
-      const body = await res.json();
+      const body = await res.json() as unknown as { _v: number; items: unknown[]; next_cursor: string | null };
       expect(body.items).toEqual([]);
     } finally {
       closeDeps(deps);
@@ -266,7 +266,7 @@ describe("POST /v1/workspaces/:id/projects", () => {
         project_id: proj.id,
       });
       expect(res.status).toBe(201);
-      const body = await res.json();
+      const body = await res.json() as unknown as { _v: number; project_id: string; workspace_id: string; role: string; added_at: string };
       expect(body.project_id).toBe(proj.id);
       expect(body.workspace_id).toBe(ws.id);
     } finally {
@@ -357,7 +357,7 @@ describe("DELETE /v1/workspaces/:id/projects/:projectId", () => {
         deps,
       );
       expect(res.status).toBe(404);
-      const body = await res.json();
+      const body = await res.json() as unknown as { error: { code: string; message: string; details?: unknown } };
       expect(body.error.code).toBe("workspace_project_not_found");
     } finally {
       closeDeps(deps);
@@ -403,7 +403,7 @@ describe("unmatched paths return 404", () => {
     try {
       const res = await dispatch("GET", "/v1/workspaces//extra", deps);
       expect(res.status).toBe(404);
-      const body = await res.json();
+      const body = await res.json() as unknown as { error: { code: string; message: string; details?: unknown } };
       expect(body.error.code).toBe("not_found");
     } finally {
       closeDeps(deps);

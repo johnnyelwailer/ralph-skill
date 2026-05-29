@@ -53,7 +53,7 @@ describe("createWorkspaceHandler", () => {
     });
     const res = await createWorkspaceHandler(req, deps);
     expect(res.status).toBe(201);
-    const body = await res.json();
+    const body = await res.json() as unknown as { _v: number; id: string; name: string; description?: string; default_budget_usd_per_day?: number; metadata?: Record<string, unknown>; default_project_id?: string; project_counts: { total: number; primary: number; supporting: number; dependency: number; experiment: number }; created_at: string; updated_at: string };
     expect(body.id).toBeDefined();
     expect(body.name).toBe("my-workspace");
     expect(body.project_counts).toEqual({
@@ -72,7 +72,7 @@ describe("createWorkspaceHandler", () => {
     });
     const res = await createWorkspaceHandler(req, deps);
     expect(res.status).toBe(400);
-    const body = await res.json();
+    const body = await res.json() as unknown as { error: { code: string; message: string; details?: unknown } };
     expect(body.error.code).toBe("bad_request");
     expect(body.error.message).toBe("name is required");
   });
@@ -84,7 +84,7 @@ describe("createWorkspaceHandler", () => {
     });
     const res = await createWorkspaceHandler(req, deps);
     expect(res.status).toBe(400);
-    const body = await res.json();
+    const body = await res.json() as unknown as { error: { code: string; message: string; details?: unknown } };
     expect(body.error.message).toBe("name is required");
   });
 
@@ -95,7 +95,7 @@ describe("createWorkspaceHandler", () => {
     });
     const res = await createWorkspaceHandler(req, deps);
     expect(res.status).toBe(400);
-    const body = await res.json();
+    const body = await res.json() as unknown as { error: { code: string; message: string; details?: unknown } };
     expect(body.error.message).toBe("name is required");
   });
 
@@ -106,7 +106,7 @@ describe("createWorkspaceHandler", () => {
     });
     const res = await createWorkspaceHandler(req, deps);
     expect(res.status).toBe(201);
-    const body = await res.json();
+    const body = await res.json() as unknown as { _v: number; id: string; name: string; description?: string; default_budget_usd_per_day?: number; metadata?: Record<string, unknown>; default_project_id?: string; project_counts: { total: number; primary: number; supporting: number; dependency: number; experiment: number }; created_at: string; updated_at: string };
     expect(body.description).toBe("A test workspace");
   });
 
@@ -144,7 +144,7 @@ describe("createWorkspaceHandler", () => {
     });
     const res = await createWorkspaceHandler(req, deps);
     expect(res.status).toBe(400);
-    const body = await res.json();
+    const body = await res.json() as unknown as { error: { code: string; message: string; details?: unknown } };
     expect(body.error.message).toBe("request body must be a JSON object");
   });
 });
@@ -177,7 +177,7 @@ describe("patchWorkspaceHandler", () => {
     });
     const res = await patchWorkspaceHandler(workspaceId, req, deps);
     expect(res.status).toBe(200);
-    const body = await res.json();
+    const body = await res.json() as unknown as { _v: number; id: string; name: string; description?: string; default_budget_usd_per_day?: number; metadata?: Record<string, unknown>; default_project_id?: string; project_counts: { total: number; primary: number; supporting: number; dependency: number; experiment: number }; created_at: string; updated_at: string };
     expect(body.name).toBe("updated-name");
   });
 
@@ -188,7 +188,7 @@ describe("patchWorkspaceHandler", () => {
     });
     const res = await patchWorkspaceHandler(workspaceId, req, deps);
     expect(res.status).toBe(200);
-    const body = await res.json();
+    const body = await res.json() as unknown as { _v: number; id: string; name: string; description?: string; default_budget_usd_per_day?: number; metadata?: Record<string, unknown>; default_project_id?: string; project_counts: { total: number; primary: number; supporting: number; dependency: number; experiment: number }; created_at: string; updated_at: string };
     expect(body.description).toBe("new description");
   });
 
@@ -208,7 +208,7 @@ describe("patchWorkspaceHandler", () => {
     });
     const res = await patchWorkspaceHandler(workspaceId, req, deps);
     expect(res.status).toBe(200);
-    const body = await res.json();
+    const body = await res.json() as unknown as { _v: number; id: string; name: string; description?: string; default_budget_usd_per_day?: number; metadata?: Record<string, unknown>; default_project_id?: string; project_counts: { total: number; primary: number; supporting: number; dependency: number; experiment: number }; created_at: string; updated_at: string };
     expect(body.metadata).toEqual({ env: "staging" });
   });
 
@@ -219,7 +219,7 @@ describe("patchWorkspaceHandler", () => {
     });
     const res = await patchWorkspaceHandler("nonexistent-id", req, deps);
     expect(res.status).toBe(404);
-    const body = await res.json();
+    const body = await res.json() as unknown as { error: { code: string; message: string; details?: unknown } };
     expect(body.error.code).toBe("workspace_not_found");
   });
 
@@ -230,7 +230,7 @@ describe("patchWorkspaceHandler", () => {
     });
     const res = await patchWorkspaceHandler(workspaceId, req, deps);
     expect(res.status).toBe(400);
-    const body = await res.json();
+    const body = await res.json() as unknown as { error: { code: string; message: string; details?: unknown } };
     expect(body.error.message).toBe("no updatable fields provided");
   });
 
@@ -241,7 +241,7 @@ describe("patchWorkspaceHandler", () => {
     });
     const res = await patchWorkspaceHandler(workspaceId, req, deps);
     expect(res.status).toBe(400);
-    const body = await res.json();
+    const body = await res.json() as unknown as { error: { code: string; message: string; details?: unknown } };
     expect(body.error.message).toBe("name is required");
   });
 
@@ -287,7 +287,7 @@ describe("deleteWorkspaceHandler", () => {
   test("returns 404 when workspace does not exist", async () => {
     const res = deleteWorkspaceHandler("nonexistent-id", deps);
     expect(res.status).toBe(404);
-    const body = await res.json();
+    const body = await res.json() as unknown as { error: { code: string; message: string; details?: unknown } };
     expect(body.error.code).toBe("workspace_not_found");
   });
 });
@@ -315,7 +315,7 @@ describe("listWorkspacesHandler", () => {
     const req = new Request("http://localhost/v1/workspaces");
     const res = listWorkspacesHandler(req, deps);
     expect(res.status).toBe(200);
-    const body = await res.json();
+    const body = await res.json() as unknown as { _v: number; items: unknown[]; next_cursor: string | null };
     expect(body.items).toEqual([]);
     expect(body.next_cursor).toBeNull();
   });
@@ -327,7 +327,7 @@ describe("listWorkspacesHandler", () => {
     const req = new Request("http://localhost/v1/workspaces");
     const res = listWorkspacesHandler(req, deps);
     expect(res.status).toBe(200);
-    const body = await res.json();
+    const body = await res.json() as unknown as { _v: number; items: unknown[]; next_cursor: string | null };
     expect(body.items).toHaveLength(2);
     expect(body.next_cursor).toBeNull();
   });
@@ -340,7 +340,7 @@ describe("listWorkspacesHandler", () => {
     const req = new Request("http://localhost/v1/workspaces?q=platform");
     const res = listWorkspacesHandler(req, deps);
     expect(res.status).toBe(200);
-    const body = await res.json();
+    const body = await res.json() as unknown as { _v: number; items: { name: string }[]; next_cursor: string | null };
     expect(body.items).toHaveLength(2);
     for (const item of body.items) {
       expect(item.name).toMatch(/platform/);
@@ -354,7 +354,7 @@ describe("listWorkspacesHandler", () => {
     const req = new Request("http://localhost/v1/workspaces?q=nonexistent");
     const res = listWorkspacesHandler(req, deps);
     expect(res.status).toBe(200);
-    const body = await res.json();
+    const body = await res.json() as unknown as { _v: number; items: unknown[]; next_cursor: string | null };
     expect(body.items).toHaveLength(0);
   });
 
@@ -366,7 +366,7 @@ describe("listWorkspacesHandler", () => {
     const req = new Request("http://localhost/v1/workspaces?limit=2");
     const res = listWorkspacesHandler(req, deps);
     expect(res.status).toBe(200);
-    const body = await res.json();
+    const body = await res.json() as unknown as { _v: number; items: unknown[]; next_cursor: string | null };
     expect(body.items).toHaveLength(2);
   });
 
@@ -376,7 +376,7 @@ describe("listWorkspacesHandler", () => {
     const req = new Request("http://localhost/v1/workspaces");
     const res = listWorkspacesHandler(req, deps);
     expect(res.status).toBe(200);
-    const body = await res.json();
+    const body = await res.json() as unknown as { _v: number; items: unknown[]; next_cursor: string | null };
     expect(body.items).toHaveLength(1);
   });
 
@@ -387,7 +387,7 @@ describe("listWorkspacesHandler", () => {
     expect(res.status).toBe(200);
     // listWorkspacesHandler currently does not implement cursor pagination
     // (next_cursor is always null), but the filter parsing should accept it
-    const body = await res.json();
+    const body = await res.json() as unknown as { _v: number; items: unknown[]; next_cursor: string | null };
     expect(body.items).toHaveLength(1);
     expect(body.next_cursor).toBeNull();
   });
@@ -418,7 +418,7 @@ describe("getWorkspaceHandler", () => {
     const req = new Request(`http://localhost/v1/workspaces/${workspaceId}`);
     const res = getWorkspaceHandler(workspaceId, deps);
     expect(res.status).toBe(200);
-    const body = await res.json();
+    const body = await res.json() as unknown as { _v: number; id: string; name: string; description?: string; default_budget_usd_per_day?: number; metadata?: Record<string, unknown>; default_project_id?: string; project_counts: { total: number; primary: number; supporting: number; dependency: number; experiment: number }; created_at: string; updated_at: string };
     expect(body.id).toBe(workspaceId);
     expect(body.name).toBe("get-test-ws");
     expect(body.project_counts).toBeDefined();
@@ -428,7 +428,7 @@ describe("getWorkspaceHandler", () => {
     const req = new Request("http://localhost/v1/workspaces/nonexistent");
     const res = getWorkspaceHandler("nonexistent", deps);
     expect(res.status).toBe(404);
-    const body = await res.json();
+    const body = await res.json() as unknown as { error: { code: string; message: string; details?: unknown } };
     expect(body.error.code).toBe("workspace_not_found");
   });
 });
@@ -458,7 +458,7 @@ describe("listWorkspaceProjectsHandler", () => {
     const req = new Request(`http://localhost/v1/workspaces/${workspaceId}/projects`);
     const res = listWorkspaceProjectsHandler(workspaceId, deps);
     expect(res.status).toBe(200);
-    const body = await res.json();
+    const body = await res.json() as unknown as { _v: number; items: unknown[]; next_cursor: string | null };
     expect(body.items).toEqual([]);
   });
 
@@ -499,7 +499,7 @@ describe("addProjectToWorkspaceHandler", () => {
     });
     const res = await addProjectToWorkspaceHandler(workspaceId, req, deps);
     expect(res.status).toBe(201);
-    const body = await res.json();
+    const body = await res.json() as unknown as { _v: number; project_id: string; workspace_id: string; role: string; added_at: string };
     expect(body.project_id).toBe(projectId);
     expect(body.workspace_id).toBe(workspaceId);
     expect(body.role).toBe("supporting");
@@ -512,7 +512,7 @@ describe("addProjectToWorkspaceHandler", () => {
     });
     const res = await addProjectToWorkspaceHandler(workspaceId, req, deps);
     expect(res.status).toBe(201);
-    const body = await res.json();
+    const body = await res.json() as unknown as { _v: number; project_id: string; workspace_id: string; role: string; added_at: string };
     expect(body.role).toBe("primary");
   });
 
@@ -523,7 +523,7 @@ describe("addProjectToWorkspaceHandler", () => {
     });
     const res = await addProjectToWorkspaceHandler(workspaceId, req, deps);
     expect(res.status).toBe(201);
-    const body = await res.json();
+    const body = await res.json() as unknown as { _v: number; project_id: string; workspace_id: string; role: string; added_at: string };
     expect(body.role).toBe("experiment");
   });
 
@@ -534,7 +534,7 @@ describe("addProjectToWorkspaceHandler", () => {
     });
     const res = await addProjectToWorkspaceHandler(workspaceId, req, deps);
     expect(res.status).toBe(400);
-    const body = await res.json();
+    const body = await res.json() as unknown as { error: { code: string; message: string; details?: unknown } };
     expect(body.error.message).toBe("project_id is required");
   });
 
@@ -545,7 +545,7 @@ describe("addProjectToWorkspaceHandler", () => {
     });
     const res = await addProjectToWorkspaceHandler(workspaceId, req, deps);
     expect(res.status).toBe(400);
-    const body = await res.json();
+    const body = await res.json() as unknown as { error: { code: string; message: string; details?: unknown } };
     expect(body.error.message).toBe("project_id is required");
   });
 
@@ -556,7 +556,7 @@ describe("addProjectToWorkspaceHandler", () => {
     });
     const res = await addProjectToWorkspaceHandler(workspaceId, req, deps);
     expect(res.status).toBe(400);
-    const body = await res.json();
+    const body = await res.json() as unknown as { error: { code: string; message: string; details?: unknown } };
     expect(body.error.message).toContain("invalid role");
   });
 
@@ -576,7 +576,7 @@ describe("addProjectToWorkspaceHandler", () => {
     });
     const res = await addProjectToWorkspaceHandler(workspaceId, req, deps);
     expect(res.status).toBe(404);
-    const body = await res.json();
+    const body = await res.json() as unknown as { error: { code: string; message: string; details?: unknown } };
     expect(body.error.code).toBe("project_not_found");
   });
 
@@ -588,7 +588,7 @@ describe("addProjectToWorkspaceHandler", () => {
     });
     const res = await addProjectToWorkspaceHandler("ws-doesnt-exist", req, deps);
     expect(res.status).toBe(404);
-    const body = await res.json();
+    const body = await res.json() as unknown as { error: { code: string; message: string; details?: unknown } };
     expect(body.error.code).toBe("workspace_not_found");
   });
 
@@ -606,7 +606,7 @@ describe("addProjectToWorkspaceHandler", () => {
     });
     const res = await addProjectToWorkspaceHandler(workspaceId, req2, deps);
     expect(res.status).toBe(409);
-    const body = await res.json();
+    const body = await res.json() as unknown as { error: { code: string; message: string; details?: unknown } };
     expect(body.error.code).toBe("duplicate_workspace_project");
   });
 });
@@ -640,7 +640,7 @@ describe("removeProjectFromWorkspaceHandler", () => {
     expect(res.status).toBe(204);
     // Verify it's gone
     const listRes = listWorkspaceProjectsHandler(workspaceId, deps);
-    const body = await listRes.json();
+    const body = await listRes.json() as unknown as { _v: number; items: unknown[]; next_cursor: string | null };
     expect(body.items).toHaveLength(0);
   });
 
@@ -653,7 +653,7 @@ describe("removeProjectFromWorkspaceHandler", () => {
     const otherProjectId = deps.projectRegistry.create({ absPath: "/test/other", name: "other-project" }).id;
     const res = removeProjectFromWorkspaceHandler(workspaceId, otherProjectId, deps);
     expect(res.status).toBe(404);
-    const body = await res.json();
+    const body = await res.json() as unknown as { error: { code: string; message: string; details?: unknown } };
     expect(body.error.code).toBe("workspace_project_not_found");
   });
 });

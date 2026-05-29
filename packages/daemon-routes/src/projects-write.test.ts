@@ -61,7 +61,7 @@ describe("createProject", () => {
     const req = makeRequest({ abs_path: "/test/project", name: "my-project" });
     const res = await createProject(req, deps);
     expect(res.status).toBe(201);
-    const body = await (res as Response).json();
+    const body = await (res as Response).json() as unknown as { id: string; abs_path: string; name: string; status: string; _v: number };
     expect(body.abs_path).toBe("/test/project");
     expect(body.name).toBe("my-project");
     expect(body.status).toBe("setup_pending");
@@ -73,7 +73,7 @@ describe("createProject", () => {
     const req = makeRequest({ abs_path: "/test/project-no-name" });
     const res = await createProject(req, deps);
     expect(res.status).toBe(201);
-    const body = await (res as Response).json();
+    const body = await (res as Response).json() as unknown as { id: string; abs_path: string; name: string; status: string; _v: number };
     expect(body.abs_path).toBe("/test/project-no-name");
     // name defaults to basename of abs_path when not supplied
     expect(body.name).toBe("project-no-name");
@@ -83,7 +83,7 @@ describe("createProject", () => {
     const req = makeRequest({ name: "orphan" });
     const res = await createProject(req, deps);
     expect(res.status).toBe(400);
-    const body = await (res as Response).json();
+    const body = await (res as Response).json() as unknown as { error: { code: string; message: string; details?: unknown } };
     expect(body.error.code).toBe("bad_request");
     expect(body.error.message).toContain("abs_path");
   });
@@ -92,7 +92,7 @@ describe("createProject", () => {
     const req = makeRequest({ abs_path: 12345 });
     const res = await createProject(req, deps);
     expect(res.status).toBe(400);
-    const body = await (res as Response).json();
+    const body = await (res as Response).json() as unknown as { error: { code: string; message: string; details?: unknown } };
     expect(body.error.code).toBe("bad_request");
     expect(body.error.message).toContain("abs_path");
   });
@@ -102,9 +102,9 @@ describe("createProject", () => {
     const req = makeRequest({ abs_path: "/duplicate/path", name: "second" });
     const res = await createProject(req, deps);
     expect(res.status).toBe(409);
-    const body = await (res as Response).json();
+    const body = await (res as Response).json() as unknown as { error: { code: string; message: string; details?: { abs_path: string } } };
     expect(body.error.code).toBe("project_already_registered");
-    expect(body.error.details.abs_path).toBe("/duplicate/path");
+    expect(body.error.details?.abs_path).toBe("/duplicate/path");
   });
 
   test("returns 400 when body is JSON null", async () => {
@@ -115,7 +115,7 @@ describe("createProject", () => {
     });
     const res = await createProject(req, deps);
     expect(res.status).toBe(400);
-    const body = await (res as Response).json();
+    const body = await (res as Response).json() as unknown as { error: { code: string; message: string; details?: unknown } };
     expect(body.error.code).toBe("bad_request");
   });
 
@@ -127,7 +127,7 @@ describe("createProject", () => {
     });
     const res = await createProject(req, deps);
     expect(res.status).toBe(400);
-    const body = await (res as Response).json();
+    const body = await (res as Response).json() as unknown as { error: { code: string; message: string; details?: unknown } };
     expect(body.error.code).toBe("bad_request");
   });
 });
@@ -153,7 +153,7 @@ describe("patchProject", () => {
     const req = makePatchRequest(projectId, { name: "updated-name" });
     const res = await patchProject(projectId, req, deps);
     expect(res.status).toBe(200);
-    const body = await (res as Response).json();
+    const body = await (res as Response).json() as unknown as { id: string; name: string; status: string };
     expect(body.name).toBe("updated-name");
     expect(body.id).toBe(projectId);
   });
@@ -162,7 +162,7 @@ describe("patchProject", () => {
     const req = makePatchRequest(projectId, { status: "ready" });
     const res = await patchProject(projectId, req, deps);
     expect(res.status).toBe(200);
-    const body = await (res as Response).json();
+    const body = await (res as Response).json() as unknown as { id: string; name: string; status: string };
     expect(body.status).toBe("ready");
   });
 
@@ -170,7 +170,7 @@ describe("patchProject", () => {
     const req = makePatchRequest(projectId, { name: "new-name", status: "archived" });
     const res = await patchProject(projectId, req, deps);
     expect(res.status).toBe(200);
-    const body = await (res as Response).json();
+    const body = await (res as Response).json() as unknown as { id: string; name: string; status: string };
     expect(body.name).toBe("new-name");
     expect(body.status).toBe("archived");
   });
@@ -179,7 +179,7 @@ describe("patchProject", () => {
     const req = makePatchRequest(projectId, { status: "not_a_real_status" });
     const res = await patchProject(projectId, req, deps);
     expect(res.status).toBe(400);
-    const body = await (res as Response).json();
+    const body = await (res as Response).json() as unknown as { error: { code: string; message: string; details?: unknown } };
     expect(body.error.code).toBe("bad_request");
     expect(body.error.message).toContain("invalid status");
   });
@@ -188,7 +188,7 @@ describe("patchProject", () => {
     const req = makePatchRequest(projectId, {});
     const res = await patchProject(projectId, req, deps);
     expect(res.status).toBe(400);
-    const body = await (res as Response).json();
+    const body = await (res as Response).json() as unknown as { error: { code: string; message: string; details?: unknown } };
     expect(body.error.code).toBe("bad_request");
     expect(body.error.message).toContain("no updatable fields");
   });
@@ -201,7 +201,7 @@ describe("patchProject", () => {
     });
     const res = await patchProject(projectId, req, deps);
     expect(res.status).toBe(400);
-    const body = await (res as Response).json();
+    const body = await (res as Response).json() as unknown as { error: { code: string; message: string; details?: unknown } };
     expect(body.error.code).toBe("bad_request");
   });
 
@@ -213,7 +213,7 @@ describe("patchProject", () => {
     });
     const res = await patchProject(projectId, req, deps);
     expect(res.status).toBe(400);
-    const body = await (res as Response).json();
+    const body = await (res as Response).json() as unknown as { error: { code: string; message: string; details?: unknown } };
     expect(body.error.code).toBe("bad_request");
   });
 
@@ -225,7 +225,7 @@ describe("patchProject", () => {
     });
     const res = await patchProject(projectId, req, deps);
     expect(res.status).toBe(400);
-    const body = await (res as Response).json();
+    const body = await (res as Response).json() as unknown as { error: { code: string; message: string; details?: unknown } };
     expect(body.error.code).toBe("bad_request");
   });
 
@@ -233,7 +233,7 @@ describe("patchProject", () => {
     const req = makePatchRequest(projectId, { status: "" });
     const res = await patchProject(projectId, req, deps);
     expect(res.status).toBe(400);
-    const body = await (res as Response).json();
+    const body = await (res as Response).json() as unknown as { error: { code: string; message: string; details?: unknown } };
     expect(body.error.code).toBe("bad_request");
     expect(body.error.message).toContain("invalid status");
   });
@@ -242,9 +242,9 @@ describe("patchProject", () => {
     const req = makePatchRequest("no-such-id", { name: "new-name" });
     const res = await patchProject("no-such-id", req, deps);
     expect(res.status).toBe(404);
-    const body = await (res as Response).json();
+    const body = await (res as Response).json() as unknown as { error: { code: string; message: string; details?: { id: string } } };
     expect(body.error.code).toBe("project_not_found");
-    expect(body.error.details.id).toBe("no-such-id");
+    expect(body.error.details?.id).toBe("no-such-id");
   });
 });
 
@@ -270,7 +270,7 @@ describe("archiveProject", () => {
   test("returns 200 with archived project", async () => {
     const res = archiveProject(projectId, deps);
     expect(res.status).toBe(200);
-    const body = await (res as Response).json();
+    const body = await (res as Response).json() as unknown as { status: string; id: string };
     expect(body.status).toBe("archived");
     expect(body.id).toBe(projectId);
   });
@@ -278,9 +278,9 @@ describe("archiveProject", () => {
   test("returns 404 when project not found", async () => {
     const res = archiveProject("no-such-id", deps);
     expect(res.status).toBe(404);
-    const body = await (res as Response).json();
+    const body = await (res as Response).json() as unknown as { error: { code: string; message: string; details?: { id: string } } };
     expect(body.error.code).toBe("project_not_found");
-    expect(body.error.details.id).toBe("no-such-id");
+    expect(body.error.details?.id).toBe("no-such-id");
   });
 });
 
@@ -422,14 +422,12 @@ describe("purgeProject", () => {
     expect(deps.registry.get(projectId)).toBeUndefined();
   });
 
-  test("returns 404 when project not found", () => {
+  test("returns 404 when project not found", async () => {
     const res = purgeProject("no-such-id", deps);
     expect(res.status).toBe(404);
-    const bodyPromise = (res as Response).json();
-    return bodyPromise.then((body) => {
-      expect(body.error.code).toBe("project_not_found");
-      expect(body.error.details.id).toBe("no-such-id");
-    });
+    const body = await (res as Response).json() as unknown as { error: { code: string; message: string; details?: { id: string } } };
+    expect(body.error.code).toBe("project_not_found");
+    expect(body.error.details?.id).toBe("no-such-id");
   });
 });
 
@@ -457,7 +455,7 @@ describe("createProject workspace_ids", () => {
     });
     const res = await createProject(req, deps);
     expect(res.status).toBe(400);
-    const body = await (res as Response).json();
+    const body = await (res as Response).json() as unknown as { error: { code: string; message: string; details?: unknown } };
     expect(body.error.code).toBe("bad_request");
     expect(body.error.message).toContain("workspace_ids must be an array");
   });
@@ -469,7 +467,7 @@ describe("createProject workspace_ids", () => {
     });
     const res = await createProject(req, deps);
     expect(res.status).toBe(400);
-    const body = await (res as Response).json();
+    const body = await (res as Response).json() as unknown as { error: { code: string; message: string; details?: unknown } };
     expect(body.error.code).toBe("bad_request");
     expect(body.error.message).toContain("each workspace_ids entry must be an object");
   });
@@ -481,7 +479,7 @@ describe("createProject workspace_ids", () => {
     });
     const res = await createProject(req, deps);
     expect(res.status).toBe(400);
-    const body = await (res as Response).json();
+    const body = await (res as Response).json() as unknown as { error: { code: string; message: string; details?: unknown } };
     expect(body.error.code).toBe("bad_request");
     expect(body.error.message).toContain("workspace_id is required");
   });
@@ -493,7 +491,7 @@ describe("createProject workspace_ids", () => {
     });
     const res = await createProject(req, deps);
     expect(res.status).toBe(400);
-    const body = await (res as Response).json();
+    const body = await (res as Response).json() as unknown as { error: { code: string; message: string; details?: unknown } };
     expect(body.error.code).toBe("bad_request");
     expect(body.error.message).toContain("workspace_id is required");
   });
@@ -502,7 +500,7 @@ describe("createProject workspace_ids", () => {
     const req = makeRequest({ abs_path: "/test/project", name: "no-workspace" });
     const res = await createProject(req, deps);
     expect(res.status).toBe(201);
-    const body = await (res as Response).json();
+    const body = await (res as Response).json() as unknown as { id: string; name: string; workspace_ids: unknown[] };
     expect(body.workspace_ids).toEqual([]);
   });
 
@@ -510,7 +508,7 @@ describe("createProject workspace_ids", () => {
     const req = makeRequest({ abs_path: "/test/project", workspace_ids: [] });
     const res = await createProject(req, deps);
     expect(res.status).toBe(201);
-    const body = await (res as Response).json();
+    const body = await (res as Response).json() as unknown as { id: string; name: string; workspace_ids: unknown[] };
     expect(body.workspace_ids).toEqual([]);
   });
 
@@ -522,7 +520,7 @@ describe("createProject workspace_ids", () => {
     });
     const res = await createProject(req, deps);
     expect(res.status).toBe(201);
-    const body = await (res as Response).json();
+    const body = await (res as Response).json() as unknown as { id: string; name: string; workspace_ids: string[] };
     expect(body.name).toBe("with-workspace");
     expect(body.workspace_ids).toHaveLength(1);
     expect(body.workspace_ids[0]).toBe(deps.workspaceId);
@@ -538,7 +536,7 @@ describe("createProject workspace_ids", () => {
     });
     const res = await createProject(req, deps);
     expect(res.status).toBe(201);
-    const body = await (res as Response).json();
+    const body = await (res as Response).json() as unknown as { id: string; name: string; workspace_ids: string[] };
     expect(body.workspace_ids).toHaveLength(2);
     expect(body.workspace_ids).toContain(deps.workspaceId);
     expect(body.workspace_ids).toContain(deps.workspaceId2);
@@ -551,7 +549,7 @@ describe("createProject workspace_ids", () => {
     });
     const res = await createProject(req, deps);
     expect(res.status).toBe(201);
-    const body = await (res as Response).json();
+    const body = await (res as Response).json() as unknown as { id: string; name: string; workspace_ids: string[] };
     const stored = deps.registry.get(body.id);
     expect(stored).toBeDefined();
     expect(stored!.workspaceMemberships).toHaveLength(1);
