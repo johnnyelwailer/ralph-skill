@@ -11,9 +11,9 @@ const FIXTURE_WORKFLOW = {
       cycle: true,
       pipeline: [
         { agent: "plan" },
-        { agent: "build", repeat: 5, onFailure: "retry" },
-        { agent: "qa" },
         { agent: "review", onFailure: "goto build" },
+        { agent: "build", repeat: 5 },
+        { agent: "qa" },
       ],
       finalizer: [
         { agent: "spec-gap" },
@@ -51,21 +51,19 @@ describe("compileWorkflow", () => {
     // First step: plan
     expect(pipeline[0]).toEqual({ kind: "agent", ref: "PROMPT_plan.md" });
 
+    // review
+    expect(pipeline[1]).toEqual({ kind: "agent", ref: "PROMPT_review.md" });
+
     // Next 5 steps: build (repeat: 5)
-    for (let i = 1; i <= 5; i++) {
+    for (let i = 2; i <= 6; i++) {
       expect(pipeline[i]).toEqual({ kind: "agent", ref: "PROMPT_build.md" });
     }
 
     // qa
-    expect(pipeline[6]).toEqual({ kind: "agent", ref: "PROMPT_qa.md" });
+    expect(pipeline[7]).toEqual({ kind: "agent", ref: "PROMPT_qa.md" });
 
-    // review
-    expect(pipeline[7]).toEqual({ kind: "agent", ref: "PROMPT_review.md" });
-
-    // Transitions: review onFailure → goto build (index 1)
-    expect(plan.handlers.start!.transitions["7"]).toEqual({ type: "goto", target: "1" });
-    // build[0] onFailure: retry
-    expect(plan.handlers.start!.transitions["1"]).toEqual({ type: "retry" });
+    // Transitions: review onFailure → goto build (index 2)
+    expect(plan.handlers.start!.transitions["1"]).toEqual({ type: "goto", target: "2" });
 
     // Finalizer
     const finalizer = plan.handlers.start!.finalizer;

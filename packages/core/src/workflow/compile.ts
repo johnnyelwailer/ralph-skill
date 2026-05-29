@@ -93,7 +93,9 @@ function extractHandlers(yaml: RawWorkflowYAML): Readonly<Record<string, RawHand
     return yaml.on as Readonly<Record<string, RawHandlerDef>>;
   }
   if (yaml && typeof yaml === "object" && "pipeline" in yaml) {
-    return { start: { pipeline: (yaml as unknown as RawHandlerDef).pipeline as RawHandlerDef["pipeline"], finalizer: (yaml as unknown as RawHandlerDef).finalizer } };
+    const raw = yaml as unknown as RawHandlerDef;
+    const handlerDef: RawHandlerDef = { pipeline: raw.pipeline as RawHandlerDef["pipeline"], ...(raw.finalizer !== undefined && { finalizer: raw.finalizer }) };
+    return { start: handlerDef };
   }
   return {};
 }
@@ -135,9 +137,10 @@ function compileHandler(
   }
 
   const finalizerSteps: CompiledStep[] = [];
-  for (let i = 0; i < (handler.finalizer ?? []).length; i++) {
-    const step = handler.finalizer[i]!;
-    const stepResult = compileStep(step, i, name, handler.finalizer!, transitions, true);
+  const finalizer = handler.finalizer ?? [];
+  for (let i = 0; i < finalizer.length; i++) {
+    const step = finalizer[i]!;
+    const stepResult = compileStep(step, i, name, finalizer, transitions, true);
     if (!stepResult.ok) {
       for (const e of stepResult.errors) errors.push(`finalizer[${i}]: ${e}`);
     } else {

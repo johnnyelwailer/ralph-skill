@@ -71,15 +71,14 @@ describe("emitArtifactChanged", () => {
     rmSync(tmp, { recursive: true, force: true });
   });
 
-  test("returns early without throwing when events is undefined", () => {
+  test("returns early without throwing when events is undefined", async () => {
     const artifact = makeArtifact();
-    // Should not throw — the early-return guard prevents any access to undefined
-    expect(() => emitArtifactChanged(undefined, artifact, "created")).not.toThrow();
+    await emitArtifactChanged(undefined, artifact, "created");
   });
 
-  test("returns early without throwing when events is null", () => {
+  test("returns early without throwing when events is null", async () => {
     const artifact = makeArtifact();
-    expect(() => emitArtifactChanged(null as unknown as EventWriter, artifact, "updated")).not.toThrow();
+    await emitArtifactChanged(null as unknown as EventWriter, artifact, "updated");
   });
 
   test("emits artifact.changed event with created change_kind", async () => {
@@ -118,7 +117,7 @@ describe("emitArtifactChanged", () => {
 
   test("emits artifact.changed event with updated change_kind", async () => {
     const artifact = makeArtifact({ phase: "build" });
-    emitArtifactChanged(deps.events, artifact, "updated");
+    await emitArtifactChanged(deps.events, artifact, "updated");
 
     const events: unknown[] = [];
     for await (const e of deps.store.read()) {
@@ -134,7 +133,7 @@ describe("emitArtifactChanged", () => {
 
   test("emits artifact.changed event with deleted change_kind", async () => {
     const artifact = makeArtifact();
-    emitArtifactChanged(deps.events, artifact, "deleted");
+    await emitArtifactChanged(deps.events, artifact, "deleted");
 
     const events: unknown[] = [];
     for await (const e of deps.store.read()) {
@@ -149,7 +148,7 @@ describe("emitArtifactChanged", () => {
 
   test("includes updated_at as artifact.created_at in event data", async () => {
     const artifact = makeArtifact({ created_at: "2026-05-15T08:30:00.000Z" });
-    emitArtifactChanged(deps.events, artifact, "created");
+    await emitArtifactChanged(deps.events, artifact, "created");
 
     const events: unknown[] = [];
     for await (const e of deps.store.read()) {
@@ -164,7 +163,7 @@ describe("emitArtifactChanged", () => {
 
   test("emits event with null session_id when artifact has no session", async () => {
     const artifact = makeArtifact({ session_id: null });
-    emitArtifactChanged(deps.events, artifact, "created");
+    await emitArtifactChanged(deps.events, artifact, "created");
 
     const events: unknown[] = [];
     for await (const e of deps.store.read()) {
@@ -179,7 +178,7 @@ describe("emitArtifactChanged", () => {
 
   test("emits event with null composer_turn_id when artifact has none", async () => {
     const artifact = makeArtifact({ composer_turn_id: null });
-    emitArtifactChanged(deps.events, artifact, "created");
+    await emitArtifactChanged(deps.events, artifact, "created");
 
     const events: unknown[] = [];
     for await (const e of deps.store.read()) {
@@ -212,7 +211,7 @@ describe("emitArtifactChanged", () => {
       control_subagent_run_id: "c_run_1",
       incubation: null,
     };
-    emitArtifactChanged(deps.events, artifact, "updated");
+    await emitArtifactChanged(deps.events, artifact, "updated");
 
     const events: unknown[] = [];
     for await (const e of deps.store.read()) {

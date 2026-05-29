@@ -155,13 +155,13 @@ export class ArtifactRegistry {
   }
 }
 
-export function emitArtifactChanged(
+export async function emitArtifactChanged(
   events: EventWriter | undefined,
   artifact: Artifact,
   change_kind: "created" | "updated" | "deleted",
-): void {
+): Promise<void> {
   if (!events) return;
-  void events.append("artifact.changed", {
+  await events.append("artifact.changed", {
     artifact_id: artifact.id,
     project_id: artifact.project_id,
     session_id: artifact.session_id,
