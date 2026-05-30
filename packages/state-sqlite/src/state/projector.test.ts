@@ -8,18 +8,26 @@ import {
   type Projector,
 } from "./projector.ts";
 import type { EventEnvelope } from "@aloop/core";
+import { makeIdGenerator } from "@aloop/core";
 
 function openMem(): Database {
   const { db } = openDatabase(":memory:");
   return db;
 }
 
+let _nextId: () => string;
+function nextId(): string {
+  if (!_nextId) _nextId = makeIdGenerator(() => 1740000000000);
+  return _nextId();
+}
+
 function makeEnvelope(topic: string, data: Record<string, unknown> = {}): EventEnvelope {
   return {
+    _v: 1,
+    id: nextId(),
     topic,
     data,
-    timestamp: new Date().toISOString(),
-    seq: 0,
+    timestamp: new Date(1740000000000).toISOString(),
   };
 }
 
@@ -36,7 +44,7 @@ describe("EventCountsProjector", () => {
     projector.apply(db, makeEnvelope("user.created", {}));
     projector.apply(db, makeEnvelope("user.created", {}));
 
-    const row = db.query<{ count: number }, []>(`SELECT count FROM event_counts WHERE topic = ?`).get("user.created");
+    const row = db.query<{ count: number }, [string]>(`SELECT count FROM event_counts WHERE topic = ?`).get("user.created");
     expect(row?.count).toBe(2);
     db.close();
   });
@@ -77,8 +85,8 @@ describe("runProjector", () => {
     const count = await runProjector(db, new EventCountsProjector(), events());
     expect(count).toBe(3);
 
-    const a = db.query<{ count: number }, []>(`SELECT count FROM event_counts WHERE topic = ?`).get("a");
-    const b = db.query<{ count: number }, []>(`SELECT count FROM event_counts WHERE topic = ?`).get("b");
+    const a = db.query<{ count: number }, [string]>(`SELECT count FROM event_counts WHERE topic = ?`).get("a");
+    const b = db.query<{ count: number }, [string]>(`SELECT count FROM event_counts WHERE topic = ?`).get("b");
     expect(a?.count).toBe(2);
     expect(b?.count).toBe(1);
     db.close();
@@ -101,7 +109,7 @@ describe("runProjector", () => {
     const count = await runProjector(db, new EventCountsProjector(), manyEvents());
     expect(count).toBe(550);
 
-    const row = db.query<{ count: number }, []>(`SELECT count FROM event_counts WHERE topic = ?`).get("bulk");
+    const row = db.query<{ count: number }, [string]>(`SELECT count FROM event_counts WHERE topic = ?`).get("bulk");
     expect(row?.count).toBe(550);
     db.close();
   });
@@ -123,7 +131,7 @@ describe("runProjector", () => {
     const count = await runProjector(db, new EventCountsProjector(), tailEvents());
     expect(count).toBe(42);
 
-    const row = db.query<{ count: number }, []>(`SELECT count FROM event_counts WHERE topic = ?`).get("tail");
+    const row = db.query<{ count: number }, [string]>(`SELECT count FROM event_counts WHERE topic = ?`).get("tail");
     expect(row?.count).toBe(42);
     db.close();
   });

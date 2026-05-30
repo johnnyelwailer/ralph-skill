@@ -511,7 +511,7 @@ describe("ComposerTurnRegistry", () => {
       registry.updateResponse("ct_actions", {
         proposed_actions: [
           { class: "read", id: "act_1", method: "GET", path: "/foo", summary: "Read file", produced_by: { kind: "control_subagent_run", id: "csr_1" }, risk: "low", requires_approval: false },
-          { class: "write", id: "act_2", method: "POST", path: "/bar", summary: "Write file", produced_by: { kind: "control_subagent_run", id: "csr_1" }, risk: "medium", requires_approval: true },
+          { class: "artifact", id: "act_2", method: "POST", path: "/bar", summary: "Write file", produced_by: { kind: "control_subagent_run", id: "csr_1" }, risk: "medium", requires_approval: true },
         ],
       });
       const updated = registry.getById("ct_actions")!;
@@ -541,7 +541,7 @@ describe("ComposerTurnRegistry", () => {
       expect(emitted[1]!.data).toMatchObject({
         composer_turn_id: "ct_actions",
         action_id: "act_2",
-        action_class: "write",
+        action_class: "artifact",
         method: "POST",
         path: "/bar",
         summary: "Write file",
