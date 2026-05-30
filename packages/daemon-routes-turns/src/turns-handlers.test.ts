@@ -833,3 +833,54 @@ describe("handleTurns", () => {
     });
   });
 });
+
+describe("createTurnHandler sequence parameter", () => {
+  async function postTurn(sessionId: string, data: Record<string, unknown>, deps = makeDeps()) {
+    const req = new Request(`http://localhost/v1/sessions/${sessionId}/turns`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(data),
+    });
+    return handleTurns(req, deps, `/v1/sessions/${sessionId}/turns`);
+  }
+
+  test("defaults sequence to 0 when not provided", async () => {
+    const deps = makeDeps();
+    const res = await postTurn("s_seq", { turn_id: "t_no_seq" }, deps);
+    expect(res!.status).toBe(200);
+    const body = await res!.json() as Record<string, unknown>;
+    expect(body.sequence).toBe(0);
+  });
+
+  test("accepts positive integer sequence", async () => {
+    const deps = makeDeps();
+    const res = await postTurn("s_seq", { turn_id: "t_pos_seq", sequence: 3 }, deps);
+    expect(res!.status).toBe(200);
+    const body = await res!.json() as Record<string, unknown>;
+    expect(body.sequence).toBe(3);
+  });
+
+  test("ignores string sequence — defaults to 0", async () => {
+    const deps = makeDeps();
+    const res = await postTurn("s_seq", { turn_id: "t_str_seq", sequence: "5" }, deps);
+    expect(res!.status).toBe(200);
+    const body = await res!.json() as Record<string, unknown>;
+    expect(body.sequence).toBe(0);
+  });
+
+  test("ignores negative integer sequence — treated as not provided", async () => {
+    const deps = makeDeps();
+    const res = await postTurn("s_seq", { turn_id: "t_neg_seq", sequence: -1 }, deps);
+    expect(res!.status).toBe(200);
+    const body = await res!.json() as Record<string, unknown>;
+    expect(body.sequence).toBe(0);
+  });
+
+  test("ignores float sequence — defaults to 0", async () => {
+    const deps = makeDeps();
+    const res = await postTurn("s_seq", { turn_id: "t_float_seq", sequence: 1.5 }, deps);
+    expect(res!.status).toBe(200);
+    const body = await res!.json() as Record<string, unknown>;
+    expect(body.sequence).toBe(0);
+  });
+});
