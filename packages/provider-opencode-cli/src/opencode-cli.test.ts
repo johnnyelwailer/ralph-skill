@@ -66,4 +66,101 @@ describe("createOpencodeCliAdapter", () => {
       },
     ]);
   });
+
+  test("reasoningEffort undefined maps to no variant passed to runTurn", async () => {
+    let receivedInput: unknown = null;
+    const adapter = createOpencodeCliAdapter({
+      runTurn: async (input) => {
+        receivedInput = input;
+        return { ok: true, text: "ok" };
+      },
+    });
+
+    for await (const _ of adapter.sendTurn({
+      sessionId: "s1",
+      authHandle: "auth",
+      providerRef: "opencode-cli",
+      prompt: "ping",
+      cwd: "/tmp",
+      reasoningEffort: undefined,
+    })) {
+      // consume
+    }
+
+    expect(receivedInput).not.toBeNull();
+    const input = receivedInput as Record<string, unknown>;
+    expect("variant" in input).toBe(false);
+  });
+
+  test("reasoningEffort none maps to no variant passed to runTurn", async () => {
+    let receivedInput: unknown = null;
+    const adapter = createOpencodeCliAdapter({
+      runTurn: async (input) => {
+        receivedInput = input;
+        return { ok: true, text: "ok" };
+      },
+    });
+
+    for await (const _ of adapter.sendTurn({
+      sessionId: "s1",
+      authHandle: "auth",
+      providerRef: "opencode-cli",
+      prompt: "ping",
+      cwd: "/tmp",
+      reasoningEffort: "none",
+    })) {
+      // consume
+    }
+
+    const input = receivedInput as Record<string, unknown>;
+    expect("variant" in input).toBe(false);
+  });
+
+  test("reasoningEffort xhigh maps to variant max passed to runTurn", async () => {
+    let receivedInput: unknown = null;
+    const adapter = createOpencodeCliAdapter({
+      runTurn: async (input) => {
+        receivedInput = input;
+        return { ok: true, text: "ok" };
+      },
+    });
+
+    for await (const _ of adapter.sendTurn({
+      sessionId: "s1",
+      authHandle: "auth",
+      providerRef: "opencode-cli",
+      prompt: "ping",
+      cwd: "/tmp",
+      reasoningEffort: "xhigh",
+    })) {
+      // consume
+    }
+
+    const input = receivedInput as Record<string, unknown>;
+    expect(input.variant).toBe("max");
+  });
+
+  test("reasoningEffort high maps to variant high passed to runTurn", async () => {
+    let receivedInput: unknown = null;
+    const adapter = createOpencodeCliAdapter({
+      runTurn: async (input) => {
+        receivedInput = input;
+        return { ok: true, text: "ok" };
+      },
+    });
+
+    for await (const _ of adapter.sendTurn({
+      sessionId: "s1",
+      authHandle: "auth",
+      providerRef: "opencode-cli",
+      prompt: "ping",
+      cwd: "/tmp",
+      reasoningEffort: "high",
+    })) {
+      // consume
+    }
+
+    const input = receivedInput as Record<string, unknown>;
+    expect(input.variant).toBe("high");
+  });
 });
