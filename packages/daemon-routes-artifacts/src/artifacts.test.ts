@@ -109,7 +109,7 @@ describe("handleArtifacts", () => {
       const req = makeRequest("GET", "/v1/artifacts/a_unknown");
       const res = await handleArtifacts(req, deps, "/v1/artifacts/a_unknown");
       expect(res!.status).toBe(404);
-      const body = await resJson<{ error: { code: string } }>(res!);
+      const body = await resJson<{ error: { code: string; message: string } }>(res!);
       expect(body.error.code).toBe("not_found");
     });
   });
@@ -147,7 +147,7 @@ describe("handleArtifacts", () => {
       const req = makeRequest("DELETE", "/v1/artifacts/a_nonexistent");
       const res = await handleArtifacts(req, deps, "/v1/artifacts/a_nonexistent");
       expect(res!.status).toBe(404);
-      const body = await resJson<{ error: { code: string } }>(res!);
+      const body = await resJson<{ error: { code: string; message: string } }>(res!);
       expect(body.error.code).toBe("not_found");
     });
   });
@@ -275,7 +275,7 @@ describe("POST /v1/artifacts (uploadArtifact)", () => {
     });
     const res = await handleArtifacts(req, deps, "/v1/artifacts");
     expect(res!.status).toBe(400);
-    const body = await resJson<{ error: { code: string } }>(res!);
+    const body = await resJson<{ error: { code: string; message: string } }>(res!);
     expect(body.error.code).toBe("bad_request");
     expect(body.error.message).toContain("project_id");
   });
@@ -294,7 +294,7 @@ describe("POST /v1/artifacts (uploadArtifact)", () => {
     });
     const res = await handleArtifacts(req, deps, "/v1/artifacts");
     expect(res!.status).toBe(400);
-    const body = await resJson<{ error: { code: string } }>(res!);
+    const body = await resJson<{ error: { code: string; message: string } }>(res!);
     expect(body.error.code).toBe("bad_request");
   });
 
@@ -311,7 +311,7 @@ describe("POST /v1/artifacts (uploadArtifact)", () => {
     });
     const res = await handleArtifacts(req, deps, "/v1/artifacts");
     expect(res!.status).toBe(400);
-    const body = await resJson<{ error: { code: string } }>(res!);
+    const body = await resJson<{ error: { code: string; message: string } }>(res!);
     expect(body.error.code).toBe("bad_request");
     expect(body.error.message).toContain("kind");
   });
@@ -330,7 +330,7 @@ describe("POST /v1/artifacts (uploadArtifact)", () => {
     });
     const res = await handleArtifacts(req, deps, "/v1/artifacts");
     expect(res!.status).toBe(400);
-    const body = await resJson<{ error: { code: string } }>(res!);
+    const body = await resJson<{ error: { code: string; message: string } }>(res!);
     expect(body.error.code).toBe("bad_request");
     expect(body.error.message).toContain("kind must be one of");
   });
@@ -347,7 +347,7 @@ describe("POST /v1/artifacts (uploadArtifact)", () => {
     });
     const res = await handleArtifacts(req, deps, "/v1/artifacts");
     expect(res!.status).toBe(400);
-    const body = await resJson<{ error: { code: string } }>(res!);
+    const body = await resJson<{ error: { code: string; message: string } }>(res!);
     expect(body.error.code).toBe("bad_request");
     expect(body.error.message).toContain("file");
   });
@@ -528,7 +528,7 @@ describe("GET /v1/artifacts/:id/content with real file", () => {
     const req = makeRequest("GET", `/v1/artifacts/${created.id}/content`);
     const res = await handleArtifacts(req, deps, `/v1/artifacts/${created.id}/content`);
     expect(res!.status).toBe(404);
-    const body = await resJson<{ error: { code: string } }>(res!);
+    const body = await resJson<{ error: { code: string; message: string } }>(res!);
     expect(body.error.code).toBe("not_found");
   });
 });

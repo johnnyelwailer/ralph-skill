@@ -3,7 +3,7 @@ import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { handleArtifacts, type ArtifactsDeps } from "./artifacts-handlers.ts";
-import type { ArtifactFilter, ArtifactKind } from "@aloop/state-sqlite";
+import type { ArtifactRegistry, ArtifactFilter, ArtifactKind, CreateArtifactInput } from "@aloop/state-sqlite";
 
 // ─── Minimal ArtifactRegistry mock ─────────────────────────────────────────
 
@@ -35,7 +35,7 @@ function makeArtifactRegistry(): {
   const storage = new Map<string, MockArtifact>();
   let counter = 0;
 
-  const registry: ArtifactsDeps["registry"] = {
+  const registry = {
     list(filter?: ArtifactFilter) {
       const all = Array.from(storage.values());
       return all.filter((a) => {
@@ -51,13 +51,14 @@ function makeArtifactRegistry(): {
         return true;
       });
     },
-    get(id) {
+    get(id: string) {
       return storage.get(id) ?? undefined;
     },
-    create(input) {
+    create(input: CreateArtifactInput) {
       const id = `artifact_${String(++counter).padStart(6, "0")}`;
       const now = new Date().toISOString();
       const artifact: MockArtifact = {
+        _v: 1 as const,
         id,
         project_id: input.project_id,
         session_id: input.session_id ?? null,
@@ -79,10 +80,10 @@ function makeArtifactRegistry(): {
       storage.set(id, artifact);
       return artifact;
     },
-    delete(id) {
+    delete(id: string) {
       storage.delete(id);
     },
-  };
+  } as unknown as ArtifactRegistry;
 
   return { registry, storage };
 }

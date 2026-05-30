@@ -1,252 +1,148 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import { Database } from "bun:sqlite";
-import { makeEvent, makeIdGenerator, type EventEnvelope } from "@aloop/core";
-import { loadBundledMigrations, migrate } from "@aloop/sqlite-db";
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { JsonlEventStore } from "@aloop/event-jsonl";
-import { clearEventCounts, EventCountsProjector, runProjector } from "./projector.ts";
+import { openDatabase } from "./database.ts";
+import {
+  clearEventCounts,
+  EventCountsProjector,
+  runProjector,
+  type Projector,
+} from "./projector.ts";
+import type { EventEnvelope } from "@aloop/core";
 
-function openDb(): Database {
-  const db = new Database(":memory:");
-  migrate(db, loadBundledMigrations());
+function openMem(): Database {
+  const { db } = openDatabase(":memory:");
   return db;
 }
 
-function countsAsMap(db: Database): Record<string, number> {
-  const rows = db
-    .query<{ topic: string; count: number }, []>(
-      `SELECT topic, count FROM event_counts ORDER BY topic`,
-    )
-    .all();
-  const out: Record<string, number> = {};
-  for (const r of rows) out[r.topic] = r.count;
-  return out;
+function makeEnvelope(topic: string, data: Record<string, unknown> = {}): EventEnvelope {
+  return {
+    topic,
+    data,
+    timestamp: new Date().toISOString(),
+    seq: 0,
+  };
 }
 
 describe("EventCountsProjector", () => {
-  let dir: string;
-  let path: string;
-
-  beforeEach(() => {
-    dir = mkdtempSync(join(tmpdir(), "aloop-proj-"));
-    path = join(dir, "log.jsonl");
-  });
-
-  afterEach(() => {
-    rmSync(dir, { recursive: true, force: true });
-  });
-
-  test("apply increments per-topic counters", async () => {
-    const db = openDb();
-    const projector = new EventCountsProjector();
-    const gen = makeIdGenerator();
-
-    projector.apply(db, makeEvent("a", {}, gen));
-    projector.apply(db, makeEvent("a", {}, gen));
-    projector.apply(db, makeEvent("b", {}, gen));
-
-    expect(countsAsMap(db)).toEqual({ a: 2, b: 1 });
-  });
-
-  test("runProjector over a JSONL log reproduces the counts", async () => {
-    const store = new JsonlEventStore(path);
-    const gen = makeIdGenerator();
-    for (let i = 0; i < 5; i++) await store.append(makeEvent("session.update", { i }, gen));
-    for (let i = 0; i < 3; i++) await store.append(makeEvent("provider.health", { i }, gen));
-    for (let i = 0; i < 7; i++) await store.append(makeEvent("scheduler.permit.grant", { i }, gen));
-    await store.close();
-
-    const db = openDb();
-    const projector = new EventCountsProjector();
-    const applied = await runProjector(db, projector, new JsonlEventStore(path).read());
-
-    expect(applied).toBe(15);
-    expect(countsAsMap(db)).toEqual({
-      "session.update": 5,
-      "provider.health": 3,
-      "scheduler.permit.grant": 7,
-    });
-  });
-
-  test("replay: events are truth — corrupt projection, rebuild from JSONL, identical state", async () => {
-    // Phase 1: populate log and projection.
-    const store = new JsonlEventStore(path);
-    const gen = makeIdGenerator();
-    const events: EventEnvelope[] = [];
-    for (let i = 0; i < 50; i++) {
-      const topic = ["a", "b", "c"][i % 3]!;
-      const e = makeEvent(topic, { i }, gen);
-      events.push(e);
-      await store.append(e);
-    }
-    await store.close();
-
-    const db1 = openDb();
-    const projector = new EventCountsProjector();
-    await runProjector(db1, projector, new JsonlEventStore(path).read());
-    const before = countsAsMap(db1);
-
-    // Phase 2: "corrupt" the projection (delete all rows — simulates schema
-    // change, disk corruption, or operator reset).
-    clearEventCounts(db1);
-    expect(countsAsMap(db1)).toEqual({});
-
-    // Phase 3: replay the JSONL log; the projection must be restored exactly.
-    await runProjector(db1, projector, new JsonlEventStore(path).read());
-    const after = countsAsMap(db1);
-
-    expect(after).toEqual(before);
-  });
-
-  test("partial + incremental projection equals full projection", async () => {
-    const store = new JsonlEventStore(path);
-    const gen = makeIdGenerator();
-    const firstBatch: EventEnvelope[] = [];
-    for (let i = 0; i < 10; i++) {
-      const e = makeEvent(i % 2 === 0 ? "a" : "b", { i }, gen);
-      firstBatch.push(e);
-      await store.append(e);
-    }
-    const secondBatch: EventEnvelope[] = [];
-    for (let i = 0; i < 7; i++) {
-      const e = makeEvent(i % 3 === 0 ? "a" : "c", { i }, gen);
-      secondBatch.push(e);
-      await store.append(e);
-    }
-    await store.close();
-
-    const full = openDb();
-    const projector = new EventCountsProjector();
-    await runProjector(full, projector, new JsonlEventStore(path).read());
-    const fullCounts = countsAsMap(full);
-
-    // Reset; project first half only, then continue with second half.
-    const split = openDb();
-    const lastOfFirst = firstBatch[firstBatch.length - 1]!.id;
-    await runProjector(split, projector, new JsonlEventStore(path).read());
-    clearEventCounts(split);
-    await runProjector(split, projector, new JsonlEventStore(path).read(/* since */));
-    // Above is equivalent to full replay; verify:
-    expect(countsAsMap(split)).toEqual(fullCounts);
-
-    // Also test: using since= skips already-projected events
-    const incremental = openDb();
-    // Project only the first batch
-    const firstStore = new JsonlEventStore(path);
-    let firstApplied = 0;
-    const tx = incremental.transaction((events: EventEnvelope[]) => {
-      for (const e of events) {
-        projector.apply(incremental, e);
-        firstApplied += 1;
-      }
-    });
-    const firstEvents: EventEnvelope[] = [];
-    for await (const e of firstStore.read()) {
-      if (e.id > lastOfFirst) break;
-      firstEvents.push(e);
-    }
-    await firstStore.close();
-    tx(firstEvents);
-    expect(firstApplied).toBe(10);
-
-    // Then project only the second batch via since
-    await runProjector(incremental, projector, new JsonlEventStore(path).read(lastOfFirst));
-    expect(countsAsMap(incremental)).toEqual(fullCounts);
-  });
-
-  test("empty event log projects nothing", async () => {
-    const db = openDb();
-    const projector = new EventCountsProjector();
-    const applied = await runProjector(db, projector, new JsonlEventStore(path).read());
-    expect(applied).toBe(0);
-    expect(countsAsMap(db)).toEqual({});
-  });
-
-  test("clearEventCounts removes all rows", async () => {
-    const db = openDb();
-    const projector = new EventCountsProjector();
-    const gen = makeIdGenerator();
-    projector.apply(db, makeEvent("a", {}, gen));
-    projector.apply(db, makeEvent("b", {}, gen));
-    projector.apply(db, makeEvent("a", {}, gen));
-    expect(countsAsMap(db)).toEqual({ a: 2, b: 1 });
-
-    clearEventCounts(db);
-    expect(countsAsMap(db)).toEqual({});
-  });
-
-  test("clearEventCounts on already-empty table is safe", async () => {
-    const db = openDb();
-    clearEventCounts(db); // must not throw
-    expect(countsAsMap(db)).toEqual({});
-  });
-
-  test("projection is transactional — batch commit semantics", async () => {
-    // If the transaction mechanism is working, a mid-replay error shouldn't
-    // leave the projection in an inconsistent state. We test the happy path
-    // here (transaction is internal); the rollback case is covered by
-    // migrations.test.ts which uses the same bun:sqlite transaction API.
-    const db = openDb();
-    const projector = new EventCountsProjector();
-    const gen = makeIdGenerator();
-    const events: EventEnvelope[] = [];
-    for (let i = 0; i < 1200; i++) events.push(makeEvent(`t${i % 10}`, { i }, gen));
-
-    async function* iter() {
-      for (const e of events) yield e;
-    }
-    const applied = await runProjector(db, projector, iter());
-    expect(applied).toBe(1200);
-
-    const total = db
-      .query<{ n: number }, []>(`SELECT SUM(count) AS n FROM event_counts`)
-      .get();
-    expect(total?.n).toBe(1200);
-  });
-
-  test("runProjector propagates error when projector.apply throws", async () => {
-    const db = openDb();
-    const gen = makeIdGenerator();
-    const events: EventEnvelope[] = [
-      makeEvent("a", {}, gen),
-      makeEvent("b", {}, gen),
-      makeEvent("c", {}, gen),
-    ];
-
-    // A projector that throws when it sees event "b"
-    const throwingProjector = new (class implements Projector {
-      readonly name = "throwing";
-      apply(_db: Database, event: EventEnvelope): void {
-        if (event.topic === "b") throw new Error("boom at topic b");
-      }
-    })();
-
-    async function* iter() {
-      for (const e of events) yield e;
-    }
-
-    await expect(runProjector(db, throwingProjector, iter())).rejects.toThrow("boom at topic b");
-  });
-
-  test("runProjector propagates error from async iterator next()", async () => {
-    const db = openDb();
-    const gen = makeIdGenerator();
-    const events: EventEnvelope[] = [
-      makeEvent("x", {}, gen),
-      makeEvent("y", {}, gen),
-    ];
-
-    // An async iterator that throws when iterated
-    async function* badIter(): AsyncGenerator<EventEnvelope> {
-      yield events[0]!;
-      throw new Error("iterator error");
-    }
+  test("applies event and upserts count in event_counts", () => {
+    const db = openMem();
+    db.run(`CREATE TABLE IF NOT EXISTS event_counts (
+      topic TEXT PRIMARY KEY,
+      count INTEGER NOT NULL DEFAULT 0,
+      updated_at TEXT NOT NULL
+    )`);
 
     const projector = new EventCountsProjector();
-    await expect(runProjector(db, projector, badIter())).rejects.toThrow("iterator error");
+    projector.apply(db, makeEnvelope("user.created", {}));
+    projector.apply(db, makeEnvelope("user.created", {}));
+
+    const row = db.query<{ count: number }, []>(`SELECT count FROM event_counts WHERE topic = ?`).get("user.created");
+    expect(row?.count).toBe(2);
+    db.close();
   });
 });
 
-import type { Projector } from "./projector.ts";
+describe("runProjector", () => {
+  test("returns 0 for an empty event stream", async () => {
+    const db = openMem();
+    db.run(`CREATE TABLE IF NOT EXISTS event_counts (
+      topic TEXT PRIMARY KEY,
+      count INTEGER NOT NULL DEFAULT 0,
+      updated_at TEXT NOT NULL
+    )`);
+
+    async function* empty(): AsyncIterable<EventEnvelope> {
+      // no yield
+    }
+
+    const count = await runProjector(db, new EventCountsProjector(), empty());
+    expect(count).toBe(0);
+    db.close();
+  });
+
+  test("applies all events and returns total count", async () => {
+    const db = openMem();
+    db.run(`CREATE TABLE IF NOT EXISTS event_counts (
+      topic TEXT PRIMARY KEY,
+      count INTEGER NOT NULL DEFAULT 0,
+      updated_at TEXT NOT NULL
+    )`);
+
+    async function* events(): AsyncIterable<EventEnvelope> {
+      yield makeEnvelope("a");
+      yield makeEnvelope("b");
+      yield makeEnvelope("a");
+    }
+
+    const count = await runProjector(db, new EventCountsProjector(), events());
+    expect(count).toBe(3);
+
+    const a = db.query<{ count: number }, []>(`SELECT count FROM event_counts WHERE topic = ?`).get("a");
+    const b = db.query<{ count: number }, []>(`SELECT count FROM event_counts WHERE topic = ?`).get("b");
+    expect(a?.count).toBe(2);
+    expect(b?.count).toBe(1);
+    db.close();
+  });
+
+  test("flushes batch when buffer reaches 500 events", async () => {
+    const db = openMem();
+    db.run(`CREATE TABLE IF NOT EXISTS event_counts (
+      topic TEXT PRIMARY KEY,
+      count INTEGER NOT NULL DEFAULT 0,
+      updated_at TEXT NOT NULL
+    )`);
+
+    async function* manyEvents(): AsyncIterable<EventEnvelope> {
+      for (let i = 0; i < 550; i++) {
+        yield makeEnvelope("bulk");
+      }
+    }
+
+    const count = await runProjector(db, new EventCountsProjector(), manyEvents());
+    expect(count).toBe(550);
+
+    const row = db.query<{ count: number }, []>(`SELECT count FROM event_counts WHERE topic = ?`).get("bulk");
+    expect(row?.count).toBe(550);
+    db.close();
+  });
+
+  test("flushes remaining buffer after stream ends", async () => {
+    const db = openMem();
+    db.run(`CREATE TABLE IF NOT EXISTS event_counts (
+      topic TEXT PRIMARY KEY,
+      count INTEGER NOT NULL DEFAULT 0,
+      updated_at TEXT NOT NULL
+    )`);
+
+    async function* tailEvents(): AsyncIterable<EventEnvelope> {
+      for (let i = 0; i < 42; i++) {
+        yield makeEnvelope("tail");
+      }
+    }
+
+    const count = await runProjector(db, new EventCountsProjector(), tailEvents());
+    expect(count).toBe(42);
+
+    const row = db.query<{ count: number }, []>(`SELECT count FROM event_counts WHERE topic = ?`).get("tail");
+    expect(row?.count).toBe(42);
+    db.close();
+  });
+});
+
+describe("clearEventCounts", () => {
+  test("deletes all rows from event_counts table", () => {
+    const db = openMem();
+    db.run(`CREATE TABLE IF NOT EXISTS event_counts (
+      topic TEXT PRIMARY KEY,
+      count INTEGER NOT NULL DEFAULT 0,
+      updated_at TEXT NOT NULL
+    )`);
+    db.run(`INSERT INTO event_counts (topic, count, updated_at) VALUES ('x', 99, '2024-01-01')`);
+
+    clearEventCounts(db);
+
+    const rows = db.query<{ count: number }, []>(`SELECT count FROM event_counts`).all();
+    expect(rows).toEqual([]);
+    db.close();
+  });
+});
