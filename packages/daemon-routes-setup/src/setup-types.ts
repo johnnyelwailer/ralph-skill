@@ -129,7 +129,7 @@ export type SetupQuestion = {
   readonly topic: string;
   readonly text: string;
   readonly answer?: string;
-  readonly answeredAt: string | null;
+  readonly answeredAt?: string | null;
   readonly prerequisites: string[];
   readonly branch: string;
   readonly invalidationConditions: string[];

@@ -210,6 +210,36 @@ describe("handleSetup", () => {
     expect((res as Response).status).toBe(409);
   });
 
+  test("POST /v1/setup/runs/:id/approve-scaffold returns 200 and transitions phase to generation when verdict is resolved", async () => {
+    // Create a run (verdict starts as 'unresolved')
+    const createReq = new Request("http://localhost/v1/setup/runs", {
+      method: "POST",
+      body: JSON.stringify({ abs_path: "/test/project" }),
+    });
+    const created = await (await handleSetup(createReq, deps, "/v1/setup/runs") as Response).json();
+
+    // Advance the run's verdict to 'resolved'
+    deps.store.updateVerdict(created.id, "resolved");
+
+    const approveReq = new Request(`http://localhost/v1/setup/runs/${created.id}/approve-scaffold`, {
+      method: "POST",
+    });
+    const res = await handleSetup(approveReq, deps, `/v1/setup/runs/${created.id}/approve-scaffold`) as Response;
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    // Per approveScaffold handler: on success, phase transitions to 'generation'
+    expect(body.phase).toBe("generation");
+    expect(body.verdict).toBe("resolved");
+  });
+
+  test("POST /v1/setup/runs/:id/approve-scaffold returns 404 for unknown run", async () => {
+    const approveReq = new Request("http://localhost/v1/setup/runs/nonexistent/approve-scaffold", {
+      method: "POST",
+    });
+    const res = await handleSetup(approveReq, deps, "/v1/setup/runs/nonexistent/approve-scaffold");
+    expect((res as Response).status).toBe(404);
+  });
+
   // ── POST /v1/setup/runs/:id/resume ────────────────────────────────────────
   //
   // NOTE: The router (setup-router.ts line 80) incorrectly passes an extra `req`
