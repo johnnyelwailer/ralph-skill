@@ -42,7 +42,7 @@ describe("handleSetup", () => {
     expect(res).toBeInstanceOf(Response);
     const r = res as Response;
     expect(r.status).toBe(201);
-    const body = await r.json();
+    const body = await r.json() as { id: string; abs_path: string };
     expect(body.id).toBeDefined();
     expect(body.abs_path).toBe("/test/project");
   });
@@ -72,7 +72,7 @@ describe("handleSetup", () => {
     const res = await handleSetup(listReq, deps, "/v1/setup/runs");
     expect(res).toBeInstanceOf(Response);
     expect((res as Response).status).toBe(200);
-    const body = await (res as Response).json();
+    const body = await (res as Response).json() as { items: unknown[] };
     expect(body.items).toHaveLength(1);
   });
 
@@ -83,14 +83,14 @@ describe("handleSetup", () => {
       method: "POST",
       body: JSON.stringify({ abs_path: "/test/project" }),
     });
-    const created = await (await handleSetup(createReq, deps, "/v1/setup/runs") as Response).json();
+    const created = await (await handleSetup(createReq, deps, "/v1/setup/runs") as Response).json() as { id: string };
 
     const getReq = new Request(`http://localhost/v1/setup/runs/${created.id}`, {
       method: "GET",
     });
     const res = await handleSetup(getReq, deps, `/v1/setup/runs/${created.id}`);
     expect((res as Response).status).toBe(200);
-    const body = await (res as Response).json();
+    const body = await (res as Response).json() as { id: string };
     expect(body.id).toBe(created.id);
   });
 
@@ -109,14 +109,14 @@ describe("handleSetup", () => {
       method: "POST",
       body: JSON.stringify({ abs_path: "/test/project" }),
     });
-    const created = await (await handleSetup(createReq, deps, "/v1/setup/runs") as Response).json();
+    const created = await (await handleSetup(createReq, deps, "/v1/setup/runs") as Response).json() as { id: string };
 
     const chaptersReq = new Request(`http://localhost/v1/setup/runs/${created.id}/chapters`, {
       method: "GET",
     });
     const res = await handleSetup(chaptersReq, deps, `/v1/setup/runs/${created.id}/chapters`);
     expect((res as Response).status).toBe(200);
-    const body = await (res as Response).json();
+    const body = await (res as Response).json() as { _v: number; chapters: unknown[]; total: number };
     expect(body._v).toBe(1);
     expect(body.chapters).toEqual([]);
     expect(body.total).toBe(0);
@@ -137,7 +137,7 @@ describe("handleSetup", () => {
       method: "POST",
       body: JSON.stringify({ abs_path: "/test/project" }),
     });
-    const created = await (await handleSetup(createReq, deps, "/v1/setup/runs") as Response).json();
+    const created = await (await handleSetup(createReq, deps, "/v1/setup/runs") as Response).json() as { id: string };
 
     const answerReq = new Request(`http://localhost/v1/setup/runs/${created.id}/answer`, {
       method: "POST",
@@ -152,7 +152,7 @@ describe("handleSetup", () => {
       method: "POST",
       body: JSON.stringify({ abs_path: "/test/project" }),
     });
-    const created = await (await handleSetup(createReq, deps, "/v1/setup/runs") as Response).json();
+    const created = await (await handleSetup(createReq, deps, "/v1/setup/runs") as Response).json() as { id: string };
 
     const answerReq = new Request(`http://localhost/v1/setup/runs/${created.id}/answer`, {
       method: "POST",
@@ -169,7 +169,7 @@ describe("handleSetup", () => {
       method: "POST",
       body: JSON.stringify({ abs_path: "/test/project" }),
     });
-    const created = await (await handleSetup(createReq, deps, "/v1/setup/runs") as Response).json();
+    const created = await (await handleSetup(createReq, deps, "/v1/setup/runs") as Response).json() as { id: string };
 
     const commentReq = new Request(`http://localhost/v1/setup/runs/${created.id}/comments`, {
       method: "POST",
@@ -184,7 +184,7 @@ describe("handleSetup", () => {
       method: "POST",
       body: JSON.stringify({ abs_path: "/test/project" }),
     });
-    const created = await (await handleSetup(createReq, deps, "/v1/setup/runs") as Response).json();
+    const created = await (await handleSetup(createReq, deps, "/v1/setup/runs") as Response).json() as { id: string };
 
     const commentReq = new Request(`http://localhost/v1/setup/runs/${created.id}/comments`, {
       method: "POST",
@@ -201,7 +201,7 @@ describe("handleSetup", () => {
       method: "POST",
       body: JSON.stringify({ abs_path: "/test/project" }),
     });
-    const created = await (await handleSetup(createReq, deps, "/v1/setup/runs") as Response).json();
+    const created = await (await handleSetup(createReq, deps, "/v1/setup/runs") as Response).json() as { id: string };
 
     const approveReq = new Request(`http://localhost/v1/setup/runs/${created.id}/approve-scaffold`, {
       method: "POST",
@@ -216,7 +216,7 @@ describe("handleSetup", () => {
       method: "POST",
       body: JSON.stringify({ abs_path: "/test/project" }),
     });
-    const created = await (await handleSetup(createReq, deps, "/v1/setup/runs") as Response).json();
+    const created = await (await handleSetup(createReq, deps, "/v1/setup/runs") as Response).json() as { id: string };
 
     // Advance the run's verdict to 'resolved'
     deps.store.updateVerdict(created.id, "resolved");
@@ -226,7 +226,7 @@ describe("handleSetup", () => {
     });
     const res = await handleSetup(approveReq, deps, `/v1/setup/runs/${created.id}/approve-scaffold`) as Response;
     expect(res.status).toBe(200);
-    const body = await res.json();
+    const body = await res.json() as { phase: string; verdict: string };
     // Per approveScaffold handler: on success, phase transitions to 'generation'
     expect(body.phase).toBe("generation");
     expect(body.verdict).toBe("resolved");
@@ -253,7 +253,7 @@ describe("handleSetup", () => {
       method: "POST",
       body: JSON.stringify({ abs_path: "/test/project" }),
     });
-    const created = await (await handleSetup(createReq, deps, "/v1/setup/runs") as Response).json();
+    const created = await (await handleSetup(createReq, deps, "/v1/setup/runs") as Response).json() as { id: string };
 
     const resumeReq = new Request(`http://localhost/v1/setup/runs/${created.id}/resume`, {
       method: "POST",
@@ -268,7 +268,7 @@ describe("handleSetup", () => {
       method: "POST",
       body: JSON.stringify({ abs_path: "/test/project" }),
     });
-    const created = await (await handleSetup(createReq, deps, "/v1/setup/runs") as Response).json();
+    const created = await (await handleSetup(createReq, deps, "/v1/setup/runs") as Response).json() as { id: string };
 
     // Complete the run so it is no longer active
     deps.store.complete(created.id);
@@ -288,7 +288,7 @@ describe("handleSetup", () => {
       method: "POST",
       body: JSON.stringify({ abs_path: "/test/project" }),
     });
-    const created = await (await handleSetup(createReq, deps, "/v1/setup/runs") as Response).json();
+    const created = await (await handleSetup(createReq, deps, "/v1/setup/runs") as Response).json() as { id: string };
 
     const deleteReq = new Request(`http://localhost/v1/setup/runs/${created.id}`, {
       method: "DELETE",
@@ -312,7 +312,7 @@ describe("handleSetup", () => {
       method: "POST",
       body: JSON.stringify({ abs_path: "/test/project" }),
     });
-    const created = await (await handleSetup(createReq, deps, "/v1/setup/runs") as Response).json();
+    const created = await (await handleSetup(createReq, deps, "/v1/setup/runs") as Response).json() as { id: string };
 
     const eventsReq = new Request(`http://localhost/v1/setup/runs/${created.id}/events`, {
       method: "GET",

@@ -96,8 +96,8 @@ describe("SetupStore", () => {
       // Update run1 to make it definitively newer than run2
       store.updatePhase(run1.id, "interview");
       const runs = store.list();
-      expect(runs[0].id).toBe(run1.id);
-      expect(runs[1].id).toBe(run2.id);
+      expect(runs[0]!.id).toBe(run1.id);
+      expect(runs[1]!.id).toBe(run2.id);
     });
 
     test("skips corrupted entries", () => {
@@ -165,8 +165,8 @@ describe("SetupStore", () => {
       };
       const updated = store.addQuestion(run.id, question);
       expect(updated.questions).toHaveLength(1);
-      expect(updated.questions[0].id).toBe("q1");
-      expect(updated.questions[0].text).toBe("Is this tested?");
+      expect(updated.questions[0]!.id).toBe("q1");
+      expect(updated.questions[0]!.text).toBe("Is this tested?");
     });
 
     test("throws SetupRunNotFoundError for unknown id", () => {
@@ -197,8 +197,8 @@ describe("SetupStore", () => {
       };
       store.addQuestion(run.id, question);
       const updated = store.answerQuestion(run.id, "q1", "yes it is");
-      expect(updated.questions[0].answer).toBe("yes it is");
-      expect(updated.questions[0].answeredAt).not.toBeNull();
+      expect(updated.questions[0]!.answer).toBe("yes it is");
+      expect(updated.questions[0]!.answeredAt).not.toBeNull();
     });
 
     test("leaves other questions unchanged", () => {
@@ -236,7 +236,7 @@ describe("SetupStore", () => {
       };
       const updated = store.addChapter(run.id, chapter);
       expect(updated.chapters).toHaveLength(1);
-      expect(updated.chapters[0].title).toBe("Overview");
+      expect(updated.chapters[0]!.title).toBe("Overview");
     });
 
     test("throws SetupRunNotFoundError for unknown id", () => {
@@ -258,10 +258,11 @@ describe("SetupStore", () => {
       };
       const updated = store.addComment(run.id, comment);
       expect(updated.chapters).toHaveLength(1);
-      expect(updated.chapters[0].title).toContain("Comment on chapter: ch1");
-      expect(updated.chapters[0].body).toBe("This needs more detail");
-      expect(updated.chapters[0].artifactRefs).toEqual(["file:///artifacts/notes.txt"]);
-      expect(updated.chapters[0].status).toBe("draft");
+      const ch0 = updated.chapters[0]!;
+      expect(ch0.title).toContain("Comment on chapter: ch1");
+      expect(ch0.body).toBe("This needs more detail");
+      expect(ch0.artifactRefs).toEqual(["file:///artifacts/notes.txt"]);
+      expect(ch0.status).toBe("draft");
     });
 
     test("throws SetupRunNotFoundError for unknown id", () => {
