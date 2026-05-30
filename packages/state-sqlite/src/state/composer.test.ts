@@ -14,6 +14,8 @@ import { join } from "node:path";
 import {
   ComposerTurnRegistry,
   ComposerTurnNotFoundError,
+  emitComposerSubagentChanged,
+  emitComposerActionPreviewed,
 } from "./composer.ts";
 
 // ---------------------------------------------------------------------------
@@ -421,6 +423,166 @@ describe("ComposerTurnRegistry", () => {
 
       const remaining = registry.list();
       expect(remaining.map((t) => t.id)).toEqual(["ct_keep"]);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // emitComposerSubagentChanged
+  // -------------------------------------------------------------------------
+
+  describe("emitComposerSubagentChanged", () => {
+    test("appends composer.subagent.changed event with correct fields", async () => {
+      const turn = registry.create(makeCreateInput({
+        id: "ct_subagent",
+        message: "Subagent test",
+        delegation_policy: { allow_subagents: true, max_subagents: 2, require_preview_for_mutations: false },
+      }));
+      registry.updateResponse("ct_subagent", {
+        delegated_refs: [
+          { kind: "control_subagent_run", id: "csr_test", role: "editor", scope: { kind: "global" }, status: "running" },
+        ],
+      });
+      const updated = registry.getById("ct_subagent")!;
+
+      const emitted: Array<{ topic: string; data: Record<string, unknown> }> = [];
+      const mockEvents = {
+        append<T>(topic: string, data: T) {
+          emitted.push({ topic, data: data as Record<string, unknown> });
+          return Promise.resolve({ _v: 1, id: "evt_1", timestamp: new Date().toISOString(), topic, data: data as T });
+        },
+      };
+
+      emitComposerSubagentChanged(mockEvents as unknown as undefined, updated, "csr_test", "completed");
+
+      expect(emitted).toHaveLength(1);
+      expect(emitted[0]!.topic).toBe("composer.subagent.changed");
+      expect(emitted[0]!.data).toMatchObject({
+        composer_turn_id: "ct_subagent",
+        subagent_run_id: "csr_test",
+        role: "editor",
+        scope: { kind: "global" },
+        status: "completed",
+      });
+    });
+
+    test("emits null role and scope when subagent not found in delegated_refs", async () => {
+      const turn = registry.create(makeCreateInput({
+        id: "ct_missing_subagent",
+        message: "Missing subagent",
+      }));
+
+      const emitted: Array<{ topic: string; data: Record<string, unknown> }> = [];
+      const mockEvents = {
+        append<T>(topic: string, data: T) {
+          emitted.push({ topic, data: data as Record<string, unknown> });
+          return Promise.resolve({ _v: 1, id: "evt_1", timestamp: new Date().toISOString(), topic, data: data as T });
+        },
+      };
+
+      emitComposerSubagentChanged(mockEvents as unknown as undefined, turn, "csr_unknown", "running");
+
+      expect(emitted).toHaveLength(1);
+      expect(emitted[0]!.data).toMatchObject({
+        composer_turn_id: "ct_missing_subagent",
+        subagent_run_id: "csr_unknown",
+        role: null,
+        scope: null,
+        status: "running",
+      });
+    });
+
+    test("is a no-op when events is undefined", () => {
+      const turn = registry.create(makeCreateInput({ id: "ct_no_events", message: "No events" }));
+      // Should not throw
+      emitComposerSubagentChanged(undefined, turn, "csr_any", "running");
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // emitComposerActionPreviewed
+  // -------------------------------------------------------------------------
+
+  describe("emitComposerActionPreviewed", () => {
+    test("appends composer.action.previewed event for each proposed action", async () => {
+      const turn = registry.create(makeCreateInput({
+        id: "ct_actions",
+        message: "Action preview test",
+      }));
+      registry.updateResponse("ct_actions", {
+        proposed_actions: [
+          { class: "read", id: "act_1", method: "GET", path: "/foo", summary: "Read file", produced_by: { kind: "control_subagent_run", id: "csr_1" }, risk: "low", requires_approval: false },
+          { class: "write", id: "act_2", method: "POST", path: "/bar", summary: "Write file", produced_by: { kind: "control_subagent_run", id: "csr_1" }, risk: "medium", requires_approval: true },
+        ],
+      });
+      const updated = registry.getById("ct_actions")!;
+
+      const emitted: Array<{ topic: string; data: Record<string, unknown> }> = [];
+      const mockEvents = {
+        append<T>(topic: string, data: T) {
+          emitted.push({ topic, data: data as Record<string, unknown> });
+          return Promise.resolve({ _v: 1, id: "evt_1", timestamp: new Date().toISOString(), topic, data: data as T });
+        },
+      };
+
+      emitComposerActionPreviewed(mockEvents as unknown as undefined, updated);
+
+      expect(emitted).toHaveLength(2);
+      expect(emitted[0]!.topic).toBe("composer.action.previewed");
+      expect(emitted[0]!.data).toMatchObject({
+        composer_turn_id: "ct_actions",
+        action_id: "act_1",
+        action_class: "read",
+        method: "GET",
+        path: "/foo",
+        summary: "Read file",
+        risk: "low",
+        requires_approval: false,
+      });
+      expect(emitted[1]!.data).toMatchObject({
+        composer_turn_id: "ct_actions",
+        action_id: "act_2",
+        action_class: "write",
+        method: "POST",
+        path: "/bar",
+        summary: "Write file",
+        risk: "medium",
+        requires_approval: true,
+      });
+    });
+
+    test("is a no-op when proposed_actions is empty", () => {
+      const turn = registry.create(makeCreateInput({
+        id: "ct_no_actions",
+        message: "No actions",
+      }));
+
+      const emitted: Array<{ topic: string; data: Record<string, unknown> }> = [];
+      const mockEvents = {
+        append<T>(topic: string, data: T) {
+          emitted.push({ topic, data: data as Record<string, unknown> });
+          return Promise.resolve({ _v: 1, id: "evt_1", timestamp: new Date().toISOString(), topic, data: data as T });
+        },
+      };
+
+      emitComposerActionPreviewed(mockEvents as unknown as undefined, turn);
+
+      expect(emitted).toHaveLength(0);
+    });
+
+    test("is a no-op when events is undefined", () => {
+      const turn = registry.create(makeCreateInput({
+        id: "ct_undefined_events",
+        message: "Undefined events",
+      }));
+      registry.updateResponse("ct_undefined_events", {
+        proposed_actions: [
+          { class: "read", id: "act_x", method: "GET", path: "/x", summary: "X", produced_by: { kind: "control_subagent_run", id: "csr_x" }, risk: "low", requires_approval: false },
+        ],
+      });
+      const updated = registry.getById("ct_undefined_events")!;
+
+      // Should not throw
+      emitComposerActionPreviewed(undefined, updated);
     });
   });
 });
