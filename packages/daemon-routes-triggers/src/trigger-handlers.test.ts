@@ -6,6 +6,32 @@ import { handleTriggers } from "./trigger-handlers.ts";
 import { TriggerStore } from "./trigger-store.ts";
 import type { TriggersDeps } from "./trigger-handlers.ts";
 
+type TriggerResponse = {
+  _v: number;
+  id: string;
+  scope: { kind: string; id: string | null };
+  source: { kind: string; schedule?: string; topic?: string | null; filters?: Record<string, unknown> };
+  action: { kind: string; target: Record<string, unknown> };
+  budget_policy: { max_cost_usd_per_fire: number } | null;
+  debounce_seconds: number;
+  enabled: boolean;
+  created_at: string;
+  updated_at: string;
+  last_fired_at: string | null;
+  last_error: string | null;
+  fire_count: number;
+};
+
+type TriggerListResponse = {
+  _v: number;
+  items: TriggerResponse[];
+  next_cursor: string | null;
+};
+
+function resJson<T>(res: Response | undefined): Promise<T> {
+  return res!.json() as unknown as Promise<T>;
+}
+
 function makeStore(tmp: string) {
   return new TriggerStore({ triggersDir: join(tmp, "triggers") });
 }
@@ -89,7 +115,7 @@ describe("POST /v1/triggers", () => {
     });
     const res = await handleTriggers(req, deps, "/v1/triggers");
     expect(res!.status).toBe(201);
-    const body = await res!.json();
+    const body = await resJson<TriggerResponse>(res);
     expect(body._v).toBe(1);
     expect(body.id).toMatch(/^tr_/);
     expect(body.scope.kind).toBe("global");
@@ -113,10 +139,10 @@ describe("POST /v1/triggers", () => {
     });
     const res = await handleTriggers(req, deps, "/v1/triggers");
     expect(res!.status).toBe(201);
-    const body = await res!.json();
+    const body = await resJson<TriggerResponse>(res);
     expect(body.scope.id).toBe("p_abc123");
     expect(body.action.target.handler).toBe("dependency_signal");
-    expect(body.budget_policy.max_cost_usd_per_fire).toBe(2.5);
+    expect(body.budget_policy!.max_cost_usd_per_fire).toBe(2.5);
     expect(body.debounce_seconds).toBe(3600);
     expect(body.enabled).toBe(false);
   });
@@ -234,7 +260,7 @@ describe("POST /v1/triggers", () => {
     });
     const res = await handleTriggers(req, deps, "/v1/triggers");
     expect(res!.status).toBe(201);
-    const body = await res!.json();
+    const body = await resJson<TriggerResponse>(res);
     expect(body.action.kind).toBe("fire_monitor_profile");
     expect(body.action.target.artifact_id).toBe("a_monitor_001");
   });
@@ -247,7 +273,7 @@ describe("POST /v1/triggers", () => {
     });
     const res = await handleTriggers(req, deps, "/v1/triggers");
     expect(res!.status).toBe(201);
-    const body = await res!.json();
+    const body = await resJson<TriggerResponse>(res);
     expect(body.action.kind).toBe("create_session");
     expect(body.action.target.reason).toBe("scheduled check-in");
   });
@@ -260,7 +286,7 @@ describe("POST /v1/triggers", () => {
     });
     const res = await handleTriggers(req, deps, "/v1/triggers");
     expect(res!.status).toBe(201);
-    const body = await res!.json();
+    const body = await resJson<TriggerResponse>(res);
     expect(body.action.kind).toBe("create_artifact");
     expect(body.action.target.reason).toBe("daily summary");
   });
@@ -276,7 +302,7 @@ describe("POST /v1/triggers", () => {
     });
     const res = await handleTriggers(req, deps, "/v1/triggers");
     expect(res!.status).toBe(201);
-    const body = await res!.json();
+    const body = await resJson<TriggerResponse>(res);
     expect(body.action.kind).toBe("refresh_projection");
     expect(body.action.target.projection_name).toBe("session_summary");
     expect(body.action.target.projection_scope_kind).toBe("project");
@@ -291,7 +317,7 @@ describe("POST /v1/triggers", () => {
     });
     const res = await handleTriggers(req, deps, "/v1/triggers");
     expect(res!.status).toBe(201);
-    const body = await res!.json();
+    const body = await resJson<TriggerResponse>(res);
     expect(body.scope.kind).toBe("workspace");
     expect(body.scope.id).toBe("ws_abc123");
   });
@@ -304,7 +330,7 @@ describe("POST /v1/triggers", () => {
     });
     const res = await handleTriggers(req, deps, "/v1/triggers");
     expect(res!.status).toBe(201);
-    const body = await res!.json();
+    const body = await resJson<TriggerResponse>(res);
     expect(body.scope.kind).toBe("artifact");
     expect(body.scope.id).toBe("a_artifact_001");
   });
@@ -325,7 +351,7 @@ describe("POST /v1/triggers", () => {
     });
     const res = await handleTriggers(req, deps, "/v1/triggers");
     expect(res!.status).toBe(201);
-    const body = await res!.json();
+    const body = await resJson<TriggerResponse>(res);
     expect(body.source.kind).toBe("event");
     expect(body.source.topic).toBe("session.*");
     expect(body.source.filters).toEqual({
@@ -377,7 +403,7 @@ describe("GET /v1/triggers", () => {
     const req = listReq(deps);
     const res = await handleTriggers(req, deps, "/v1/triggers");
     expect(res!.status).toBe(200);
-    const body = await res!.json();
+    const body = await resJson<TriggerListResponse>(res);
     expect(body.items).toEqual([]);
     expect(body.next_cursor).toBeNull();
   });
@@ -388,7 +414,7 @@ describe("GET /v1/triggers", () => {
 
     const listRequest = listReq(deps);
     const res = await handleTriggers(listRequest, deps, "/v1/triggers");
-    const body = await res!.json();
+    const body = await resJson<TriggerListResponse>(res);
     expect(body.items.length).toBe(2);
   });
 
@@ -398,9 +424,9 @@ describe("GET /v1/triggers", () => {
 
     const listRequest = listReq(deps, "scope_kind=project");
     const res = await handleTriggers(listRequest, deps, "/v1/triggers");
-    const body = await res!.json();
+    const body = await resJson<TriggerListResponse>(res);
     expect(body.items.length).toBe(1);
-    expect(body.items[0].scope.kind).toBe("project");
+    expect(body.items[0]!.scope.kind).toBe("project");
   });
 
   test("filters by enabled", async () => {
@@ -409,9 +435,9 @@ describe("GET /v1/triggers", () => {
 
     const listRequest = listReq(deps, "enabled=true");
     const res = await handleTriggers(listRequest, deps, "/v1/triggers");
-    const body = await res!.json();
+    const body = await res!.json() as unknown as { items: Array<{ enabled: boolean }> };
     expect(body.items.length).toBe(1);
-    expect(body.items[0].enabled).toBe(true);
+    expect(body.items[0]!.enabled).toBe(true);
   });
 });
 
@@ -430,7 +456,7 @@ describe("GET /v1/triggers/:id", () => {
       deps,
       "/v1/triggers",
     );
-    id = (await createRes.json()).id;
+    id = (await createRes!.json() as unknown as { id: string }).id;
   });
 
   afterEach(() => {
@@ -440,7 +466,7 @@ describe("GET /v1/triggers/:id", () => {
   test("returns the trigger", async () => {
     const res = await handleTriggers(getReq(deps, id), deps, `/v1/triggers/${id}`);
     expect(res!.status).toBe(200);
-    const body = await res!.json();
+    const body = await res!.json() as unknown as { id: string; scope: { kind: string }; source: { schedule: string } };
     expect(body.id).toBe(id);
     expect(body.scope.kind).toBe("global");
     expect(body.source.schedule).toBe("P7D");
@@ -467,7 +493,7 @@ describe("PATCH /v1/triggers/:id", () => {
       deps,
       "/v1/triggers",
     );
-    id = (await createRes.json()).id;
+    id = (await createRes!.json() as unknown as { id: string }).id;
   });
 
   afterEach(() => {
@@ -477,14 +503,14 @@ describe("PATCH /v1/triggers/:id", () => {
   test("patches enabled", async () => {
     const res = await handleTriggers(patchReq(deps, id, { enabled: false }), deps, `/v1/triggers/${id}`);
     expect(res!.status).toBe(200);
-    const body = await res!.json();
+    const body = await res!.json() as unknown as { enabled: boolean };
     expect(body.enabled).toBe(false);
   });
 
   test("patches schedule", async () => {
     const res = await handleTriggers(patchReq(deps, id, { source: { kind: "time", schedule: "P14D" } }), deps, `/v1/triggers/${id}`);
     expect(res!.status).toBe(200);
-    const body = await res!.json();
+    const body = await res!.json() as unknown as { source: { schedule: string } };
     expect(body.source.schedule).toBe("P14D");
   });
 
@@ -494,11 +520,11 @@ describe("PATCH /v1/triggers/:id", () => {
       deps,
       "/v1/triggers",
     );
-    const idWithBudget = (await createRes.json()).id;
+    const idWithBudget = (await createRes!.json() as unknown as { id: string }).id;
 
     const res = await handleTriggers(patchReq(deps, idWithBudget, { budget_policy: null }), deps, `/v1/triggers/${idWithBudget}`);
     expect(res!.status).toBe(200);
-    const body = await res!.json();
+    const body = await res!.json() as unknown as { budget_policy: null };
     expect(body.budget_policy).toBeNull();
   });
 
@@ -558,7 +584,7 @@ describe("POST /v1/triggers/:id/fire", () => {
       deps,
       "/v1/triggers",
     );
-    id = (await createRes.json()).id;
+    id = (await createRes!.json() as unknown as { id: string }).id;
   });
 
   afterEach(() => {
@@ -566,10 +592,10 @@ describe("POST /v1/triggers/:id/fire", () => {
   });
 
   test("records fire and increments fire_count", async () => {
-    const before = (await handleTriggers(getReq(deps, id), deps, `/v1/triggers/${id}`)).json();
+    await handleTriggers(getReq(deps, id), deps, `/v1/triggers/${id}`);
     const fireRes = await handleTriggers(fireReq(deps, id), deps, `/v1/triggers/${id}/fire`);
-    expect(fireRes.status).toBe(200);
-    const body = await fireRes.json();
+    expect(fireRes!.status).toBe(200);
+    const body = await fireRes!.json() as unknown as { fire_count: number; last_fired_at: string | null; last_error: string | null };
     expect(body.fire_count).toBe(1);
     expect(body.last_fired_at).not.toBeNull();
     expect(body.last_error).toBeNull();
@@ -602,7 +628,7 @@ describe("DELETE /v1/triggers/:id", () => {
       deps,
       "/v1/triggers",
     );
-    id = (await createRes.json()).id;
+    id = (await createRes!.json() as unknown as { id: string }).id;
   });
 
   afterEach(() => {
@@ -615,7 +641,7 @@ describe("DELETE /v1/triggers/:id", () => {
 
     // verify it's gone
     const getRes = await handleTriggers(getReq(deps, id), deps, `/v1/triggers/${id}`);
-    expect(getRes.status).toBe(404);
+    expect(getRes!.status).toBe(404);
   });
 
   test("returns 404 for unknown id", async () => {

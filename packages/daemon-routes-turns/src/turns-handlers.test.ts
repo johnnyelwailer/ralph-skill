@@ -572,7 +572,7 @@ describe("handleTurns", () => {
       const deps = makeDeps();
       const res = await patchTurn("s_missing", "t_missing", {}, deps);
       expect(res!.status).toBe(404);
-      const body = await res!.json() as Record<string, unknown>;
+      const body = await res!.json() as unknown as { error: { code: string } };
       expect(body.error.code).toBe("turn_not_found");
     });
 
@@ -812,7 +812,7 @@ describe("handleTurns", () => {
       const req = new Request("http://localhost/v1/sessions/s_abc/turns/t_missing", { method: "DELETE" });
       const res = await handleTurns(req, deps, "/v1/sessions/s_abc/turns/t_missing");
       expect(res!.status).toBe(404);
-      const body = await res!.json() as Record<string, unknown>;
+      const body = await res!.json() as unknown as { error: { code: string } };
       expect(body.error.code).toBe("turn_not_found");
     });
 
@@ -828,7 +828,7 @@ describe("handleTurns", () => {
       const delReq = new Request("http://localhost/v1/sessions/s_abc/turns/t_del_1", { method: "DELETE" });
       const res = await handleTurns(delReq, deps, "/v1/sessions/s_abc/turns/t_del_1");
       expect(res!.status).toBe(404);
-      const body = await res!.json() as Record<string, unknown>;
+      const body = await res!.json() as unknown as { error: { code: string } };
       expect(body.error.code).toBe("not_found");
     });
   });
