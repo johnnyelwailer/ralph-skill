@@ -93,6 +93,7 @@ export function makeRouterDeps(input: MakeRouterDepsInput): RouterDeps {
           sessions: input.sessionRegistry,
           projects: input.registry,
           sessionsDir,
+          workflowsDir: join(input.config.paths().home, "workflows"),
         },
         pathname,
       ),

@@ -202,10 +202,12 @@ function makeMockProjectRegistry(): ProjectRegistry {
 function makeDeps(sessionId?: string): SessionsDeps {
   const base = mkdtempSync(join(tmpdir(), "aloop-sessions-test-"));
   const sessionsDir = join(base, sessionId ?? "sessions");
+  const workflowsDir = join(base, "workflows");
   return {
     sessions: makeMockSessionRegistry(sessionsDir),
     projects: makeMockProjectRegistry(),
     sessionsDir: () => sessionsDir,
+    workflowsDir,
   };
 }
 

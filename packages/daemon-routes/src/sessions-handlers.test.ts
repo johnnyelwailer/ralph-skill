@@ -24,12 +24,12 @@ async function resJson(res: Response): Promise<any> {
   return JSON.parse(await res.text());
 }
 
-function makeDeps(dir: string): SessionsDeps {
+function makeDeps(dir: string, workflowsDir?: string): SessionsDeps {
   const { db } = openDatabase(join(dir, "db.sqlite"));
   const sessions = new SessionRegistry(db);
   const projects = new ProjectRegistry(db);
   (sessions as unknown as { _db: ReturnType<typeof openDatabase>["db"] })._db = db;
-  return { sessions, projects, sessionsDir: () => dir };
+  return { sessions, projects, sessionsDir: () => dir, workflowsDir: workflowsDir ?? join(tmpdir(), "aloop-workflows") };
 }
 
 // ─────────────────────────────────────────────────────────────────
@@ -1094,16 +1094,32 @@ describe("steerSessionHandler", () => {
 
 describe("recompileSessionHandler", () => {
   let dir: string;
+  let workflowsDir: string;
   let deps: SessionsDeps;
   let sessionId: string;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     dir = mkdtempSync(join(tmpdir(), "aloop-session-recompile-"));
-    deps = makeDeps(dir);
+    workflowsDir = mkdtempSync(join(tmpdir(), "aloop-workflows-"));
+    deps = makeDeps(dir, workflowsDir);
+    const projectId = deps.projects.create({ absPath: join(dir, "proj1") }).id;
+    const { mkdirSync, writeFileSync } = await import("node:fs");
+    mkdirSync(join(workflowsDir, "aloop/workflows"), { recursive: true });
+    writeFileSync(
+      join(workflowsDir, "aloop/workflows/test-workflow.yaml"),
+      `on:
+  start:
+    cycle: true
+    pipeline:
+      - agent: plan
+      - agent: build
+`,
+      "utf-8",
+    );
     sessionId = deps.sessions.create({
-      projectId: "proj-1",
+      projectId,
       kind: "standalone",
-      workflow: "test-workflow",
+      workflow: "aloop/workflows/test-workflow",
       providerChain: ["provider-1"],
     }).id;
   });
@@ -1112,27 +1128,32 @@ describe("recompileSessionHandler", () => {
     const reg = deps.sessions as unknown as { _db: { close(): void } };
     reg._db?.close();
     rmSync(dir, { recursive: true, force: true });
+    rmSync(workflowsDir, { recursive: true, force: true });
   });
 
-  test("returns 200 and writes workflow-plan.json", async () => {
+  test("returns 200 and writes compiled workflow-plan.json", async () => {
     const res = recompileSessionHandler(sessionId, deps);
     expect(res.status).toBe(200);
     const body = await resJson(res);
     expect(body._v).toBe(1);
     expect(body.session_id).toBe(sessionId);
     expect(body.workflow_plan_version).toBe(1);
-    expect(body.workflow).toBe("test-workflow");
+    expect(body.workflow).toBe("aloop/workflows/test-workflow");
   });
 
-  test("workflow-plan.json is written to session dir", async () => {
+  test("workflow-plan.json is written to session dir with compiled handlers", async () => {
     recompileSessionHandler(sessionId, deps);
     const sessionDir = `${dir}/${sessionId}`;
     const { existsSync, readFileSync } = require("node:fs");
     expect(existsSync(`${sessionDir}/workflow-plan.json`)).toBe(true);
     const plan = JSON.parse(readFileSync(`${sessionDir}/workflow-plan.json`, "utf-8"));
     expect(plan.version).toBe(1);
-    expect(plan.workflow).toBe("test-workflow");
-    expect(plan.compiled_at).toBeTruthy();
+    expect(plan.workflow).toBe("aloop/workflows/test-workflow");
+    expect(plan.handlers.start.cycle).toBe(true);
+    expect(plan.handlers.start.pipeline).toEqual([
+      { kind: "agent", ref: "PROMPT_plan.md" },
+      { kind: "agent", ref: "PROMPT_build.md" },
+    ]);
   });
 
   test("returns 404 when session does not exist", async () => {
@@ -1142,19 +1163,68 @@ describe("recompileSessionHandler", () => {
     expect(body.error.code).toBe("session_not_found");
   });
 
+  test("returns 404 when project does not exist", async () => {
+    const orphanSessionId = deps.sessions.create({
+      projectId: "nonexistent-project",
+      kind: "standalone",
+      workflow: "aloop/workflows/test",
+      providerChain: ["provider-1"],
+    }).id;
+    const res = recompileSessionHandler(orphanSessionId, deps);
+    expect(res.status).toBe(404);
+    const body = await resJson(res);
+    expect(body.error.code).toBe("project_not_found");
+  });
+
+  test("returns 422 when workflow file does not exist", async () => {
+    const noWorkflowId = deps.sessions.create({
+      projectId: deps.projects.create({ absPath: join(dir, "proj2") }).id,
+      kind: "standalone",
+      workflow: "aloop/workflows/nonexistent",
+      providerChain: ["provider-1"],
+    }).id;
+    const res = recompileSessionHandler(noWorkflowId, deps);
+    expect(res.status).toBe(422);
+    const body = await resJson(res);
+    expect(body.error.code).toBe("workflow_compile_failed");
+  });
+
   test("returns 200 for session in any status (pending, running, stopped)", async () => {
+    const projectId = deps.projects.create({ absPath: join(dir, "proj3") }).id;
+    const { mkdirSync, writeFileSync } = await import("node:fs");
+    mkdirSync(join(workflowsDir, "aloop/workflows"), { recursive: true });
+    writeFileSync(
+      join(workflowsDir, "aloop/workflows/orch-workflow.yaml"),
+      `on:
+  start:
+    cycle: true
+    pipeline:
+      - agent: plan
+`,
+      "utf-8",
+    );
+    writeFileSync(
+      join(workflowsDir, "aloop/workflows/child-workflow.yaml"),
+      `on:
+  start:
+    cycle: true
+    pipeline:
+      - agent: build
+`,
+      "utf-8",
+    );
     const runningId = deps.sessions.create({
-      projectId: "proj-1",
+      projectId,
       kind: "orchestrator",
-      workflow: "orch-workflow",
+      workflow: "aloop/workflows/orch-workflow",
       providerChain: ["provider-1"],
     }).id;
     deps.sessions.updateStatus(runningId, "running");
 
     const stoppedId = deps.sessions.create({
-      projectId: "proj-1",
+      projectId,
       kind: "child",
-      workflow: "child-workflow",
+      workflow: "aloop/workflows/child-workflow",
       providerChain: ["provider-1"],
     }).id;
     deps.sessions.updateStatus(stoppedId, "stopped");

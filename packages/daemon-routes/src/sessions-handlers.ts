@@ -1,11 +1,14 @@
 import { badRequest, errorResponse, jsonResponse, methodNotAllowed, parseJsonBody } from "./http-helpers";
 import type { EventWriter, ProjectRegistry, SessionFilter, SessionKind, SessionRegistry, SessionStatus } from "@aloop/state-sqlite";
+import { compileWorkflowFromFile } from "@aloop/core/workflow/compile";
+import { join } from "node:path";
 
 export type SessionsDeps = {
   readonly sessions: SessionRegistry;
   readonly projects: ProjectRegistry;
   readonly sessionsDir: string | (() => string);
   readonly events?: EventWriter;
+  readonly workflowsDir: string;
 };
 
 const VALID_KINDS = ["standalone", "orchestrator", "child"] as const;
@@ -308,21 +311,28 @@ export function recompileSessionHandler(id: string, deps: SessionsDeps): Respons
     return errorResponse(404, "session_not_found", `session not found: ${id}`, { id });
   }
 
+  const project = deps.projects.get(session.projectId);
+  if (!project) {
+    return errorResponse(404, "project_not_found", `project not found: ${session.projectId}`, { project_id: session.projectId });
+  }
+
+  const compileResult = compileWorkflowFromFile(session.workflow, {
+    workflowsDir: deps.workflowsDir,
+    templatesDir: `${project.absPath}/aloop/templates`,
+  });
+
+  if (!compileResult.ok) {
+    return errorResponse(422, "workflow_compile_failed", compileResult.errors.join("; "), { workflow: session.workflow });
+  }
+
   const sessionsDir = typeof deps.sessionsDir === "function" ? deps.sessionsDir() : deps.sessionsDir;
   const sessionDir = `${sessionsDir}/${session.id}`;
-
-  const plan = {
-    version: 1,
-    workflow: session.workflow,
-    compiled_at: new Date().toISOString(),
-    note: "Full compile step (workflow YAML → workflow-plan.json) is pending implementation. See docs/spec/pipeline.md §Compile step.",
-  };
 
   const planPath = `${sessionDir}/workflow-plan.json`;
   try {
     const { writeFileSync, mkdirSync } = require("node:fs");
     mkdirSync(sessionDir, { recursive: true });
-    writeFileSync(planPath, JSON.stringify(plan, null, 2), "utf-8");
+    writeFileSync(planPath, JSON.stringify(compileResult.plan, null, 2), "utf-8");
   } catch {
     return errorResponse(500, "recompile_failed", `failed to write workflow-plan.json for session: ${id}`, { id });
   }
@@ -330,7 +340,7 @@ export function recompileSessionHandler(id: string, deps: SessionsDeps): Respons
   if (deps.events) {
     void deps.events.append("session.workflow_plan.updated", {
       session_id: id,
-      version: plan.version,
+      version: compileResult.plan.version,
       workflow: session.workflow,
     });
     void deps.events.append("session.event", {
@@ -344,7 +354,7 @@ export function recompileSessionHandler(id: string, deps: SessionsDeps): Respons
     emitSessionUpdate(deps.events, deps.sessions.get(id)!);
   }
 
-  return jsonResponse(200, { _v: 1, session_id: id, workflow_plan_version: plan.version, workflow: session.workflow });
+  return jsonResponse(200, { _v: 1, session_id: id, workflow_plan_version: compileResult.plan.version, workflow: session.workflow });
 }
 
 // ── POST /v1/sessions/:id/steer ──────────────────────────────────────────────
