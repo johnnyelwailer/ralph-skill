@@ -209,7 +209,7 @@ describe("listSetupRuns", () => {
     const req = new Request("http://localhost/v1/setup/runs");
     const res = listSetupRuns(req, deps);
     expect(res.status).toBe(200);
-    const body = await res.json();
+    const body = await res.json() as unknown as { _v: number; items: unknown[] };
     expect(body._v).toBe(1);
     expect(body.items).toEqual([]);
   });
@@ -220,21 +220,21 @@ describe("listSetupRuns", () => {
       method: "POST",
       body: JSON.stringify({ abs_path: "/test/project-a" }),
     });
-    const created1 = await (await createSetupRun(req1, deps)).json();
+    const created1 = await (await createSetupRun(req1, deps)).json() as unknown as { id: string };
 
     const req2 = new Request("http://localhost/v1/setup/runs", {
       method: "POST",
       body: JSON.stringify({ abs_path: "/test/project-b", mode: "orchestrator" }),
     });
-    const created2 = await (await createSetupRun(req2, deps)).json();
+    const created2 = await (await createSetupRun(req2, deps)).json() as unknown as { id: string };
 
     const listReq = new Request("http://localhost/v1/setup/runs");
     const res = listSetupRuns(listReq, deps);
     expect(res.status).toBe(200);
-    const body = await res.json();
+    const body = await res.json() as unknown as { items: Array<{ id: string }> };
     expect(body.items).toHaveLength(2);
-    expect(body.items.map((r: { id: string }) => r.id)).toContain(created1.id);
-    expect(body.items.map((r: { id: string }) => r.id)).toContain(created2.id);
+    expect(body.items.map((r) => r.id)).toContain(created1.id);
+    expect(body.items.map((r) => r.id)).toContain(created2.id);
   });
 
   test("each listed item has required envelope fields", async () => {
@@ -246,7 +246,7 @@ describe("listSetupRuns", () => {
 
     const listReq = new Request("http://localhost/v1/setup/runs");
     const res = listSetupRuns(listReq, deps);
-    const body = await res.json();
+    const body = await res.json() as unknown as { items: Array<{ _v: number; id: string; abs_path: string; status: string; phase: string; verdict: string; non_interactive: boolean; events_url: string; chapters_url: string }> };
     const item = body.items[0];
     expect(item._v).toBe(1);
     expect(item.id).toBeDefined();
@@ -272,7 +272,7 @@ describe("getSetupRun", () => {
       method: "POST",
       body: JSON.stringify({ abs_path: "/test" }),
     });
-    const created = await (await createSetupRun(createReq, deps)).json();
+    const created = await (await createSetupRun(createReq, deps)).json() as unknown as { id: string };
     runId = created.id;
   });
 
@@ -307,7 +307,7 @@ describe("getSetupChapters", () => {
       method: "POST",
       body: JSON.stringify({ abs_path: "/test" }),
     });
-    const created = await (await createSetupRun(createReq, deps)).json();
+    const created = await (await createSetupRun(createReq, deps)).json() as unknown as { id: string };
     runId = created.id;
   });
 
@@ -319,7 +319,7 @@ describe("getSetupChapters", () => {
     const req = new Request(`http://localhost/v1/setup/runs/${runId}/chapters`);
     const res = getSetupChapters(runId, deps);
     expect(res.status).toBe(200);
-    const body = await (res as Response).json();
+    const body = await (res as Response).json() as unknown as { _v: number; chapters: unknown[]; total: number };
     expect(body.chapters).toEqual([]);
     expect(body.total).toBe(0);
   });
@@ -343,7 +343,7 @@ describe("answerSetupRun", () => {
       method: "POST",
       body: JSON.stringify({ abs_path: "/test" }),
     });
-    const created = await (await createSetupRun(createReq, deps)).json();
+    const created = await (await createSetupRun(createReq, deps)).json() as unknown as { id: string };
     runId = created.id;
   });
 
@@ -358,7 +358,7 @@ describe("answerSetupRun", () => {
     });
     const res = await answerSetupRun(runId, req, deps);
     expect(res.status).toBe(400);
-    const body = await res.json();
+    const body = await res.json() as unknown as { error: { message: string } };
     expect(body.error.message).toContain("question_id");
   });
 
@@ -369,7 +369,7 @@ describe("answerSetupRun", () => {
     });
     const res = await answerSetupRun(runId, req, deps);
     expect(res.status).toBe(400);
-    const body = await res.json();
+    const body = await res.json() as unknown as { error: { message: string } };
     expect(body.error.message).toContain("value");
   });
 
@@ -422,7 +422,7 @@ describe("commentSetupRun", () => {
       method: "POST",
       body: JSON.stringify({ abs_path: "/test" }),
     });
-    const created = await (await createSetupRun(createReq, deps)).json();
+    const created = await (await createSetupRun(createReq, deps)).json() as unknown as { id: string };
     runId = created.id;
   });
 
@@ -441,7 +441,7 @@ describe("commentSetupRun", () => {
     });
     const res = await commentSetupRun(runId, req, deps);
     expect(res.status).toBe(200);
-    const body = await res.json();
+    const body = await res.json() as unknown as { chapters: Array<{ title: string; body: string; artifact_refs: string[] }> };
     expect(body.chapters).toHaveLength(1);
     expect(body.chapters[0].title).toContain("chapter");
     expect(body.chapters[0].body).toBe("looks good");
@@ -459,7 +459,7 @@ describe("commentSetupRun", () => {
     });
     const res = await commentSetupRun(runId, req, deps);
     expect(res.status).toBe(200);
-    const body = await res.json();
+    const body = await res.json() as unknown as { chapters: Array<{ title: string; body: string; artifact_refs: string[] }> };
     expect(body.chapters[0].artifact_refs).toEqual(["file:///a/b.ts"]);
   });
 
@@ -470,7 +470,7 @@ describe("commentSetupRun", () => {
     });
     const res = await commentSetupRun(runId, req, deps);
     expect(res.status).toBe(400);
-    const body = await res.json();
+    const body = await res.json() as unknown as { error: { message: string } };
     expect(body.error.message).toContain("target_type");
   });
 
@@ -485,7 +485,7 @@ describe("commentSetupRun", () => {
     });
     const res = await commentSetupRun(runId, req, deps);
     expect(res.status).toBe(400);
-    const body = await res.json();
+    const body = await res.json() as unknown as { error: { message: string } };
     expect(body.error.message).toContain("target_type");
   });
 
@@ -496,7 +496,7 @@ describe("commentSetupRun", () => {
     });
     const res = await commentSetupRun(runId, req, deps);
     expect(res.status).toBe(400);
-    const body = await res.json();
+    const body = await res.json() as unknown as { error: { message: string } };
     expect(body.error.message).toContain("target_id");
   });
 
@@ -507,7 +507,7 @@ describe("commentSetupRun", () => {
     });
     const res = await commentSetupRun(runId, req, deps);
     expect(res.status).toBe(400);
-    const body = await res.json();
+    const body = await res.json() as unknown as { error: { message: string } };
     expect(body.error.message).toContain("body");
   });
 
@@ -537,7 +537,7 @@ describe("approveScaffold", () => {
       method: "POST",
       body: JSON.stringify({ abs_path: "/test" }),
     });
-    const created = await (await createSetupRun(createReq, deps)).json();
+    const created = await (await createSetupRun(createReq, deps)).json() as unknown as { id: string };
     runId = created.id;
   });
 
@@ -548,7 +548,7 @@ describe("approveScaffold", () => {
   test("returns 409 when verdict is not resolved", async () => {
     const res = await approveScaffold(runId, deps);
     expect(res.status).toBe(409);
-    const body = await res.json();
+    const body = await res.json() as unknown as { error: { code: string; message: string } };
     expect(body.error.code).toBe("setup_not_ready");
     expect(body.error.message).toContain("resolved");
   });
@@ -557,7 +557,7 @@ describe("approveScaffold", () => {
     deps.store.updateVerdict(runId, "resolved");
     const res = await approveScaffold(runId, deps);
     expect(res.status).toBe(200);
-    const body = await res.json();
+    const body = await res.json() as unknown as { phase: string; verdict: string };
     expect(body.phase).toBe("generation");
     expect(body.verdict).toBe("resolved");
   });
@@ -580,7 +580,7 @@ describe("resumeSetupRun", () => {
       method: "POST",
       body: JSON.stringify({ abs_path: "/test" }),
     });
-    const created = await (await createSetupRun(createReq, deps)).json();
+    const created = await (await createSetupRun(createReq, deps)).json() as unknown as { id: string };
     runId = created.id;
   });
 
@@ -592,14 +592,14 @@ describe("resumeSetupRun", () => {
     deps.store.complete(runId);
     const res = await resumeSetupRun(runId, deps);
     expect(res.status).toBe(409);
-    const body = await res.json();
+    const body = await res.json() as unknown as { error: { code: string } };
     expect(body.error.code).toBe("setup_run_not_active");
   });
 
   test("returns 200 when status is active", async () => {
     const res = await resumeSetupRun(runId, deps);
     expect(res.status).toBe(200);
-    const body = await res.json();
+    const body = await res.json() as unknown as { id: string; status: string };
     expect(body.id).toBe(runId);
     expect(body.status).toBe("active");
   });
@@ -622,7 +622,7 @@ describe("deleteSetupRun", () => {
       method: "POST",
       body: JSON.stringify({ abs_path: "/test" }),
     });
-    const created = await (await createSetupRun(createReq, deps)).json();
+    const created = await (await createSetupRun(createReq, deps)).json() as unknown as { id: string };
     runId = created.id;
   });
 
@@ -667,7 +667,7 @@ describe("getSetupEvents", () => {
       method: "POST",
       body: JSON.stringify({ abs_path: "/test" }),
     });
-    const created = await (await createSetupRun(createReq, deps)).json();
+    const created = await (await createSetupRun(createReq, deps)).json() as unknown as { id: string };
     runId = created.id;
   });
 
@@ -770,7 +770,7 @@ describe("buildRunResponse fields", () => {
       method: "POST",
       body: JSON.stringify({ abs_path: "/test" }),
     });
-    const created = await (await createSetupRun(createReq, deps)).json();
+    const created = await (await createSetupRun(createReq, deps)).json() as unknown as { id: string };
     runId = created.id;
   });
 
@@ -781,7 +781,21 @@ describe("buildRunResponse fields", () => {
   test("response includes expected envelope fields", async () => {
     const req = new Request(`http://localhost/v1/setup/runs/${runId}`);
     const res = getSetupRun(runId, deps);
-    const body = await (res as Response).json();
+    const body = await (res as Response).json() as unknown as {
+      _v: number;
+      id: string;
+      project_id: string | null;
+      abs_path: string;
+      status: string;
+      phase: string;
+      verdict: string;
+      questions: unknown[];
+      chapters: unknown[];
+      findings_count: number;
+      non_interactive: boolean;
+      events_url: string;
+      chapters_url: string;
+    };
 
     expect(body._v).toBe(1);
     expect(body.id).toBe(runId);

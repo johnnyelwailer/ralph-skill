@@ -319,7 +319,7 @@ function localAsRecord(value: unknown): Record<string, unknown> | null {
     : null;
 }
 
-function localParseJsonLines(raw: string): Record<string, unknown>[] {
+function localParseJsonLines(raw: string): unknown[] {
   return raw
     .split(/\r?\n/)
     .map((line) => line.trim())
@@ -327,7 +327,7 @@ function localParseJsonLines(raw: string): Record<string, unknown>[] {
     .flatMap((line) => {
       try {
         const parsed = JSON.parse(line);
-        return parsed && typeof parsed === "object" ? [parsed as Record<string, unknown>] : [];
+        return parsed && typeof parsed === "object" ? [parsed] : [];
       } catch {
         return [];
       }
@@ -336,8 +336,9 @@ function localParseJsonLines(raw: string): Record<string, unknown>[] {
 
 function localExtractSessionId(raw: string): string | null {
   for (const event of localParseJsonLines(raw)) {
-    if (typeof event.sessionID === "string" && event.sessionID.length > 0) {
-      return event.sessionID;
+    const e = event as Record<string, unknown>;
+    if (typeof e.sessionID === "string" && e.sessionID.length > 0) {
+      return e.sessionID;
     }
   }
   return null;
@@ -345,7 +346,8 @@ function localExtractSessionId(raw: string): string | null {
 
 function localExtractErrorMessage(raw: string): string | null {
   for (const event of localParseJsonLines(raw)) {
-    const error = localAsRecord(event.error);
+    const e = event as Record<string, unknown>;
+    const error = localAsRecord(e.error);
     const data = localAsRecord(error?.data);
     if (typeof data?.message === "string" && data.message.length > 0) {
       return data.message;
@@ -357,7 +359,8 @@ function localExtractErrorMessage(raw: string): string | null {
 function localExtractLatestText(raw: string): string | null {
   const events = localParseJsonLines(raw);
   for (let index = events.length - 1; index >= 0; index -= 1) {
-    const part = localAsRecord(events[index]?.part);
+    const e = events[index] as Record<string, unknown> | undefined;
+    const part = localAsRecord(e?.part);
     if (part?.type === "text" && typeof part.text === "string") {
       return part.text;
     }

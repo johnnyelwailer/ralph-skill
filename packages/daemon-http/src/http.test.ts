@@ -106,3 +106,23 @@ describe("startHttp", () => {
     expect(running.port).toBe(running.server.port as number);
   });
 });
+
+describe("startHttp error paths", () => {
+  test("throws when Bun.serve fails to bind a port (server.port is undefined)", async () => {
+    const originalServe = Bun.serve;
+    Bun.serve = ((_opts: Parameters<typeof originalServe>[0]) => {
+      return {
+        port: undefined,
+        hostname: "127.0.0.1",
+        stop: (_graceful: unknown) => {},
+      } as unknown as ReturnType<typeof originalServe>;
+    }) as typeof originalServe;
+
+    try {
+      const opts: StartHttpOptions = { port: 0, deps: makeDeps() };
+      expect(() => startHttp(opts)).toThrow("HTTP server failed to bind a port");
+    } finally {
+      Bun.serve = originalServe;
+    }
+  });
+});

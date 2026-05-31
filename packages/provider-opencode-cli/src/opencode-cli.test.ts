@@ -82,7 +82,6 @@ describe("createOpencodeCliAdapter", () => {
       providerRef: "opencode-cli",
       prompt: "ping",
       cwd: "/tmp",
-      reasoningEffort: undefined,
     })) {
       // consume
     }
