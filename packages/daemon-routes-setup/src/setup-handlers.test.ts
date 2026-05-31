@@ -50,7 +50,16 @@ describe("createSetupRun", () => {
     });
     const res = await createSetupRun(req, deps);
     expect(res.status).toBe(201);
-    const body = await res.json();
+    const body = await res.json() as unknown as {
+      _v: number;
+      id: string;
+      abs_path: string;
+      workflow: string;
+      status: string;
+      phase: string;
+      verdict?: string;
+      non_interactive?: boolean;
+    };
     expect(body._v).toBe(1);
     expect(body.abs_path).toBe("/test/project");
     expect(body.workflow).toBe("standalone");
@@ -66,7 +75,7 @@ describe("createSetupRun", () => {
     });
     const res = await createSetupRun(req, deps);
     expect(res.status).toBe(201);
-    const body = await res.json();
+    const body = await res.json() as unknown as { workflow: string };
     expect(body.workflow).toBe("orchestrator");
   });
 
@@ -80,7 +89,7 @@ describe("createSetupRun", () => {
     });
     const res = await createSetupRun(req, deps);
     expect(res.status).toBe(201);
-    const body = await res.json();
+    const body = await res.json() as unknown as { non_interactive: boolean };
     expect(body.non_interactive).toBe(true);
   });
 
@@ -91,7 +100,7 @@ describe("createSetupRun", () => {
     });
     const res = await createSetupRun(req, deps);
     expect(res.status).toBe(400);
-    const body = await res.json();
+    const body = await res.json() as unknown as { error: { code: string; message: string } };
     expect(body.error.code).toBe("bad_request");
     expect(body.error.message).toContain("abs_path");
   });
@@ -103,7 +112,7 @@ describe("createSetupRun", () => {
     });
     const res = await createSetupRun(req, deps);
     expect(res.status).toBe(400);
-    const body = await res.json();
+    const body = await res.json() as unknown as { error: { code: string } };
     expect(body.error.code).toBe("bad_request");
   });
 
@@ -114,7 +123,7 @@ describe("createSetupRun", () => {
     });
     const res = await createSetupRun(req, deps);
     expect(res.status).toBe(400);
-    const body = await res.json();
+    const body = await res.json() as unknown as { error: { message: string } };
     expect(body.error.message).toContain("mode");
   });
 
@@ -125,7 +134,7 @@ describe("createSetupRun", () => {
     });
     const res = await createSetupRun(req, deps);
     expect(res.status).toBe(400);
-    const body = await res.json();
+    const body = await res.json() as unknown as { error: { message: string } };
     expect(body.error.message).toContain("workflow");
   });
 
@@ -136,7 +145,7 @@ describe("createSetupRun", () => {
     });
     const res = await createSetupRun(req, deps);
     expect(res.status).toBe(400);
-    const body = await res.json();
+    const body = await res.json() as unknown as { error: { code: string } };
     expect(body.error.code).toBe("bad_request");
   });
 
@@ -159,7 +168,7 @@ describe("createSetupRun", () => {
     });
     const res = await createSetupRun(req, deps);
     expect(res.status).toBe(201);
-    const body = await res.json();
+    const body = await res.json() as unknown as { id: string };
     // flags are stored by the store; verify the run was created with them
     const stored = deps.store.get(body.id);
     expect(stored.flags).toEqual({ theme: "dark", verbose: "true" });
@@ -176,7 +185,7 @@ describe("createSetupRun", () => {
     });
     const res = await createSetupRun(req, deps);
     expect(res.status).toBe(201);
-    const body = await res.json();
+    const body = await res.json() as unknown as { workflow: string };
     expect(body.workflow).toBe("orchestrator");
   });
 
@@ -187,7 +196,7 @@ describe("createSetupRun", () => {
     });
     const res = await createSetupRun(req, deps);
     expect(res.status).toBe(201);
-    const body = await res.json();
+    const body = await res.json() as unknown as { workflow: string };
     expect(body.workflow).toBe("standalone");
   });
 });
@@ -247,7 +256,7 @@ describe("listSetupRuns", () => {
     const listReq = new Request("http://localhost/v1/setup/runs");
     const res = listSetupRuns(listReq, deps);
     const body = await res.json() as unknown as { items: Array<{ _v: number; id: string; abs_path: string; status: string; phase: string; verdict: string; non_interactive: boolean; events_url: string; chapters_url: string }> };
-    const item = body.items[0];
+    const item = body.items[0]!;
     expect(item._v).toBe(1);
     expect(item.id).toBeDefined();
     expect(item.abs_path).toBe("/test/project");
@@ -284,7 +293,7 @@ describe("getSetupRun", () => {
     const req = new Request(`http://localhost/v1/setup/runs/${runId}`);
     const res = getSetupRun(runId, deps);
     expect(res.status).toBe(200);
-    const body = await (res as Response).json();
+    const body = await (res as Response).json() as unknown as { id: string };
     expect(body.id).toBe(runId);
   });
 
@@ -443,8 +452,8 @@ describe("commentSetupRun", () => {
     expect(res.status).toBe(200);
     const body = await res.json() as unknown as { chapters: Array<{ title: string; body: string; artifact_refs: string[] }> };
     expect(body.chapters).toHaveLength(1);
-    expect(body.chapters[0].title).toContain("chapter");
-    expect(body.chapters[0].body).toBe("looks good");
+    expect(body.chapters[0]!.title).toContain("chapter");
+    expect(body.chapters[0]!.body).toBe("looks good");
   });
 
   test("returns 200 with artifact_refs", async () => {
@@ -460,7 +469,7 @@ describe("commentSetupRun", () => {
     const res = await commentSetupRun(runId, req, deps);
     expect(res.status).toBe(200);
     const body = await res.json() as unknown as { chapters: Array<{ title: string; body: string; artifact_refs: string[] }> };
-    expect(body.chapters[0].artifact_refs).toEqual(["file:///a/b.ts"]);
+    expect(body.chapters[0]!.artifact_refs).toEqual(["file:///a/b.ts"]);
   });
 
   test("returns 400 when target_type is missing", async () => {

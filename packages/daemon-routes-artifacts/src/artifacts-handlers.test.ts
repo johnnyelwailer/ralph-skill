@@ -5,6 +5,18 @@ import { join } from "node:path";
 import { handleArtifacts, type ArtifactsDeps } from "./artifacts-handlers.ts";
 import type { ArtifactRegistry, ArtifactFilter, ArtifactKind, CreateArtifactInput } from "@aloop/state-sqlite";
 
+type ArtifactListResponse = {
+  _v?: number;
+  items: Array<Record<string, unknown>>;
+  next_cursor?: string | null;
+  [key: string]: unknown;
+};
+
+type ArtifactErrorResponse = {
+  error: { code?: string; message?: string };
+  [key: string]: unknown;
+};
+
 // ─── Minimal ArtifactRegistry mock ─────────────────────────────────────────
 
 type MockArtifact = {
@@ -119,7 +131,7 @@ describe("handleArtifacts dispatcher", () => {
   test("GET /v1/artifacts dispatches to listArtifacts", async () => {
     const res = await handleArtifacts(new Request("http://x/v1/artifacts", { method: "GET" }), deps, "/v1/artifacts");
     expect(res!.status).toBe(200);
-    const body = await res!.json();
+    const body = await res!.json() as unknown as { _v: number; items: unknown[] };
     expect(body._v).toBe(1);
     expect(body.items).toEqual([]);
   });
@@ -238,7 +250,7 @@ describe("listArtifacts", () => {
     makeArtifact({ project_id: "proj-a" });
     makeArtifact({ project_id: "proj-b" });
     const res = await handleArtifacts(new Request("http://x/v1/artifacts"), deps, "/v1/artifacts");
-    const body = await res!.json();
+    const body = await res!.json() as unknown as ArtifactListResponse | ArtifactErrorResponse;
     expect(body.items).toHaveLength(2);
   });
 
@@ -246,7 +258,7 @@ describe("listArtifacts", () => {
     makeArtifact({ project_id: "proj-a" });
     makeArtifact({ project_id: "proj-b" });
     const res = await handleArtifacts(new Request("http://x/v1/artifacts?project_id=proj-a"), deps, "/v1/artifacts");
-    const body = await res!.json();
+    const body = await res!.json() as any;
     expect(body.items).toHaveLength(1);
     expect(body.items[0].project_id).toBe("proj-a");
   });
@@ -255,7 +267,7 @@ describe("listArtifacts", () => {
     makeArtifact({ session_id: "sess-001" });
     makeArtifact({ session_id: "sess-002" });
     const res = await handleArtifacts(new Request("http://x/v1/artifacts?session_id=sess-001"), deps, "/v1/artifacts");
-    const body = await res!.json();
+    const body = await res!.json() as any;
     expect(body.items).toHaveLength(1);
     expect(body.items[0].session_id).toBe("sess-001");
   });
@@ -264,7 +276,7 @@ describe("listArtifacts", () => {
     makeArtifact({ setup_run_id: "run-001" });
     makeArtifact({ setup_run_id: "run-002" });
     const res = await handleArtifacts(new Request("http://x/v1/artifacts?setup_run_id=run-001"), deps, "/v1/artifacts");
-    const body = await res!.json();
+    const body = await res!.json() as any;
     expect(body.items).toHaveLength(1);
     expect(body.items[0].setup_run_id).toBe("run-001");
   });
@@ -273,7 +285,7 @@ describe("listArtifacts", () => {
     makeArtifact({ work_item_key: "wi-001" });
     makeArtifact({ work_item_key: "wi-002" });
     const res = await handleArtifacts(new Request("http://x/v1/artifacts?work_item_key=wi-001"), deps, "/v1/artifacts");
-    const body = await res!.json();
+    const body = await res!.json() as any;
     expect(body.items).toHaveLength(1);
   });
 
@@ -281,7 +293,25 @@ describe("listArtifacts", () => {
     makeArtifact({ phase: "generation" });
     makeArtifact({ phase: "review" });
     const res = await handleArtifacts(new Request("http://x/v1/artifacts?phase=generation"), deps, "/v1/artifacts");
-    const body = await res!.json();
+    const body = await res!.json() as any;
+    expect(body.items).toHaveLength(1);
+    expect(body.items[0].phase).toBe("generation");
+  });
+
+
+  test("filters by composer_turn_id", async () => {
+    makeArtifact({ composer_turn_id: "turn-abc" });
+    makeArtifact({ composer_turn_id: "turn-xyz" });
+    const res = await handleArtifacts(new Request("http://x/v1/artifacts?composer_turn_id=turn-abc"), deps, "/v1/artifacts");
+    const body = await res!.json() as any;
+    expect(body.items).toHaveLength(1);
+  });
+
+  test("filters by phase", async () => {
+    makeArtifact({ phase: "generation" });
+    makeArtifact({ phase: "review" });
+    const res = await handleArtifacts(new Request("http://x/v1/artifacts?phase=generation"), deps, "/v1/artifacts");
+    const body = await res!.json() as any;
     expect(body.items).toHaveLength(1);
     expect(body.items[0].phase).toBe("generation");
   });
@@ -292,7 +322,7 @@ describe("listArtifacts", () => {
     makeArtifact({ composer_turn_id: "turn-abc" });
     makeArtifact({ composer_turn_id: "turn-xyz" });
     const res = await handleArtifacts(new Request("http://x/v1/artifacts?composer_turn_id=turn-abc"), deps, "/v1/artifacts");
-    const body = await res!.json();
+    const body = await res!.json() as any;
     expect(body.items).toHaveLength(1);
   });
 
@@ -300,13 +330,13 @@ describe("listArtifacts", () => {
     makeArtifact({ control_subagent_run_id: "ctrl-abc" });
     makeArtifact({ control_subagent_run_id: "ctrl-xyz" });
     const res = await handleArtifacts(new Request("http://x/v1/artifacts?control_subagent_run_id=ctrl-abc"), deps, "/v1/artifacts");
-    const body = await res!.json();
+    const body = await res!.json() as unknown as ArtifactListResponse | ArtifactErrorResponse;
     expect(body.items).toHaveLength(1);
   });
 
   test("returns envelope with _v:1 and next_cursor: null", async () => {
     const res = await handleArtifacts(new Request("http://x/v1/artifacts"), deps, "/v1/artifacts");
-    const body = await res!.json();
+    const body = await res!.json() as unknown as ArtifactListResponse | ArtifactErrorResponse;
     expect(body._v).toBe(1);
     expect(body.next_cursor).toBeNull();
   });
@@ -333,7 +363,7 @@ describe("getArtifact", () => {
     const req = new Request(`http://x/v1/artifacts/${artifact.id}`, { method: "GET" });
     const res = await handleArtifacts(req, deps, `/v1/artifacts/${artifact.id}`);
     expect(res!.status).toBe(200);
-    const body = await res!.json();
+    const body = await res!.json() as unknown as ArtifactListResponse | ArtifactErrorResponse;
     expect(body.id).toBe(artifact.id);
     expect(body.project_id).toBe("proj-001");
   });
@@ -342,7 +372,7 @@ describe("getArtifact", () => {
     const req = new Request("http://x/v1/artifacts/nonexistent-id", { method: "GET" });
     const res = await handleArtifacts(req, deps, "/v1/artifacts/nonexistent-id");
     expect(res!.status).toBe(404);
-    const body = await res!.json();
+    const body = await res!.json() as any;
     expect(body.error.code).toBe("not_found");
     expect(body.error.message).toContain("nonexistent-id");
   });
@@ -385,7 +415,7 @@ describe("getArtifactContent", () => {
     const req = new Request("http://x/v1/artifacts/nonexistent/content", { method: "GET" });
     const res = await handleArtifacts(req, deps, "/v1/artifacts/nonexistent/content");
     expect(res!.status).toBe(404);
-    const body = await res!.json();
+    const body = await res!.json() as unknown as ArtifactErrorResponse;
     expect(body.error.code).toBe("not_found");
   });
 
@@ -409,7 +439,7 @@ describe("getArtifactContent", () => {
     const req = new Request(`http://x/v1/artifacts/${artifact.id}/content`, { method: "GET" });
     const res = await handleArtifacts(req, deps, `/v1/artifacts/${artifact.id}/content`);
     expect(res!.status).toBe(404);
-    const body = await res!.json();
+    const body = await res!.json() as unknown as ArtifactErrorResponse;
     expect(body.error.code).toBe("not_found");
     expect(body.error.message).toContain("artifact file not found");
   });
@@ -443,7 +473,7 @@ describe("deleteArtifact", () => {
     const req = new Request("http://x/v1/artifacts/nonexistent-id", { method: "DELETE" });
     const res = await handleArtifacts(req, deps, "/v1/artifacts/nonexistent-id");
     expect(res!.status).toBe(404);
-    const body = await res!.json();
+    const body = await res!.json() as unknown as ArtifactErrorResponse;
     expect(body.error.code).toBe("not_found");
   });
 });
@@ -465,7 +495,7 @@ describe("uploadArtifact", () => {
     form.set("file", new File([""], "x.png"));
     const res = await upload(form);
     expect(res!.status).toBe(400);
-    const body = await res!.json();
+    const body = await res!.json() as unknown as ArtifactErrorResponse;
     expect(body.error.message).toContain("project_id");
   });
 
@@ -484,7 +514,7 @@ describe("uploadArtifact", () => {
     form.set("file", new File([""], "x.png"));
     const res = await upload(form);
     expect(res!.status).toBe(400);
-    const body = await res!.json();
+    const body = await res!.json() as unknown as ArtifactErrorResponse;
     expect(body.error.message).toContain("kind");
   });
 
@@ -495,7 +525,7 @@ describe("uploadArtifact", () => {
     form.set("file", new File([""], "x.png"));
     const res = await upload(form);
     expect(res!.status).toBe(400);
-    const body = await res!.json();
+    const body = await res!.json() as unknown as ArtifactErrorResponse;
     expect(body.error.message).toContain("kind must be one of");
   });
 
@@ -505,7 +535,7 @@ describe("uploadArtifact", () => {
     form.set("kind", "image");
     const res = await upload(form);
     expect(res!.status).toBe(400);
-    const body = await res!.json();
+    const body = await res!.json() as unknown as ArtifactErrorResponse;
     expect(body.error.message).toContain("file");
   });
 
@@ -517,7 +547,7 @@ describe("uploadArtifact", () => {
     });
     const res = await handleArtifacts(req, deps, "/v1/artifacts");
     expect(res!.status).toBe(400);
-    const body = await res!.json();
+    const body = await res!.json() as unknown as ArtifactErrorResponse;
     expect(body.error.message).toContain("invalid multipart");
   });
 
@@ -531,7 +561,7 @@ describe("uploadArtifact", () => {
 
     const res = await upload(form);
     expect(res!.status).toBe(201);
-    const body = await res!.json();
+    const body = await res!.json() as unknown as ArtifactListResponse | ArtifactErrorResponse;
     expect(body.id).toBeDefined();
     expect(body.project_id).toBe("proj-001");
     expect(body.kind).toBe("image");
@@ -549,8 +579,8 @@ describe("uploadArtifact", () => {
     form.set("file", file);
 
     const res = await upload(form);
-    const body = await res!.json();
-    const artifactId = body.id;
+    const body = await res!.json() as unknown as ArtifactListResponse;
+    const artifactId = body.id as string;
     const artifactDir = join(tmp, artifactId);
     const stored = await Bun.file(join(artifactDir, "data.bin")).arrayBuffer();
     expect(new Uint8Array(stored)).toEqual(content);
@@ -566,7 +596,7 @@ describe("uploadArtifact", () => {
 
     const res = await upload(form);
     expect(res!.status).toBe(201);
-    const body = await res!.json();
+    const body = await res!.json() as unknown as ArtifactListResponse | ArtifactErrorResponse;
     expect(body.session_id).toBe("sess-abc");
   });
 
@@ -580,7 +610,7 @@ describe("uploadArtifact", () => {
 
     const res = await upload(form);
     expect(res!.status).toBe(201);
-    const body = await res!.json();
+    const body = await res!.json() as unknown as ArtifactListResponse | ArtifactErrorResponse;
     expect(body.setup_run_id).toBe("run-xyz");
   });
 
@@ -594,7 +624,7 @@ describe("uploadArtifact", () => {
 
     const res = await upload(form);
     expect(res!.status).toBe(201);
-    const body = await res!.json();
+    const body = await res!.json() as unknown as ArtifactListResponse | ArtifactErrorResponse;
     expect(body.work_item_key).toBe("wi-key");
   });
 
@@ -608,7 +638,7 @@ describe("uploadArtifact", () => {
 
     const res = await upload(form);
     expect(res!.status).toBe(201);
-    const body = await res!.json();
+    const body = await res!.json() as unknown as ArtifactListResponse | ArtifactErrorResponse;
     expect(body.label).toBe("my screenshot");
   });
 
@@ -622,7 +652,7 @@ describe("uploadArtifact", () => {
 
     const res = await upload(form);
     expect(res!.status).toBe(201);
-    const body = await res!.json();
+    const body = await res!.json() as unknown as ArtifactListResponse | ArtifactErrorResponse;
     expect(body.phase).toBe("generation");
   });
 
@@ -636,7 +666,7 @@ describe("uploadArtifact", () => {
 
     const res = await upload(form);
     expect(res!.status).toBe(201);
-    const body = await res!.json();
+    const body = await res!.json() as unknown as ArtifactListResponse | ArtifactErrorResponse;
     expect(body.composer_turn_id).toBe("turn-123");
   });
 
@@ -650,7 +680,7 @@ describe("uploadArtifact", () => {
 
     const res = await upload(form);
     expect(res!.status).toBe(201);
-    const body = await res!.json();
+    const body = await res!.json() as unknown as ArtifactListResponse | ArtifactErrorResponse;
     expect(body.control_subagent_run_id).toBe("ctrl-456");
   });
 
@@ -663,7 +693,7 @@ describe("uploadArtifact", () => {
 
     const res = await upload(form);
     expect(res!.status).toBe(201);
-    const body = await res!.json();
+    const body = await res!.json() as unknown as ArtifactListResponse | ArtifactErrorResponse;
     expect(body.media_type).toBe("application/octet-stream");
   });
 
@@ -675,7 +705,7 @@ describe("uploadArtifact", () => {
     form.set("file", file);
 
     const res = await upload(form);
-    const body = await res!.json();
+    const body = await res!.json() as unknown as ArtifactListResponse | ArtifactErrorResponse;
     expect(body.filename).toBe("real-name.png");
   });
 
@@ -692,7 +722,7 @@ describe("uploadArtifact", () => {
 
     const res = await upload(form);
     expect(res!.status).toBe(201);
-    const body = await res!.json();
+    const body = await res!.json() as unknown as ArtifactListResponse | ArtifactErrorResponse;
     expect(body.filename).toBe("unknown");
   });
 
@@ -705,7 +735,7 @@ describe("uploadArtifact", () => {
 
     const res = await upload(form);
     expect(res!.status).toBe(201);
-    const body = await res!.json();
+    const body = await res!.json() as unknown as ArtifactListResponse | ArtifactErrorResponse;
     expect(body.project_id).toBe("proj-001");
     expect(body.kind).toBe("image");
   });
