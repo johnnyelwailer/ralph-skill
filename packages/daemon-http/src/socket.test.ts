@@ -1,5 +1,5 @@
 import { describe, expect, test, beforeEach, afterEach } from "bun:test";
-import { existsSync, mkdirSync, writeFileSync, unlinkSync } from "node:fs";
+import { existsSync, mkdirSync, writeFileSync, unlinkSync, rmdirSync } from "node:fs";
 import { join } from "node:path";
 import { startSocket, type StartSocketOptions } from "./socket";
 
@@ -36,7 +36,7 @@ describe("startSocket", () => {
       // ignore
     }
     try {
-      unlinkSync(tmpdir);
+      rmdirSync(tmpdir);
     } catch {
       // ignore
     }
