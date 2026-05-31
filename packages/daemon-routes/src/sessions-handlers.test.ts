@@ -894,6 +894,48 @@ describe("createSessionHandler", () => {
     const body = await resJson(res);
     expect(body.notes).toBe("test session");
   });
+
+  test("accepts numeric issue and returns it as issue_ref string", async () => {
+    const req = new Request("http://localhost/v1/sessions", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        data: { project_id: projectId, kind: "standalone", workflow: "wf", provider_chain: ["p"], issue: 42 },
+      }),
+    });
+    const res = await createSessionHandler(req, deps);
+    expect(res.status).toBe(201);
+    const body = await resJson(res);
+    expect(body.issue_ref).toBe("42");
+  });
+
+  test("sets issue_ref to null when issue is a non-numeric string", async () => {
+    const req = new Request("http://localhost/v1/sessions", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        data: { project_id: projectId, kind: "standalone", workflow: "wf", provider_chain: ["p"], issue: "not-a-number" },
+      }),
+    });
+    const res = await createSessionHandler(req, deps);
+    expect(res.status).toBe(201);
+    const body = await resJson(res);
+    expect(body.issue_ref).toBe(null);
+  });
+
+  test("sets issue_ref to null when issue is NaN", async () => {
+    const req = new Request("http://localhost/v1/sessions", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        data: { project_id: projectId, kind: "standalone", workflow: "wf", provider_chain: ["p"], issue: NaN },
+      }),
+    });
+    const res = await createSessionHandler(req, deps);
+    expect(res.status).toBe(201);
+    const body = await resJson(res);
+    expect(body.issue_ref).toBe(null);
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────
