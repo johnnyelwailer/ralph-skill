@@ -1,101 +1,131 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { existsSync, mkdtempSync, rmSync } from "node:fs";
-import type * as fs from "node:fs";
-import { tmpdir } from "node:os";
+import { describe, expect, test, beforeEach, afterEach } from "bun:test";
+import { existsSync, mkdirSync, writeFileSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
-import { startSocket, type StartSocketOptions } from "./socket.ts";
+import { startSocket, type StartSocketOptions } from "./socket";
 
 function makeDeps() {
   return {
-    handleDaemon: (req: Request, pathname: string) => {
-      if (req.method !== "GET" || pathname !== "/v1/daemon/health") return undefined;
-      return new Response(JSON.stringify({ _v: 1, status: "ok" }), {
-        status: 200,
-        headers: { "content-type": "application/json" },
-      });
-    },
+    handleDaemon: () => undefined,
     handleMetrics: () => undefined,
     handleProjects: () => undefined,
     handleProviders: () => undefined,
     handleScheduler: () => undefined,
+    handleWorkspaces: () => undefined,
     handleSessions: () => undefined,
     handleComposer: () => undefined,
     handleArtifacts: () => undefined,
     handleTriggers: () => undefined,
-    handleEvents: () => undefined,
     handleSetup: () => undefined,
-    handleWorkspaces: () => undefined,
+    handleEvents: () => undefined,
     handleTurns: () => undefined,
   };
 }
 
 describe("startSocket", () => {
-  let dir: string;
+  const tmpdir = join(__dirname, "../../test-socket-tmp");
+  let socketPath: string;
 
   beforeEach(() => {
-    dir = mkdtempSync(join(tmpdir(), "aloop-socket-test-"));
+    mkdirSync(tmpdir, { recursive: true });
   });
 
   afterEach(async () => {
-    rmSync(dir, { recursive: true, force: true });
+    try {
+      unlinkSync(socketPath);
+    } catch {
+      // ignore
+    }
+    try {
+      unlinkSync(tmpdir);
+    } catch {
+      // ignore
+    }
   });
 
-  test("starts a Unix socket server and returns path", async () => {
-    const socketPath = join(dir, "test.sock");
-    const opts: StartSocketOptions = { path: socketPath, deps: makeDeps() };
-    const running = startSocket(opts);
+  test("removes a stale socket file before binding", async () => {
+    socketPath = join(tmpdir, "stale.sock");
+    writeFileSync(socketPath, "stale", { mode: 0o644 });
+    expect(existsSync(socketPath)).toBe(true);
 
+    const running = startSocket({ path: socketPath, deps: makeDeps() });
+    expect(existsSync(socketPath)).toBe(true);
+    await running.stop();
+  });
+
+  test("returns a RunningSocket with the socket path", async () => {
+    socketPath = join(tmpdir, "alive.sock");
+    const running = startSocket({ path: socketPath, deps: makeDeps() });
     expect(running.path).toBe(socketPath);
-    expect(typeof running.stop).toBe("function");
-    expect(typeof running.server).toBe("object");
-
     await running.stop();
   });
 
-  test("removes stale socket file before binding", async () => {
-    const socketPath = join(dir, "stale.sock");
-    // Simulate a stale socket file left behind after an unclean shutdown
-    const { writeFileSync } = await import("node:fs");
-    writeFileSync(socketPath, "stale");
+  test("stop() calls server.stop with true", async () => {
+    socketPath = join(tmpdir, "stop.sock");
+    const originalServe = Bun.serve;
+    let stopCalledWith: unknown = undefined;
+    Bun.serve = ((opts: Parameters<typeof originalServe>[0]) => {
+      return {
+        port: undefined,
+        hostname: opts.hostname ?? "",
+        stop: (graceful: unknown) => {
+          stopCalledWith = graceful;
+        },
+      } as unknown as ReturnType<typeof originalServe>;
+    }) as typeof originalServe;
 
-    const opts: StartSocketOptions = { path: socketPath, deps: makeDeps() };
-    const running = startSocket(opts);
-
-    // Socket file should still exist and be the live server socket
-    expect(existsSync(socketPath)).toBe(true);
-
-    await running.stop();
+    try {
+      const running = startSocket({ path: socketPath, deps: makeDeps() });
+      await running.stop();
+      expect(stopCalledWith).toBe(true);
+    } finally {
+      Bun.serve = originalServe;
+    }
   });
 
-  test("stop() removes the socket file", async () => {
-    const socketPath = join(dir, "cleanup.sock");
-    const opts: StartSocketOptions = { path: socketPath, deps: makeDeps() };
-    const running = startSocket(opts);
-
+  test("stop() removes the socket file from disk", async () => {
+    socketPath = join(tmpdir, "cleanup.sock");
+    const running = startSocket({ path: socketPath, deps: makeDeps() });
     expect(existsSync(socketPath)).toBe(true);
-
     await running.stop();
-
     expect(existsSync(socketPath)).toBe(false);
   });
 
-  test("stop() is idempotent", async () => {
-    const socketPath = join(dir, "idempotent.sock");
-    const opts: StartSocketOptions = { path: socketPath, deps: makeDeps() };
-    const running = startSocket(opts);
-
-    await expect(running.stop()).resolves.toBeUndefined();
+  test("stop() does not throw if socket file is already gone", async () => {
+    socketPath = join(tmpdir, "gone.sock");
+    const running = startSocket({ path: socketPath, deps: makeDeps() });
+    // manually remove before stop
+    unlinkSync(socketPath);
     await expect(running.stop()).resolves.toBeUndefined();
   });
 
-  test("server is accessible from the returned RunningSocket", async () => {
-    const socketPath = join(dir, "server.sock");
-    const opts: StartSocketOptions = { path: socketPath, deps: makeDeps() };
-    const running = startSocket(opts);
+  test("stop() propagates error from server.stop", async () => {
+    socketPath = join(tmpdir, "fail-stop.sock");
+    const originalServe = Bun.serve;
+    Bun.serve = ((opts: Parameters<typeof originalServe>[0]) => {
+      return {
+        port: undefined,
+        hostname: opts.hostname ?? "",
+        stop: (_graceful: unknown) => {
+          throw new Error("server stop failed");
+        },
+      } as unknown as ReturnType<typeof originalServe>;
+    }) as typeof originalServe;
 
-    expect(running.server).not.toBeNull();
-    expect(typeof running.server).toBe("object");
+    try {
+      const running = startSocket({ path: socketPath, deps: makeDeps() });
+      // The implementation does NOT catch errors from server.stop — they propagate.
+      // The unlink cleanup is best-effort but server.stop(true) error propagates.
+      await expect(running.stop()).rejects.toThrow("server stop failed");
+    } finally {
+      Bun.serve = originalServe;
+    }
+  });
 
+  test("socket path is preserved on the returned object after start", async () => {
+    socketPath = join(tmpdir, "path-preserved.sock");
+    const running = startSocket({ path: socketPath, deps: makeDeps() });
+    const savedPath = running.path;
     await running.stop();
+    expect(savedPath).toBe(socketPath);
   });
 });
