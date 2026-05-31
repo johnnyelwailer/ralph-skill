@@ -1228,6 +1228,82 @@ describe("PATCH /v1/composer/turns/:id", () => {
     expect(body.media_mode).toBe("derived");
   });
 
+  test("updates voice_mode via PATCH", async () => {
+    const created = await (await makeRequest(handler, deps, "POST", "/v1/composer/turns", {
+      scope: { kind: "global" }, message: "Patch voice",
+    })).json() as { id: string };
+
+    const resp = await makeRequest(handler, deps, "PATCH", `/v1/composer/turns/${created.id}`, {
+      voice_mode: "transcribed",
+    });
+    expect(resp.status).toBe(200);
+    const body = JSON.parse(await (await resp.clone()).text());
+    expect(body.voice_mode).toBe("transcribed");
+  });
+
+  test("updates voice_mode via PATCH with client_transcribed", async () => {
+    const created = await (await makeRequest(handler, deps, "POST", "/v1/composer/turns", {
+      scope: { kind: "global" }, message: "Patch voice client",
+    })).json() as { id: string };
+
+    const resp = await makeRequest(handler, deps, "PATCH", `/v1/composer/turns/${created.id}`, {
+      voice_mode: "client_transcribed",
+    });
+    expect(resp.status).toBe(200);
+    const body = JSON.parse(await (await resp.clone()).text());
+    expect(body.voice_mode).toBe("client_transcribed");
+  });
+
+  test("updates voice_mode via PATCH with native", async () => {
+    const created = await (await makeRequest(handler, deps, "POST", "/v1/composer/turns", {
+      scope: { kind: "global" }, message: "Patch voice native",
+    })).json() as { id: string };
+
+    const resp = await makeRequest(handler, deps, "PATCH", `/v1/composer/turns/${created.id}`, {
+      voice_mode: "native",
+    });
+    expect(resp.status).toBe(200);
+    const body = JSON.parse(await (await resp.clone()).text());
+    expect(body.voice_mode).toBe("native");
+  });
+
+  test("updates voice_mode via PATCH with none", async () => {
+    const created = await (await makeRequest(handler, deps, "POST", "/v1/composer/turns", {
+      scope: { kind: "global" }, message: "Patch voice none",
+    })).json() as { id: string };
+
+    const resp = await makeRequest(handler, deps, "PATCH", `/v1/composer/turns/${created.id}`, {
+      voice_mode: "none",
+    });
+    expect(resp.status).toBe(200);
+    const body = JSON.parse(await (await resp.clone()).text());
+    expect(body.voice_mode).toBe("none");
+  });
+
+  test("returns 400 for invalid voice_mode value via PATCH", async () => {
+    const created = await (await makeRequest(handler, deps, "POST", "/v1/composer/turns", {
+      scope: { kind: "global" }, message: "Patch invalid voice",
+    })).json() as { id: string };
+
+    const resp = await makeRequest(handler, deps, "PATCH", `/v1/composer/turns/${created.id}`, {
+      voice_mode: "not_a_voice_mode",
+    });
+    expect(resp.status).toBe(400);
+    const body = JSON.parse(await (await resp.clone()).text());
+    expect(body.error.code).toBe("validation_error");
+  });
+
+  test("returns 400 for non-string voice_mode via PATCH", async () => {
+    const created = await (await makeRequest(handler, deps, "POST", "/v1/composer/turns", {
+      scope: { kind: "global" }, message: "Patch voice non-string",
+    })).json() as { id: string };
+
+    const resp = await makeRequest(handler, deps, "PATCH", `/v1/composer/turns/${created.id}`, {
+      voice_mode: 42,
+    });
+    expect(resp.status).toBe(400);
+  });
+
   test("updates usage via PATCH", async () => {
     const created = await (await makeRequest(handler, deps, "POST", "/v1/composer/turns", {
       scope: { kind: "global" }, message: "Patch usage",
