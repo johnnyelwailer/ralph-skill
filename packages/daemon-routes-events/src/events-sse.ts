@@ -247,7 +247,7 @@ function parseTopics(raw: string): string[] {
 // SSE formatting
 // ---------------------------------------------------------------------------
 
-function formatSSE(env: EventEnvelope): string {
+export function formatSSE(env: EventEnvelope): string {
   const topic = env.topic.replace(/\n/g, "\\n").replace(/\r/g, "\\r");
   const payload = JSON.stringify(env.data ?? null).replace(/\n/g, "\\n").replace(/\r/g, "\\r");
   return [

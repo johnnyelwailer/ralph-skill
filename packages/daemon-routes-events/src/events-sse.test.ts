@@ -2,7 +2,7 @@
  * Tests for events-sse.ts — SSE event streaming handler and helpers.
  */
 import { describe, expect, test } from "bun:test";
-import { handleEventsSSE, topicMatches, type EventsDeps } from "./events-sse.ts";
+import { formatSSE, handleEventsSSE, topicMatches, type EventsDeps } from "./events-sse.ts";
 
 // ------------------------------------------------------------------
 // topicMatches — unit tests (pure function)
@@ -459,5 +459,57 @@ describe("shouldSkip — all new filters combined", () => {
       controlSubagentRunId: "csar_abc",
       since: "0001",
     })).toBe(false);
+  });
+});
+
+// ─── formatSSE ───────────────────────────────────────────────────────────────
+
+describe("formatSSE", () => {
+  test("formats event with id, event name, and JSON data", () => {
+    const env = { id: "0001", topic: "session.update", data: { text: "hello" }, timestamp: "2026-01-01T00:00:00Z", _v: 1 as const };
+    const result = formatSSE(env);
+    expect(result).toContain("id: 0001");
+    expect(result).toContain("event: session.update");
+    expect(result).toContain('"text":"hello"');
+  });
+
+  test("escapes newlines in topic", () => {
+    const env = { id: "0002", topic: "session\nupdate", data: null, timestamp: "2026-01-01T00:00:00Z", _v: 1 as const };
+    const result = formatSSE(env);
+    expect(result).toContain("session\\nupdate");
+  });
+
+  test("escapes carriage returns in topic", () => {
+    const env = { id: "0003", topic: "session\rupdate", data: null, timestamp: "2026-01-01T00:00:00Z", _v: 1 as const };
+    const result = formatSSE(env);
+    expect(result).toContain("session\\rupdate");
+  });
+
+  test("escapes newlines in JSON payload", () => {
+    const env = { id: "0004", topic: "session.update", data: { text: "line1\nline2" }, timestamp: "2026-01-01T00:00:00Z", _v: 1 as const };
+    const result = formatSSE(env);
+    expect(result).toContain("line1\\nline2");
+  });
+
+  test("escapes carriage returns in JSON payload", () => {
+    const env = { id: "0005", topic: "session.update", data: { text: "line1\rline2" }, timestamp: "2026-01-01T00:00:00Z", _v: 1 as const };
+    const result = formatSSE(env);
+    expect(result).toContain("line1\\rline2");
+  });
+
+  test("uses null for undefined data", () => {
+    const env = { id: "0006", topic: "session.update", data: undefined, timestamp: "2026-01-01T00:00:00Z", _v: 1 as const };
+    const result = formatSSE(env);
+    expect(result).toContain("data: null");
+  });
+
+  test("double newline terminates SSE message per spec", () => {
+    const env = { id: "0007", topic: "provider.chunk", data: { content: "x" }, timestamp: "2026-01-01T00:00:00Z", _v: 1 as const };
+    const result = formatSSE(env);
+    // SSE messages end with two newlines — the trailing blank line after data:
+    const lines = result.split("\n");
+    // Last two lines should be empty (blank terminator after data line)
+    expect(lines[lines.length - 1]).toBe("");
+    expect(lines[lines.length - 2]).toBe("");
   });
 });
