@@ -1,5 +1,5 @@
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
-import { compileWorkflow, loadWorkflowFile } from "./compile.ts";
+import { compileWorkflow, compileWorkflowFromFile, loadWorkflowFile } from "./compile.ts";
 import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -211,5 +211,71 @@ describe("loadWorkflowFile", () => {
     expect(result.ok).toBe(false);
     if (result.ok) return;
     expect(result.errors[0]).toContain("not found in pipeline");
+  });
+});
+
+describe("compileWorkflowFromFile", () => {
+  let dir: string;
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), "aloop-compile-test-"));
+  });
+
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  test("loads a workflow file and compiles it end-to-end", () => {
+    writeFileSync(
+      join(dir, "end-to-end.yaml"),
+      `on:
+  start:
+    cycle: true
+    pipeline:
+      - agent: plan
+      - agent: build
+`,
+      "utf-8",
+    );
+    const result = compileWorkflowFromFile("end-to-end", { workflowsDir: dir, templatesDir: "/tmp" });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.plan.workflow).toBe("end-to-end");
+    expect(result.plan.handlers.start).toBeDefined();
+    expect(result.plan.handlers.start!.cycle).toBe(true);
+    expect(result.plan.handlers.start!.pipeline).toHaveLength(2);
+    expect(result.plan.handlers.start!.pipeline[0]).toEqual({ kind: "agent", ref: "PROMPT_plan.md" });
+    expect(result.plan.handlers.start!.pipeline[1]).toEqual({ kind: "agent", ref: "PROMPT_build.md" });
+  });
+
+  test("propagates file-not-found errors from loadWorkflowFile", () => {
+    const result = compileWorkflowFromFile("nonexistent", { workflowsDir: dir, templatesDir: "/tmp" });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.errors[0]).toContain("not found");
+  });
+
+  test("propagates YAML parse errors from loadWorkflowFile", () => {
+    writeFileSync(join(dir, "bad.yaml"), "  invalid: yaml: content:\n  - indented wrong", "utf-8");
+    const result = compileWorkflowFromFile("bad", { workflowsDir: dir, templatesDir: "/tmp" });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.errors[0]).toContain("yaml parse error");
+  });
+
+  test("propagates compile errors after successful YAML load", () => {
+    writeFileSync(
+      join(dir, "invalid-handler.yaml"),
+      `on:
+  invalid_handler_name:
+    pipeline:
+      - agent: plan
+`,
+      "utf-8",
+    );
+    const result = compileWorkflowFromFile("invalid-handler", { workflowsDir: dir, templatesDir: "/tmp" });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.errors[0]).toContain("invalid_handler_name");
   });
 });
