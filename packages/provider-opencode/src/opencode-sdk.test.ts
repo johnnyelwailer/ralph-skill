@@ -43,4 +43,21 @@ describe("__sdkTestHooks", () => {
     await resetCachedServers();
     expect(cachedServerCount()).toBe(0);
   });
+
+  test("addCachedServerForTest close function is called on reset", async () => {
+    let closed = false;
+    addCachedServerForTest("close-test-key", () => { closed = true; });
+    expect(cachedServerCount()).toBe(1);
+
+    await resetCachedServers();
+
+    expect(cachedServerCount()).toBe(0);
+    expect(closed).toBe(true);
+  });
+
+  test("addCachedServerForTest with duplicate key does not increase count", () => {
+    addCachedServerForTest("dup-key", () => {});
+    addCachedServerForTest("dup-key", () => {}); // same key — Map.set replaces
+    expect(cachedServerCount()).toBe(1);
+  });
 });
