@@ -23,7 +23,8 @@ import type { RunTurnDeps, SessionsDeps } from "./sessions-handlers.ts";
 import { TurnRegistry } from "@aloop/state-sqlite";
 import { ProviderRegistry } from "@aloop/provider";
 import type { AgentChunk, ProviderAdapter, ResolvedModel } from "@aloop/provider";
-import type { Permit, PermitDecision } from "@aloop/scheduler";
+import type { Permit } from "@aloop/state-sqlite";
+import type { PermitDecision } from "@aloop/scheduler";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function resJson(res: Response): Promise<any> {
@@ -1716,12 +1717,12 @@ type CapturedEvent = { readonly topic: string; readonly data: unknown };
 
 function makeRunTurnEventWriter(): {
   readonly events: CapturedEvent[];
-  append: (topic: string, data: unknown) => Promise<unknown>;
+  append: <T>(topic: string, data: T) => Promise<{ _v: 1; id: string; timestamp: string; topic: string; data: T }>;
 } {
   const events: CapturedEvent[] = [];
   return {
     events,
-    append: async (topic: string, data: unknown) => {
+    append: async <T>(topic: string, data: T) => {
       events.push({ topic, data });
       return { _v: 1 as const, id: `test-${Date.now()}`, timestamp: new Date().toISOString(), topic, data };
     },
@@ -2092,7 +2093,7 @@ describe("runTurnHandler", () => {
     const chunks: AgentChunk[] = [
       { type: "text", content: { delta: "Hello" } },
       { type: "text", content: { delta: " world" } },
-      { type: "usage", content: { tokensIn: 10, tokensOut: 20, costUsd: 0.5 } },
+      { type: "usage", content: { tokensIn: 10, tokensOut: 20, costUsd: 0.5 }, final: true },
     ];
     const releaseCalls: string[] = [];
     (deps as unknown as { providerRegistry: ProviderRegistry }).providerRegistry = new ProviderRegistry();
