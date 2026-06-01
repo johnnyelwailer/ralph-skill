@@ -175,6 +175,9 @@ export async function getMetricHistory(
   if (!metricName) {
     return badRequest("metric query param is required");
   }
+  if (Number.isNaN(limit) || limit <= 0) {
+    return badRequest("limit must be a positive number", { limit: url.searchParams.get("limit") });
+  }
 
   try {
     const rows = deps.db
