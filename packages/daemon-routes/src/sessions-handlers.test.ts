@@ -9,6 +9,7 @@ import {
   getSessionHandler,
   getSessionMetricsHandler,
   getNextTurnHandler,
+  runTurnHandler,
   deleteSessionHandler,
   resumeSessionHandler,
   pauseSessionHandler,
@@ -18,7 +19,11 @@ import {
   steerSessionHandler,
   recompileSessionHandler,
 } from "./sessions-handlers.ts";
-import type { SessionsDeps } from "./sessions-handlers.ts";
+import type { RunTurnDeps, SessionsDeps } from "./sessions-handlers.ts";
+import { TurnRegistry } from "@aloop/state-sqlite";
+import { ProviderRegistry } from "@aloop/provider";
+import type { AgentChunk, ProviderAdapter, ResolvedModel } from "@aloop/provider";
+import type { Permit, PermitDecision } from "@aloop/scheduler";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function resJson(res: Response): Promise<any> {
@@ -1698,5 +1703,539 @@ describe("getNextTurnHandler", () => {
     expect(deps.sessions.get(id)!.status).toBe("pending");
     getNextTurnHandler(id, deps);
     expect(deps.sessions.get(id)!.status).toBe("running");
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────
+// runTurnHandler
+// ─────────────────────────────────────────────────────────────────
+
+// ─── runTurnHandler test helpers ───────────────────────────────────────────────
+
+type CapturedEvent = { readonly topic: string; readonly data: unknown };
+
+function makeRunTurnEventWriter(): {
+  readonly events: CapturedEvent[];
+  append: (topic: string, data: unknown) => Promise<unknown>;
+} {
+  const events: CapturedEvent[] = [];
+  return {
+    events,
+    append: async (topic: string, data: unknown) => {
+      events.push({ topic, data });
+      return { _v: 1 as const, id: `test-${Date.now()}`, timestamp: new Date().toISOString(), topic, data };
+    },
+  };
+}
+
+function makeFakeAdapter(chunks: readonly AgentChunk[]): ProviderAdapter {
+  return {
+    id: "opencode",
+    capabilities: {
+      streaming: true,
+      vision: false,
+      toolUse: false,
+      reasoningEffort: false,
+      sessionResume: false,
+      costReporting: true,
+      maxContextTokens: null,
+      quotaProbe: false,
+    },
+    resolveModel: (() => ({ providerId: "opencode", modelId: "opencode/default" })) as unknown as (
+      ref: string,
+    ) => ResolvedModel,
+    sendTurn: (async function* () {
+      for (const c of chunks) yield c;
+    }) as unknown as ProviderAdapter["sendTurn"],
+  };
+}
+
+function makeGrantedPermit(providerId = "opencode"): Permit {
+  return {
+    id: `perm_${Math.random().toString(36).slice(2, 10)}`,
+    sessionId: "s_run",
+    composerTurnId: null,
+    controlSubagentRunId: null,
+    projectId: "proj-1",
+    providerId,
+    ttlSeconds: 60,
+    grantedAt: new Date().toISOString(),
+    expiresAt: new Date(Date.now() + 60_000).toISOString(),
+  };
+}
+
+function makeScheduler(opts: {
+  decision?: PermitDecision;
+  releaseCalls?: string[];
+}): { acquirePermit: RunTurnDeps["scheduler"]["acquirePermit"]; releasePermit: (id: string) => Promise<boolean> } {
+  const releaseCalls = opts.releaseCalls ?? [];
+  return {
+    acquirePermit: async (): Promise<PermitDecision> => {
+      if (opts.decision) return opts.decision;
+      return { granted: true, permit: makeGrantedPermit() };
+    },
+    releasePermit: async (id: string) => {
+      releaseCalls.push(id);
+      return true;
+    },
+  };
+}
+
+function makeRunTurnDeps(opts: {
+  dir: string;
+  workflowsDir: string;
+  events?: ReturnType<typeof makeRunTurnEventWriter>;
+  scheduler?: ReturnType<typeof makeScheduler>;
+  adapter?: ProviderAdapter;
+  providerId?: string;
+}): RunTurnDeps {
+  const { db } = openDatabase(join(opts.dir, "db.sqlite"));
+  const sessions = new SessionRegistry(db);
+  const projects = new ProjectRegistry(db);
+  const turns = new TurnRegistry(db);
+  (sessions as unknown as { _db: ReturnType<typeof openDatabase>["db"] })._db = db;
+  const providerRegistry = new ProviderRegistry();
+  const adapter = opts.adapter ?? makeFakeAdapter([]);
+  providerRegistry.register(adapter);
+  const events = opts.events ?? makeRunTurnEventWriter();
+  const scheduler = opts.scheduler ?? makeScheduler({});
+  return {
+    sessions,
+    projects,
+    sessionsDir: () => opts.dir,
+    workflowsDir: opts.workflowsDir,
+    events,
+    turns,
+    scheduler: scheduler as unknown as RunTurnDeps["scheduler"],
+    providerRegistry,
+  };
+}
+
+async function readSseEvents(res: Response): Promise<Array<Record<string, unknown>>> {
+  const text = await res.text();
+  return text
+    .split("\n\n")
+    .filter((block) => block.startsWith("data: "))
+    .map((block) => JSON.parse(block.slice("data: ".length)) as Record<string, unknown>);
+}
+
+describe("runTurnHandler", () => {
+  let dir: string;
+  let workflowsDir: string;
+  let deps: RunTurnDeps;
+
+  beforeEach(async () => {
+    dir = mkdtempSync(join(tmpdir(), "aloop-run-turn-"));
+    workflowsDir = mkdtempSync(join(tmpdir(), "aloop-run-turn-wf-"));
+    const { mkdirSync } = await import("node:fs");
+    mkdirSync(join(workflowsDir, "aloop/workflows"), { recursive: true });
+    mkdirSync(`${dir}/proj-1/aloop/templates`, { recursive: true });
+    deps = makeRunTurnDeps({ dir, workflowsDir });
+  });
+
+  afterEach(() => {
+    const reg = deps.sessions as unknown as { _db: { close(): void } };
+    reg._db?.close();
+    rmSync(dir, { recursive: true, force: true });
+    rmSync(workflowsDir, { recursive: true, force: true });
+  });
+
+  // Helper: create a project + session in a fresh test, both linked.
+  function createProjectAndSession(
+    workflow = "aloop/workflows/run-turn",
+    kind: "standalone" | "orchestrator" | "child" = "standalone",
+  ): { projectId: string; sessionId: string } {
+    const projectId = deps.projects.create({ absPath: join(dir, "proj-1") }).id;
+    const sessionId = deps.sessions.create({
+      projectId,
+      kind,
+      workflow,
+      providerChain: ["opencode"],
+    }).id;
+    return { projectId, sessionId };
+  }
+
+  // ── error paths (no plan file / no scheduler interaction) ──────────────────
+
+  test("returns 404 when session does not exist", async () => {
+    const req = new Request("http://localhost/v1/sessions/nonexistent/run-turn", { method: "POST" });
+    const res = await runTurnHandler("nonexistent", req, deps);
+    expect(res.status).toBe(404);
+    const body = await resJson(res);
+    expect(body.error.code).toBe("session_not_found");
+  });
+
+  for (const status of ["completed", "failed", "archived"] as const) {
+    test(`returns 409 session_terminated when session is ${status}`, async () => {
+      const { sessionId } = createProjectAndSession();
+      deps.sessions.updateStatus(sessionId, status);
+      const req = new Request(`http://localhost/v1/sessions/${sessionId}/run-turn`, { method: "POST" });
+      const res = await runTurnHandler(sessionId, req, deps);
+      expect(res.status).toBe(409);
+      const body = await resJson(res);
+      expect(body.error.code).toBe("session_terminated");
+      expect(body.error.message).toContain(status);
+    });
+  }
+
+  for (const status of ["paused", "stopped"] as const) {
+    test(`returns 409 session_not_runnable when session is ${status}`, async () => {
+      const { sessionId } = createProjectAndSession();
+      deps.sessions.updateStatus(sessionId, status);
+      const req = new Request(`http://localhost/v1/sessions/${sessionId}/run-turn`, { method: "POST" });
+      const res = await runTurnHandler(sessionId, req, deps);
+      expect(res.status).toBe(409);
+      const body = await resJson(res);
+      expect(body.error.code).toBe("session_not_runnable");
+    });
+  }
+
+  test("returns 409 session_no_workflow when session has no workflow", async () => {
+    const projectId = deps.projects.create({ absPath: join(dir, "proj-1") }).id;
+    const id = deps.sessions.create({
+      projectId,
+      kind: "standalone",
+      workflow: "",
+      providerChain: ["opencode"],
+    }).id;
+    const req = new Request(`http://localhost/v1/sessions/${id}/run-turn`, { method: "POST" });
+    const res = await runTurnHandler(id, req, deps);
+    expect(res.status).toBe(409);
+    const body = await resJson(res);
+    expect(body.error.code).toBe("session_no_workflow");
+  });
+
+  test("returns 409 workflow_plan_missing when workflow-plan.json does not exist", async () => {
+    const { sessionId } = createProjectAndSession();
+    const req = new Request(`http://localhost/v1/sessions/${sessionId}/run-turn`, { method: "POST" });
+    const res = await runTurnHandler(sessionId, req, deps);
+    expect(res.status).toBe(409);
+    const body = await resJson(res);
+    expect(body.error.code).toBe("workflow_plan_missing");
+    expect(body.error.message).toContain("workflow-plan.json");
+  });
+
+  test("returns 500 workflow_plan_read_failed when workflow-plan.json is malformed", async () => {
+    const { writeFileSync, mkdirSync } = await import("node:fs");
+    const { sessionId } = createProjectAndSession();
+    mkdirSync(`${dir}/${sessionId}`, { recursive: true });
+    writeFileSync(`${dir}/${sessionId}/workflow-plan.json`, "this is not json {{{", "utf-8");
+    const req = new Request(`http://localhost/v1/sessions/${sessionId}/run-turn`, { method: "POST" });
+    const res = await runTurnHandler(sessionId, req, deps);
+    expect(res.status).toBe(500);
+    const body = await resJson(res);
+    expect(body.error.code).toBe("workflow_plan_read_failed");
+  });
+
+  test("returns 422 workflow_plan_invalid when plan has no 'start' handler", async () => {
+    const { writeFileSync, mkdirSync } = await import("node:fs");
+    const { sessionId } = createProjectAndSession();
+    mkdirSync(`${dir}/${sessionId}`, { recursive: true });
+    writeFileSync(
+      `${dir}/${sessionId}/workflow-plan.json`,
+      JSON.stringify({ _v: 1, workflow: "x", version: 1, handlers: {} }),
+      "utf-8",
+    );
+    const req = new Request(`http://localhost/v1/sessions/${sessionId}/run-turn`, { method: "POST" });
+    const res = await runTurnHandler(sessionId, req, deps);
+    expect(res.status).toBe(422);
+    const body = await resJson(res);
+    expect(body.error.code).toBe("workflow_plan_invalid");
+  });
+
+  // ── empty / terminal pipeline paths ───────────────────────────────────────
+
+  test("returns 200 done=true when start handler has empty pipeline", async () => {
+    const { writeFileSync, mkdirSync } = await import("node:fs");
+    const { sessionId } = createProjectAndSession();
+    mkdirSync(`${dir}/${sessionId}`, { recursive: true });
+    writeFileSync(
+      `${dir}/${sessionId}/workflow-plan.json`,
+      JSON.stringify({
+        _v: 1,
+        workflow: "aloop/workflows/run-turn",
+        version: 1,
+        handlers: { start: { cycle: false, pipeline: [] } },
+      }),
+      "utf-8",
+    );
+
+    const req = new Request(`http://localhost/v1/sessions/${sessionId}/run-turn`, { method: "POST" });
+    const res = await runTurnHandler(sessionId, req, deps);
+    expect(res.status).toBe(200);
+    const body = await resJson(res);
+    expect(body.session_id).toBe(sessionId);
+    expect(body.status).toBe("completed");
+    expect(body.done).toBe(true);
+    // session status should be updated to completed
+    expect(deps.sessions.get(sessionId)!.status).toBe("completed");
+  });
+
+  test("returns 200 done=true when current_phase is past last cycle step", async () => {
+    const { writeFileSync, mkdirSync } = await import("node:fs");
+    const { sessionId } = createProjectAndSession();
+    mkdirSync(`${dir}/${sessionId}`, { recursive: true });
+    writeFileSync(
+      `${dir}/${sessionId}/workflow-plan.json`,
+      JSON.stringify({
+        _v: 1,
+        workflow: "aloop/workflows/run-turn",
+        version: 1,
+        handlers: {
+          start: { cycle: true, pipeline: [{ kind: "agent", ref: "PROMPT_a.md" }] },
+        },
+      }),
+      "utf-8",
+    );
+    deps.sessions.updatePhase(sessionId, "PROMPT_a.md", null);
+    const req = new Request(`http://localhost/v1/sessions/${sessionId}/run-turn`, { method: "POST" });
+    const res = await runTurnHandler(sessionId, req, deps);
+    expect(res.status).toBe(200);
+    const body = await resJson(res);
+    expect(body.status).toBe("completed");
+    expect(body.done).toBe(true);
+  });
+
+  // ── exec kind fast path ────────────────────────────────────────────────────
+
+  test("returns 200 done=true immediately for exec-kind steps (no scheduler/provider)", async () => {
+    const { writeFileSync, mkdirSync } = await import("node:fs");
+
+    let acquireCalls = 0;
+    const trackingScheduler = {
+      acquirePermit: async () => {
+        acquireCalls++;
+        return { granted: true, permit: makeGrantedPermit() };
+      },
+      releasePermit: async () => true,
+    };
+    // Replace scheduler with the tracking one
+    (deps as unknown as { scheduler: typeof trackingScheduler }).scheduler = trackingScheduler;
+    const { sessionId } = createProjectAndSession();
+    mkdirSync(`${dir}/${sessionId}`, { recursive: true });
+    writeFileSync(
+      `${dir}/${sessionId}/workflow-plan.json`,
+      JSON.stringify({
+        _v: 1,
+        workflow: "aloop/workflows/run-turn",
+        version: 1,
+        handlers: {
+          start: { cycle: false, pipeline: [{ kind: "exec", ref: "echo hi" }] },
+        },
+      }),
+      "utf-8",
+    );
+    const req = new Request(`http://localhost/v1/sessions/${sessionId}/run-turn`, { method: "POST" });
+    const res = await runTurnHandler(sessionId, req, deps);
+    expect(res.status).toBe(200);
+    const body = await resJson(res);
+    expect(body.turn_id).toMatch(/^turn_\d+_/);
+    expect(body.status).toBe("completed");
+    expect(body.phase).toBe("echo hi");
+    expect(body.done).toBe(true);
+    // exec kind must not call scheduler.acquirePermit
+    expect(acquireCalls).toBe(0);
+  });
+
+  // ── scheduler-denied path ──────────────────────────────────────────────────
+
+  test("returns 200 granted=false when scheduler denies permit, reverts pending→pending", async () => {
+    const { writeFileSync, mkdirSync } = await import("node:fs");
+    const denied: PermitDecision = {
+      granted: false,
+      reason: "concurrency_cap",
+      gate: "concurrency",
+      details: { cap: 1, active: 1 },
+    };
+    const releaseCalls: string[] = [];
+    (deps as unknown as { scheduler: ReturnType<typeof makeScheduler> }).scheduler = makeScheduler({
+      decision: denied,
+      releaseCalls,
+    });
+    const { sessionId } = createProjectAndSession();
+    mkdirSync(`${dir}/${sessionId}`, { recursive: true });
+    writeFileSync(
+      `${dir}/${sessionId}/workflow-plan.json`,
+      JSON.stringify({
+        _v: 1,
+        workflow: "aloop/workflows/run-turn",
+        version: 1,
+        handlers: {
+          start: { cycle: false, pipeline: [{ kind: "agent", ref: "PROMPT_a.md" }] },
+        },
+      }),
+      "utf-8",
+    );
+
+    // session is pending
+    expect(deps.sessions.get(sessionId)!.status).toBe("pending");
+    const req = new Request(`http://localhost/v1/sessions/${sessionId}/run-turn`, { method: "POST" });
+    const res = await runTurnHandler(sessionId, req, deps);
+    expect(res.status).toBe(200);
+    const body = await resJson(res);
+    expect(body.granted).toBe(false);
+    expect(body.reason).toBe("concurrency_cap");
+    expect(body.gate).toBe("concurrency");
+    expect(body.details).toEqual({ cap: 1, active: 1 });
+    // session should remain pending (reverted from the auto-promoted 'running' state)
+    expect(deps.sessions.get(sessionId)!.status).toBe("pending");
+    // permit was denied, so it must not be released
+    expect(releaseCalls.length).toBe(0);
+  });
+
+  // ── happy path: stream chunks, accumulate usage, complete cycle ────────────
+
+  test("streams chunks, updates turn, and emits end event on successful run", async () => {
+    const { writeFileSync, mkdirSync } = await import("node:fs");
+    writeFileSync(`${dir}/proj-1/aloop/templates/PROMPT_a.md`, "You are a helpful agent.\n", "utf-8");
+
+    const chunks: AgentChunk[] = [
+      { type: "text", content: { delta: "Hello" } },
+      { type: "text", content: { delta: " world" } },
+      { type: "usage", content: { tokensIn: 10, tokensOut: 20, costUsd: 0.5 } },
+    ];
+    const releaseCalls: string[] = [];
+    (deps as unknown as { providerRegistry: ProviderRegistry }).providerRegistry = new ProviderRegistry();
+    deps.providerRegistry.register(makeFakeAdapter(chunks));
+    (deps as unknown as { scheduler: ReturnType<typeof makeScheduler> }).scheduler = makeScheduler({ releaseCalls });
+    const { sessionId } = createProjectAndSession();
+    mkdirSync(`${dir}/${sessionId}`, { recursive: true });
+    writeFileSync(
+      `${dir}/${sessionId}/workflow-plan.json`,
+      JSON.stringify({
+        _v: 1,
+        workflow: "aloop/workflows/run-turn",
+        version: 1,
+        handlers: {
+          start: { cycle: true, pipeline: [{ kind: "agent", ref: "PROMPT_a.md" }] },
+        },
+      }),
+      "utf-8",
+    );
+
+    const req = new Request(`http://localhost/v1/sessions/${sessionId}/run-turn`, { method: "POST" });
+    const res = await runTurnHandler(sessionId, req, deps);
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toBe("text/event-stream");
+
+    const sseEvents = await readSseEvents(res);
+    // start + 3 chunks + final usage + end
+    expect(sseEvents.length).toBe(6);
+    expect(sseEvents[0]!.type).toBe("start");
+    expect(sseEvents[1]!.type).toBe("text");
+    expect(sseEvents[2]!.type).toBe("text");
+    expect(sseEvents[3]!.type).toBe("usage");
+    expect(sseEvents[4]!.type).toBe("usage");
+    expect(sseEvents[4]!.final).toBe(true);
+    expect(sseEvents[4]!.content).toEqual({ tokens: 30, cost_usd: 0.5 });
+    expect(sseEvents[5]!.type).toBe("end");
+    expect(sseEvents[5]!.status).toBe("completed");
+
+    // session marked completed since pipeline was single-step
+    expect(deps.sessions.get(sessionId)!.status).toBe("completed");
+    // permit must have been released
+    expect(releaseCalls.length).toBe(1);
+  });
+
+  test("advances current_phase to next pipeline step on successful non-terminal turn", async () => {
+    const { writeFileSync, mkdirSync } = await import("node:fs");
+    writeFileSync(`${dir}/proj-1/aloop/templates/PROMPT_a.md`, "step a\n", "utf-8");
+
+    (deps as unknown as { providerRegistry: ProviderRegistry }).providerRegistry = new ProviderRegistry();
+    deps.providerRegistry.register(makeFakeAdapter([{ type: "text", content: { delta: "ok" } }]));
+    (deps as unknown as { scheduler: ReturnType<typeof makeScheduler> }).scheduler = makeScheduler({});
+    const { sessionId } = createProjectAndSession();
+    mkdirSync(`${dir}/${sessionId}`, { recursive: true });
+    writeFileSync(
+      `${dir}/${sessionId}/workflow-plan.json`,
+      JSON.stringify({
+        _v: 1,
+        workflow: "aloop/workflows/run-turn",
+        version: 1,
+        handlers: {
+          start: {
+            cycle: true,
+            pipeline: [
+              { kind: "agent", ref: "PROMPT_a.md" },
+              { kind: "agent", ref: "PROMPT_b.md" },
+            ],
+          },
+        },
+      }),
+      "utf-8",
+    );
+
+    const req = new Request(`http://localhost/v1/sessions/${sessionId}/run-turn`, { method: "POST" });
+    const res = await runTurnHandler(sessionId, req, deps);
+    expect(res.status).toBe(200);
+    const sseEvents = await readSseEvents(res);
+    // end event should advertise the next phase
+    const endEvent = sseEvents.find((e) => e.type === "end");
+    expect(endEvent).toBeDefined();
+    expect(endEvent!.status).toBe("running");
+    expect(endEvent!.next_phase).toBe("PROMPT_b.md");
+    // session should now have current_phase set to PROMPT_b.md
+    expect(deps.sessions.get(sessionId)!.currentPhase).toBe("PROMPT_b.md");
+  });
+
+  // ── error path inside the stream ───────────────────────────────────────────
+
+  test("sets session status to failed when adapter throws mid-stream", async () => {
+    const { writeFileSync, mkdirSync } = await import("node:fs");
+    writeFileSync(`${dir}/proj-1/aloop/templates/PROMPT_a.md`, "step a\n", "utf-8");
+
+    const failingAdapter: ProviderAdapter = {
+      id: "opencode",
+      capabilities: {
+        streaming: true,
+        vision: false,
+        toolUse: false,
+        reasoningEffort: false,
+        sessionResume: false,
+        costReporting: false,
+        maxContextTokens: null,
+        quotaProbe: false,
+      },
+      resolveModel: (() => ({ providerId: "opencode", modelId: "opencode/default" })) as unknown as (
+        ref: string,
+      ) => ResolvedModel,
+      sendTurn: (async function* () {
+        yield { type: "text", content: { delta: "before-fail" } };
+        throw new Error("provider exploded");
+      }) as unknown as ProviderAdapter["sendTurn"],
+    };
+    const releaseCalls: string[] = [];
+    (deps as unknown as { providerRegistry: ProviderRegistry }).providerRegistry = new ProviderRegistry();
+    deps.providerRegistry.register(failingAdapter);
+    (deps as unknown as { scheduler: ReturnType<typeof makeScheduler> }).scheduler = makeScheduler({ releaseCalls });
+    const { sessionId } = createProjectAndSession();
+    mkdirSync(`${dir}/${sessionId}`, { recursive: true });
+    writeFileSync(
+      `${dir}/${sessionId}/workflow-plan.json`,
+      JSON.stringify({
+        _v: 1,
+        workflow: "aloop/workflows/run-turn",
+        version: 1,
+        handlers: {
+          start: { cycle: true, pipeline: [{ kind: "agent", ref: "PROMPT_a.md" }] },
+        },
+      }),
+      "utf-8",
+    );
+
+    const req = new Request(`http://localhost/v1/sessions/${sessionId}/run-turn`, { method: "POST" });
+    const res = await runTurnHandler(sessionId, req, deps);
+    expect(res.status).toBe(200);
+    const sseEvents = await readSseEvents(res);
+    const errorEvent = sseEvents.find((e) => e.type === "error");
+    expect(errorEvent).toBeDefined();
+    expect(errorEvent!.error).toBe("provider exploded");
+    const endEvent = sseEvents.find((e) => e.type === "end");
+    expect(endEvent).toBeDefined();
+    expect(endEvent!.status).toBe("failed");
+    // session should be marked failed
+    expect(deps.sessions.get(sessionId)!.status).toBe("failed");
+    // permit should still be released
+    expect(releaseCalls.length).toBe(1);
   });
 });
