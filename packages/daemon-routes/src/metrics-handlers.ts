@@ -170,11 +170,18 @@ export async function getMetricHistory(
   const url = new URL(req.url);
 
   const metricName = url.searchParams.get("metric");
-  const limit = Math.min(10000, Number(url.searchParams.get("limit") ?? 1000));
+  const rawLimit = url.searchParams.get("limit");
+  const limitNum = rawLimit !== null ? Number(rawLimit) : 1000;
 
   if (!metricName) {
     return badRequest("metric query param is required");
   }
+
+  if (!Number.isFinite(limitNum) || limitNum <= 0) {
+    return badRequest("limit must be a positive number");
+  }
+
+  const limit = Math.min(10000, Math.floor(limitNum));
 
   try {
     const rows = deps.db
