@@ -3,7 +3,7 @@ import { Database } from "bun:sqlite";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { getMetricAggregates, type MetricsHandlerDeps } from "./metrics-handlers.ts";
+import { getMetricAggregates, getMetricHistory, type MetricsHandlerDeps } from "./metrics-handlers.ts";
 
 let dir: string;
 let db: Database;
@@ -24,6 +24,15 @@ beforeEach(() => {
       computed_at TEXT NOT NULL
     );
     CREATE INDEX idx_metric_aggregates_name ON metric_aggregates(metric_name);
+    CREATE TABLE metric_history (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      metric_name TEXT NOT NULL,
+      labels TEXT NOT NULL DEFAULT '{}',
+      value REAL NOT NULL,
+      timestamp TEXT NOT NULL
+    );
+    CREATE INDEX idx_metric_history_name_time
+      ON metric_history(metric_name, timestamp DESC);
   `);
   deps = { db };
 });
@@ -99,5 +108,73 @@ describe("getMetricAggregates", () => {
     expect(res.status).toBe(400);
     const body = await res.json() as unknown as { error: { code: string; message: string } };
     expect(body.error.code).toBe("bad_request");
+  });
+});
+
+// ─── getMetricHistory — limit NaN/zero/negative input validation ─────────────
+//
+// The implementation at metrics-handlers.ts:173 is:
+//   const limit = Math.min(10000, Number(url.searchParams.get("limit") ?? 1000));
+// Number("abc") is NaN, NaN propagates through Math.min → SQL `LIMIT ?` with NaN
+// → 500 "internal_error". Number("") is 0 → no rows returned. Per the spec the
+// handler should validate the input and return 400, mirroring getMetricAggregates
+// at line 109-110. These tests assert spec behavior (which is the same shape as
+// the existing getMetricAggregates NaN tests above).
+
+describe("getMetricHistory", () => {
+  test("returns 400 when limit is not a number", async () => {
+    const req = new Request("http://x/v1/metrics/history?metric=cpu_usage&limit=abc");
+    const res = await getMetricHistory(req, deps);
+    expect(res.status).toBe(400);
+    const body = await res.json() as unknown as { error: { code: string; message: string } };
+    expect(body.error.code).toBe("bad_request");
+  });
+
+  test("returns 400 when limit is a non-numeric word", async () => {
+    const req = new Request("http://x/v1/metrics/history?metric=cpu_usage&limit=xyz");
+    const res = await getMetricHistory(req, deps);
+    expect(res.status).toBe(400);
+    const body = await res.json() as unknown as { error: { code: string; message: string } };
+    expect(body.error.code).toBe("bad_request");
+  });
+
+  test("returns 400 when limit is negative", async () => {
+    const req = new Request("http://x/v1/metrics/history?metric=cpu_usage&limit=-5");
+    const res = await getMetricHistory(req, deps);
+    expect(res.status).toBe(400);
+    const body = await res.json() as unknown as { error: { code: string; message: string } };
+    expect(body.error.code).toBe("bad_request");
+  });
+
+  test("returns 400 when limit is zero", async () => {
+    const req = new Request("http://x/v1/metrics/history?metric=cpu_usage&limit=0");
+    const res = await getMetricHistory(req, deps);
+    expect(res.status).toBe(400);
+    const body = await res.json() as unknown as { error: { code: string; message: string } };
+    expect(body.error.code).toBe("bad_request");
+  });
+
+  test("returns 400 when limit is empty string", async () => {
+    const req = new Request("http://x/v1/metrics/history?metric=cpu_usage&limit=");
+    const res = await getMetricHistory(req, deps);
+    expect(res.status).toBe(400);
+    const body = await res.json() as unknown as { error: { code: string; message: string } };
+    expect(body.error.code).toBe("bad_request");
+  });
+
+  test("accepts limit=1 (minimum positive)", async () => {
+    const req = new Request("http://x/v1/metrics/history?metric=cpu_usage&limit=1");
+    const res = await getMetricHistory(req, deps);
+    expect(res.status).toBe(200);
+    const body = await res.json() as unknown as { items: unknown[]; next_cursor: string | null };
+    expect(Array.isArray(body.items)).toBe(true);
+  });
+
+  test("uses default limit of 1000 when limit is omitted", async () => {
+    const req = new Request("http://x/v1/metrics/history?metric=cpu_usage");
+    const res = await getMetricHistory(req, deps);
+    expect(res.status).toBe(200);
+    const body = await res.json() as unknown as { items: unknown[]; next_cursor: string | null };
+    expect(Array.isArray(body.items)).toBe(true);
   });
 });
