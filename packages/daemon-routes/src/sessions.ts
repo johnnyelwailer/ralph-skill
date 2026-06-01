@@ -6,6 +6,7 @@ import {
   createSessionHandler,
   deleteSessionHandler,
   deleteSessionQueueItemHandler,
+  getNextTurnHandler,
   getSessionHandler,
   getSessionMetricsHandler,
   listSessionQueueHandler,
@@ -88,6 +89,13 @@ export function handleSessions(req: Request, deps: SessionsDeps, pathname: strin
   if (metricsMatch) {
     if (req.method !== "GET") return methodNotAllowed();
     return getSessionMetricsHandler(metricsMatch[1]!, deps);
+  }
+
+  // GET /v1/sessions/:id/next
+  const nextMatch = pathname.match(/^\/v1\/sessions\/([^/?#]+)\/next$/);
+  if (nextMatch) {
+    if (req.method !== "GET") return methodNotAllowed();
+    return getNextTurnHandler(nextMatch[1]!, deps);
   }
 
   // GET /v1/sessions/:id

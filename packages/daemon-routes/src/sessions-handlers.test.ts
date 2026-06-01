@@ -8,6 +8,7 @@ import {
   listSessionsHandler,
   getSessionHandler,
   getSessionMetricsHandler,
+  getNextTurnHandler,
   deleteSessionHandler,
   resumeSessionHandler,
   pauseSessionHandler,
@@ -1401,5 +1402,301 @@ describe("getSessionMetricsHandler", () => {
     const body = await resJson(res);
     expect(body.metrics).toHaveLength(1);
     expect(body.metrics[0]?.value).toBe(1.0);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────
+// getNextTurnHandler
+// ─────────────────────────────────────────────────────────────────
+
+describe("getNextTurnHandler", () => {
+  let dir: string;
+  let workflowsDir: string;
+  let deps: SessionsDeps;
+  let sessionId: string;
+  let projectId: string;
+
+  beforeEach(async () => {
+    dir = mkdtempSync(join(tmpdir(), "aloop-session-next-"));
+    workflowsDir = mkdtempSync(join(tmpdir(), "aloop-workflows-next-"));
+    deps = makeDeps(dir, workflowsDir);
+    projectId = deps.projects.create({ absPath: join(dir, "proj1") }).id;
+    const { mkdirSync, writeFileSync } = await import("node:fs");
+    mkdirSync(join(workflowsDir, "aloop/workflows"), { recursive: true });
+    mkdirSync(`${dir}/sessions`, { recursive: true });
+  });
+
+  afterEach(() => {
+    const reg = deps.sessions as unknown as { _db: { close(): void } };
+    reg._db?.close();
+    rmSync(dir, { recursive: true, force: true });
+    rmSync(workflowsDir, { recursive: true, force: true });
+  });
+
+  test("returns 404 when session does not exist", async () => {
+    const res = getNextTurnHandler("nonexistent-id", deps);
+    expect(res.status).toBe(404);
+    const body = await resJson(res);
+    expect(body.error.code).toBe("session_not_found");
+  });
+
+  test("returns 409 when session is completed", async () => {
+    const id = deps.sessions.create({
+      projectId,
+      kind: "standalone",
+      workflow: "aloop/workflows/test",
+      providerChain: ["provider-1"],
+    }).id;
+    deps.sessions.updateStatus(id, "completed");
+    const res = getNextTurnHandler(id, deps);
+    expect(res.status).toBe(409);
+    const body = await resJson(res);
+    expect(body.error.code).toBe("session_terminated");
+  });
+
+  test("returns 409 when session is failed", async () => {
+    const id = deps.sessions.create({
+      projectId,
+      kind: "standalone",
+      workflow: "aloop/workflows/test",
+      providerChain: ["provider-1"],
+    }).id;
+    deps.sessions.updateStatus(id, "failed");
+    const res = getNextTurnHandler(id, deps);
+    expect(res.status).toBe(409);
+    const body = await resJson(res);
+    expect(body.error.code).toBe("session_terminated");
+  });
+
+  test("returns 409 when session is paused", async () => {
+    const id = deps.sessions.create({
+      projectId,
+      kind: "standalone",
+      workflow: "aloop/workflows/test",
+      providerChain: ["provider-1"],
+    }).id;
+    deps.sessions.updateStatus(id, "paused");
+    const res = getNextTurnHandler(id, deps);
+    expect(res.status).toBe(409);
+    const body = await resJson(res);
+    expect(body.error.code).toBe("session_not_runnable");
+  });
+
+  test("returns 409 when session has no workflow", async () => {
+    const id = deps.sessions.create({
+      projectId,
+      kind: "standalone",
+      workflow: "",
+      providerChain: ["provider-1"],
+    }).id;
+    const res = getNextTurnHandler(id, deps);
+    expect(res.status).toBe(409);
+    const body = await resJson(res);
+    expect(body.error.code).toBe("session_no_workflow");
+  });
+
+  test("returns 409 when workflow-plan.json does not exist", async () => {
+    const { writeFileSync } = await import("node:fs");
+    writeFileSync(
+      join(workflowsDir, "aloop/workflows/test-workflow.yaml"),
+      `on:
+  start:
+    cycle: true
+    pipeline:
+      - agent: plan
+`,
+      "utf-8",
+    );
+    const id = deps.sessions.create({
+      projectId,
+      kind: "standalone",
+      workflow: "aloop/workflows/test-workflow",
+      providerChain: ["provider-1"],
+    }).id;
+    const res = getNextTurnHandler(id, deps);
+    expect(res.status).toBe(409);
+    const body = await resJson(res);
+    expect(body.error.code).toBe("workflow_plan_missing");
+  });
+
+  test("returns 200 with first turn when session is pending and plan exists", async () => {
+    const { writeFileSync, mkdirSync } = await import("node:fs");
+    writeFileSync(
+      join(workflowsDir, "aloop/workflows/test-workflow.yaml"),
+      `on:
+  start:
+    cycle: true
+    pipeline:
+      - agent: plan
+      - agent: review
+`,
+      "utf-8",
+    );
+    const id = deps.sessions.create({
+      projectId,
+      kind: "standalone",
+      workflow: "aloop/workflows/test-workflow",
+      providerChain: ["opencode"],
+    }).id;
+    mkdirSync(`${dir}/${id}`, { recursive: true });
+    writeFileSync(
+      `${dir}/${id}/workflow-plan.json`,
+      JSON.stringify({
+        _v: 1,
+        workflow: "aloop/workflows/test-workflow",
+        version: 1,
+        handlers: {
+          start: {
+            cycle: true,
+            pipeline: [
+              { kind: "agent", ref: "PROMPT_plan.md" },
+              { kind: "agent", ref: "PROMPT_review.md" },
+            ],
+          },
+        },
+      }),
+      "utf-8",
+    );
+    const res = getNextTurnHandler(id, deps);
+    expect(res.status).toBe(200);
+    const body = await resJson(res);
+    expect(body.session_id).toBe(id);
+    expect(body.phase).toBe("PROMPT_plan.md");
+    expect(body.step_kind).toBe("agent");
+    expect(body.cycle_position).toBe(0);
+    expect(body.cycle_length).toBe(2);
+    expect(body.done).toBe(false);
+    expect(body.turn_id).toMatch(/^turn_\d+_/);
+    expect(body.provider_chain).toEqual(["opencode"]);
+  });
+
+  test("returns 200 with second turn when current_phase is set to first ref", async () => {
+    const { writeFileSync, mkdirSync } = await import("node:fs");
+    writeFileSync(
+      join(workflowsDir, "aloop/workflows/test-workflow.yaml"),
+      `on:
+  start:
+    cycle: true
+    pipeline:
+      - agent: plan
+      - agent: review
+`,
+      "utf-8",
+    );
+    const id = deps.sessions.create({
+      projectId,
+      kind: "standalone",
+      workflow: "aloop/workflows/test-workflow",
+      providerChain: ["opencode"],
+    }).id;
+    mkdirSync(`${dir}/${id}`, { recursive: true });
+    writeFileSync(
+      `${dir}/${id}/workflow-plan.json`,
+      JSON.stringify({
+        _v: 1,
+        workflow: "aloop/workflows/test-workflow",
+        version: 1,
+        handlers: {
+          start: {
+            cycle: true,
+            pipeline: [
+              { kind: "agent", ref: "PROMPT_plan.md" },
+              { kind: "agent", ref: "PROMPT_review.md" },
+            ],
+          },
+        },
+      }),
+      "utf-8",
+    );
+    deps.sessions.updatePhase(id, "PROMPT_plan.md", null);
+    const res = getNextTurnHandler(id, deps);
+    expect(res.status).toBe(200);
+    const body = await resJson(res);
+    expect(body.phase).toBe("PROMPT_review.md");
+    expect(body.cycle_position).toBe(1);
+    expect(body.done).toBe(false);
+  });
+
+  test("returns done=true when at end of cycle", async () => {
+    const { writeFileSync, mkdirSync } = await import("node:fs");
+    writeFileSync(
+      join(workflowsDir, "aloop/workflows/test-workflow.yaml"),
+      `on:
+  start:
+    cycle: true
+    pipeline:
+      - agent: plan
+`,
+      "utf-8",
+    );
+    const id = deps.sessions.create({
+      projectId,
+      kind: "standalone",
+      workflow: "aloop/workflows/test-workflow",
+      providerChain: ["opencode"],
+    }).id;
+    mkdirSync(`${dir}/${id}`, { recursive: true });
+    writeFileSync(
+      `${dir}/${id}/workflow-plan.json`,
+      JSON.stringify({
+        _v: 1,
+        workflow: "aloop/workflows/test-workflow",
+        version: 1,
+        handlers: {
+          start: {
+            cycle: true,
+            pipeline: [
+              { kind: "agent", ref: "PROMPT_plan.md" },
+            ],
+          },
+        },
+      }),
+      "utf-8",
+    );
+    deps.sessions.updatePhase(id, "PROMPT_plan.md", null);
+    const res = getNextTurnHandler(id, deps);
+    expect(res.status).toBe(200);
+    const body = await resJson(res);
+    expect(body.status).toBe("completed");
+    expect(body.done).toBe(true);
+  });
+
+  test("transitions pending session to running when first turn is requested", async () => {
+    const { writeFileSync, mkdirSync } = await import("node:fs");
+    writeFileSync(
+      join(workflowsDir, "aloop/workflows/test-workflow.yaml"),
+      `on:
+  start:
+    cycle: true
+    pipeline:
+      - agent: plan
+`,
+      "utf-8",
+    );
+    const id = deps.sessions.create({
+      projectId,
+      kind: "standalone",
+      workflow: "aloop/workflows/test-workflow",
+      providerChain: ["opencode"],
+    }).id;
+    mkdirSync(`${dir}/${id}`, { recursive: true });
+    writeFileSync(
+      `${dir}/${id}/workflow-plan.json`,
+      JSON.stringify({
+        _v: 1,
+        workflow: "aloop/workflows/test-workflow",
+        version: 1,
+        handlers: {
+          start: {
+            cycle: true,
+            pipeline: [{ kind: "agent", ref: "PROMPT_plan.md" }],
+          },
+        },
+      }),
+      "utf-8",
+    );
+    expect(deps.sessions.get(id)!.status).toBe("pending");
+    getNextTurnHandler(id, deps);
+    expect(deps.sessions.get(id)!.status).toBe("running");
   });
 });

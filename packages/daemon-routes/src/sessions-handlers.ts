@@ -2,6 +2,7 @@ import { badRequest, errorResponse, jsonResponse, methodNotAllowed, parseJsonBod
 import type { EventWriter, ProjectRegistry, SessionFilter, SessionKind, SessionRegistry, SessionStatus } from "@aloop/state-sqlite";
 import { compileWorkflowFromFile } from "@aloop/core/workflow/compile";
 import { join } from "node:path";
+import { existsSync, readFileSync } from "node:fs";
 
 export type SessionsDeps = {
   readonly sessions: SessionRegistry;
@@ -301,6 +302,147 @@ export function unpauseSessionHandler(id: string, deps: SessionsDeps): Response 
     emitSessionUpdate(deps.events, updated);
   }
   return jsonResponse(200, sessionResponse(updated));
+}
+
+// ── GET /v1/sessions/:id/next ────────────────────────────────────────────────
+
+type WorkflowPlanJson = {
+  readonly _v: number;
+  readonly workflow: string;
+  readonly version: number;
+  readonly handlers: Readonly<Record<string, {
+    readonly cycle: boolean;
+    readonly pipeline: readonly { readonly kind: string; readonly ref: string }[];
+    readonly finalizer?: readonly { readonly kind: string; readonly ref: string }[];
+    readonly transitions?: Readonly<Record<string, { readonly type: string; readonly target?: string }>>;
+  }>>;
+};
+
+export function getNextTurnHandler(id: string, deps: SessionsDeps): Response {
+  const session = deps.sessions.get(id);
+  if (!session) {
+    return errorResponse(404, "session_not_found", `session not found: ${id}`, { id });
+  }
+
+  const terminal = ["completed", "failed", "archived"];
+  if (terminal.includes(session.status)) {
+    return errorResponse(409, "session_terminated", `cannot get next turn for session in status: ${session.status}`, { id, status: session.status });
+  }
+
+  if (session.status === "paused" || session.status === "stopped") {
+    return errorResponse(409, "session_not_runnable", `cannot get next turn for session in status: ${session.status}`, { id, status: session.status });
+  }
+
+  if (!session.workflow) {
+    return errorResponse(409, "session_no_workflow", "session has no workflow configured", { id });
+  }
+
+  const sessionsDir = typeof deps.sessionsDir === "function" ? deps.sessionsDir() : deps.sessionsDir;
+  const sessionDir = `${sessionsDir}/${session.id}`;
+  const planPath = `${sessionDir}/workflow-plan.json`;
+
+  if (!existsSync(planPath)) {
+    return errorResponse(409, "workflow_plan_missing", `workflow-plan.json not found for session: ${id}. Call POST /v1/sessions/${id}/recompile first.`, { id });
+  }
+
+  let plan: WorkflowPlanJson;
+  try {
+    plan = JSON.parse(readFileSync(planPath, "utf-8")) as WorkflowPlanJson;
+  } catch {
+    return errorResponse(500, "workflow_plan_read_failed", `failed to read workflow-plan.json for session: ${id}`, { id });
+  }
+
+  const startHandler = plan.handlers["start"];
+  if (!startHandler) {
+    return errorResponse(422, "workflow_plan_invalid", "workflow-plan.json has no 'start' handler", { id });
+  }
+
+  const cycle = startHandler.pipeline;
+  if (!cycle || cycle.length === 0) {
+    const updated = deps.sessions.updateStatus(id, "completed");
+    if (deps.events) {
+      void deps.events.append("session.event", {
+        session_id: id,
+        previous_status: session.status,
+        status: "completed",
+        kind: session.kind,
+        workflow: session.workflow,
+        project_id: session.projectId,
+      });
+      emitSessionUpdate(deps.events, updated);
+    }
+    return jsonResponse(200, { _v: 1, session_id: id, status: "completed", done: true });
+  }
+
+  let cyclePosition = 0;
+  if (session.currentPhase) {
+    const idx = cycle.findIndex((step) => step.ref === session.currentPhase);
+    if (idx >= 0) {
+      cyclePosition = idx + 1;
+    }
+  }
+
+  if (cyclePosition >= cycle.length) {
+    const updated = deps.sessions.updateStatus(id, "completed");
+    if (deps.events) {
+      void deps.events.append("session.event", {
+        session_id: id,
+        previous_status: session.status,
+        status: "completed",
+        kind: session.kind,
+        workflow: session.workflow,
+        project_id: session.projectId,
+      });
+      emitSessionUpdate(deps.events, updated);
+    }
+    return jsonResponse(200, { _v: 1, session_id: id, status: "completed", done: true });
+  }
+
+  const step = cycle[cyclePosition]!;
+  const turnId = `turn_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+
+  if (session.status === "pending") {
+    const updated = deps.sessions.updateStatus(id, "running", { startedAt: new Date().toISOString() });
+    if (deps.events) {
+      void deps.events.append("session.event", {
+        session_id: id,
+        previous_status: "pending",
+        status: "running",
+        kind: session.kind,
+        workflow: session.workflow,
+        project_id: session.projectId,
+      });
+    }
+  }
+
+  deps.sessions.updatePhase(id, step.ref, null);
+
+  const project = deps.projects.get(session.projectId);
+  const templatesDir = project ? `${project.absPath}/aloop/templates` : deps.workflowsDir;
+
+  if (deps.events) {
+    void deps.events.append("session.turn.started", {
+      session_id: id,
+      turn_id: turnId,
+      phase: step.ref,
+      kind: step.kind,
+      cycle_position: cyclePosition,
+      provider_chain: session.providerChain,
+    });
+  }
+
+  return jsonResponse(200, {
+    _v: 1,
+    session_id: id,
+    turn_id: turnId,
+    phase: step.ref,
+    step_kind: step.kind,
+    cycle_position: cyclePosition,
+    cycle_length: cycle.length,
+    templates_dir: templatesDir,
+    provider_chain: session.providerChain,
+    done: false,
+  });
 }
 
 // ── POST /v1/sessions/:id/recompile ──────────────────────────────────────────
