@@ -1,7 +1,7 @@
 import { createReadStream, existsSync } from "node:fs";
 import { createInterface } from "node:readline";
 import { errorResponse, jsonResponse, methodNotAllowed } from "./http-helpers.ts";
-import type { SessionsDeps } from "./sessions-handlers.ts";
+import type { SessionsDeps, RunTurnDeps } from "./sessions-handlers.ts";
 import {
   createSessionHandler,
   deleteSessionHandler,
@@ -14,6 +14,7 @@ import {
   pauseSessionHandler,
   recompileSessionHandler,
   resumeSessionHandler,
+  runTurnHandler,
   steerSessionHandler,
   unpauseSessionHandler,
 } from "./sessions-handlers.ts";
@@ -89,6 +90,13 @@ export function handleSessions(req: Request, deps: SessionsDeps, pathname: strin
   if (metricsMatch) {
     if (req.method !== "GET") return methodNotAllowed();
     return getSessionMetricsHandler(metricsMatch[1]!, deps);
+  }
+
+  // POST /v1/sessions/:id/run-turn
+  const runTurnMatch = pathname.match(/^\/v1\/sessions\/([^/?#]+)\/run-turn$/);
+  if (runTurnMatch) {
+    if (req.method !== "POST") return methodNotAllowed();
+    return runTurnHandler(runTurnMatch[1]!, req, deps as RunTurnDeps);
   }
 
   // GET /v1/sessions/:id/next

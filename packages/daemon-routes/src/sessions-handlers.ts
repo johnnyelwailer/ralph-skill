@@ -1,6 +1,8 @@
 import { badRequest, errorResponse, jsonResponse, methodNotAllowed, parseJsonBody } from "./http-helpers";
-import type { EventWriter, ProjectRegistry, SessionFilter, SessionKind, SessionRegistry, SessionStatus } from "@aloop/state-sqlite";
+import type { EventWriter, ProjectRegistry, SessionFilter, SessionKind, SessionRegistry, SessionStatus, TurnRegistry } from "@aloop/state-sqlite";
 import { compileWorkflowFromFile } from "@aloop/core/workflow/compile";
+import type { SchedulerService } from "@aloop/scheduler";
+import type { ProviderRegistry } from "@aloop/provider";
 import { join } from "node:path";
 import { existsSync, readFileSync } from "node:fs";
 
@@ -10,6 +12,20 @@ export type SessionsDeps = {
   readonly sessionsDir: string | (() => string);
   readonly events?: EventWriter;
   readonly workflowsDir: string;
+  readonly turns?: TurnRegistry;
+  readonly scheduler?: SchedulerService;
+  readonly providerRegistry?: ProviderRegistry;
+};
+
+export type RunTurnDeps = {
+  readonly sessions: SessionRegistry;
+  readonly projects: ProjectRegistry;
+  readonly sessionsDir: string | (() => string);
+  readonly events?: EventWriter;
+  readonly workflowsDir: string;
+  readonly turns: TurnRegistry;
+  readonly scheduler: SchedulerService;
+  readonly providerRegistry: ProviderRegistry;
 };
 
 const VALID_KINDS = ["standalone", "orchestrator", "child"] as const;
@@ -442,6 +458,332 @@ export function getNextTurnHandler(id: string, deps: SessionsDeps): Response {
     templates_dir: templatesDir,
     provider_chain: session.providerChain,
     done: false,
+  });
+}
+
+// ── POST /v1/sessions/:id/run-turn ───────────────────────────────────────────
+
+export async function runTurnHandler(
+  id: string,
+  req: Request,
+  deps: RunTurnDeps,
+): Promise<Response> {
+  const session = deps.sessions.get(id);
+  if (!session) {
+    return errorResponse(404, "session_not_found", `session not found: ${id}`, { id });
+  }
+
+  const terminal = ["completed", "failed", "archived"];
+  if (terminal.includes(session.status)) {
+    return errorResponse(409, "session_terminated", `cannot run turn for session in status: ${session.status}`, { id, status: session.status });
+  }
+
+  if (session.status === "paused" || session.status === "stopped") {
+    return errorResponse(409, "session_not_runnable", `cannot run turn for session in status: ${session.status}`, { id, status: session.status });
+  }
+
+  if (!session.workflow) {
+    return errorResponse(409, "session_no_workflow", "session has no workflow configured", { id });
+  }
+
+  const sessionsDir = typeof deps.sessionsDir === "function" ? deps.sessionsDir() : deps.sessionsDir;
+  const sessionDir = `${sessionsDir}/${session.id}`;
+  const planPath = `${sessionDir}/workflow-plan.json`;
+
+  if (!existsSync(planPath)) {
+    return errorResponse(409, "workflow_plan_missing", `workflow-plan.json not found for session: ${id}. Call POST /v1/sessions/${id}/recompile first.`, { id });
+  }
+
+  let plan: WorkflowPlanJson;
+  try {
+    plan = JSON.parse(readFileSync(planPath, "utf-8")) as WorkflowPlanJson;
+  } catch {
+    return errorResponse(500, "workflow_plan_read_failed", `failed to read workflow-plan.json for session: ${id}`, { id });
+  }
+
+  const startHandler = plan.handlers["start"];
+  if (!startHandler) {
+    return errorResponse(422, "workflow_plan_invalid", "workflow-plan.json has no 'start' handler", { id });
+  }
+
+  const cycle = startHandler.pipeline;
+  if (!cycle || cycle.length === 0) {
+    const updated = deps.sessions.updateStatus(id, "completed");
+    if (deps.events) {
+      void deps.events.append("session.event", {
+        session_id: id,
+        previous_status: session.status,
+        status: "completed",
+        kind: session.kind,
+        workflow: session.workflow,
+        project_id: session.projectId,
+      });
+      emitSessionUpdate(deps.events, updated);
+    }
+    return jsonResponse(200, { _v: 1, session_id: id, status: "completed", done: true });
+  }
+
+  let cyclePosition = 0;
+  if (session.currentPhase) {
+    const idx = cycle.findIndex((step) => step.ref === session.currentPhase);
+    if (idx >= 0) {
+      cyclePosition = idx + 1;
+    }
+  }
+
+  if (cyclePosition >= cycle.length) {
+    const updated = deps.sessions.updateStatus(id, "completed");
+    if (deps.events) {
+      void deps.events.append("session.event", {
+        session_id: id,
+        previous_status: session.status,
+        status: "completed",
+        kind: session.kind,
+        workflow: session.workflow,
+        project_id: session.projectId,
+      });
+      emitSessionUpdate(deps.events, updated);
+    }
+    return jsonResponse(200, { _v: 1, session_id: id, status: "completed", done: true });
+  }
+
+  const step = cycle[cyclePosition]!;
+  const turnId = `turn_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  let currentStatus = session.status;
+
+  if (session.status === "pending") {
+    deps.sessions.updateStatus(id, "running", { startedAt: new Date().toISOString() });
+    currentStatus = "running";
+    if (deps.events) {
+      void deps.events.append("session.event", {
+        session_id: id,
+        previous_status: "pending",
+        status: "running",
+        kind: session.kind,
+        workflow: session.workflow,
+        project_id: session.projectId,
+      });
+    }
+  }
+
+  deps.sessions.updatePhase(id, step.ref, null);
+
+  const project = deps.projects.get(session.projectId);
+  const templatesDir = project ? `${project.absPath}/aloop/templates` : deps.workflowsDir;
+
+  if (deps.events) {
+    void deps.events.append("session.turn.started", {
+      session_id: id,
+      turn_id: turnId,
+      phase: step.ref,
+      kind: step.kind,
+      cycle_position: cyclePosition,
+      provider_chain: session.providerChain,
+    });
+  }
+
+  if (step.kind === "exec") {
+    const updated = deps.sessions.updateStatus(id, "completed");
+    currentStatus = "completed";
+    if (deps.events) {
+      void deps.events.append("session.event", {
+        session_id: id,
+        previous_status: currentStatus,
+        status: "completed",
+        kind: session.kind,
+        workflow: session.workflow,
+        project_id: session.projectId,
+      });
+      emitSessionUpdate(deps.events, updated);
+    }
+    return jsonResponse(200, {
+      _v: 1,
+      session_id: id,
+      turn_id: turnId,
+      status: "completed",
+      phase: step.ref,
+      done: true,
+    });
+  }
+
+  const providerId = session.providerChain[0] ?? "opencode";
+  const decision = await deps.scheduler.acquirePermit({
+    sessionId: id,
+    projectId: session.projectId,
+    providerCandidate: providerId,
+  });
+
+  if (!decision.granted) {
+    if (session.status === "pending") {
+      deps.sessions.updateStatus(id, "pending");
+    }
+    return jsonResponse(200, {
+      _v: 1,
+      granted: false,
+      reason: decision.reason,
+      gate: decision.gate,
+      details: decision.details,
+    });
+  }
+
+  const permit = decision.permit;
+  const templatePath = `${templatesDir}/${step.ref}`;
+
+  if (!existsSync(templatePath)) {
+    return errorResponse(422, "prompt_template_missing", `prompt template not found: ${templatePath}`, { template: step.ref });
+  }
+
+  let prompt: string;
+  try {
+    prompt = readFileSync(templatePath, "utf-8");
+  } catch {
+    return errorResponse(500, "prompt_template_read_failed", `failed to read prompt template: ${templatePath}`, { template: step.ref });
+  }
+
+  const turn = deps.turns.create({ sessionId: id, turnId, sequence: 0 });
+
+  const adapter = deps.providerRegistry.get(permit.providerId);
+  if (!adapter) {
+    return errorResponse(500, "provider_not_found", `provider adapter not found: ${permit.providerId}`, { provider_id: permit.providerId });
+  }
+
+  const encoder = new TextEncoder();
+  let sequence = 0;
+  let tokensIn = 0;
+  let tokensOut = 0;
+  let costUsd = 0;
+
+  const stream = new ReadableStream<Uint8Array>({
+    async start(controller) {
+      const writeSSE = (data: unknown): void => {
+        const line = `data: ${JSON.stringify(data)}\n\n`;
+        controller.enqueue(encoder.encode(line));
+      };
+
+      writeSSE({ session_id: id, turn_id: turnId, type: "start" });
+
+      try {
+        const turnInput = {
+          sessionId: id,
+          authHandle: `auth_${id}`,
+          providerRef: permit.providerId,
+          prompt,
+          cwd: project?.absPath ?? templatesDir,
+        };
+
+        for await (const chunk of adapter.sendTurn(turnInput)) {
+          if (chunk.type === "usage") {
+            tokensIn += chunk.content.tokensIn ?? 0;
+            tokensOut += chunk.content.tokensOut ?? 0;
+            costUsd += chunk.content.costUsd ?? 0;
+          }
+
+          const chunkData = {
+            session_id: id,
+            turn_id: turnId,
+            sequence,
+            type: chunk.type,
+            content: chunk.content,
+            final: false,
+          };
+
+          if (deps.events) {
+            void deps.events.append("agent.chunk", chunkData);
+          }
+
+          writeSSE(chunkData);
+          sequence++;
+        }
+
+        const finalData = {
+          session_id: id,
+          turn_id: turnId,
+          sequence,
+          type: "usage",
+          content: { tokens: tokensIn + tokensOut, cost_usd: costUsd },
+          final: true,
+        };
+
+        if (deps.events) {
+          void deps.events.append("agent.chunk", finalData);
+        }
+
+        writeSSE(finalData);
+
+        deps.turns.update(turn.id, {
+          endedAt: new Date().toISOString(),
+          tokensIn,
+          tokensOut,
+          costUsd,
+        });
+
+        await deps.scheduler.releasePermit(permit.id);
+
+        const nextPosition = cyclePosition + 1;
+        let nextPhase: string | null = null;
+
+        if (nextPosition < cycle.length) {
+          nextPhase = cycle[nextPosition]!.ref;
+        }
+
+        if (nextPhase === null) {
+          const updated = deps.sessions.updateStatus(id, "completed");
+          currentStatus = "completed";
+          if (deps.events) {
+            void deps.events.append("session.event", {
+              session_id: id,
+              previous_status: currentStatus,
+              status: "completed",
+              kind: session.kind,
+              workflow: session.workflow,
+              project_id: session.projectId,
+            });
+            emitSessionUpdate(deps.events, updated);
+          }
+          writeSSE({ session_id: id, turn_id: turnId, type: "end", status: "completed" });
+        } else {
+          deps.sessions.updatePhase(id, nextPhase, permit.providerId);
+          writeSSE({ session_id: id, turn_id: turnId, type: "end", status: "running", next_phase: nextPhase });
+        }
+      } catch (err) {
+        const errorMsg = err instanceof Error ? err.message : String(err);
+        writeSSE({ session_id: id, turn_id: turnId, type: "error", error: errorMsg });
+
+        deps.turns.update(turn.id, {
+          endedAt: new Date().toISOString(),
+          tokensIn,
+          tokensOut,
+          costUsd,
+        });
+
+        await deps.scheduler.releasePermit(permit.id);
+
+        const updated = deps.sessions.updateStatus(id, "failed");
+        if (deps.events) {
+          void deps.events.append("session.event", {
+            session_id: id,
+            previous_status: currentStatus,
+            status: "failed",
+            kind: session.kind,
+            workflow: session.workflow,
+            project_id: session.projectId,
+          });
+          emitSessionUpdate(deps.events, updated);
+        }
+        writeSSE({ session_id: id, turn_id: turnId, type: "end", status: "failed", error: errorMsg });
+      }
+
+      controller.close();
+    },
+  });
+
+  return new Response(stream, {
+    status: 200,
+    headers: {
+      "content-type": "text/event-stream",
+      "cache-control": "no-cache",
+      "connection": "keep-alive",
+    },
   });
 }
 
