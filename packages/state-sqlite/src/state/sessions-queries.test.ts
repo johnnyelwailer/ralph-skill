@@ -9,6 +9,7 @@ import {
   deleteSession,
   getQueueItem,
   getSessionById,
+  getSessionMetrics,
   insertQueueItem,
   insertSession,
   listQueueItems,
@@ -397,5 +398,118 @@ describe("sessions-queries", () => {
 
   test("deleteQueueItem is safe on non-existent id", () => {
     expect(() => deleteQueueItem(db, "q_none")).not.toThrow();
+  });
+
+  // ── getSessionMetrics ──────────────────────────────────────────────────────
+  // Per docs/spec/metrics.md §Storage: session_metrics holds daemon-computed
+  // current-value rows keyed by (session_id, metric_name). getSessionMetrics
+  // returns the rows for a single session mapped to the public {name, value,
+  // updatedAt} envelope, sorted by metric_name.
+
+  test("getSessionMetrics returns empty array for session with no metrics", () => {
+    insertSession(db, makeSession({ id: "s_metrics_empty" }));
+    expect(getSessionMetrics(db, "s_metrics_empty")).toEqual([]);
+  });
+
+  test("getSessionMetrics returns empty array for unknown session id", () => {
+    expect(getSessionMetrics(db, "s_does_not_exist")).toEqual([]);
+  });
+
+  test("getSessionMetrics returns single metric row with mapped field names", () => {
+    insertSession(db, makeSession({ id: "s_metrics_one" }));
+    db.run(
+      `INSERT INTO session_metrics (session_id, metric_name, value, updated_at)
+       VALUES ('s_metrics_one', 'turn_success_rate', 0.85, '2025-06-15T10:30:00.000Z')`,
+    );
+    const metrics = getSessionMetrics(db, "s_metrics_one");
+    expect(metrics).toEqual([
+      {
+        name: "turn_success_rate",
+        value: 0.85,
+        updatedAt: "2025-06-15T10:30:00.000Z",
+      },
+    ]);
+  });
+
+  test("getSessionMetrics returns rows for the requested session only", () => {
+    insertSession(db, makeSession({ id: "s_a" }));
+    insertSession(db, makeSession({ id: "s_b" }));
+    db.run(
+      `INSERT INTO session_metrics (session_id, metric_name, value, updated_at)
+       VALUES ('s_a', 'turn_success_rate', 1.0, '2025-06-15T10:00:00.000Z')`,
+    );
+    db.run(
+      `INSERT INTO session_metrics (session_id, metric_name, value, updated_at)
+       VALUES ('s_b', 'turn_success_rate', 0.5, '2025-06-15T10:00:00.000Z')`,
+    );
+    const a = getSessionMetrics(db, "s_a");
+    const b = getSessionMetrics(db, "s_b");
+    expect(a).toHaveLength(1);
+    expect(a[0]!.value).toBe(1.0);
+    expect(b).toHaveLength(1);
+    expect(b[0]!.value).toBe(0.5);
+  });
+
+  test("getSessionMetrics sorts rows by metric_name ascending", () => {
+    insertSession(db, makeSession({ id: "s_sort" }));
+    db.run(
+      `INSERT INTO session_metrics (session_id, metric_name, value, updated_at)
+       VALUES ('s_sort', 'z_metric', 1, '2025-06-15T10:00:00.000Z')`,
+    );
+    db.run(
+      `INSERT INTO session_metrics (session_id, metric_name, value, updated_at)
+       VALUES ('s_sort', 'a_metric', 2, '2025-06-15T10:00:00.000Z')`,
+    );
+    db.run(
+      `INSERT INTO session_metrics (session_id, metric_name, value, updated_at)
+       VALUES ('s_sort', 'm_metric', 3, '2025-06-15T10:00:00.000Z')`,
+    );
+    const metrics = getSessionMetrics(db, "s_sort");
+    expect(metrics.map((m) => m.name)).toEqual([
+      "a_metric",
+      "m_metric",
+      "z_metric",
+    ]);
+  });
+
+  test("getSessionMetrics handles the documented session metric catalog", () => {
+    // Per docs/spec/metrics.md the session-level metric catalog includes
+    // burn_rate.tokens_since_last_commit, turn_success_rate, and
+    // iteration_stuck_count. Verify all three round-trip through correctly.
+    insertSession(db, makeSession({ id: "s_all_metrics" }));
+    db.run(
+      `INSERT INTO session_metrics (session_id, metric_name, value, updated_at)
+       VALUES ('s_all_metrics', 'burn_rate.tokens_since_last_commit', 1234.5, '2025-06-15T10:00:00.000Z')`,
+    );
+    db.run(
+      `INSERT INTO session_metrics (session_id, metric_name, value, updated_at)
+       VALUES ('s_all_metrics', 'turn_success_rate', 0.9, '2025-06-15T10:01:00.000Z')`,
+    );
+    db.run(
+      `INSERT INTO session_metrics (session_id, metric_name, value, updated_at)
+       VALUES ('s_all_metrics', 'iteration_stuck_count', 2, '2025-06-15T10:02:00.000Z')`,
+    );
+    const metrics = getSessionMetrics(db, "s_all_metrics");
+    expect(metrics).toHaveLength(3);
+    const byName = Object.fromEntries(metrics.map((m) => [m.name, m]));
+    expect(byName["burn_rate.tokens_since_last_commit"]?.value).toBe(1234.5);
+    expect(byName["turn_success_rate"]?.value).toBe(0.9);
+    expect(byName["iteration_stuck_count"]?.value).toBe(2);
+    expect(byName["turn_success_rate"]?.updatedAt).toBe(
+      "2025-06-15T10:01:00.000Z",
+    );
+  });
+
+  test("getSessionMetrics does not expose internal column names", () => {
+    insertSession(db, makeSession({ id: "s_envelope" }));
+    db.run(
+      `INSERT INTO session_metrics (session_id, metric_name, value, updated_at)
+       VALUES ('s_envelope', 'turn_success_rate', 0.5, '2025-06-15T10:00:00.000Z')`,
+    );
+    const row = getSessionMetrics(db, "s_envelope")[0]!;
+    // Public envelope must be {name, value, updatedAt} — no snake_case leakage.
+    expect(Object.keys(row).sort()).toEqual(["name", "updatedAt", "value"]);
+    expect("session_id" in row).toBe(false);
+    expect("metric_name" in row).toBe(false);
   });
 });
