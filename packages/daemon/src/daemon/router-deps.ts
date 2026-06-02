@@ -97,6 +97,7 @@ export function makeRouterDeps(input: MakeRouterDepsInput): RouterDeps {
           turns: input.turnRegistry,
           scheduler: input.scheduler,
           providerRegistry: input.providerRegistry,
+          events: input.events,
         },
         pathname,
       ),

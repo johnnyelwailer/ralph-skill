@@ -16,6 +16,42 @@ function makeEvent(topic: string, data: Record<string, unknown>, id: string) {
   return JSON.stringify({ _v: 1, id, timestamp: new Date().toISOString(), topic, data });
 }
 
+/**
+ * Read the SSE stream until either the test sees a matching predicate, or
+ * the timeout fires.  The handler keeps the stream open for live tailing, so
+ * `res.text()` is not appropriate — tests must read chunk-by-chunk and cancel.
+ */
+async function readSseFor(
+  res: Response,
+  ms: number,
+  predicate?: (chunk: string) => boolean,
+): Promise<string> {
+  if (!res.body) return "";
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buf = "";
+  const deadline = Date.now() + ms;
+  try {
+    while (Date.now() < deadline) {
+      const remaining = Math.max(1, deadline - Date.now());
+      const timeout = new Promise<{ value: undefined; done: true }>((r) =>
+        setTimeout(() => r({ value: undefined, done: true }), remaining),
+      );
+      const next = await Promise.race([reader.read(), timeout]);
+      if (next.done) break;
+      buf += decoder.decode(next.value, { stream: true });
+      if (predicate?.(buf)) break;
+    }
+  } finally {
+    try {
+      await reader.cancel();
+    } catch {
+      // best-effort
+    }
+  }
+  return buf;
+}
+
 describe("handleEvents", () => {
   describe("path / method guard", () => {
     test("returns undefined for non-/v1/events paths", async () => {
@@ -32,15 +68,19 @@ describe("handleEvents", () => {
   });
 
   describe("empty stream", () => {
-    test("closes stream immediately when no log files exist", async () => {
+    test("keeps the stream open with a connection comment when no log files exist", async () => {
       const base = mkdtempSync(join(tmpdir(), "aloop-events-empty-"));
       const deps = makeDeps(base);
       const req = new Request("http://localhost/v1/events", { method: "GET" });
       const res = await handleEvents(req, deps, "/v1/events");
       expect(res!.status).toBe(200);
-      // Collect the stream
-      const text = await res!.text();
-      expect(text).toBe("");
+      // The handler emits an SSE comment line on connect so the body has at
+      // least one byte; that lets clients (and Bun's fetch) receive headers
+      // immediately instead of waiting for the first event.
+      const text = await readSseFor(res!, 500);
+      expect(text.startsWith(":")).toBe(true);
+      // No real events have been emitted yet, so the topic payload is empty.
+      expect(text).not.toMatch(/^event: /m);
       rmSync(base, { recursive: true, force: true });
     });
   });
@@ -63,7 +103,7 @@ describe("handleEvents", () => {
       expect(res!.status).toBe(200);
       expect(res!.headers.get("content-type")).toBe("text/event-stream");
 
-      const text = await res!.text();
+      const text = await readSseFor(res!, 500);
       expect(text).toContain("id: 1748537600000.000001");
       expect(text).toContain("event: session.update");
       expect(text).toContain("data: ");
@@ -88,7 +128,7 @@ describe("handleEvents", () => {
 
       const req = new Request("http://localhost/v1/events?topics=session.update&session_id=s_topic", { method: "GET" });
       const res = await handleEvents(req, deps, "/v1/events");
-      const text = await res!.text();
+      const text = await readSseFor(res!, 500);
       expect(text).toContain("event: session.update");
       expect(text).not.toContain("scheduler.permit.grant");
 
@@ -109,7 +149,7 @@ describe("handleEvents", () => {
 
       const req = new Request("http://localhost/v1/events?topics=session.*&session_id=s_glob", { method: "GET" });
       const res = await handleEvents(req, deps, "/v1/events");
-      const text = await res!.text();
+      const text = await readSseFor(res!, 500);
       expect(text).toContain("event: session.update");
       expect(text).toContain("event: session.stuck");
       expect(text).not.toContain("provider.health");
@@ -130,7 +170,7 @@ describe("handleEvents", () => {
 
       const req = new Request("http://localhost/v1/events?session_id=s_all", { method: "GET" });
       const res = await handleEvents(req, deps, "/v1/events");
-      const text = await res!.text();
+      const text = await readSseFor(res!, 500);
       expect(text).toContain("session.update");
       expect(text).toContain("provider.health");
 
@@ -153,7 +193,7 @@ describe("handleEvents", () => {
 
       const req = new Request("http://localhost/v1/events?since=1748537600000.000002&session_id=s_since", { method: "GET" });
       const res = await handleEvents(req, deps, "/v1/events");
-      const text = await res!.text();
+      const text = await readSseFor(res!, 500);
       expect(text).toContain("1748537600000.000003");
       expect(text).not.toContain("1748537600000.000001");
       expect(text).not.toContain("1748537600000.000002");
@@ -177,7 +217,7 @@ describe("handleEvents", () => {
         headers: { "Last-Event-ID": "1748537600000.000001" },
       });
       const res = await handleEvents(req, deps, "/v1/events");
-      const text = await res!.text();
+      const text = await readSseFor(res!, 500);
       expect(text).toContain("1748537600000.000002");
       expect(text).not.toContain("1748537600000.000001");
 
@@ -208,7 +248,7 @@ describe("handleEvents", () => {
       // Re-test using session_id + project_id (project_id filters data-level)
       const req = new Request("http://localhost/v1/events?project_id=p_alpha&session_id=s_proj1", { method: "GET" });
       const res = await handleEvents(req, deps, "/v1/events");
-      const text = await res!.text();
+      const text = await readSseFor(res!, 500);
       expect(text).toContain('"session_id":"s_proj1"');
       expect(text).not.toContain('"session_id":"s_proj2"');
 
@@ -232,7 +272,7 @@ describe("handleEvents", () => {
 
       const req = new Request("http://localhost/v1/events?session_id=s_sid1", { method: "GET" });
       const res = await handleEvents(req, deps, "/v1/events");
-      const text = await res!.text();
+      const text = await readSseFor(res!, 500);
       expect(text).toContain('"session_id":"s_sid1"');
       expect(text).not.toContain('"session_id":"s_sid2"');
 
@@ -255,7 +295,7 @@ describe("handleEvents", () => {
 
       const req = new Request("http://localhost/v1/events?session_id=s_mal", { method: "GET" });
       const res = await handleEvents(req, deps, "/v1/events");
-      const text = await res!.text();
+      const text = await readSseFor(res!, 500);
       expect(text).toContain("1748537600000.000001");
       expect(text).toContain("1748537600000.000003");
 
@@ -278,7 +318,7 @@ describe("handleEvents", () => {
 
       const req = new Request("http://localhost/v1/events?session_id=s_noparent", { method: "GET" });
       const res = await handleEvents(req, deps, "/v1/events");
-      const text = await res!.text();
+      const text = await readSseFor(res!, 500);
       expect(text).toContain("1748537600000.000001");
       expect(text).toContain("1748537600000.000002");
 
@@ -315,7 +355,7 @@ describe("handleEvents", () => {
       // Filter ?parent=p_abc should return only events whose parent_session_id === "p_abc"
       const req = new Request("http://localhost/v1/events?session_id=s_child_1&parent=p_abc", { method: "GET" });
       const res = await handleEvents(req, deps, "/v1/events");
-      const text = await res!.text();
+      const text = await readSseFor(res!, 500);
       expect(text).toContain("1748537600000.000001"); // child of p_abc — should be included
       expect(text).not.toContain("1748537600000.000002"); // child of p_xyz — should be excluded
       expect(text).not.toContain("1748537600000.000003"); // no parent_session_id — should be excluded
@@ -340,7 +380,7 @@ describe("handleEvents", () => {
       // ?parent=p_correct should match via parent_session_id, not parent_id
       const req = new Request("http://localhost/v1/events?session_id=s_both&parent=p_correct", { method: "GET" });
       const res = await handleEvents(req, deps, "/v1/events");
-      const text = await res!.text();
+      const text = await readSseFor(res!, 500);
       expect(text).toContain("1748537600000.000001"); // matches via parent_session_id === "p_correct"
 
       rmSync(base, { recursive: true, force: true });
@@ -360,7 +400,7 @@ describe("handleEvents", () => {
 
       const req = new Request("http://localhost/v1/events?session_id=s_none&parent=p_missing", { method: "GET" });
       const res = await handleEvents(req, deps, "/v1/events");
-      const text = await res!.text();
+      const text = await readSseFor(res!, 500);
       expect(text).not.toContain("1748537600000.000001");
       expect(text).not.toContain("1748537600000.000002");
 
@@ -381,7 +421,7 @@ describe("handleEvents", () => {
 
       const req = new Request("http://localhost/v1/events?session_id=s_empty&parent=p_any", { method: "GET" });
       const res = await handleEvents(req, deps, "/v1/events");
-      const text = await res!.text();
+      const text = await readSseFor(res!, 500);
       expect(text).not.toContain("1748537600000.000001");
       expect(text).not.toContain("1748537600000.000002");
 
@@ -405,7 +445,7 @@ describe("handleEvents", () => {
 
       const req = new Request("http://localhost/v1/events?session_id=s_ctid&composer_turn_id=ct_one", { method: "GET" });
       const res = await handleEvents(req, deps, "/v1/events");
-      const text = await res!.text();
+      const text = await readSseFor(res!, 500);
       expect(text).toContain("1748537600000.000001");
       expect(text).not.toContain("1748537600000.000002");
       expect(text).not.toContain("1748537600000.000003");
@@ -427,7 +467,7 @@ describe("handleEvents", () => {
 
       const req = new Request("http://localhost/v1/events?session_id=s_noctid", { method: "GET" });
       const res = await handleEvents(req, deps, "/v1/events");
-      const text = await res!.text();
+      const text = await readSseFor(res!, 500);
       expect(text).toContain("1748537600000.000001");
       expect(text).toContain("1748537600000.000002");
 
@@ -451,7 +491,7 @@ describe("handleEvents", () => {
 
       const req = new Request("http://localhost/v1/events?session_id=s_csrid&control_subagent_run_id=csr_alpha", { method: "GET" });
       const res = await handleEvents(req, deps, "/v1/events");
-      const text = await res!.text();
+      const text = await readSseFor(res!, 500);
       expect(text).toContain("1748537600000.000001");
       expect(text).toContain("1748537600000.000003");
       expect(text).not.toContain("1748537600000.000002");
@@ -473,10 +513,78 @@ describe("handleEvents", () => {
 
       const req = new Request("http://localhost/v1/events?session_id=s_nocsrid", { method: "GET" });
       const res = await handleEvents(req, deps, "/v1/events");
-      const text = await res!.text();
+      const text = await readSseFor(res!, 500);
       expect(text).toContain("1748537600000.000001");
       expect(text).toContain("1748537600000.000002");
 
+      rmSync(base, { recursive: true, force: true });
+    });
+  });
+
+  // ─── live tail: events appended AFTER subscription are streamed ──────────────
+
+  describe("live tail", () => {
+    test("streams events appended to the global log after subscription", async () => {
+      const base = mkdtempSync(join(tmpdir(), "aloop-events-live-tail-"));
+      const deps = makeDeps(base);
+      const req = new Request("http://localhost/v1/events", { method: "GET" });
+      const res = await handleEvents(req, deps, "/v1/events");
+      expect(res!.status).toBe(200);
+
+      // Subscribe first; the file may not exist yet.
+      // Wait long enough for the initial drain to mark position 0.
+      const textPromise = readSseFor(res!, 1500);
+
+      // Give the poller a moment to set up its file watch.
+      await new Promise((r) => setTimeout(r, 50));
+
+      // Now append events to the global log AFTER the subscription started.
+      const logPath = deps.logFile();
+      writeFileSync(
+        logPath,
+        [
+          makeEvent("session.update", { session_id: "s_live", status: "running" }, "1748537600000.000010"),
+          makeEvent("session.turn.started", { session_id: "s_live", turn_id: "t1" }, "1748537600000.000011"),
+        ].join("\n") + "\n",
+      );
+
+      const text = await textPromise;
+      expect(text).toContain("event: session.update");
+      expect(text).toContain("event: session.turn.started");
+      expect(text).toContain("1748537600000.000010");
+      expect(text).toContain("1748537600000.000011");
+
+      rmSync(base, { recursive: true, force: true });
+    });
+
+    test("stream closes when client aborts", async () => {
+      const base = mkdtempSync(join(tmpdir(), "aloop-events-abort-"));
+      const deps = makeDeps(base);
+      writeFileSync(
+        deps.logFile(),
+        makeEvent("session.update", { session_id: "s_abort" }, "1748537600000.000001") + "\n",
+      );
+
+      const controller = new AbortController();
+      const req = new Request("http://localhost/v1/events", {
+        method: "GET",
+        signal: controller.signal,
+      });
+      const res = await handleEvents(req, deps, "/v1/events");
+      expect(res!.status).toBe(200);
+
+      // Read a bit, then abort.
+      const reader = res!.body!.getReader();
+      const first = await reader.read();
+      expect(first.done).toBe(false);
+
+      controller.abort();
+      try {
+        await reader.cancel();
+      } catch {
+        // best-effort
+      }
+      // Subsequent read should not hang; the stream closes on abort.
       rmSync(base, { recursive: true, force: true });
     });
   });
