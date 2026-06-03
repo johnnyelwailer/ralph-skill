@@ -13,6 +13,11 @@ export {
   type CreateBuiltinAdapterOptions,
 } from "./builtin-adapter.ts";
 export {
+  TrackerRegistry,
+  type CreateTrackerRegistryOptions,
+  type TrackerFactory,
+} from "./registry.ts";
+export {
   createGitHubAdapter,
   type CreateGitHubAdapterOptions,
 } from "./github/adapter.ts";
