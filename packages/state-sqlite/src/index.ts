@@ -87,6 +87,14 @@ export {
   type UpdateTurnInput,
 } from "./state/turns.ts";
 export {
+  WorkItemRegistry,
+  WorkItemNotFoundError,
+  type WorkItem,
+  type WorkItemFilter,
+  type CreateWorkItemInput,
+  type UpdateWorkItemInput,
+} from "./state/work-items.ts";
+export {
   executeRefreshProjection,
   emitTriggerFired,
   emitTriggerFailed,
