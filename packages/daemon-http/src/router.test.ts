@@ -28,6 +28,7 @@ function makeDeps() {
       handleSetup: () => undefined,
       handleEvents: () => undefined,
       handleTurns: () => undefined,
+      handleWorkItems: () => undefined,
   };
 }
 
@@ -182,6 +183,7 @@ describe("makeFetchHandler dispatch order", () => {
       handleSetup: () => undefined,
       handleEvents: () => undefined,
       handleTurns: () => undefined,
+      handleWorkItems: () => undefined,
     };
   }
 
@@ -301,6 +303,7 @@ describe("makeFetchHandler sessions dispatch", () => {
       handleSetup: () => undefined,
       handleEvents: () => undefined,
       handleTurns: () => undefined,
+      handleWorkItems: () => undefined,
     };
     const fetch = makeFetchHandler(deps);
     const res = await fetch(new Request("http://x/v1/sessions"));
@@ -333,6 +336,7 @@ describe("makeFetchHandler sessions dispatch", () => {
       handleSetup: () => undefined,
       handleEvents: () => undefined,
       handleTurns: () => undefined,
+      handleWorkItems: () => undefined,
     };
     const fetch = makeFetchHandler(deps);
     const res = await fetch(new Request("http://x/v1/sessions", { method: "POST" }));
@@ -360,6 +364,7 @@ handleTriggers: () => undefined,
       handleSetup: () => undefined,
       handleEvents: () => undefined,
       handleTurns: () => undefined,
+      handleWorkItems: () => undefined,
     };
     const fetch = makeFetchHandler(deps);
     const res = await fetch(new Request("http://x/v1/sessions/other", { method: "GET" }));

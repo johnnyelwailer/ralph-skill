@@ -18,6 +18,7 @@ function makeDeps() {
     handleSetup: () => undefined,
     handleEvents: () => undefined,
     handleTurns: () => undefined,
+    handleWorkItems: () => undefined,
   };
 }
 

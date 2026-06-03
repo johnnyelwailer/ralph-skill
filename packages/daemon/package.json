@@ -27,13 +27,15 @@
     "@aloop/daemon-routes-composer": "workspace:*",
     "@aloop/daemon-routes-providers": "workspace:*",
     "@aloop/daemon-routes-setup": "workspace:*",
-    "@aloop/daemon-routes-turns": "workspace:*",
     "@aloop/daemon-routes-triggers": "workspace:*",
+    "@aloop/daemon-routes-turns": "workspace:*",
+    "@aloop/daemon-routes-work-items": "workspace:*",
     "@aloop/provider": "workspace:*",
-    "@aloop/provider-opencode-cli": "workspace:*",
     "@aloop/provider-opencode": "workspace:*",
+    "@aloop/provider-opencode-cli": "workspace:*",
     "@aloop/scheduler": "workspace:*",
     "@aloop/scheduler-limits": "workspace:*",
-    "@aloop/state-sqlite": "workspace:*"
+    "@aloop/state-sqlite": "workspace:*",
+    "@aloop/tracker": "workspace:*"
   }
 }

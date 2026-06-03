@@ -99,6 +99,19 @@ function makeInput(): MakeRouterDepsInput {
       listByEntity: () => [],
       delete: () => { throw new Error("not implemented"); },
     } as unknown as ArtifactRegistry,
+    workItemRegistry: {
+      upsert: () => { throw new Error("not implemented"); },
+      get: () => undefined,
+      list: () => [],
+      update: () => { throw new Error("not implemented"); },
+    } as never,
+    trackerRegistry: {
+      listSupported: () => ["builtin"],
+      getTrackerId: () => "builtin",
+      setTrackerId: () => undefined,
+      getAdapter: () => Promise.resolve({ id: "builtin" } as never),
+      invalidate: () => undefined,
+    } as never,
     scheduler: {
       acquire: () =>
         Promise.resolve({ ok: false, reason: "no_quota", details: {} } as never),

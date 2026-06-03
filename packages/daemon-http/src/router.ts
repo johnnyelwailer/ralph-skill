@@ -51,6 +51,10 @@ export type RouterDeps = {
     req: Request,
     pathname: string,
   ) => Response | Promise<Response | undefined> | undefined;
+  readonly handleWorkItems: (
+    req: Request,
+    pathname: string,
+  ) => Response | Promise<Response | undefined> | undefined;
 };
 
 /**
@@ -114,6 +118,9 @@ export function makeFetchHandler(
 
     const eventsResponse = await deps.handleEvents(req, pathname);
     if (eventsResponse) return eventsResponse;
+
+    const workItemsResponse = await deps.handleWorkItems(req, pathname);
+    if (workItemsResponse) return workItemsResponse;
 
     return new Response(
       JSON.stringify({

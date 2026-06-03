@@ -16,6 +16,7 @@ import {
   ArtifactRegistry,
   SchedulerMetricsProjector,
   WorkspaceProjector,
+  WorkItemRegistry,
   type Database,
   type EventWriter,
 } from "@aloop/state-sqlite";
@@ -31,6 +32,7 @@ import { makeRouterDeps } from "./router-deps.ts";
 import { loadInitialConfig } from "./start-config.ts";
 import type { ConfigStore, DaemonConfig, DaemonPaths, OverridesConfig } from "@aloop/daemon-config";
 import { InMemoryProviderHealthStore, ProviderRegistry } from "@aloop/provider";
+import { TrackerRegistry } from "@aloop/tracker";
 import type { OpencodeRunTurn as OpencodeSdkRunTurn } from "@aloop/provider-opencode";
 import type { OpencodeRunTurn as OpencodeCliRunTurn } from "@aloop/provider-opencode-cli";
 
@@ -61,6 +63,8 @@ export type RunningDaemon = {
   scheduler: SchedulerService;
   providerRegistry: ProviderRegistry;
   providerHealth: InMemoryProviderHealthStore;
+  trackerRegistry: TrackerRegistry;
+  workItemRegistry: WorkItemRegistry;
   startedAt: number;
   stop(): Promise<void>;
 };
@@ -91,6 +95,8 @@ export async function startDaemon(opts: StartDaemonOptions = {}): Promise<Runnin
   const turnRegistry = new TurnRegistry(db);
   const composerRegistry = new ComposerTurnRegistry(db);
   const artifactRegistry = new ArtifactRegistry(db);
+  const workItemRegistry = new WorkItemRegistry(db);
+  const trackerRegistry = new TrackerRegistry({ trackersRoot: join(paths.stateDir, "trackers") });
   const permits = new PermitRegistry(db);
   eventStore = new JsonlEventStore(paths.logFile);
   const events = createEventWriter({
@@ -112,6 +118,8 @@ export async function startDaemon(opts: StartDaemonOptions = {}): Promise<Runnin
     turnRegistry,
     composerRegistry,
     artifactRegistry,
+    workItemRegistry,
+    trackerRegistry,
     scheduler,
     startedAt,
     config,
@@ -148,6 +156,8 @@ export async function startDaemon(opts: StartDaemonOptions = {}): Promise<Runnin
     scheduler,
     providerRegistry,
     providerHealth,
+    trackerRegistry,
+    workItemRegistry,
     startedAt,
     async stop() {
       watchdog?.stop();

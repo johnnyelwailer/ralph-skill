@@ -4,6 +4,7 @@ import { handleTriggers, TriggerStore } from "@aloop/daemon-routes-triggers";
 import { handleSetup, SetupStore } from "@aloop/daemon-routes-setup";
 import { handleEvents } from "@aloop/daemon-routes";
 import { handleMetricsAggregates } from "@aloop/daemon-routes";
+import { handleWorkItems } from "@aloop/daemon-routes-work-items";
 import { createMetricsAggregatesDeps } from "./router-deps-helpers.ts";
 import type { ConfigStore } from "@aloop/daemon-config";
 import type { RouterDeps } from "@aloop/daemon-http";
@@ -16,10 +17,11 @@ import {
   handleSessions as handleSessionsRoute,
 } from "@aloop/daemon-routes";
 import type { SchedulerService } from "@aloop/scheduler";
-import type { ComposerTurnRegistry, EventWriter, ProjectRegistry, SessionRegistry, WorkspaceRegistry, ArtifactRegistry, Database, TurnRegistry } from "@aloop/state-sqlite";
+import type { ComposerTurnRegistry, EventWriter, ProjectRegistry, SessionRegistry, WorkspaceRegistry, ArtifactRegistry, Database, TurnRegistry, WorkItemRegistry } from "@aloop/state-sqlite";
 import { handleDaemon as handleDaemonRoute } from "../routes/daemon.ts";
 import { handleTurns } from "@aloop/daemon-routes-turns";
 import { join } from "node:path";
+import type { TrackerRegistry } from "@aloop/tracker";
 
 export type MakeRouterDepsInput = {
   readonly db: Database;
@@ -29,6 +31,8 @@ export type MakeRouterDepsInput = {
   readonly turnRegistry: TurnRegistry;
   readonly composerRegistry: ComposerTurnRegistry;
   readonly artifactRegistry: ArtifactRegistry;
+  readonly workItemRegistry: WorkItemRegistry;
+  readonly trackerRegistry: TrackerRegistry;
   readonly scheduler: SchedulerService;
   readonly startedAt: number;
   readonly config: ConfigStore;
@@ -113,5 +117,15 @@ export function makeRouterDeps(input: MakeRouterDepsInput): RouterDeps {
       handleEvents(req, { logFile: () => input.config.paths().logFile, sessionsDir }, pathname),
     handleTurns: (req, pathname) =>
       handleTurns(req, { turns: input.turnRegistry, sessionsDir }, pathname),
+    handleWorkItems: (req, pathname) =>
+      handleWorkItems(
+        req,
+        {
+          trackerRegistry: input.trackerRegistry,
+          workItemRegistry: input.workItemRegistry,
+          projectRegistry: input.registry,
+        },
+        pathname,
+      ),
   };
 }
